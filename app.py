@@ -1,0 +1,6276 @@
+# app.py - Manim Animation Studio - Professional Edition with Advanced IntelliSense and Modern Package Manager
+import customtkinter as ctk
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk, colorchooser
+import tempfile
+import os
+import logging
+import json
+import subprocess
+import sys
+import time
+import uuid
+import threading
+import shutil
+import zipfile
+from datetime import datetime
+from pathlib import Path
+import base64
+import re
+from PIL import Image, ImageTk
+import io
+import numpy as np
+import cv2
+import math
+import requests
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass
+from typing import List, Dict, Optional, Tuple
+import asyncio
+import aiohttp
+import webbrowser
+from urllib.parse import quote, unquote
+
+# Try to import Jedi for IntelliSense
+try:
+    import jedi
+    JEDI_AVAILABLE = True
+except ImportError:
+    JEDI_AVAILABLE = False
+    print("Jedi not available. IntelliSense will be limited.")
+
+# Try to import other optional dependencies
+try:
+    from idlelib.colorizer import ColorDelegator, color_config
+    from idlelib.percolator import Percolator
+    from idlelib.undo import UndoDelegator
+    IDLE_AVAILABLE = True
+except ImportError:
+    IDLE_AVAILABLE = False
+
+try:
+    from pygments import highlight
+    from pygments.lexers import PythonLexer
+    from pygments.formatters import TerminalFormatter
+    PYGMENTS_AVAILABLE = True
+except ImportError:
+    PYGMENTS_AVAILABLE = False
+
+# Configure CustomTkinter with modern appearance
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('manim_studio.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Application constants
+APP_NAME = "Manim Animation Studio"
+APP_VERSION = "3.5.0"
+APP_AUTHOR = "Manim Studio Team"
+APP_EMAIL = "contact@manimstudio.com"
+
+QUALITY_PRESETS = {
+    "480p": {"resolution": "854x480", "fps": "30", "flag": "-ql"},
+    "720p": {"resolution": "1280x720", "fps": "30", "flag": "-qm"},
+    "1080p": {"resolution": "1920x1080", "fps": "60", "flag": "-qh"},
+    "4K": {"resolution": "3840x2160", "fps": "60", "flag": "-qk"},
+    "8K": {"resolution": "7680x4320", "fps": "60", "flag": "-qp"}
+}
+
+PREVIEW_QUALITIES = {
+    "Low": {"resolution": "640x360", "fps": "15", "flag": "-ql"},
+    "Medium": {"resolution": "854x480", "fps": "24", "flag": "-ql"},
+    "High": {"resolution": "1280x720", "fps": "30", "flag": "-qm"}
+}
+
+EXPORT_FORMATS = {
+    "MP4 Video": "mp4",
+    "GIF Animation": "gif",
+    "WebM Video": "webm",
+    "PNG Sequence": "png"
+}
+
+# Professional VSCode color scheme
+VSCODE_COLORS = {
+    "primary": "#007ACC",
+    "primary_hover": "#005A9E",
+    "secondary": "#6366f1",
+    "accent": "#0E7490",
+    "success": "#16A085",
+    "warning": "#F39C12",
+    "error": "#E74C3C",
+    "info": "#3498DB",
+    "surface": "#252526",
+    "surface_light": "#2D2D30",
+    "surface_lighter": "#383838",
+    "background": "#1E1E1E",
+    "text": "#CCCCCC",
+    "text_secondary": "#858585",
+    "text_bright": "#FFFFFF",
+    "border": "#464647",
+    "selection": "#264F78",
+    "current_line": "#2A2D2E",
+    "line_numbers": "#858585",
+    "line_numbers_bg": "#252526",
+    "minimap": "#3E3E42",
+    "bracket_match": "#0E639C",
+    "indent_guide": "#404040",
+    "find_match": "#613214",
+    "find_current": "#A8AC94"
+}
+
+# Enhanced Python syntax highlighting colors (like VSCode Dark+)
+SYNTAX_COLORS = {
+    "keyword": "#569CD6",          # Blue - Keywords like def, class, if
+    "string": "#CE9178",           # Orange - String literals
+    "comment": "#6A9955",          # Green - Comments
+    "number": "#B5CEA8",           # Light green - Numbers
+    "function": "#DCDCAA",         # Yellow - Function names
+    "class": "#4EC9B0",            # Cyan - Class names
+    "builtin": "#569CD6",          # Blue - Built-in functions
+    "operator": "#D4D4D4",         # White - Operators
+    "variable": "#9CDCFE",         # Light blue - Variables
+    "constant": "#569CD6",         # Blue - Constants
+    "decorator": "#569CD6",        # Blue - Decorators like @property
+    "import": "#C586C0",           # Purple - Import statements
+    "exception": "#569CD6",        # Blue - Exception classes
+    "magic": "#DCDCAA",           # Yellow - Magic methods like __init__
+    "self": "#569CD6",            # Blue - self keyword
+    "parameter": "#9CDCFE",       # Light blue - Function parameters
+}
+
+@dataclass
+class PackageInfo:
+    """Data class for package information"""
+    name: str
+    version: str
+    description: str
+    author: str
+    license: str
+    homepage: str
+    download_url: str
+    size: Optional[int] = None
+    last_updated: Optional[str] = None
+    dependencies: List[str] = None
+    category: str = "General"
+    stars: int = 0
+    downloads: int = 0
+    is_installed: bool = False
+    installed_version: Optional[str] = None
+    
+    def __post_init__(self):
+        if self.dependencies is None:
+            self.dependencies = []
+
+@dataclass
+class PackageCategory:
+    """Package category definition"""
+    name: str
+    icon: str
+    description: str
+    packages: List[str]
+
+# Comprehensive package categories with many more options
+PACKAGE_CATEGORIES = [
+    PackageCategory("Machine Learning & AI", "🤖", "Machine learning, deep learning, and AI frameworks", 
+                   ["tensorflow", "pytorch", "sklearn", "transformers", "huggingface", "opencv-python", 
+                    "keras", "xgboost", "lightgbm", "catboost", "mlflow", "wandb", "optuna", "ray",
+                    "gymnasium", "stable-baselines3", "tensorboard", "onnx", "torchvision", "torchaudio"]),
+    
+    PackageCategory("Data Science & Analytics", "📊", "Data analysis, visualization, and processing", 
+                   ["pandas", "numpy", "matplotlib", "seaborn", "plotly", "scipy", "statsmodels",
+                    "jupyter", "ipython", "notebook", "dask", "polars", "pyarrow", "h5py",
+                    "openpyxl", "xlsxwriter", "bokeh", "altair", "streamlit", "dash", "gradio"]),
+    
+    PackageCategory("Web Development", "🌐", "Web frameworks, APIs, and web tools", 
+                   ["django", "flask", "fastapi", "tornado", "pyramid", "bottle", "cherrypy",
+                    "requests", "aiohttp", "httpx", "urllib3", "beautifulsoup4", "scrapy",
+                    "selenium", "playwright", "lxml", "html5lib", "werkzeug", "jinja2"]),
+    
+    PackageCategory("GUI & Desktop Development", "🖥️", "Desktop application frameworks and GUI tools", 
+                   ["tkinter", "customtkinter", "pyqt5", "pyqt6", "pyside2", "pyside6", "kivy",
+                    "kivymd", "wxpython", "flet", "dear-pygui", "arcade", "ursina", "moderngl",
+                    "glfw", "imgui", "toga", "beeware"]),
+    
+    PackageCategory("Animation & Graphics", "🎨", "Animation, 3D graphics, and visual processing", 
+                   ["manim", "pygame", "pyglet", "panda3d", "blender", "moderngl", "vispy",
+                    "mayavi", "vtk", "open3d", "trimesh", "pyopengl", "arcade", "imageio",
+                    "pillow", "wand", "cairo-python", "aggdraw", "skimage"]),
+    
+    PackageCategory("Scientific Computing", "🔬", "Scientific libraries and numerical computing", 
+                   ["numpy", "scipy", "sympy", "networkx", "scikit-image", "astropy", "biopython",
+                    "chempy", "mendeleev", "pymc", "stan", "pystan", "emcee", "corner",
+                    "uncertainties", "pint", "quantities", "fenics", "firedrake"]),
+    
+    PackageCategory("Development Tools", "🛠️", "Developer utilities, testing, and code quality", 
+                   ["pytest", "unittest", "black", "isort", "flake8", "pylint", "mypy", "bandit",
+                    "pre-commit", "tox", "poetry", "pipenv", "setuptools", "wheel", "twine",
+                    "coverage", "hypothesis", "faker", "factory-boy", "mock"]),
+    
+    PackageCategory("System & Networking", "⚙️", "System utilities, networking, and DevOps", 
+                   ["psutil", "paramiko", "fabric", "pexpect", "click", "typer", "rich", "textual",
+                    "docker", "kubernetes", "ansible", "saltstack", "supervisor", "celery",
+                    "redis", "pymongo", "psycopg2", "mysql-connector-python", "sqlalchemy"]),
+    
+    PackageCategory("Security & Cryptography", "🔒", "Security tools and cryptographic libraries", 
+                   ["cryptography", "pycrypto", "bcrypt", "passlib", "oauthlib", "pyjwt",
+                    "keyring", "gnupg", "pyotp", "qrcode", "python-decouple", "hashlib",
+                    "secrets", "ssl", "certifi", "urllib3"]),
+    
+    PackageCategory("Audio & Video Processing", "🎵", "Audio and video manipulation libraries", 
+                   ["moviepy", "opencv-python", "imageio", "pyaudio", "pydub", "librosa",
+                    "ffmpeg-python", "audioread", "soundfile", "wave", "mutagen", "eyed3",
+                    "pillow-simd", "av", "decord", "youtube-dl"]),
+    
+    PackageCategory("Database & ORM", "🗄️", "Database connectors and Object-Relational Mapping", 
+                   ["sqlalchemy", "django-orm", "peewee", "tortoise-orm", "databases", "alembic",
+                    "psycopg2", "pymongo", "redis", "cassandra-driver", "neo4j", "elasticsearch",
+                    "pymysql", "cx-oracle", "pyodbc", "sqlite3"]),
+    
+    PackageCategory("Cloud & Infrastructure", "☁️", "Cloud services and infrastructure tools", 
+                   ["boto3", "azure-storage", "google-cloud", "kubernetes", "docker", "terraform",
+                    "pulumi", "cloudformation", "serverless", "zappa", "chalice", "sls",
+                    "aws-sam-cli", "azure-cli", "gcloud"]),
+    
+    PackageCategory("Text Processing & NLP", "📝", "Natural language processing and text analysis", 
+                   ["nltk", "spacy", "textblob", "gensim", "transformers", "datasets", "tokenizers",
+                    "langchain", "openai", "anthropic", "cohere", "sentence-transformers", "flair",
+                    "stanza", "allennlp", "polyglot", "textstat", "pyspellchecker"]),
+    
+    PackageCategory("Game Development", "🎮", "Game engines and development frameworks", 
+                   ["pygame", "arcade", "panda3d", "ursina", "pyglet", "cocos2d", "kivy",
+                    "moderngl", "pyopengl", "pybullet", "pymunk", "pybox2d", "noise",
+                    "perlin-noise", "python-tcod"]),
+    
+    PackageCategory("Finance & Trading", "💰", "Financial analysis and trading tools", 
+                   ["yfinance", "pandas-datareader", "quantlib", "zipline", "backtrader", "pyfolio",
+                    "empyrical", "ta-lib", "finta", "stockstats", "alpha-vantage", "quandl",
+                    "ccxt", "freqtrade", "vnpy"]),
+    
+    PackageCategory("Education & Research", "🎓", "Educational tools and research utilities", 
+                   ["jupyter", "nbconvert", "nbformat", "ipywidgets", "voila", "binder",
+                    "papermill", "scooby", "sphinx", "mkdocs", "gitpython", "nbstripout",
+                    "jupyter-book", "myst-parser", "rise"]),
+    
+    PackageCategory("IoT & Hardware", "🔌", "Internet of Things and hardware interfaces", 
+                   ["raspberry-pi", "adafruit", "circuitpython", "micropython", "pyserial",
+                    "pyfirmata", "bleak", "bluepy", "pybluez", "gpiozero", "rpi-gpio",
+                    "spidev", "i2c", "smbus", "w1thermsensor"]),
+    
+    PackageCategory("Image Processing", "🖼️", "Image manipulation and computer vision", 
+                   ["pillow", "opencv-python", "scikit-image", "imageio", "wand", "pyqr",
+                    "qrcode", "python-barcode", "face-recognition", "dlib", "mediapipe",
+                    "albumentations", "imgaug", "kornia", "torchvision"]),
+    
+    PackageCategory("Utilities & Helpers", "🔧", "General utilities and helper libraries", 
+                   ["python-dateutil", "pytz", "arrow", "pendulum", "humanize", "tqdm",
+                    "colorama", "termcolor", "click", "argparse", "configparser", "python-dotenv",
+                    "pathlib", "shutil", "glob", "fnmatch", "itertools", "functools"]),
+]
+
+# Popular packages for quick installation
+POPULAR_PACKAGES = [
+    # Core Data Science
+    "numpy", "pandas", "matplotlib", "seaborn", "scipy", "scikit-learn",
+    "jupyter", "ipython", "notebook", "plotly", "bokeh",
+    
+    # Machine Learning & AI
+    "tensorflow", "pytorch", "keras", "transformers", "opencv-python",
+    "scikit-image", "pillow", "huggingface-hub", "datasets",
+    
+    # Web Development
+    "django", "flask", "fastapi", "requests", "beautifulsoup4",
+    "selenium", "scrapy", "aiohttp", "httpx",
+    
+    # GUI Development
+    "customtkinter", "pyqt5", "kivy", "tkinter", "flet",
+    "dear-pygui", "pygame", "arcade",
+    
+    # Development Tools
+    "pytest", "black", "flake8", "mypy", "isort", "poetry",
+    "pre-commit", "tox", "coverage", "click", "typer",
+    
+    # Animation & Graphics
+    "manim", "pygame", "pyglet", "panda3d", "moderngl",
+    "imageio", "moviepy", "cairo-python",
+    
+    # Database & Storage
+    "sqlalchemy", "pymongo", "redis", "psycopg2", "mysql-connector-python",
+    
+    # Cloud & APIs
+    "boto3", "azure-storage", "google-cloud", "docker", "kubernetes",
+    
+    # Scientific Computing
+    "sympy", "networkx", "astropy", "biopython", "pymc",
+    
+    # Text Processing
+    "nltk", "spacy", "textblob", "gensim", "openai",
+    
+    # System utilities
+    "psutil", "paramiko", "rich", "typer", "click", "celery",
+    
+    # Security
+    "cryptography", "bcrypt", "pyjwt", "oauthlib", "passlib",
+    
+    # Audio/Video
+    "moviepy", "pydub", "librosa", "pyaudio", "ffmpeg-python",
+    
+    # Finance
+    "yfinance", "pandas-datareader", "quantlib", "backtrader",
+    
+    # IoT
+    "pyserial", "adafruit", "gpiozero", "bleak",
+    
+    # Utilities
+    "python-dateutil", "arrow", "tqdm", "colorama", "python-dotenv"
+]
+
+class PyPISearchEngine:
+    """Advanced PyPI search engine with modern features"""
+    
+    def __init__(self):
+        self.base_url = "https://pypi.org"
+        self.api_url = "https://pypi.org/pypi"
+        self.search_url = "https://pypi.org/search"
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': f'{APP_NAME}/{APP_VERSION} (Package Manager)'
+        })
+        
+        # Cache for search results
+        self.search_cache = {}
+        self.package_cache = {}
+        
+    async def search_packages(self, query: str, max_results: int = 50) -> List[PackageInfo]:
+        """Search for packages asynchronously"""
+        try:
+            # Check cache first
+            cache_key = f"{query}_{max_results}"
+            if cache_key in self.search_cache:
+                return self.search_cache[cache_key]
+                
+            # For demo, return enhanced mock data based on categories
+            packages = self._get_enhanced_package_list(query, max_results)
+            
+            # Cache results
+            self.search_cache[cache_key] = packages
+            return packages
+                    
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            return []
+    
+    def _get_enhanced_package_list(self, query: str, max_results: int) -> List[PackageInfo]:
+        """Get enhanced package list based on query and categories"""
+        packages = []
+        
+        # Enhanced package database
+        package_db = {
+            # Data Science
+            "numpy": PackageInfo("numpy", "1.24.3", "Fundamental package for array computing", "NumPy Developers", "BSD", "https://numpy.org", "", 50000000, 25000, category="Data Science & Analytics"),
+            "pandas": PackageInfo("pandas", "2.0.3", "Powerful data analysis and manipulation library", "Pandas Team", "BSD", "https://pandas.pydata.org", "", 40000000, 35000, category="Data Science & Analytics"),
+            "matplotlib": PackageInfo("matplotlib", "3.7.2", "Comprehensive library for creating static, animated visualizations", "Matplotlib Team", "PSF", "https://matplotlib.org", "", 30000000, 18000, category="Data Science & Analytics"),
+            "seaborn": PackageInfo("seaborn", "0.12.2", "Statistical data visualization based on matplotlib", "Michael Waskom", "BSD", "https://seaborn.pydata.org", "", 15000000, 10000, category="Data Science & Analytics"),
+            "scipy": PackageInfo("scipy", "1.11.1", "Fundamental algorithms for scientific computing", "SciPy Developers", "BSD", "https://scipy.org", "", 25000000, 12000, category="Scientific Computing"),
+            "scikit-learn": PackageInfo("scikit-learn", "1.3.0", "Machine learning library for Python", "Scikit-learn Developers", "BSD", "https://scikit-learn.org", "", 20000000, 15000, category="Machine Learning & AI"),
+            
+            # Machine Learning & AI
+            "tensorflow": PackageInfo("tensorflow", "2.13.0", "An end-to-end open source machine learning platform", "Google", "Apache", "https://tensorflow.org", "", 35000000, 180000, category="Machine Learning & AI"),
+            "pytorch": PackageInfo("pytorch", "2.0.1", "Tensors and Dynamic neural networks in Python", "PyTorch Team", "BSD", "https://pytorch.org", "", 30000000, 65000, category="Machine Learning & AI"),
+            "transformers": PackageInfo("transformers", "4.32.0", "State-of-the-art Machine Learning for JAX, PyTorch and TensorFlow", "Hugging Face", "Apache", "https://huggingface.co/transformers", "", 10000000, 95000, category="Machine Learning & AI"),
+            "opencv-python": PackageInfo("opencv-python", "4.8.0", "Open Source Computer Vision Library", "OpenCV Team", "MIT", "https://opencv.org", "", 18000000, 13000, category="Animation & Graphics"),
+            
+            # Web Development
+            "django": PackageInfo("django", "4.2.3", "High-level Python web framework", "Django Software Foundation", "BSD", "https://djangoproject.com", "", 25000000, 65000, category="Web Development"),
+            "flask": PackageInfo("flask", "2.3.2", "A simple framework for building complex web applications", "Armin Ronacher", "BSD", "https://flask.palletsprojects.com", "", 22000000, 62000, category="Web Development"),
+            "fastapi": PackageInfo("fastapi", "0.101.0", "FastAPI framework, high performance, easy to learn", "Sebastián Ramirez", "MIT", "https://fastapi.tiangolo.com", "", 15000000, 65000, category="Web Development"),
+            "requests": PackageInfo("requests", "2.31.0", "HTTP library for Python", "Kenneth Reitz", "Apache", "https://requests.readthedocs.io", "", 45000000, 50000, category="Web Development"),
+            
+            # GUI Development
+            "customtkinter": PackageInfo("customtkinter", "5.2.0", "Modern and customizable python UI-library based on Tkinter", "Tom Schimansky", "MIT", "https://github.com/TomSchimansky/CustomTkinter", "", 2000000, 8500, category="GUI & Desktop Development"),
+            "pyqt5": PackageInfo("pyqt5", "5.15.9", "Python bindings for the Qt cross platform library", "Riverbank Computing", "GPL", "https://riverbankcomputing.com/software/pyqt", "", 12000000, 3500, category="GUI & Desktop Development"),
+            "kivy": PackageInfo("kivy", "2.2.0", "Open source UI framework written in Python", "Kivy Organization", "MIT", "https://kivy.org", "", 5000000, 15000, category="GUI & Desktop Development"),
+            
+            # Animation & Graphics
+            "manim": PackageInfo("manim", "0.17.3", "Mathematical Animation Engine", "3b1b & Manim Community", "MIT", "https://manim.community", "", 1500000, 12000, category="Animation & Graphics"),
+            "pygame": PackageInfo("pygame", "2.5.0", "Python Game Development", "Pygame Community", "LGPL", "https://pygame.org", "", 8000000, 5000, category="Game Development"),
+            "pillow": PackageInfo("pillow", "10.0.0", "Python Imaging Library (Fork)", "Alex Clark and Contributors", "PIL", "https://python-pillow.org", "", 25000000, 11000, category="Image Processing"),
+            
+            # Development Tools
+            "pytest": PackageInfo("pytest", "7.4.0", "Framework makes it easy to write small tests", "Holger Krekel", "MIT", "https://pytest.org", "", 30000000, 11000, category="Development Tools"),
+            "black": PackageInfo("black", "23.7.0", "The uncompromising Python code formatter", "Python Software Foundation", "MIT", "https://black.readthedocs.io", "", 12000000, 35000, category="Development Tools"),
+            "jedi": PackageInfo("jedi", "0.18.2", "An autocompletion tool for Python", "David Halter", "MIT", "https://github.com/davidhalter/jedi", "", 15000000, 5500, category="Development Tools"),
+            
+            # Scientific Computing
+            "sympy": PackageInfo("sympy", "1.12", "Python library for symbolic mathematics", "SymPy Development Team", "BSD", "https://sympy.org", "", 5000000, 10000, category="Scientific Computing"),
+            "networkx": PackageInfo("networkx", "3.1", "Python package for network analysis", "NetworkX Developers", "BSD", "https://networkx.org", "", 8000000, 13000, category="Scientific Computing"),
+            
+            # Text Processing & NLP
+            "nltk": PackageInfo("nltk", "3.8.1", "Natural Language Toolkit", "NLTK Team", "Apache", "https://nltk.org", "", 10000000, 12000, category="Text Processing & NLP"),
+            "spacy": PackageInfo("spacy", "3.6.1", "Industrial-strength Natural Language Processing", "Explosion AI", "MIT", "https://spacy.io", "", 5000000, 25000, category="Text Processing & NLP"),
+            
+            # Database & ORM
+            "sqlalchemy": PackageInfo("sqlalchemy", "2.0.19", "Database Abstraction Library", "Mike Bayer", "MIT", "https://sqlalchemy.org", "", 15000000, 5000, category="Database & ORM"),
+            "pymongo": PackageInfo("pymongo", "4.4.1", "Python driver for MongoDB", "MongoDB, Inc.", "Apache", "https://pymongo.readthedocs.io", "", 8000000, 1500, category="Database & ORM"),
+            
+            # Cloud & Infrastructure
+            "boto3": PackageInfo("boto3", "1.28.22", "The AWS SDK for Python", "Amazon Web Services", "Apache", "https://boto3.amazonaws.com", "", 20000000, 8500, category="Cloud & Infrastructure"),
+            "docker": PackageInfo("docker", "6.1.3", "A Python library for the Docker Engine API", "Docker, Inc.", "Apache", "https://docker-py.readthedocs.io", "", 12000000, 6500, category="Cloud & Infrastructure"),
+            
+            # System utilities
+            "psutil": PackageInfo("psutil", "5.9.5", "Cross-platform lib for process and system monitoring", "Giampaolo Rodola", "BSD", "https://github.com/giampaolo/psutil", "", 18000000, 8500, category="System & Networking"),
+            "rich": PackageInfo("rich", "13.4.2", "Rich text and beautiful formatting in the terminal", "Will McGugan", "MIT", "https://rich.readthedocs.io", "", 5000000, 45000, category="System & Networking"),
+            
+            # Finance
+            "yfinance": PackageInfo("yfinance", "0.2.20", "Download market data from Yahoo! Finance", "Ran Aroussi", "Apache", "https://github.com/ranaroussi/yfinance", "", 2000000, 11000, category="Finance & Trading"),
+            
+            # Audio/Video
+            "moviepy": PackageInfo("moviepy", "1.0.3", "Video editing with Python", "Zulko", "MIT", "https://zulko.github.io/moviepy", "", 3000000, 11000, category="Audio & Video Processing"),
+            "pydub": PackageInfo("pydub", "0.25.1", "Manipulate audio with a simple and easy high level interface", "James Robert", "MIT", "https://github.com/jiaaro/pydub", "", 8000000, 7000, category="Audio & Video Processing"),
+        }
+        
+        # Filter packages based on query
+        if query:
+            query_lower = query.lower()
+            filtered_packages = []
+            
+            # Search in package names, descriptions, and categories
+            for pkg_name, pkg_info in package_db.items():
+                if (query_lower in pkg_name.lower() or 
+                    query_lower in pkg_info.description.lower() or
+                    query_lower in pkg_info.category.lower()):
+                    filtered_packages.append(pkg_info)
+            
+            # Sort by relevance (exact matches first)
+            filtered_packages.sort(key=lambda p: (
+                not p.name.lower().startswith(query_lower),
+                -p.downloads
+            ))
+            
+            packages = filtered_packages[:max_results]
+        else:
+            # Return popular packages if no query
+            popular_package_names = POPULAR_PACKAGES[:max_results]
+            packages = [package_db.get(name) for name in popular_package_names if name in package_db]
+            packages = [p for p in packages if p is not None]
+        
+        return packages
+    
+    async def get_package_info(self, package_name: str) -> Optional[PackageInfo]:
+        """Get detailed package information"""
+        try:
+            # Check cache first
+            if package_name in self.package_cache:
+                return self.package_cache[package_name]
+                
+            # For demo, return mock data
+            mock_packages = self._get_enhanced_package_list("", 1000)
+            for pkg in mock_packages:
+                if pkg.name == package_name:
+                    self.package_cache[package_name] = pkg
+                    return pkg
+                        
+        except Exception as e:
+            logger.error(f"Package info error: {e}")
+            return None
+    
+    def get_popular_packages(self) -> List[str]:
+        """Get list of popular packages"""
+        return POPULAR_PACKAGES
+
+class ModernPackageCard(ctk.CTkFrame):
+    """Modern package card with rich information display"""
+    
+    def __init__(self, parent, package_info: PackageInfo, on_install=None, on_uninstall=None, on_favorite=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        
+        self.package_info = package_info
+        self.on_install = on_install
+        self.on_uninstall = on_uninstall
+        self.on_favorite = on_favorite
+        self.is_favorited = False
+        
+        self.configure(
+            fg_color=VSCODE_COLORS["surface_light"],
+            corner_radius=12,
+            border_width=1,
+            border_color=VSCODE_COLORS["border"]
+        )
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the modern card UI"""
+        # Configure grid
+        self.grid_columnconfigure(1, weight=1)
+        
+        # Header frame
+        header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=15, pady=(15, 0))
+        header_frame.grid_columnconfigure(1, weight=1)
+        
+        # Package icon/category
+        category_icon = self._get_category_icon()
+        icon_label = ctk.CTkLabel(
+            header_frame,
+            text=category_icon,
+            font=ctk.CTkFont(size=24)
+        )
+        icon_label.grid(row=0, column=0, sticky="w")
+        
+        # Package name and version
+        name_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        name_frame.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+        name_frame.grid_columnconfigure(0, weight=1)
+        
+        name_label = ctk.CTkLabel(
+            name_frame,
+            text=self.package_info.name,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            anchor="w"
+        )
+        name_label.grid(row=0, column=0, sticky="ew")
+        
+        version_text = f"v{self.package_info.version}"
+        if self.package_info.is_installed:
+            version_text += f" (Installed: {self.package_info.installed_version})"
+            
+        version_label = ctk.CTkLabel(
+            name_frame,
+            text=version_text,
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"],
+            anchor="w"
+        )
+        version_label.grid(row=1, column=0, sticky="ew")
+        
+        # Actions frame
+        actions_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        actions_frame.grid(row=0, column=2, sticky="e")
+        
+        # Favorite button
+        self.favorite_btn = ctk.CTkButton(
+            actions_frame,
+            text="⭐" if self.is_favorited else "☆",
+            width=35,
+            height=35,
+            command=self.toggle_favorite,
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_lighter"]
+        )
+        self.favorite_btn.pack(side="left", padx=2)
+        
+        # Install/Uninstall button
+        if self.package_info.is_installed:
+            action_text = "Uninstall"
+            action_color = VSCODE_COLORS["error"]
+            action_command = self.uninstall_package
+        else:
+            action_text = "Install"
+            action_color = VSCODE_COLORS["success"]
+            action_command = self.install_package
+            
+        self.action_btn = ctk.CTkButton(
+            actions_frame,
+            text=action_text,
+            width=80,
+            height=35,
+            command=action_command,
+            fg_color=action_color,
+            hover_color=self._darken_color(action_color)
+        )
+        self.action_btn.pack(side="left", padx=(5, 0))
+        
+        # Description
+        if self.package_info.description:
+            desc_label = ctk.CTkLabel(
+                self,
+                text=self._truncate_text(self.package_info.description, 100),
+                font=ctk.CTkFont(size=12),
+                text_color=VSCODE_COLORS["text"],
+                anchor="w",
+                wraplength=400
+            )
+            desc_label.grid(row=1, column=0, columnspan=2, sticky="ew", padx=15, pady=(5, 0))
+        
+        # Metadata frame
+        metadata_frame = ctk.CTkFrame(self, fg_color="transparent")
+        metadata_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=15, pady=(10, 15))
+        
+        # Author and license
+        if self.package_info.author:
+            author_label = ctk.CTkLabel(
+                metadata_frame,
+                text=f"👤 {self.package_info.author}",
+                font=ctk.CTkFont(size=11),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            author_label.pack(side="left", padx=(0, 15))
+        
+        if self.package_info.license:
+            license_label = ctk.CTkLabel(
+                metadata_frame,
+                text=f"📄 {self.package_info.license}",
+                font=ctk.CTkFont(size=11),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            license_label.pack(side="left", padx=(0, 15))
+        
+        # Statistics
+        if self.package_info.downloads > 0:
+            downloads_text = self._format_number(self.package_info.downloads)
+            downloads_label = ctk.CTkLabel(
+                metadata_frame,
+                text=f"📥 {downloads_text}",
+                font=ctk.CTkFont(size=11),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            downloads_label.pack(side="right", padx=(15, 0))
+        
+        if self.package_info.stars > 0:
+            stars_label = ctk.CTkLabel(
+                metadata_frame,
+                text=f"⭐ {self.package_info.stars}",
+                font=ctk.CTkFont(size=11),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            stars_label.pack(side="right", padx=(15, 0))
+        
+        # Hover effects
+        self.bind("<Enter>", self.on_enter)
+        self.bind("<Leave>", self.on_leave)
+        
+    def _get_category_icon(self) -> str:
+        """Get icon for package category"""
+        category_icons = {
+            "Machine Learning & AI": "🤖",
+            "Data Science & Analytics": "📊",
+            "Web Development": "🌐",
+            "GUI & Desktop Development": "🖥️",
+            "Animation & Graphics": "🎨",
+            "Scientific Computing": "🔬",
+            "Development Tools": "🛠️",
+            "System & Networking": "⚙️",
+            "Security & Cryptography": "🔒",
+            "Audio & Video Processing": "🎵",
+            "Database & ORM": "🗄️",
+            "Cloud & Infrastructure": "☁️",
+            "Text Processing & NLP": "📝",
+            "Game Development": "🎮",
+            "Finance & Trading": "💰",
+            "Education & Research": "🎓",
+            "IoT & Hardware": "🔌",
+            "Image Processing": "🖼️",
+            "Utilities & Helpers": "🔧",
+        }
+        return category_icons.get(self.package_info.category, "📦")
+    
+    def _truncate_text(self, text: str, max_length: int) -> str:
+        """Truncate text with ellipsis"""
+        return text[:max_length] + "..." if len(text) > max_length else text
+    
+    def _format_number(self, num: int) -> str:
+        """Format large numbers with suffixes"""
+        if num >= 1_000_000:
+            return f"{num/1_000_000:.1f}M"
+        elif num >= 1_000:
+            return f"{num/1_000:.1f}K"
+        return str(num)
+    
+    def _darken_color(self, color: str, factor: float = 0.8) -> str:
+        """Darken a hex color"""
+        # Simple color darkening (would need proper color manipulation in reality)
+        return color
+    
+    def toggle_favorite(self):
+        """Toggle favorite status"""
+        self.is_favorited = not self.is_favorited
+        self.favorite_btn.configure(text="⭐" if self.is_favorited else "☆")
+        
+        if self.on_favorite:
+            self.on_favorite(self.package_info.name, self.is_favorited)
+    
+    def install_package(self):
+        """Install package"""
+        if self.on_install:
+            self.on_install(self.package_info.name)
+    
+    def uninstall_package(self):
+        """Uninstall package"""
+        if self.on_uninstall:
+            self.on_uninstall(self.package_info.name)
+    
+    def on_enter(self, event):
+        """Mouse enter effect"""
+        self.configure(
+            border_color=VSCODE_COLORS["primary"],
+            border_width=2
+        )
+    
+    def on_leave(self, event):
+        """Mouse leave effect"""
+        self.configure(
+            border_color=VSCODE_COLORS["border"],
+            border_width=1
+        )
+
+class VirtualEnvironmentCard(ctk.CTkFrame):
+    """Card for displaying virtual environment information"""
+    
+    def __init__(self, parent, venv_name, venv_path, is_active=False, on_activate=None, on_delete=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        
+        self.venv_name = venv_name
+        self.venv_path = venv_path
+        self.is_active = is_active
+        self.on_activate = on_activate
+        self.on_delete = on_delete
+        
+        self.configure(
+            fg_color=VSCODE_COLORS["surface_light"],
+            corner_radius=12,
+            border_width=2,
+            border_color=VSCODE_COLORS["primary"] if is_active else VSCODE_COLORS["border"]
+        )
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the virtual environment card UI"""
+        # Main container
+        main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        main_frame.grid_columnconfigure(1, weight=1)
+        
+        # Icon and status
+        icon_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        icon_frame.grid(row=0, column=0, sticky="w")
+        
+        # Environment icon
+        icon_label = ctk.CTkLabel(
+            icon_frame,
+            text="🐍",
+            font=ctk.CTkFont(size=32)
+        )
+        icon_label.pack()
+        
+        # Info frame
+        info_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        info_frame.grid(row=0, column=1, sticky="ew", padx=(15, 0))
+        info_frame.grid_columnconfigure(0, weight=1)
+        
+        # Environment name
+        name_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+        name_frame.grid(row=0, column=0, sticky="ew")
+        name_frame.grid_columnconfigure(0, weight=1)
+        
+        name_label = ctk.CTkLabel(
+            name_frame,
+            text=self.venv_name,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            anchor="w"
+        )
+        name_label.grid(row=0, column=0, sticky="ew")
+        
+        if self.is_active:
+            status_label = ctk.CTkLabel(
+                name_frame,
+                text="✅ ACTIVE",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color=VSCODE_COLORS["success"]
+            )
+            status_label.grid(row=0, column=1, sticky="e")
+        
+        # Path
+        path_label = ctk.CTkLabel(
+            info_frame,
+            text=f"📁 {self.venv_path}",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"],
+            anchor="w"
+        )
+        path_label.grid(row=1, column=0, sticky="ew", pady=(5, 0))
+        
+        # Python version (mock)
+        python_version = self._get_python_version()
+        version_label = ctk.CTkLabel(
+            info_frame,
+            text=f"🐍 Python {python_version}",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"],
+            anchor="w"
+        )
+        version_label.grid(row=2, column=0, sticky="ew", pady=(2, 0))
+        
+        # Actions frame
+        actions_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        actions_frame.grid(row=0, column=2, sticky="e")
+        
+        if not self.is_active:
+            activate_btn = ctk.CTkButton(
+                actions_frame,
+                text="Activate",
+                width=80,
+                height=35,
+                command=self.activate_environment,
+                fg_color=VSCODE_COLORS["primary"],
+                hover_color=VSCODE_COLORS["primary_hover"]
+            )
+            activate_btn.pack(side="top", pady=(0, 5))
+        
+        delete_btn = ctk.CTkButton(
+            actions_frame,
+            text="Delete",
+            width=80,
+            height=35,
+            command=self.delete_environment,
+            fg_color=VSCODE_COLORS["error"],
+            hover_color="#C0392B"
+        )
+        delete_btn.pack(side="top")
+        
+    def _get_python_version(self):
+        """Get Python version for this environment"""
+        try:
+            python_exe = os.path.join(self.venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(self.venv_path, "bin", "python")
+            result = subprocess.run([python_exe, "--version"], capture_output=True, text=True)
+            if result.returncode == 0:
+                return result.stdout.strip().split()[1]
+        except:
+            pass
+        return "Unknown"
+    
+    def activate_environment(self):
+        """Activate this environment"""
+        if self.on_activate:
+            self.on_activate(self.venv_name)
+    
+    def delete_environment(self):
+        """Delete this environment"""
+        if self.on_delete:
+            self.on_delete(self.venv_name, self)
+
+class AdvancedPackageManager(ctk.CTkToplevel):
+    """Advanced package manager with modern features and virtual environment management"""
+    
+    def __init__(self, parent, venv_manager):
+        super().__init__(parent)
+        
+        self.venv_manager = venv_manager
+        self.search_engine = PyPISearchEngine()
+        
+        # Window setup
+        self.title("Advanced Package Manager")
+        self.geometry("1400x900")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 50,
+            parent.winfo_rooty() + 50
+        ))
+        
+        # State variables
+        self.current_packages = []
+        self.favorite_packages = set()
+        self.search_history = []
+        self.current_category = "All"
+        self.virtual_environments = {}
+        
+        # Create UI
+        self.setup_ui()
+        
+        # Load initial data
+        self.load_popular_packages()
+        self.load_virtual_environments()
+        
+    def setup_ui(self):
+        """Setup the modern package manager UI"""
+        # Main container
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        
+        # Header
+        self.create_header()
+        
+        # Create tabview for different sections
+        self.tabview = ctk.CTkTabview(self)
+        self.tabview.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        
+        # Packages tab
+        self.packages_tab = self.tabview.add("📦 Packages")
+        self.create_packages_tab()
+        
+        # Virtual Environments tab
+        self.venv_tab = self.tabview.add("🐍 Virtual Environments")
+        self.create_venv_tab()
+        
+        # Status bar
+        self.create_status_bar()
+        
+    def create_header(self):
+        """Create modern header with search and filters"""
+        header_frame = ctk.CTkFrame(self, height=100, fg_color=VSCODE_COLORS["surface"])
+        header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
+        header_frame.grid_columnconfigure(1, weight=1)
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            header_frame,
+            text="📦 Advanced Package Manager",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        title_label.grid(row=0, column=0, sticky="w", padx=20, pady=10)
+        
+        # Quick actions
+        actions_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        actions_frame.grid(row=0, column=1, sticky="e", padx=20, pady=10)
+        
+        # Install from requirements
+        req_btn = ctk.CTkButton(
+            actions_frame,
+            text="📄 Install from requirements.txt",
+            height=35,
+            command=self.install_from_requirements,
+            fg_color=VSCODE_COLORS["info"]
+        )
+        req_btn.pack(side="left", padx=5)
+        
+        # Export requirements
+        export_btn = ctk.CTkButton(
+            actions_frame,
+            text="💾 Export requirements.txt",
+            height=35,
+            command=self.export_requirements,
+            fg_color=VSCODE_COLORS["warning"]
+        )
+        export_btn.pack(side="left", padx=5)
+        
+    def create_packages_tab(self):
+        """Create packages management tab"""
+        # Configure grid
+        self.packages_tab.grid_rowconfigure(1, weight=1)
+        self.packages_tab.grid_columnconfigure(1, weight=1)
+        
+        # Sidebar for categories
+        self.create_packages_sidebar()
+        
+        # Main content area
+        self.create_packages_content()
+        
+    def create_packages_sidebar(self):
+        """Create sidebar with categories and information"""
+        sidebar = ctk.CTkFrame(self.packages_tab, width=300, fg_color=VSCODE_COLORS["surface"])
+        sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 1), pady=0)
+        sidebar.grid_rowconfigure(1, weight=1)
+        
+        # Search frame
+        search_frame = ctk.CTkFrame(sidebar, fg_color=VSCODE_COLORS["surface_light"])
+        search_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
+        search_frame.grid_columnconfigure(1, weight=1)
+        
+        # Search icon
+        search_icon = ctk.CTkLabel(
+            search_frame,
+            text="🔍",
+            font=ctk.CTkFont(size=16)
+        )
+        search_icon.grid(row=0, column=0, padx=(15, 5), pady=10)
+        
+        # Search entry
+        self.search_var = ctk.StringVar()
+        self.search_entry = ctk.CTkEntry(
+            search_frame,
+            textvariable=self.search_var,
+            placeholder_text="Search packages...",
+            font=ctk.CTkFont(size=14),
+            height=40
+        )
+        self.search_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=10)
+        self.search_entry.bind('<KeyRelease>', self.on_search_change)
+        self.search_entry.bind('<Return>', self.perform_search)
+        
+        # Search button
+        search_btn = ctk.CTkButton(
+            search_frame,
+            text="Search",
+            width=80,
+            height=40,
+            command=self.perform_search,
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        search_btn.grid(row=0, column=2, padx=(0, 15), pady=10)
+        
+        # Categories title
+        categories_title = ctk.CTkLabel(
+            sidebar,
+            text="📁 Categories",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            anchor="w"
+        )
+        categories_title.grid(row=1, column=0, sticky="ew", padx=15, pady=(20, 15))
+        
+        # Categories list
+        categories_frame = ctk.CTkScrollableFrame(sidebar, fg_color="transparent")
+        categories_frame.grid(row=2, column=0, sticky="nsew", padx=15, pady=(0, 15))
+        
+        # All packages category
+        all_btn = ctk.CTkButton(
+            categories_frame,
+            text="📦 All Packages",
+            anchor="w",
+            height=40,
+            command=lambda: self.select_category("All"),
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_light"]
+        )
+        all_btn.pack(fill="x", pady=2)
+        
+        # Popular packages
+        popular_btn = ctk.CTkButton(
+            categories_frame,
+            text="🔥 Popular",
+            anchor="w",
+            height=40,
+            command=lambda: self.select_category("Popular"),
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_light"]
+        )
+        popular_btn.pack(fill="x", pady=2)
+        
+        # Individual categories
+        for category in PACKAGE_CATEGORIES:
+            btn = ctk.CTkButton(
+                categories_frame,
+                text=f"{category.icon} {category.name}",
+                anchor="w",
+                height=40,
+                command=lambda c=category.name: self.select_category(c),
+                fg_color="transparent",
+                hover_color=VSCODE_COLORS["surface_light"]
+            )
+            btn.pack(fill="x", pady=2)
+            
+        # Quick actions
+        actions_title = ctk.CTkLabel(
+            sidebar,
+            text="⚡ Quick Actions",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            anchor="w"
+        )
+        actions_title.grid(row=3, column=0, sticky="ew", padx=15, pady=(20, 15))
+        
+        # Action buttons
+        actions_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
+        actions_frame.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 15))
+        
+        refresh_btn = ctk.CTkButton(
+            actions_frame,
+            text="🔄 Refresh Lists",
+            height=35,
+            command=self.refresh_packages,
+            fg_color=VSCODE_COLORS["accent"]
+        )
+        refresh_btn.pack(fill="x", pady=2)
+        
+        update_all_btn = ctk.CTkButton(
+            actions_frame,
+            text="⬆️ Update All",
+            height=35,
+            command=self.update_all_packages,
+            fg_color=VSCODE_COLORS["warning"]
+        )
+        update_all_btn.pack(fill="x", pady=2)
+        
+        # Environment info
+        env_info_frame = ctk.CTkFrame(sidebar, fg_color=VSCODE_COLORS["surface_light"])
+        env_info_frame.grid(row=5, column=0, sticky="ew", padx=15, pady=(0, 15))
+        
+        env_title = ctk.CTkLabel(
+            env_info_frame,
+            text="🔧 Current Environment",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        env_title.pack(padx=15, pady=(10, 5))
+        
+        env_name = self.venv_manager.current_venv or "System Python"
+        self.current_env_label = ctk.CTkLabel(
+            env_info_frame,
+            text=env_name,
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.current_env_label.pack(padx=15, pady=(0, 10))
+        
+    def create_packages_content(self):
+        """Create main packages content area"""
+        content_frame = ctk.CTkFrame(self.packages_tab, fg_color=VSCODE_COLORS["background"])
+        content_frame.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=0, pady=0)
+        content_frame.grid_rowconfigure(1, weight=1)
+        content_frame.grid_columnconfigure(0, weight=1)
+        
+        # Content header
+        content_header = ctk.CTkFrame(content_frame, height=60, fg_color=VSCODE_COLORS["surface_light"])
+        content_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
+        content_header.grid_columnconfigure(1, weight=1)
+        
+        # Results count
+        self.results_label = ctk.CTkLabel(
+            content_header,
+            text="Loading packages...",
+            font=ctk.CTkFont(size=14),
+            anchor="w"
+        )
+        self.results_label.grid(row=0, column=0, sticky="w", padx=15, pady=15)
+        
+        # Filter options
+        filter_frame = ctk.CTkFrame(content_header, fg_color="transparent")
+        filter_frame.grid(row=0, column=1, sticky="e", padx=15, pady=15)
+        
+        # Sort options
+        ctk.CTkLabel(
+            filter_frame,
+            text="Sort by:",
+            font=ctk.CTkFont(size=12)
+        ).pack(side="left", padx=(0, 10))
+        
+        self.sort_var = ctk.StringVar(value="Relevance")
+        sort_combo = ctk.CTkComboBox(
+            filter_frame,
+            values=["Relevance", "Name", "Downloads", "Stars", "Updated"],
+            variable=self.sort_var,
+            command=self.on_sort_change,
+            width=120
+        )
+        sort_combo.pack(side="left", padx=(0, 20))
+        
+        # Quick filters
+        self.installed_only_var = ctk.BooleanVar()
+        installed_check = ctk.CTkCheckBox(
+            filter_frame,
+            text="Installed only",
+            variable=self.installed_only_var,
+            command=self.apply_filters
+        )
+        installed_check.pack(side="left", padx=(0, 10))
+        
+        self.favorites_only_var = ctk.BooleanVar()
+        favorites_check = ctk.CTkCheckBox(
+            filter_frame,
+            text="Favorites only",
+            variable=self.favorites_only_var,
+            command=self.apply_filters
+        )
+        favorites_check.pack(side="left", padx=(0, 10))
+        
+        # Loading indicator
+        self.loading_label = ctk.CTkLabel(
+            content_header,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.loading_label.grid(row=0, column=2, sticky="e", padx=15, pady=15)
+        
+        # Package list
+        self.package_list_frame = ctk.CTkScrollableFrame(
+            content_frame,
+            fg_color=VSCODE_COLORS["background"]
+        )
+        self.package_list_frame.grid(row=1, column=0, sticky="nsew", padx=15, pady=15)
+        
+    def create_venv_tab(self):
+        """Create virtual environments management tab"""
+        # Configure grid
+        self.venv_tab.grid_rowconfigure(1, weight=1)
+        self.venv_tab.grid_columnconfigure(0, weight=1)
+        
+        # Header with create button
+        venv_header = ctk.CTkFrame(self.venv_tab, height=80, fg_color=VSCODE_COLORS["surface_light"])
+        venv_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
+        venv_header.grid_columnconfigure(1, weight=1)
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            venv_header,
+            text="🐍 Virtual Environments",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        title_label.grid(row=0, column=0, sticky="w", padx=20, pady=20)
+        
+        # Create environment button
+        create_venv_btn = ctk.CTkButton(
+            venv_header,
+            text="➕ Create New Environment",
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            command=self.create_virtual_environment,
+            fg_color=VSCODE_COLORS["success"],
+            hover_color="#117A65"
+        )
+        create_venv_btn.grid(row=0, column=1, sticky="e", padx=20, pady=20)
+        
+        # Environments list
+        self.venv_list_frame = ctk.CTkScrollableFrame(
+            self.venv_tab,
+            fg_color=VSCODE_COLORS["background"]
+        )
+        self.venv_list_frame.grid(row=1, column=0, sticky="nsew", padx=15, pady=15)
+        
+    def create_status_bar(self):
+        """Create status bar"""
+        status_frame = ctk.CTkFrame(self, height=35, fg_color=VSCODE_COLORS["surface"])
+        status_frame.grid(row=2, column=0, sticky="ew", padx=0, pady=0)
+        status_frame.grid_columnconfigure(1, weight=1)
+        
+        # Virtual environment info
+        venv_name = self.venv_manager.current_venv or "System Python"
+        venv_label = ctk.CTkLabel(
+            status_frame,
+            text=f"🔧 {venv_name}",
+            font=ctk.CTkFont(size=11)
+        )
+        venv_label.grid(row=0, column=0, sticky="w", padx=15, pady=5)
+        
+        # Status message
+        self.status_label = ctk.CTkLabel(
+            status_frame,
+            text="Ready",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.status_label.grid(row=0, column=1, sticky="e", padx=15, pady=5)
+        
+    # Package management methods
+    def on_search_change(self, event=None):
+        """Handle search text changes for autocomplete"""
+        query = self.search_var.get()
+        if len(query) >= 2:
+            # Debounce search
+            if hasattr(self, '_search_timer'):
+                self.after_cancel(self._search_timer)
+            self._search_timer = self.after(500, self.show_suggestions)
+            
+    def show_suggestions(self):
+        """Show search suggestions"""
+        # Implement autocomplete suggestions here
+        pass
+        
+    def perform_search(self, event=None):
+        """Perform package search"""
+        query = self.search_var.get().strip()
+        if not query:
+            return
+            
+        self.update_status("Searching packages...")
+        self.loading_label.configure(text="🔍 Searching...")
+        
+        # Add to search history
+        if query not in self.search_history:
+            self.search_history.insert(0, query)
+            self.search_history = self.search_history[:10]  # Keep last 10 searches
+            
+        # Perform search in thread
+        threading.Thread(
+            target=self._search_packages_thread,
+            args=(query,),
+            daemon=True
+        ).start()
+        
+    def _search_packages_thread(self, query: str):
+        """Perform package search in background thread"""
+        try:
+            # Use asyncio to run async search
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            packages = loop.run_until_complete(
+                self.search_engine.search_packages(query)
+            )
+            loop.close()
+            
+            # Update UI in main thread
+            self.after(0, lambda: self._update_search_results(packages))
+            
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            self.after(0, lambda: self.update_status(f"Search error: {e}"))
+            
+    def _update_search_results(self, packages: List[PackageInfo]):
+        """Update search results in UI"""
+        self.current_packages = packages
+        self.display_packages(packages)
+        self.loading_label.configure(text="")
+        self.update_status(f"Found {len(packages)} packages")
+        
+    def load_popular_packages(self):
+        """Load popular packages"""
+        self.update_status("Loading popular packages...")
+        
+        # Use the enhanced package list
+        popular_packages = []
+        enhanced_packages = self.search_engine._get_enhanced_package_list("", 50)
+        
+        for package in enhanced_packages:
+            popular_packages.append(package)
+            
+        self.current_packages = popular_packages
+        self.display_packages(popular_packages)
+        self.update_status("Ready")
+        
+    def display_packages(self, packages: List[PackageInfo]):
+        """Display packages in the list"""
+        # Clear existing widgets
+        for widget in self.package_list_frame.winfo_children():
+            widget.destroy()
+            
+        # Filter packages
+        filtered_packages = self.apply_filters_to_packages(packages)
+        
+        # Update results count
+        self.results_label.configure(
+            text=f"Showing {len(filtered_packages)} of {len(packages)} packages"
+        )
+        
+        # Create package cards
+        for package in filtered_packages:
+            card = ModernPackageCard(
+                self.package_list_frame,
+                package,
+                on_install=self.install_package,
+                on_uninstall=self.uninstall_package,
+                on_favorite=self.toggle_favorite,
+                height=150
+            )
+            card.pack(fill="x", pady=5)
+            
+    def apply_filters_to_packages(self, packages: List[PackageInfo]) -> List[PackageInfo]:
+        """Apply current filters to package list"""
+        filtered = packages.copy()
+        
+        # Category filter
+        if self.current_category not in ["All", "Popular"]:
+            filtered = [p for p in filtered if p.category == self.current_category]
+        elif self.current_category == "Popular":
+            # Show only popular packages
+            popular_names = POPULAR_PACKAGES
+            filtered = [p for p in filtered if p.name in popular_names]
+            
+        # Installed only filter
+        if self.installed_only_var.get():
+            filtered = [p for p in filtered if p.is_installed]
+            
+        # Favorites only filter
+        if self.favorites_only_var.get():
+            filtered = [p for p in filtered if p.name in self.favorite_packages]
+            
+        # Sort packages
+        sort_key = self.sort_var.get()
+        if sort_key == "Name":
+            filtered.sort(key=lambda p: p.name.lower())
+        elif sort_key == "Downloads":
+            filtered.sort(key=lambda p: p.downloads, reverse=True)
+        elif sort_key == "Stars":
+            filtered.sort(key=lambda p: p.stars, reverse=True)
+        elif sort_key == "Updated":
+            # Sort by update date (mock implementation)
+            pass
+            
+        return filtered
+        
+    def select_category(self, category: str):
+        """Select a category"""
+        self.current_category = category
+        self.apply_filters()
+        
+    def on_sort_change(self, value):
+        """Handle sort change"""
+        self.apply_filters()
+        
+    def apply_filters(self):
+        """Apply current filters and refresh display"""
+        self.display_packages(self.current_packages)
+        
+    def install_package(self, package_name: str):
+        """Install a package"""
+        # Check if virtual environment is active and recommend creating one if not
+        if not self.venv_manager.current_venv:
+            result = messagebox.askyesnocancel(
+                "No Virtual Environment Active",
+                f"Installing {package_name} into system Python can cause conflicts.\n\n"
+                "Would you like to create a virtual environment first?\n\n"
+                "Yes - Create new environment\n"
+                "No - Install to system Python\n"
+                "Cancel - Abort installation"
+            )
+            
+            if result is None:  # Cancel
+                return
+            elif result:  # Yes - create environment
+                self.tabview.set("🐍 Virtual Environments")
+                self.create_virtual_environment()
+                return
+        
+        self.update_status(f"Installing {package_name}...")
+        
+        def install_thread():
+            success, message = self.venv_manager.install_package(
+                package_name,
+                lambda success, stdout, stderr: self.after(0, 
+                    lambda: self._on_install_complete(package_name, success, stdout, stderr)
+                )
+            )
+            
+        threading.Thread(target=install_thread, daemon=True).start()
+        
+    def _on_install_complete(self, package_name: str, success: bool, stdout: str, stderr: str):
+        """Handle installation completion"""
+        if success:
+            self.update_status(f"Successfully installed {package_name}")
+            # Update package status
+            for package in self.current_packages:
+                if package.name == package_name:
+                    package.is_installed = True
+                    break
+            self.display_packages(self.current_packages)
+        else:
+            self.update_status(f"Failed to install {package_name}")
+            messagebox.showerror("Installation Failed", f"Failed to install {package_name}:\n{stderr}")
+            
+    def uninstall_package(self, package_name: str):
+        """Uninstall a package"""
+        if messagebox.askyesno("Confirm Uninstall", 
+                              f"Are you sure you want to uninstall {package_name}?"):
+            self.update_status(f"Uninstalling {package_name}...")
+            
+            def uninstall_thread():
+                success, message = self.venv_manager.uninstall_package(
+                    package_name,
+                    lambda success, stdout, stderr: self.after(0,
+                        lambda: self._on_uninstall_complete(package_name, success, stdout, stderr)
+                    )
+                )
+                
+            threading.Thread(target=uninstall_thread, daemon=True).start()
+            
+    def _on_uninstall_complete(self, package_name: str, success: bool, stdout: str, stderr: str):
+        """Handle uninstallation completion"""
+        if success:
+            self.update_status(f"Successfully uninstalled {package_name}")
+            # Update package status
+            for package in self.current_packages:
+                if package.name == package_name:
+                    package.is_installed = False
+                    break
+            self.display_packages(self.current_packages)
+        else:
+            self.update_status(f"Failed to uninstall {package_name}")
+            messagebox.showerror("Uninstallation Failed", f"Failed to uninstall {package_name}:\n{stderr}")
+            
+    def toggle_favorite(self, package_name: str, is_favorite: bool):
+        """Toggle package favorite status"""
+        if is_favorite:
+            self.favorite_packages.add(package_name)
+        else:
+            self.favorite_packages.discard(package_name)
+            
+    def refresh_packages(self):
+        """Refresh package list"""
+        self.update_status("Refreshing packages...")
+        self.load_popular_packages()
+        
+    def update_all_packages(self):
+        """Update all installed packages"""
+        if messagebox.askyesno("Update All Packages", 
+                              "This will update all installed packages. Continue?"):
+            self.update_status("Updating all packages...")
+            # Implement update all logic
+            
+    def install_from_requirements(self):
+        """Install packages from requirements.txt file"""
+        file_path = filedialog.askopenfilename(
+            title="Select requirements.txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            if not self.venv_manager.current_venv:
+                if not messagebox.askyesno("No Virtual Environment", 
+                                         "Installing from requirements.txt without a virtual environment can cause conflicts. Continue anyway?"):
+                    return
+            
+            self.update_status("Installing from requirements.txt...")
+            
+            def install_thread():
+                try:
+                    pip_path = self.venv_manager.pip_path if self.venv_manager.current_venv else "pip"
+                    result = subprocess.run([
+                        pip_path, "install", "-r", file_path
+                    ], capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        self.after(0, lambda: self.update_status("Successfully installed packages from requirements.txt"))
+                        self.after(0, lambda: messagebox.showinfo("Success", "All packages installed successfully!"))
+                    else:
+                        self.after(0, lambda: self.update_status("Failed to install some packages"))
+                        self.after(0, lambda: messagebox.showerror("Error", f"Installation failed:\n{result.stderr}"))
+                        
+                except Exception as e:
+                    self.after(0, lambda: self.update_status(f"Error: {e}"))
+                    self.after(0, lambda: messagebox.showerror("Error", str(e)))
+                    
+            threading.Thread(target=install_thread, daemon=True).start()
+            
+    def export_requirements(self):
+        """Export installed packages to requirements.txt"""
+        file_path = filedialog.asksaveasfilename(
+            title="Save requirements.txt",
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            self.update_status("Exporting requirements...")
+            
+            def export_thread():
+                try:
+                    pip_path = self.venv_manager.pip_path if self.venv_manager.current_venv else "pip"
+                    result = subprocess.run([
+                        pip_path, "freeze"
+                    ], capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        with open(file_path, 'w') as f:
+                            f.write(result.stdout)
+                        self.after(0, lambda: self.update_status(f"Requirements exported to {file_path}"))
+                        self.after(0, lambda: messagebox.showinfo("Success", f"Requirements exported to:\n{file_path}"))
+                    else:
+                        self.after(0, lambda: self.update_status("Failed to export requirements"))
+                        self.after(0, lambda: messagebox.showerror("Error", f"Export failed:\n{result.stderr}"))
+                        
+                except Exception as e:
+                    self.after(0, lambda: self.update_status(f"Error: {e}"))
+                    self.after(0, lambda: messagebox.showerror("Error", str(e)))
+                    
+            threading.Thread(target=export_thread, daemon=True).start()
+    
+    # Virtual Environment methods
+    def load_virtual_environments(self):
+        """Load and display virtual environments"""
+        # Clear existing environment cards
+        for widget in self.venv_list_frame.winfo_children():
+            widget.destroy()
+            
+        # Get list of virtual environments
+        venvs = self.venv_manager.list_venvs()
+        
+        if not venvs:
+            # Show message if no environments
+            no_venv_label = ctk.CTkLabel(
+                self.venv_list_frame,
+                text="No virtual environments found. Create your first environment!",
+                font=ctk.CTkFont(size=16),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            no_venv_label.pack(pady=50)
+        else:
+            # Create cards for each environment
+            for venv_name in venvs:
+                venv_path = os.path.join(self.venv_manager.venv_dir, venv_name)
+                is_active = venv_name == self.venv_manager.current_venv
+                
+                card = VirtualEnvironmentCard(
+                    self.venv_list_frame,
+                    venv_name,
+                    venv_path,
+                    is_active=is_active,
+                    on_activate=self.activate_virtual_environment,
+                    on_delete=self.delete_virtual_environment
+                )
+                card.pack(fill="x", pady=5)
+                
+    def create_virtual_environment(self):
+        """Create a new virtual environment"""
+        dialog = CreateVirtualEnvironmentDialog(self, self.venv_manager)
+        
+    def activate_virtual_environment(self, venv_name: str):
+        """Activate a virtual environment"""
+        if self.venv_manager.activate_venv(venv_name):
+            self.update_status(f"Activated environment: {venv_name}")
+            
+            # Update current environment display
+            self.current_env_label.configure(text=venv_name)
+            
+            # Refresh environment list
+            self.load_virtual_environments()
+            
+            # Update status bar
+            status_frame_children = [child for child in self.children.values() 
+                                   if isinstance(child, ctk.CTkFrame) and child.winfo_y() > 800]
+            if status_frame_children:
+                for child in status_frame_children[0].winfo_children():
+                    if isinstance(child, ctk.CTkLabel) and "🔧" in child.cget("text"):
+                        child.configure(text=f"🔧 {venv_name}")
+                        break
+        else:
+            messagebox.showerror("Error", f"Failed to activate environment: {venv_name}")
+            
+    def delete_virtual_environment(self, venv_name: str, card_widget):
+        """Delete a virtual environment"""
+        if messagebox.askyesno("Delete Environment", 
+                              f"Are you sure you want to delete the virtual environment '{venv_name}'?\n\nThis action cannot be undone."):
+            try:
+                venv_path = os.path.join(self.venv_manager.venv_dir, venv_name)
+                
+                # Deactivate if currently active
+                if venv_name == self.venv_manager.current_venv:
+                    self.venv_manager.current_venv = None
+                    
+                # Remove directory
+                shutil.rmtree(venv_path)
+                
+                # Refresh list
+                self.load_virtual_environments()
+                
+                self.update_status(f"Deleted environment: {venv_name}")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete environment:\n{e}")
+                
+    def update_status(self, message: str):
+        """Update status message"""
+        self.status_label.configure(text=message)
+
+class CreateVirtualEnvironmentDialog(ctk.CTkToplevel):
+    """Dialog for creating a new virtual environment"""
+    
+    def __init__(self, parent, venv_manager):
+        super().__init__(parent)
+        
+        self.parent_window = parent
+        self.venv_manager = venv_manager
+        
+        self.title("Create Virtual Environment")
+        self.geometry("500x600")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 100,
+            parent.winfo_rooty() + 100
+        ))
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the create venv dialog UI"""
+        # Main frame
+        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text="🐍 Create Virtual Environment",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        title_label.pack(pady=(10, 30))
+        
+        # Environment name
+        name_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        name_frame.pack(fill="x", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            name_frame,
+            text="Environment Name:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(10, 5))
+        
+        self.name_entry = ctk.CTkEntry(
+            name_frame,
+            placeholder_text="e.g., my_project_env",
+            font=ctk.CTkFont(size=12),
+            height=40
+        )
+        self.name_entry.pack(fill="x", padx=15, pady=(0, 10))
+        
+        # Python version selection
+        python_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        python_frame.pack(fill="x", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            python_frame,
+            text="Python Version:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(10, 5))
+        
+        # Detect available Python versions
+        python_versions = self.detect_python_versions()
+        
+        self.python_var = ctk.StringVar(value=python_versions[0] if python_versions else "python")
+        
+        python_combo = ctk.CTkComboBox(
+            python_frame,
+            values=python_versions,
+            variable=self.python_var,
+            height=40,
+            font=ctk.CTkFont(size=12)
+        )
+        python_combo.pack(fill="x", padx=15, pady=(0, 10))
+        
+        # Package installation options
+        packages_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        packages_frame.pack(fill="x", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            packages_frame,
+            text="Initial Packages:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(10, 5))
+        
+        # Package checkboxes
+        self.package_vars = {}
+        essential_packages = [
+            ("pip", "Package installer (recommended)"),
+            ("setuptools", "Package development tools"),
+            ("wheel", "Built-package format"),
+            ("manim", "Animation engine"),
+            ("jupyter", "Interactive notebooks"),
+            ("numpy", "Numerical computing"),
+            ("matplotlib", "Plotting library"),
+            ("pandas", "Data analysis"),
+            ("requests", "HTTP library"),
+            ("black", "Code formatter"),
+            ("pytest", "Testing framework"),
+        ]
+        
+        for package, description in essential_packages:
+            var = ctk.BooleanVar(value=package in ["pip", "setuptools", "wheel", "manim"])
+            self.package_vars[package] = var
+            
+            package_frame = ctk.CTkFrame(packages_frame, fg_color="transparent")
+            package_frame.pack(fill="x", padx=15, pady=2)
+            
+            checkbox = ctk.CTkCheckBox(
+                package_frame,
+                text=package,
+                variable=var,
+                font=ctk.CTkFont(size=12)
+            )
+            checkbox.pack(side="left")
+            
+            desc_label = ctk.CTkLabel(
+                package_frame,
+                text=f"- {description}",
+                font=ctk.CTkFont(size=11),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            desc_label.pack(side="left", padx=(10, 0))
+        
+        # Options
+        options_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        options_frame.pack(fill="x", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            options_frame,
+            text="Options:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(10, 5))
+        
+        self.activate_after_creation = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(
+            options_frame,
+            text="Activate environment after creation",
+            variable=self.activate_after_creation,
+            font=ctk.CTkFont(size=12)
+        ).pack(anchor="w", padx=15, pady=2)
+        
+        self.copy_system_packages = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            options_frame,
+            text="Copy system site-packages",
+            variable=self.copy_system_packages,
+            font=ctk.CTkFont(size=12)
+        ).pack(anchor="w", padx=15, pady=(2, 10))
+        
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(main_frame)
+        self.progress_bar.pack(fill="x", padx=15, pady=10)
+        self.progress_bar.set(0)
+        
+        # Status label
+        self.status_label = ctk.CTkLabel(
+            main_frame,
+            text="Ready to create environment",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.status_label.pack(pady=5)
+        
+        # Output text
+        output_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["background"])
+        output_frame.pack(fill="both", expand=True, padx=15, pady=10)
+        
+        self.output_text = ctk.CTkTextbox(output_frame, height=100)
+        self.output_text.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        button_frame.pack(fill="x", pady=15)
+        
+        self.create_btn = ctk.CTkButton(
+            button_frame,
+            text="🚀 Create Environment",
+            command=self.create_environment,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["success"],
+            hover_color="#117A65"
+        )
+        self.create_btn.pack(side="left", padx=15)
+        
+        ctk.CTkButton(
+            button_frame,
+            text="Cancel",
+            command=self.destroy,
+            height=40,
+            width=80
+        ).pack(side="right", padx=15)
+        
+        # Focus on name entry
+        self.name_entry.focus()
+        
+    def detect_python_versions(self):
+        """Detect available Python versions"""
+        versions = []
+        
+        # Common Python executable names
+        python_names = ["python", "python3", "python3.9", "python3.10", "python3.11", "python3.12"]
+        
+        for name in python_names:
+            try:
+                result = subprocess.run([name, "--version"], capture_output=True, text=True)
+                if result.returncode == 0:
+                    version_output = result.stdout.strip()
+                    versions.append(f"{name} ({version_output})")
+            except:
+                continue
+                
+        # If no versions found, add default
+        if not versions:
+            versions.append("python (default)")
+            
+        return versions
+        
+    def create_environment(self):
+        """Create the virtual environment"""
+        env_name = self.name_entry.get().strip()
+        
+        # Validate name
+        if not env_name:
+            messagebox.showerror("Error", "Please enter an environment name")
+            return
+            
+        if not re.match(r'^[a-zA-Z0-9_-]+$', env_name):
+            messagebox.showerror("Error", "Environment name can only contain letters, numbers, underscores, and hyphens")
+            return
+            
+        # Check if environment already exists
+        if env_name in self.venv_manager.list_venvs():
+            messagebox.showerror("Error", f"Environment '{env_name}' already exists")
+            return
+            
+        # Disable create button
+        self.create_btn.configure(state="disabled", text="Creating...")
+        self.progress_bar.set(0)
+        
+        def create_thread():
+            try:
+                # Update status
+                self.update_status("Creating virtual environment...")
+                self.log_output(f"Creating environment: {env_name}\n")
+                self.progress_bar.set(0.1)
+                
+                # Get Python executable
+                python_selection = self.python_var.get()
+                python_exe = python_selection.split()[0]  # Extract python executable name
+                
+                # Create environment
+                venv_path = os.path.join(self.venv_manager.venv_dir, env_name)
+                
+                # Build command
+                cmd = [python_exe, "-m", "venv", venv_path]
+                
+                if self.copy_system_packages.get():
+                    cmd.append("--system-site-packages")
+                    
+                self.log_output(f"Command: {' '.join(cmd)}\n")
+                
+                # Execute creation command
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    raise Exception(f"Failed to create environment: {result.stderr}")
+                    
+                self.log_output("✅ Environment created successfully\n")
+                self.progress_bar.set(0.5)
+                
+                # Install packages
+                packages_to_install = [name for name, var in self.package_vars.items() if var.get()]
+                
+                if packages_to_install:
+                    self.update_status("Installing packages...")
+                    self.log_output(f"Installing packages: {', '.join(packages_to_install)}\n")
+                    
+                    # Get pip path
+                    pip_path = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
+                    
+                    # Install each package
+                    for i, package in enumerate(packages_to_install):
+                        self.log_output(f"Installing {package}...\n")
+                        
+                        result = subprocess.run([pip_path, "install", package], capture_output=True, text=True)
+                        
+                        if result.returncode == 0:
+                            self.log_output(f"✅ {package} installed successfully\n")
+                        else:
+                            self.log_output(f"❌ Failed to install {package}: {result.stderr}\n")
+                            
+                        # Update progress
+                        progress = 0.5 + (0.4 * (i + 1) / len(packages_to_install))
+                        self.progress_bar.set(progress)
+                
+                # Activate if requested
+                if self.activate_after_creation.get():
+                    self.update_status("Activating environment...")
+                    if self.venv_manager.activate_venv(env_name):
+                        self.log_output("✅ Environment activated\n")
+                        
+                        # Update parent window's environment display
+                        if hasattr(self.parent_window, 'current_env_label'):
+                            self.after(0, lambda: self.parent_window.current_env_label.configure(text=env_name))
+                    else:
+                        self.log_output("❌ Failed to activate environment\n")
+                
+                self.progress_bar.set(1.0)
+                self.update_status("Environment created successfully!")
+                self.log_output("\n🎉 Virtual environment setup complete!\n")
+                
+                # Refresh parent's environment list
+                if hasattr(self.parent_window, 'load_virtual_environments'):
+                    self.after(0, self.parent_window.load_virtual_environments)
+                
+                # Auto-close after 2 seconds
+                self.after(2000, self.destroy)
+                
+            except Exception as e:
+                self.update_status(f"Error: {e}")
+                self.log_output(f"\n❌ Error: {e}\n")
+                logger.error(f"Environment creation error: {e}")
+                
+            finally:
+                self.after(0, lambda: self.create_btn.configure(state="normal", text="🚀 Create Environment"))
+                
+        threading.Thread(target=create_thread, daemon=True).start()
+        
+    def update_status(self, message):
+        """Update status label"""
+        self.after(0, lambda: self.status_label.configure(text=message))
+        
+    def log_output(self, text):
+        """Log output to text widget"""
+        self.after(0, lambda: self._append_output(text))
+        
+    def _append_output(self, text):
+        """Append text to output widget"""
+        self.output_text.insert("end", text)
+        self.output_text.see("end")
+
+class IntelliSenseEngine:
+    """Advanced IntelliSense engine using Jedi for Python autocompletion"""
+    
+    def __init__(self, editor):
+        self.editor = editor
+        self.completions = []
+        
+        if JEDI_AVAILABLE:
+            try:
+                # Try to create Jedi environment
+                self.environment = jedi.create_environment()
+            except:
+                self.environment = None
+        else:
+            self.environment = None
+            
+        # Fallback completion lists
+        self.python_keywords = [
+            'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await',
+            'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except',
+            'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is',
+            'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return',
+            'try', 'while', 'with', 'yield'
+        ]
+        
+        self.python_builtins = [
+            'abs', 'all', 'any', 'ascii', 'bin', 'bool', 'bytearray', 'bytes',
+            'callable', 'chr', 'classmethod', 'compile', 'complex', 'delattr',
+            'dict', 'dir', 'divmod', 'enumerate', 'eval', 'exec', 'filter',
+            'float', 'format', 'frozenset', 'getattr', 'globals', 'hasattr',
+            'hash', 'help', 'hex', 'id', 'input', 'int', 'isinstance',
+            'issubclass', 'iter', 'len', 'list', 'locals', 'map', 'max',
+            'memoryview', 'min', 'next', 'object', 'oct', 'open', 'ord',
+            'pow', 'print', 'property', 'range', 'repr', 'reversed', 'round',
+            'set', 'setattr', 'slice', 'sorted', 'staticmethod', 'str', 'sum',
+            'super', 'tuple', 'type', 'vars', 'zip'
+        ]
+        
+        self.manim_completions = [
+            'Scene', 'ThreeDScene', 'MovingCameraScene', 'ZoomedScene',
+            'Mobject', 'VMobject', 'Group', 'VGroup',
+            'Circle', 'Square', 'Rectangle', 'Triangle', 'Polygon',
+            'Text', 'Tex', 'MathTex', 'Title',
+            'Line', 'Arrow', 'Vector', 'DoubleArrow',
+            'NumberPlane', 'Axes', 'ThreeDAxes',
+            'Create', 'Write', 'DrawBorderThenFill', 'FadeIn', 'FadeOut',
+            'Transform', 'ReplacementTransform', 'TransformFromCopy',
+            'ShowCreation', 'ShowIncreasingSubsets', 'ShowSubmobjectsOneByOne',
+            'UP', 'DOWN', 'LEFT', 'RIGHT', 'ORIGIN',
+            'RED', 'BLUE', 'GREEN', 'YELLOW', 'ORANGE', 'PURPLE', 'WHITE', 'BLACK'
+        ]
+        
+    def get_completions(self, code, line, column, prefix=""):
+        """Get completions for the current cursor position"""
+        if JEDI_AVAILABLE and self.environment:
+            try:
+                script = jedi.Script(
+                    code=code,
+                    line=line + 1,  # Jedi uses 1-based line numbers
+                    column=column,
+                    environment=self.environment
+                )
+                completions = script.completions()
+                
+                # Convert Jedi completions to our format
+                result = []
+                for comp in completions:
+                    result.append({
+                        'name': comp.name,
+                        'type': comp.type,
+                        'description': comp.docstring() if hasattr(comp, 'docstring') else "",
+                        'detail': f"{comp.type}" if comp.type else ""
+                    })
+                return result
+            except Exception as e:
+                logger.error(f"Jedi completion error: {e}")
+                
+        # Fallback to simple prefix matching
+        return self.get_fallback_completions(prefix)
+        
+    def get_fallback_completions(self, prefix):
+        """Fallback completions when Jedi is not available"""
+        prefix_lower = prefix.lower()
+        completions = []
+        
+        # Add Python keywords and builtins
+        for word in self.python_keywords + self.python_builtins + self.manim_completions:
+            if word.lower().startswith(prefix_lower):
+                completions.append({
+                    'name': word,
+                    'type': 'keyword' if word in self.python_keywords else 'builtin',
+                    'description': f"Python {word}",
+                    'detail': ''
+                })
+                
+        return completions
+    
+    def get_signature_help(self, code, line, column):
+        """Get function signature help"""
+        if JEDI_AVAILABLE and self.environment:
+            try:
+                script = jedi.Script(
+                    code=code,
+                    line=line + 1,
+                    column=column,
+                    environment=self.environment
+                )
+                signatures = script.get_signatures()
+                
+                if signatures:
+                    sig = signatures[0]
+                    return {
+                        'label': str(sig),
+                        'documentation': sig.docstring() if hasattr(sig, 'docstring') else ""
+                    }
+            except Exception as e:
+                logger.error(f"Signature help error: {e}")
+        return None
+
+class AutocompletePopup(tk.Toplevel):
+    """Professional autocomplete popup window"""
+    
+    def __init__(self, parent, editor):
+        super().__init__(parent)
+        self.editor = editor
+        self.overrideredirect(True)
+        self.configure(bg=VSCODE_COLORS["surface"])
+        self.lift()
+        self.withdraw()  # Start hidden
+        
+        # Create frame with border
+        self.frame = tk.Frame(
+            self,
+            bg=VSCODE_COLORS["surface"],
+            relief="solid",
+            borderwidth=1
+        )
+        self.frame.pack(fill="both", expand=True)
+        
+        # Create listbox for completions
+        self.listbox = tk.Listbox(
+            self.frame,
+            height=8,
+            font=("Consolas", 11),
+            bg=VSCODE_COLORS["surface"],
+            fg=VSCODE_COLORS["text"],
+            selectbackground=VSCODE_COLORS["primary"],
+            selectforeground=VSCODE_COLORS["text_bright"],
+            borderwidth=0,
+            highlightthickness=0,
+            activestyle="none"
+        )
+        
+        # Scrollbar
+        self.scrollbar = tk.Scrollbar(self.frame, command=self.listbox.yview)
+        self.listbox.configure(yscrollcommand=self.scrollbar.set)
+        
+        self.listbox.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+        
+        # Store completions
+        self.completions = []
+        self.selected_index = 0
+        
+        # Bind events
+        self.listbox.bind("<Double-Button-1>", self.on_select)
+        self.listbox.bind("<Return>", self.on_select)
+        self.listbox.bind("<Tab>", self.on_select)
+        self.bind("<Escape>", self.hide)
+        
+    def show_completions(self, completions, x, y, prefix=""):
+        """Show completions at specified position"""
+        self.completions = completions
+        self.listbox.delete(0, tk.END)
+        
+        if not completions:
+            self.hide()
+            return False
+            
+        # Filter and sort completions by prefix
+        if prefix:
+            filtered = [c for c in completions if c['name'].lower().startswith(prefix.lower())]
+            completions = filtered
+            
+        for comp in completions:
+            # Format completion with type information
+            display_text = comp['name']
+            if comp.get('type'):
+                display_text += f" ({comp['type']})"
+            self.listbox.insert(tk.END, display_text)
+            
+        if completions:
+            self.listbox.selection_set(0)
+            self.selected_index = 0
+            
+            # Calculate popup size and position
+            height = min(len(completions) * 20 + 10, 170)
+            width = 400
+            
+            # Ensure popup stays on screen
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            
+            if x + width > screen_width:
+                x = screen_width - width - 10
+            if y + height > screen_height:
+                y = y - height - 25
+                
+            self.geometry(f"{width}x{height}+{x}+{y}")
+            self.deiconify()
+            self.lift()
+            return True
+        return False
+    
+    def navigate(self, direction):
+        """Navigate through completion list"""
+        if not self.completions:
+            return
+            
+        current = self.listbox.curselection()
+        if current:
+            index = current[0] + direction
+        else:
+            index = 0 if direction > 0 else len(self.completions) - 1
+            
+        # Wrap around
+        if index < 0:
+            index = len(self.completions) - 1
+        elif index >= len(self.completions):
+            index = 0
+            
+        self.listbox.selection_clear(0, tk.END)
+        self.listbox.selection_set(index)
+        self.listbox.see(index)
+        self.selected_index = index
+    
+    def on_select(self, event=None):
+        """Handle completion selection"""
+        if self.completions and self.selected_index < len(self.completions):
+            completion = self.completions[self.selected_index]
+            self.editor.insert_completion(completion['name'])
+        self.hide()
+        
+    def hide(self, event=None):
+        """Hide the autocomplete popup"""
+        self.withdraw()
+        
+    def get_selected_completion(self):
+        """Get currently selected completion"""
+        if self.completions and self.selected_index < len(self.completions):
+            return self.completions[self.selected_index]
+        return None
+
+class SignatureHelpPopup(tk.Toplevel):
+    """Function signature help popup"""
+    
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.overrideredirect(True)
+        self.configure(bg=VSCODE_COLORS["surface_light"])
+        self.withdraw()
+        
+        # Create frame with border
+        self.frame = tk.Frame(
+            self,
+            bg=VSCODE_COLORS["surface_light"],
+            relief="solid",
+            borderwidth=1
+        )
+        self.frame.pack(fill="both", expand=True, padx=2, pady=2)
+        
+        self.label = tk.Label(
+            self.frame,
+            font=("Consolas", 10),
+            bg=VSCODE_COLORS["surface_light"],
+            fg=VSCODE_COLORS["text"],
+            padx=10,
+            pady=5,
+            anchor="w",
+            justify="left"
+        )
+        self.label.pack(fill="both", expand=True)
+        
+    def show_signature(self, signature_info, x, y):
+        """Show function signature at position"""
+        if signature_info:
+            text = signature_info['label']
+            self.label.configure(text=text)
+            
+            # Calculate size
+            self.update_idletasks()
+            width = self.label.winfo_reqwidth() + 20
+            height = self.label.winfo_reqheight() + 10
+            
+            # Ensure stays on screen
+            screen_width = self.winfo_screenwidth()
+            if x + width > screen_width:
+                x = screen_width - width - 10
+                
+            self.geometry(f"{width}x{height}+{x}+{y-height-5}")
+            self.deiconify()
+            self.lift()
+            
+    def hide(self):
+        """Hide signature popup"""
+        self.withdraw()
+
+class EnhancedPythonEditor(tk.Text):
+    """Enhanced Python editor with advanced IntelliSense and features"""
+    
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, **kwargs)
+        
+        # Initialize editor state
+        self.parent_app = None
+        self.syntax_timer = None
+        self.last_content = ""
+        self.line_count = 1
+        
+        # Configure editor appearance
+        self.configure(
+            bg=VSCODE_COLORS["background"],
+            fg=VSCODE_COLORS["text"],
+            insertbackground=VSCODE_COLORS["text"],
+            selectbackground=VSCODE_COLORS["selection"],
+            selectforeground=VSCODE_COLORS["text_bright"],
+            bd=0,
+            highlightthickness=0,
+            wrap="none",
+            undo=True,
+            maxundo=50,
+            tabs="4",
+            padx=10,
+            pady=10
+        )
+        
+        # Initialize IntelliSense
+        self.intellisense = IntelliSenseEngine(self)
+        self.autocomplete_popup = AutocompletePopup(self.master, self)
+        self.signature_popup = SignatureHelpPopup(self.master)
+        
+        # Completion state
+        self.completion_start_pos = None
+        self.completion_prefix = ""
+        self.is_completing = False
+        self.auto_completion_enabled = True
+        
+        # Auto-completion delay
+        self.autocomplete_delay = 500  # ms
+        self.autocomplete_timer = None
+        
+        # Setup syntax highlighting
+        self.setup_syntax_highlighting()
+        
+        # Configure tags for syntax highlighting
+        self.configure_tags()
+        
+        # Bind events
+        self.bind_events()
+        
+        # Initialize features
+        self.setup_features()
+        
+    def setup_syntax_highlighting(self):
+        """Setup advanced syntax highlighting patterns"""
+        self.syntax_patterns = [
+            # Comments (must be first to avoid conflicts)
+            (r'#.*$', 'comment'),
+            
+            # Strings (various types)
+            (r'"""([^"\\]|\\.)*"""', 'string'),
+            (r"'''([^'\\]|\\.)*'''", 'string'),
+            (r'"([^"\\]|\\.)*"', 'string'),
+            (r"'([^'\\]|\\.)*'", 'string'),
+            (r'r"[^"]*"', 'string'),
+            (r"r'[^']*'", 'string'),
+            (r'f"[^"]*"', 'string'),
+            (r"f'[^']*'", 'string'),
+            
+            # Numbers
+            (r'\b\d+\.?\d*([eE][+-]?\d+)?\b', 'number'),
+            (r'\b0[xX][0-9a-fA-F]+\b', 'number'),
+            (r'\b0[oO][0-7]+\b', 'number'),
+            (r'\b0[bB][01]+\b', 'number'),
+            
+            # Keywords
+            (r'\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b', 'keyword'),
+            
+            # Built-in functions and types
+            (r'\b(abs|all|any|ascii|bin|bool|bytearray|bytes|callable|chr|classmethod|compile|complex|delattr|dict|dir|divmod|enumerate|eval|exec|filter|float|format|frozenset|getattr|globals|hasattr|hash|help|hex|id|input|int|isinstance|issubclass|iter|len|list|locals|map|max|memoryview|min|next|object|oct|open|ord|pow|print|property|range|repr|reversed|round|set|setattr|slice|sorted|staticmethod|str|sum|super|tuple|type|vars|zip)\b', 'builtin'),
+            
+            # Exception classes
+            (r'\b(ArithmeticError|AssertionError|AttributeError|BaseException|BlockingIOError|BrokenPipeError|BufferError|BytesWarning|ChildProcessError|ConnectionAbortedError|ConnectionError|ConnectionRefusedError|ConnectionResetError|DeprecationWarning|EOFError|Ellipsis|EnvironmentError|Exception|FileExistsError|FileNotFoundError|FloatingPointError|FutureWarning|GeneratorExit|IOError|ImportError|ImportWarning|IndentationError|IndexError|InterruptedError|IsADirectoryError|KeyError|KeyboardInterrupt|LookupError|MemoryError|ModuleNotFoundError|NameError|NotADirectoryError|NotImplemented|NotImplementedError|OSError|OverflowError|PendingDeprecationWarning|PermissionError|ProcessLookupError|RecursionError|ReferenceError|ResourceWarning|RuntimeError|RuntimeWarning|StopAsyncIteration|StopIteration|SyntaxError|SyntaxWarning|SystemError|SystemExit|TabError|TimeoutError|TypeError|UnboundLocalError|UnicodeDecodeError|UnicodeEncodeError|UnicodeError|UnicodeTranslateError|UnicodeWarning|UserWarning|ValueError|Warning|WindowsError|ZeroDivisionError)\b', 'exception'),
+            
+            # Decorators
+            (r'@\w+', 'decorator'),
+            
+            # Import statements
+            (r'\b(import|from)\b', 'import'),
+            
+            # Class definitions
+            (r'\bclass\s+([a-zA-Z_]\w*)', 'class'),
+            
+            # Function definitions
+            (r'\bdef\s+([a-zA-Z_]\w*)', 'function'),
+            
+            # Magic methods
+            (r'\b__\w+__\b', 'magic'),
+            
+            # Self keyword
+            (r'\bself\b', 'self'),
+            
+            # Constants (uppercase variables)
+            (r'\b[A-Z_][A-Z0-9_]*\b', 'constant'),
+            
+            # Operators
+            (r'[+\-*/%=<>!&|^~@]', 'operator'),
+            (r'\b(and|or|not|in|is)\b', 'operator'),
+        ]
+        
+    def configure_tags(self):
+        """Configure text tags for syntax highlighting"""
+        # Configure syntax highlighting tags
+        for name, color in SYNTAX_COLORS.items():
+            self.tag_configure(name, foreground=color)
+            
+        # Configure special tags
+        self.tag_configure("current_line", background=VSCODE_COLORS["current_line"])
+        self.tag_configure("bracket_match", background=VSCODE_COLORS["bracket_match"])
+        self.tag_configure("find_match", background=VSCODE_COLORS["find_match"])
+        self.tag_configure("find_current", background=VSCODE_COLORS["find_current"])
+        
+    def bind_events(self):
+        """Bind events for editor functionality"""
+        # Text editing events
+        self.bind('<KeyRelease>', self.on_text_change)
+        self.bind('<Button-1>', self.on_click)
+        self.bind('<ButtonRelease-1>', self.on_click)
+        
+        # IntelliSense events
+        self.bind('<Control-space>', self.trigger_autocomplete)
+        self.bind('<KeyPress>', self.on_key_press)
+        
+        # Special key combinations
+        self.bind('<Control-f>', self.show_find_dialog)
+        self.bind('<Control-h>', self.show_replace_dialog)
+        self.bind('<Control-d>', self.duplicate_line)
+        self.bind('<Control-l>', self.select_line)
+        self.bind('<Control-slash>', self.toggle_comment)
+        self.bind('<Control-bracketright>', self.indent_selection)
+        self.bind('<Control-bracketleft>', self.unindent_selection)
+        self.bind('<Control-k>', self.delete_line)
+        self.bind('<Alt-Up>', self.move_line_up)
+        self.bind('<Alt-Down>', self.move_line_down)
+        
+        # Tab and return handling
+        self.bind('<Tab>', self.handle_tab)
+        self.bind('<Shift-Tab>', self.handle_shift_tab)
+        self.bind('<Return>', self.handle_return)
+        self.bind('<BackSpace>', self.handle_backspace)
+        
+        # Bracket matching
+        self.bind('<KeyPress>', self.check_bracket_match, add=True)
+        
+    def setup_features(self):
+        """Setup advanced editor features"""
+        # Bracket pairs
+        self.bracket_pairs = {
+            '(': ')',
+            '[': ']',
+            '{': '}',
+            '"': '"',
+            "'": "'"
+        }
+        
+        # Initialize current line highlighting
+        self.highlight_current_line()
+        
+    def on_key_press(self, event):
+        """Handle key press events for IntelliSense"""
+        # Handle autocomplete navigation
+        if self.autocomplete_popup.winfo_viewable():
+            if event.keysym == "Down":
+                self.autocomplete_popup.navigate(1)
+                return "break"
+            elif event.keysym == "Up":
+                self.autocomplete_popup.navigate(-1)
+                return "break"
+            elif event.keysym in ("Return", "Tab"):
+                self.autocomplete_popup.on_select()
+                return "break"
+            elif event.keysym == "Escape":
+                self.autocomplete_popup.hide()
+                return "break"
+            elif event.char and event.char.isprintable():
+                # Update completion list as user types
+                self.after_idle(self.update_completion_list)
+                
+        # Check for function signature trigger
+        if event.char == "(":
+            self.after(50, self.show_signature_help)
+        elif event.char == ")":
+            self.signature_popup.hide()
+            
+        # Trigger autocomplete on dot notation
+        if event.char == "." and self.auto_completion_enabled:
+            self.after(100, self.trigger_autocomplete)
+            
+    def on_text_change(self, event=None):
+        """Handle text changes with enhanced features"""
+        # Cancel previous syntax highlighting timer
+        if self.syntax_timer:
+            self.after_cancel(self.syntax_timer)
+            
+        # Schedule syntax highlighting with debouncing
+        self.syntax_timer = self.after(50, self.apply_syntax_highlighting)
+        
+        # Update line count
+        self.update_line_count()
+        
+        # Highlight current line
+        self.highlight_current_line()
+        
+        # Auto-trigger completion
+        if (self.auto_completion_enabled and 
+            event and hasattr(event, 'char') and 
+            event.char and event.char.isalpha()):
+            
+            if self.autocomplete_timer:
+                self.after_cancel(self.autocomplete_timer)
+            self.autocomplete_timer = self.after(
+                self.autocomplete_delay, 
+                self.trigger_autocomplete_if_needed
+            )
+        
+        # Notify parent of changes
+        if self.parent_app and hasattr(self.parent_app, 'on_text_change'):
+            self.parent_app.on_text_change(event)
+            
+    def trigger_autocomplete_if_needed(self):
+        """Auto-trigger autocomplete if conditions are met"""
+        # Get current context
+        current_pos = self.index(tk.INSERT)
+        line_start = self.index("insert linestart")
+        current_line = self.get(line_start, current_pos)
+        
+        # Don't show in comments or strings
+        if self.is_in_comment_or_string(current_line):
+            return
+            
+        # Get current word
+        words = re.findall(r'\w+', current_line)
+        if words and len(words[-1]) >= 2:  # At least 2 characters
+            self.trigger_autocomplete()
+            
+    def is_in_comment_or_string(self, line_text):
+        """Check if cursor is in a comment or string"""
+        # Simple heuristic - check if line starts with # or contains quotes
+        stripped = line_text.strip()
+        return stripped.startswith('#') or ('"' in line_text or "'" in line_text)
+    
+    def trigger_autocomplete(self, event=None):
+        """Trigger autocomplete at current position"""
+        try:
+            # Get current position and text
+            current_pos = self.index(tk.INSERT)
+            line_num = int(current_pos.split('.')[0]) - 1
+            column_num = int(current_pos.split('.')[1])
+            
+            # Get current word/prefix
+            line_start = self.index("insert linestart")
+            current_line = self.get(line_start, current_pos)
+            
+            # Find word boundary
+            word_start = column_num
+            while (word_start > 0 and 
+                   (current_line[word_start - 1].isalnum() or 
+                    current_line[word_start - 1] in ('_', '.'))):
+                word_start -= 1
+                
+            self.completion_prefix = current_line[word_start:column_num]
+            self.completion_start_pos = f"{line_num + 1}.{word_start}"
+            
+            # Get completions in background thread
+            threading.Thread(
+                target=self.get_completions_async,
+                args=(line_num, column_num, self.completion_prefix),
+                daemon=True
+            ).start()
+            
+        except Exception as e:
+            logger.error(f"Autocomplete error: {e}")
+            
+    def get_completions_async(self, line_num, column_num, prefix):
+        """Get completions asynchronously"""
+        try:
+            code = self.get("1.0", "end-1c")
+            completions = self.intellisense.get_completions(
+                code, line_num, column_num, prefix
+            )
+            
+            # Show completions in main thread
+            self.after(0, lambda: self.show_completions(completions, prefix))
+            
+        except Exception as e:
+            logger.error(f"Async completion error: {e}")
+            
+    def show_completions(self, completions, prefix):
+        """Show completion popup"""
+        if not completions:
+            self.autocomplete_popup.hide()
+            return
+            
+        # Get popup position
+        try:
+            x, y, _, _ = self.bbox(self.completion_start_pos)
+            x += self.winfo_rootx()
+            y += self.winfo_rooty() + 20
+            
+            # Show popup
+            self.autocomplete_popup.show_completions(completions, x, y, prefix)
+            self.is_completing = True
+            
+        except tk.TclError:
+            # Position not visible, hide popup
+            self.autocomplete_popup.hide()
+            
+    def update_completion_list(self):
+        """Update completion list as user types"""
+        if not self.is_completing:
+            return
+            
+        try:
+            # Get current prefix
+            current_pos = self.index(tk.INSERT)
+            line_start = self.index("insert linestart")
+            current_line = self.get(line_start, current_pos)
+            
+            # Extract current word
+            column_num = int(current_pos.split('.')[1])
+            word_start = column_num
+            while (word_start > 0 and 
+                   (current_line[word_start - 1].isalnum() or 
+                    current_line[word_start - 1] == '_')):
+                word_start -= 1
+                
+            new_prefix = current_line[word_start:column_num]
+            
+            # Update completion list if prefix changed
+            if new_prefix != self.completion_prefix:
+                self.completion_prefix = new_prefix
+                if new_prefix:
+                    # Re-filter existing completions
+                    filtered = [c for c in self.autocomplete_popup.completions 
+                              if c['name'].lower().startswith(new_prefix.lower())]
+                    
+                    if filtered:
+                        x, y, _, _ = self.bbox(self.completion_start_pos)
+                        x += self.winfo_rootx()
+                        y += self.winfo_rooty() + 20
+                        self.autocomplete_popup.show_completions(filtered, x, y, new_prefix)
+                    else:
+                        self.autocomplete_popup.hide()
+                        self.is_completing = False
+                else:
+                    self.autocomplete_popup.hide()
+                    self.is_completing = False
+                    
+        except tk.TclError:
+            self.autocomplete_popup.hide()
+            self.is_completing = False
+    
+    def insert_completion(self, completion_text):
+        """Insert selected completion"""
+        try:
+            # Delete the current prefix
+            current_pos = self.index(tk.INSERT)
+            self.delete(self.completion_start_pos, current_pos)
+            
+            # Insert completion
+            self.insert(self.completion_start_pos, completion_text)
+            
+            # Reset completion state
+            self.is_completing = False
+            self.completion_prefix = ""
+            
+        except tk.TclError as e:
+            logger.error(f"Completion insertion error: {e}")
+            
+    def show_signature_help(self):
+        """Show function signature help"""
+        try:
+            current_pos = self.index(tk.INSERT)
+            line_num = int(current_pos.split('.')[0]) - 1
+            column_num = int(current_pos.split('.')[1])
+            
+            code = self.get("1.0", "end-1c")
+            signature = self.intellisense.get_signature_help(code, line_num, column_num)
+            
+            if signature:
+                # Get position for popup
+                x, y, _, _ = self.bbox(current_pos)
+                x += self.winfo_rootx()
+                y += self.winfo_rooty()
+                
+                self.signature_popup.show_signature(signature, x, y)
+                
+        except Exception as e:
+            logger.error(f"Signature help error: {e}")
+    
+    def on_click(self, event=None):
+        """Handle mouse clicks"""
+        # Hide autocomplete on click
+        self.autocomplete_popup.hide()
+        self.signature_popup.hide()
+        self.is_completing = False
+        
+        # Highlight current line
+        self.highlight_current_line()
+        
+        # Check for bracket matching
+        self.check_bracket_match(event)
+        
+    def apply_syntax_highlighting(self):
+        """Apply syntax highlighting to the text"""
+        # Get current text
+        content = self.get("1.0", "end-1c")
+        
+        # Only update if content changed
+        if content == self.last_content:
+            return
+        self.last_content = content
+        
+        # Clear existing tags (except for special ones)
+        for tag in SYNTAX_COLORS.keys():
+            self.tag_remove(tag, "1.0", "end")
+            
+        # Apply syntax highlighting patterns
+        for pattern, tag in self.syntax_patterns:
+            for match in re.finditer(pattern, content, re.MULTILINE):
+                start_idx = self.index_from_char_offset(match.start())
+                end_idx = self.index_from_char_offset(match.end())
+                
+                # Handle special cases for function and class definitions
+                if tag in ['function', 'class'] and match.groups():
+                    # Highlight only the name, not the keyword
+                    start_idx = self.index_from_char_offset(match.start(1))
+                    end_idx = self.index_from_char_offset(match.end(1))
+                    
+                self.tag_add(tag, start_idx, end_idx)
+                
+    def index_from_char_offset(self, char_offset):
+        """Convert character offset to tkinter text index"""
+        return self.index(f"1.0 + {char_offset}c")
+        
+    def update_line_count(self):
+        """Update line count for line numbers"""
+        content = self.get("1.0", "end-1c")
+        self.line_count = content.count('\n') + 1
+        if hasattr(self.parent_app, 'update_line_numbers'):
+            self.parent_app.update_line_numbers()
+            
+    def highlight_current_line(self):
+        """Highlight the current line"""
+        # Remove previous current line highlight
+        self.tag_remove("current_line", "1.0", "end")
+        
+        # Get current line
+        current_line = self.index(tk.INSERT).split('.')[0]
+        line_start = f"{current_line}.0"
+        line_end = f"{current_line}.end"
+        
+        # Apply current line highlight
+        self.tag_add("current_line", line_start, line_end)
+        
+    def check_bracket_match(self, event=None):
+        """Check and highlight matching brackets"""
+        # Remove previous bracket highlights
+        self.tag_remove("bracket_match", "1.0", "end")
+        
+        # Get current position
+        pos = self.index(tk.INSERT)
+        
+        # Check character at cursor
+        char = self.get(pos)
+        if char in self.bracket_pairs:
+            # Find matching bracket
+            matching = self.find_matching_bracket(pos, char)
+            if matching:
+                # Highlight both brackets
+                self.tag_add("bracket_match", pos)
+                self.tag_add("bracket_match", matching)
+                
+    def find_matching_bracket(self, start_pos, bracket):
+        """Find the matching bracket"""
+        matching_bracket = self.bracket_pairs[bracket]
+        content = self.get("1.0", "end-1c")
+        start_offset = len(self.get("1.0", start_pos))
+        
+        if bracket in '([{':
+            # Forward search
+            count = 1
+            for i in range(start_offset + 1, len(content)):
+                if content[i] == bracket:
+                    count += 1
+                elif content[i] == matching_bracket:
+                    count -= 1
+                    if count == 0:
+                        return self.index_from_char_offset(i)
+        else:
+            # Backward search (closing bracket)
+            count = 1
+            for i in range(start_offset - 1, -1, -1):
+                if content[i] == bracket:
+                    count += 1
+                elif content[i] == matching_bracket:
+                    count -= 1
+                    if count == 0:
+                        return self.index_from_char_offset(i)
+        return None
+        
+    # Editor feature methods
+    def handle_tab(self, event):
+        """Handle tab key for smart indentation"""
+        # Check if text is selected
+        if self.tag_ranges("sel"):
+            # Indent selection
+            self.indent_selection()
+        else:
+            # Insert tab or spaces
+            self.insert(tk.INSERT, "    ")
+        return "break"
+        
+    def handle_shift_tab(self, event):
+        """Handle shift+tab for unindenting"""
+        self.unindent_selection()
+        return "break"
+        
+    def handle_return(self, event):
+        """Handle return key with smart indentation"""
+        # Get current line
+        current_pos = self.index(tk.INSERT)
+        current_line = self.get(self.index("insert linestart"), current_pos)
+        
+        # Calculate indentation
+        indent_level = 0
+        for char in current_line:
+            if char == ' ':
+                indent_level += 1
+            elif char == '\t':
+                indent_level += 4
+            else:
+                break
+                
+        # Check if we need to increase indentation
+        if current_line.rstrip().endswith(':'):
+            indent_level += 4
+            
+        # Check for brackets
+        if current_line.rstrip().endswith(('{', '[', '(')):
+            indent_level += 4
+            
+        # Insert newline and indentation
+        self.insert(tk.INSERT, '\n' + ' ' * indent_level)
+        
+        # Auto-close brackets
+        if current_line.rstrip().endswith(('{', '[')):
+            closing = '}' if current_line.rstrip().endswith('{') else ']'
+            self.insert(tk.INSERT, f'\n{" " * (indent_level - 4)}{closing}')
+            self.mark_set(tk.INSERT, f"{tk.INSERT} linestart")
+            self.mark_set(tk.INSERT, f"{tk.INSERT} lineend")
+            
+        return "break"
+        
+    def handle_backspace(self, event):
+        """Handle backspace with smart unindentation"""
+        current_pos = self.index(tk.INSERT)
+        line_start = self.index("insert linestart")
+        
+        # Check if we're at the beginning of indentation
+        if current_pos != line_start:
+            before_cursor = self.get(line_start, current_pos)
+            if before_cursor and all(c == ' ' for c in before_cursor):
+                # Remove up to 4 spaces
+                spaces_to_remove = min(4, len(before_cursor))
+                if spaces_to_remove > 1:
+                    self.delete(f"{current_pos} -{spaces_to_remove}c", current_pos)
+                    return "break"
+        
+        # Default backspace behavior
+        return None
+        
+    def indent_selection(self, event=None):
+        """Indent selected lines"""
+        if not self.tag_ranges("sel"):
+            return "break"
+            
+        start_line = int(self.index("sel.first").split('.')[0])
+        end_line = int(self.index("sel.last").split('.')[0])
+        
+        for line_num in range(start_line, end_line + 1):
+            line_start = f"{line_num}.0"
+            self.insert(line_start, "    ")
+            
+        return "break"
+        
+    def unindent_selection(self, event=None):
+        """Unindent selected lines"""
+        if not self.tag_ranges("sel"):
+            return "break"
+            
+        start_line = int(self.index("sel.first").split('.')[0])
+        end_line = int(self.index("sel.last").split('.')[0])
+        
+        for line_num in range(start_line, end_line + 1):
+            line_start = f"{line_num}.0"
+            line_content = self.get(line_start, f"{line_num}.end")
+            
+            # Remove up to 4 leading spaces
+            spaces_to_remove = 0
+            for char in line_content[:4]:
+                if char == ' ':
+                    spaces_to_remove += 1
+                else:
+                    break
+                    
+            if spaces_to_remove > 0:
+                self.delete(line_start, f"{line_start} +{spaces_to_remove}c")
+                
+        return "break"
+        
+    def toggle_comment(self, event=None):
+        """Toggle comment on current line or selection"""
+        if self.tag_ranges("sel"):
+            # Comment/uncomment selection
+            start_line = int(self.index("sel.first").split('.')[0])
+            end_line = int(self.index("sel.last").split('.')[0])
+        else:
+            # Comment/uncomment current line
+            current_line = int(self.index(tk.INSERT).split('.')[0])
+            start_line = end_line = current_line
+            
+        # Check if all lines are commented
+        all_commented = True
+        for line_num in range(start_line, end_line + 1):
+            line_content = self.get(f"{line_num}.0", f"{line_num}.end")
+            if line_content.strip() and not line_content.lstrip().startswith('#'):
+                all_commented = False
+                break
+                
+        # Toggle comments
+        for line_num in range(start_line, end_line + 1):
+            line_start = f"{line_num}.0"
+            line_content = self.get(line_start, f"{line_num}.end")
+            
+            if all_commented:
+                # Uncomment
+                if line_content.lstrip().startswith('#'):
+                    # Find the # and remove it (and the space after if present)
+                    stripped = line_content.lstrip()
+                    indent = line_content[:len(line_content) - len(stripped)]
+                    if stripped.startswith('# '):
+                        new_content = indent + stripped[2:]
+                    else:
+                        new_content = indent + stripped[1:]
+                    self.delete(line_start, f"{line_num}.end")
+                    self.insert(line_start, new_content)
+            else:
+                # Comment
+                if line_content.strip():
+                    stripped = line_content.lstrip()
+                    indent = line_content[:len(line_content) - len(stripped)]
+                    new_content = indent + '# ' + stripped
+                    self.delete(line_start, f"{line_num}.end")
+                    self.insert(line_start, new_content)
+                    
+        return "break"
+        
+    def duplicate_line(self, event=None):
+        """Duplicate the current line"""
+        current_line_num = int(self.index(tk.INSERT).split('.')[0])
+        line_start = f"{current_line_num}.0"
+        line_end = f"{current_line_num}.end"
+        line_content = self.get(line_start, line_end)
+        
+        self.insert(line_end, '\n' + line_content)
+        return "break"
+        
+    def select_line(self, event=None):
+        """Select the current line"""
+        current_line_num = int(self.index(tk.INSERT).split('.')[0])
+        line_start = f"{current_line_num}.0"
+        line_end = f"{current_line_num}.end"
+        
+        self.tag_remove("sel", "1.0", "end")
+        self.tag_add("sel", line_start, line_end)
+        self.mark_set(tk.INSERT, line_start)
+        return "break"
+        
+    def delete_line(self, event=None):
+        """Delete the current line"""
+        current_line_num = int(self.index(tk.INSERT).split('.')[0])
+        line_start = f"{current_line_num}.0"
+        
+        # If not the last line, include the newline
+        total_lines = int(self.index("end-1c").split('.')[0])
+        if current_line_num < total_lines:
+            line_end = f"{current_line_num + 1}.0"
+        else:
+            line_end = f"{current_line_num}.end"
+            
+        self.delete(line_start, line_end)
+        return "break"
+        
+    def move_line_up(self, event=None):
+        """Move current line up"""
+        current_line_num = int(self.index(tk.INSERT).split('.')[0])
+        if current_line_num <= 1:
+            return "break"
+            
+        # Get current line content
+        line_start = f"{current_line_num}.0"
+        line_end = f"{current_line_num}.end"
+        line_content = self.get(line_start, line_end)
+        
+        # Get previous line content
+        prev_line_start = f"{current_line_num - 1}.0"
+        prev_line_end = f"{current_line_num - 1}.end"
+        prev_line_content = self.get(prev_line_start, prev_line_end)
+        
+        # Swap lines
+        self.delete(prev_line_start, line_end)
+        self.insert(prev_line_start, line_content + '\n' + prev_line_content)
+        
+        # Move cursor
+        self.mark_set(tk.INSERT, f"{current_line_num - 1}.0")
+        return "break"
+        
+    def move_line_down(self, event=None):
+        """Move current line down"""
+        current_line_num = int(self.index(tk.INSERT).split('.')[0])
+        total_lines = int(self.index("end-1c").split('.')[0])
+        
+        if current_line_num >= total_lines:
+            return "break"
+            
+        # Get current line content
+        line_start = f"{current_line_num}.0"
+        line_end = f"{current_line_num}.end"
+        line_content = self.get(line_start, line_end)
+        
+        # Get next line content
+        next_line_start = f"{current_line_num + 1}.0"
+        next_line_end = f"{current_line_num + 1}.end"
+        next_line_content = self.get(next_line_start, next_line_end)
+        
+        # Swap lines
+        self.delete(line_start, next_line_end)
+        self.insert(line_start, next_line_content + '\n' + line_content)
+        
+        # Move cursor
+        self.mark_set(tk.INSERT, f"{current_line_num + 1}.0")
+        return "break"
+        
+    def show_find_dialog(self, event=None):
+        """Show find dialog"""
+        if self.parent_app and hasattr(self.parent_app, 'show_find_dialog'):
+            self.parent_app.show_find_dialog()
+        return "break"
+        
+    def show_replace_dialog(self, event=None):
+        """Show replace dialog"""  
+        if self.parent_app and hasattr(self.parent_app, 'show_replace_dialog'):
+            self.parent_app.show_replace_dialog()
+        return "break"
+
+class VirtualEnvironmentManager:
+    """Enhanced virtual environment manager with professional features"""
+    
+    def __init__(self, parent_app):
+        self.parent_app = parent_app
+        self.current_venv = None
+        self.venv_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs")
+        os.makedirs(self.venv_dir, exist_ok=True)
+        
+        # Initialize with default virtual environment
+        self.ensure_default_venv()
+        
+    def ensure_default_venv(self):
+        """Ensure a default virtual environment exists and activate it"""
+        default_venv_name = "manim_studio_default"
+        
+        # Check if default environment exists
+        if default_venv_name not in self.list_venvs():
+            # Create default environment
+            logger.info("Creating default virtual environment...")
+            if self.create_venv(default_venv_name):
+                logger.info(f"Created default environment: {default_venv_name}")
+                
+                # Install essential packages
+                essential_packages = ["manim", "numpy", "matplotlib", "jedi"]
+                for package in essential_packages:
+                    self.install_package(package)
+                    
+        # Activate default environment
+        if self.activate_venv(default_venv_name):
+            logger.info(f"Activated default environment: {default_venv_name}")
+        
+    def list_venvs(self):
+        """List all available virtual environments"""
+        venvs = []
+        if os.path.exists(self.venv_dir):
+            for item in os.listdir(self.venv_dir):
+                venv_path = os.path.join(self.venv_dir, item)
+                if os.path.isdir(venv_path):
+                    # Check if it's a valid virtual environment
+                    if self.is_valid_venv(venv_path):
+                        venvs.append(item)
+        return sorted(venvs)
+        
+    def is_valid_venv(self, venv_path):
+        """Check if a directory is a valid virtual environment"""
+        # Check for key files that indicate a virtual environment
+        if os.name == 'nt':
+            # Windows
+            return (os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")) and
+                    os.path.exists(os.path.join(venv_path, "Scripts", "pip.exe")))
+        else:
+            # Unix/Linux/Mac
+            return (os.path.exists(os.path.join(venv_path, "bin", "python")) and
+                    os.path.exists(os.path.join(venv_path, "bin", "pip")))
+        
+    def create_venv(self, name, python_exe="python"):
+        """Create a new virtual environment"""
+        venv_path = os.path.join(self.venv_dir, name)
+        
+        try:
+            # Create virtual environment
+            result = subprocess.run([
+                python_exe, "-m", "venv", venv_path
+            ], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                # Upgrade pip in the new environment
+                pip_path = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
+                subprocess.run([pip_path, "install", "--upgrade", "pip"], capture_output=True)
+                
+                return True
+            else:
+                logger.error(f"Failed to create venv: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error creating virtual environment: {e}")
+            return False
+        
+    def activate_venv(self, name):
+        """Activate a virtual environment"""
+        if name in self.list_venvs():
+            self.current_venv = name
+            venv_path = os.path.join(self.venv_dir, name)
+            
+            # Update PATH to use venv python
+            if os.name == 'nt':
+                scripts_path = os.path.join(venv_path, "Scripts")
+                self.python_path = os.path.join(scripts_path, "python.exe")
+                self.pip_path = os.path.join(scripts_path, "pip.exe")
+            else:
+                bin_path = os.path.join(venv_path, "bin")
+                self.python_path = os.path.join(bin_path, "python")
+                self.pip_path = os.path.join(bin_path, "pip")
+                
+            return True
+        return False
+        
+    def install_package(self, package_name, callback=None):
+        """Install a package in the current virtual environment"""
+        if not self.current_venv:
+            return False, "No virtual environment active"
+            
+        def install_thread():
+            try:
+                result = subprocess.run([
+                    self.pip_path, "install", package_name
+                ], capture_output=True, text=True)
+                
+                if callback:
+                    callback(result.returncode == 0, result.stdout, result.stderr)
+                    
+            except Exception as e:
+                if callback:
+                    callback(False, "", str(e))
+                
+        threading.Thread(target=install_thread, daemon=True).start()
+        return True, "Installation started"
+        
+    def uninstall_package(self, package_name, callback=None):
+        """Uninstall a package from the current virtual environment"""
+        if not self.current_venv:
+            return False, "No virtual environment active"
+            
+        def uninstall_thread():
+            try:
+                result = subprocess.run([
+                    self.pip_path, "uninstall", "-y", package_name
+                ], capture_output=True, text=True)
+                
+                if callback:
+                    callback(result.returncode == 0, result.stdout, result.stderr)
+                    
+            except Exception as e:
+                if callback:
+                    callback(False, "", str(e))
+                
+        threading.Thread(target=uninstall_thread, daemon=True).start()
+        return True, "Uninstallation started"
+        
+    def list_packages(self, callback=None):
+        """List installed packages in the current virtual environment"""
+        if not self.current_venv:
+            return False, "No virtual environment active"
+            
+        def list_thread():
+            try:
+                result = subprocess.run([
+                    self.pip_path, "list", "--format=json"
+                ], capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    try:
+                        packages = json.loads(result.stdout)
+                        if callback:
+                            callback(True, packages, "")
+                    except:
+                        if callback:
+                            callback(False, [], result.stdout)
+                else:
+                    if callback:
+                        callback(False, [], result.stderr)
+                        
+            except Exception as e:
+                if callback:
+                    callback(False, [], str(e))
+                    
+        threading.Thread(target=list_thread, daemon=True).start()
+        return True, "Getting package list"
+        
+    def get_venv_info(self, venv_name):
+        """Get information about a virtual environment"""
+        venv_path = os.path.join(self.venv_dir, venv_name)
+        
+        info = {
+            'name': venv_name,
+            'path': venv_path,
+            'is_active': venv_name == self.current_venv,
+            'python_version': None,
+            'packages_count': 0,
+            'size': 0
+        }
+        
+        try:
+            # Get Python version
+            python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
+            result = subprocess.run([python_exe, "--version"], capture_output=True, text=True)
+            if result.returncode == 0:
+                info['python_version'] = result.stdout.strip()
+                
+            # Get package count
+            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
+            result = subprocess.run([pip_exe, "list", "--format=json"], capture_output=True, text=True)
+            if result.returncode == 0:
+                packages = json.loads(result.stdout)
+                info['packages_count'] = len(packages)
+                
+            # Get directory size
+            info['size'] = self._get_directory_size(venv_path)
+            
+        except Exception as e:
+            logger.error(f"Error getting venv info: {e}")
+            
+        return info
+        
+    def _get_directory_size(self, path):
+        """Get the total size of a directory in bytes"""
+        total_size = 0
+        try:
+            for dirpath, dirnames, filenames in os.walk(path):
+                for filename in filenames:
+                    filepath = os.path.join(dirpath, filename)
+                    try:
+                        total_size += os.path.getsize(filepath)
+                    except (OSError, IOError):
+                        continue
+        except Exception:
+            pass
+        return total_size
+
+class LineNumbers(tk.Text):
+    """Line numbers widget that syncs with the main editor"""
+    
+    def __init__(self, parent, editor, **kwargs):
+        super().__init__(parent, **kwargs)
+        
+        self.editor = editor
+        
+        # Configure appearance
+        self.configure(
+            width=5,
+            bg=VSCODE_COLORS["line_numbers_bg"],
+            fg=VSCODE_COLORS["line_numbers"],
+            bd=0,
+            highlightthickness=0,
+            state="disabled",
+            wrap="none",
+            cursor="arrow",
+            takefocus=False,
+            selectbackground=VSCODE_COLORS["line_numbers_bg"],
+            inactiveselectbackground=VSCODE_COLORS["line_numbers_bg"]
+        )
+        
+        # Bind scrolling to editor
+        self.bind('<MouseWheel>', self._on_mousewheel)
+        self.bind('<Button-4>', self._on_mousewheel)
+        self.bind('<Button-5>', self._on_mousewheel)
+        
+    def _on_mousewheel(self, event):
+        """Redirect mouse wheel events to editor"""
+        return self.editor.event_generate('<MouseWheel>', delta=event.delta)
+        
+    def update_line_numbers(self, line_count):
+        """Update line numbers display"""
+        self.configure(state="normal")
+        self.delete("1.0", "end")
+        
+        # Generate line numbers
+        line_numbers = '\n'.join(str(i) for i in range(1, line_count + 1))
+        self.insert("1.0", line_numbers)
+        
+        self.configure(state="disabled")
+        
+        # Sync scrolling with editor
+        self.yview_moveto(self.editor.yview()[0])
+
+class FindReplaceDialog(ctk.CTkToplevel):
+    """Enhanced find and replace dialog with VSCode-like features"""
+    
+    def __init__(self, parent, text_widget):
+        super().__init__(parent)
+        
+        self.text_widget = text_widget
+        self.title("Find and Replace")
+        self.geometry("450x250")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 100,
+            parent.winfo_rooty() + 100
+        ))
+        
+        self.current_matches = []
+        self.current_index = -1
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the enhanced find/replace UI"""
+        # Main frame
+        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Find frame
+        find_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        find_frame.pack(fill="x", pady=5)
+        
+        ctk.CTkLabel(find_frame, text="Find:", width=60).pack(side="left")
+        self.find_entry = ctk.CTkEntry(find_frame, placeholder_text="Enter text to find")
+        self.find_entry.pack(side="left", fill="x", expand=True, padx=(10, 0))
+        self.find_entry.bind('<KeyRelease>', self.on_find_entry_change)
+        
+        # Replace frame
+        replace_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        replace_frame.pack(fill="x", pady=5)
+        
+        ctk.CTkLabel(replace_frame, text="Replace:", width=60).pack(side="left")
+        self.replace_entry = ctk.CTkEntry(replace_frame, placeholder_text="Enter replacement text")
+        self.replace_entry.pack(side="left", fill="x", expand=True, padx=(10, 0))
+        
+        # Options frame
+        options_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        options_frame.pack(fill="x", pady=10)
+        
+        self.case_sensitive = ctk.BooleanVar()
+        self.whole_word = ctk.BooleanVar()
+        self.regex_mode = ctk.BooleanVar()
+        
+        ctk.CTkCheckBox(options_frame, text="Case sensitive", variable=self.case_sensitive, command=self.update_search).pack(side="left")
+        ctk.CTkCheckBox(options_frame, text="Whole word", variable=self.whole_word, command=self.update_search).pack(side="left", padx=(20, 0))
+        ctk.CTkCheckBox(options_frame, text="Regex", variable=self.regex_mode, command=self.update_search).pack(side="left", padx=(20, 0))
+        
+        # Results frame
+        results_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        results_frame.pack(fill="x", pady=5)
+        
+        self.results_label = ctk.CTkLabel(
+            results_frame, 
+            text="", 
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.results_label.pack(side="left")
+        
+        # Button frame
+        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        button_frame.pack(fill="x", pady=10)
+        
+        # Navigation buttons
+        ctk.CTkButton(button_frame, text="Previous", width=80, command=self.find_previous).pack(side="left", padx=2)
+        ctk.CTkButton(button_frame, text="Next", width=80, command=self.find_next).pack(side="left", padx=2)
+        
+        # Action buttons
+        ctk.CTkButton(button_frame, text="Replace", width=80, command=self.replace_current).pack(side="left", padx=10)
+        ctk.CTkButton(button_frame, text="Replace All", width=90, command=self.replace_all).pack(side="left", padx=2)
+        
+        # Close button
+        ctk.CTkButton(button_frame, text="Close", width=80, command=self.destroy).pack(side="right", padx=5)
+        
+        # Focus on find entry
+        self.find_entry.focus()
+        
+    def on_find_entry_change(self, event=None):
+        """Handle changes in find entry"""
+        self.update_search()
+        
+    def update_search(self):
+        """Update search results"""
+        search_text = self.find_entry.get()
+        if not search_text:
+            self.clear_highlights()
+            self.results_label.configure(text="")
+            return
+            
+        self.find_all_matches(search_text)
+        
+    def find_all_matches(self, search_text):
+        """Find all matches in the text"""
+        # Clear previous highlights
+        self.clear_highlights()
+        
+        # Get text content
+        content = self.text_widget.get("1.0", "end-1c")
+        
+        # Prepare search pattern
+        if self.regex_mode.get():
+            try:
+                flags = 0 if self.case_sensitive.get() else re.IGNORECASE
+                pattern = re.compile(search_text, flags)
+            except re.error:
+                self.results_label.configure(text="Invalid regex")
+                return
+        else:
+            if self.whole_word.get():
+                search_text = r'\b' + re.escape(search_text) + r'\b'
+            else:
+                search_text = re.escape(search_text)
+            flags = 0 if self.case_sensitive.get() else re.IGNORECASE
+            pattern = re.compile(search_text, flags)
+            
+        # Find all matches
+        self.current_matches = []
+        for match in pattern.finditer(content):
+            start_idx = self.text_widget.index(f"1.0 + {match.start()}c")
+            end_idx = self.text_widget.index(f"1.0 + {match.end()}c")
+            self.current_matches.append((start_idx, end_idx))
+            self.text_widget.tag_add("find_match", start_idx, end_idx)
+            
+        # Update results label
+        if self.current_matches:
+            self.results_label.configure(text=f"{len(self.current_matches)} matches")
+            self.current_index = 0
+            self.highlight_current_match()
+        else:
+            self.results_label.configure(text="No matches")
+            self.current_index = -1
+            
+    def clear_highlights(self):
+        """Clear all search highlights"""
+        self.text_widget.tag_remove("find_match", "1.0", "end")
+        self.text_widget.tag_remove("find_current", "1.0", "end")
+        
+    def highlight_current_match(self):
+        """Highlight the current match"""
+        if not self.current_matches or self.current_index < 0:
+            return
+            
+        # Clear previous current highlight
+        self.text_widget.tag_remove("find_current", "1.0", "end")
+        
+        # Highlight current match
+        start_idx, end_idx = self.current_matches[self.current_index]
+        self.text_widget.tag_add("find_current", start_idx, end_idx)
+        
+        # Scroll to current match
+        self.text_widget.see(start_idx)
+        
+        # Update results label
+        self.results_label.configure(
+            text=f"{self.current_index + 1} of {len(self.current_matches)} matches"
+        )
+        
+    def find_next(self):
+        """Find next match"""
+        if not self.current_matches:
+            self.update_search()
+            return
+            
+        self.current_index = (self.current_index + 1) % len(self.current_matches)
+        self.highlight_current_match()
+        
+    def find_previous(self):
+        """Find previous match"""
+        if not self.current_matches:
+            self.update_search()
+            return
+            
+        self.current_index = (self.current_index - 1) % len(self.current_matches)
+        self.highlight_current_match()
+        
+    def replace_current(self):
+        """Replace current match"""
+        if not self.current_matches or self.current_index < 0:
+            return
+            
+        start_idx, end_idx = self.current_matches[self.current_index]
+        replacement_text = self.replace_entry.get()
+        
+        # Replace text
+        self.text_widget.delete(start_idx, end_idx)
+        self.text_widget.insert(start_idx, replacement_text)
+        
+        # Update search to find new matches
+        self.update_search()
+        
+    def replace_all(self):
+        """Replace all matches"""
+        if not self.current_matches:
+            return
+            
+        replacement_text = self.replace_entry.get()
+        
+        # Replace from end to beginning to maintain indices
+        for start_idx, end_idx in reversed(self.current_matches):
+            self.text_widget.delete(start_idx, end_idx)
+            self.text_widget.insert(start_idx, replacement_text)
+            
+        # Update search
+        self.update_search()
+
+class AssetCard(ctk.CTkFrame):
+    """Visual card for displaying assets"""
+    def __init__(self, parent, asset_path, asset_type, on_use_callback, on_remove_callback, **kwargs):
+        super().__init__(parent, **kwargs)
+        
+        self.asset_path = asset_path
+        self.asset_type = asset_type  # 'image' or 'audio'
+        self.on_use_callback = on_use_callback
+        self.on_remove_callback = on_remove_callback
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the asset card UI"""
+        self.grid_columnconfigure(0, weight=1)
+        
+        # Asset preview/icon
+        preview_frame = ctk.CTkFrame(self, height=80)
+        preview_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+        preview_frame.grid_columnconfigure(0, weight=1)
+        
+        if self.asset_type == "image":
+            self.create_image_preview(preview_frame)
+        else:
+            self.create_audio_preview(preview_frame)
+            
+        # Asset info
+        info_frame = ctk.CTkFrame(self, fg_color="transparent")
+        info_frame.grid(row=1, column=0, sticky="ew", padx=10)
+        info_frame.grid_columnconfigure(0, weight=1)
+        
+        # File name
+        filename = os.path.basename(self.asset_path)
+        if len(filename) > 20:
+            filename = filename[:17] + "..."
+            
+        name_label = ctk.CTkLabel(
+            info_frame,
+            text=filename,
+            font=ctk.CTkFont(size=11, weight="bold")
+        )
+        name_label.grid(row=0, column=0, sticky="w", pady=2)
+        
+        # File size
+        try:
+            size = os.path.getsize(self.asset_path)
+            size_str = self.format_file_size(size)
+        except:
+            size_str = "Unknown size"
+            
+        size_label = ctk.CTkLabel(
+            info_frame,
+            text=size_str,
+            font=ctk.CTkFont(size=9),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        size_label.grid(row=1, column=0, sticky="w")
+        
+        # Action buttons
+        button_frame = ctk.CTkFrame(self, fg_color="transparent")
+        button_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(5, 10))
+        
+        use_btn = ctk.CTkButton(
+            button_frame,
+            text="Use",
+            height=25,
+            width=50,
+            command=self.on_use,
+            font=ctk.CTkFont(size=10),
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        use_btn.pack(side="left", padx=(0, 5))
+        
+        remove_btn = ctk.CTkButton(
+            button_frame,
+            text="Remove",
+            height=25,
+            width=60,
+            command=self.on_remove,
+            font=ctk.CTkFont(size=10),
+            fg_color=VSCODE_COLORS["error"],
+            hover_color="#C0392B"
+        )
+        remove_btn.pack(side="right")
+        
+    def create_image_preview(self, parent):
+        """Create image preview"""
+        try:
+            # Load and resize image
+            image = Image.open(self.asset_path)
+            image.thumbnail((100, 60), Image.Resampling.LANCZOS)
+            
+            # Convert to PhotoImage
+            photo = ImageTk.PhotoImage(image)
+            
+            # Display in label
+            preview_label = ctk.CTkLabel(parent, image=photo, text="")
+            preview_label.pack(expand=True)
+            
+            # Keep reference to prevent garbage collection
+            preview_label.image = photo
+            
+        except Exception as e:
+            # Fallback to icon
+            icon_label = ctk.CTkLabel(
+                parent,
+                text="🖼️",
+                font=ctk.CTkFont(size=24)
+            )
+            icon_label.pack(expand=True)
+            
+    def create_audio_preview(self, parent):
+        """Create audio preview"""
+        # Audio waveform icon
+        icon_label = ctk.CTkLabel(
+            parent,
+            text="🎵",
+            font=ctk.CTkFont(size=24)
+        )
+        icon_label.pack(expand=True)
+        
+        # Duration info (if available)
+        try:
+            # Try to get audio duration using ffprobe
+            cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", 
+                   "-of", "csv=p=0", self.asset_path]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                duration = float(result.stdout.strip())
+                duration_str = f"{int(duration//60)}:{int(duration%60):02d}"
+                
+                duration_label = ctk.CTkLabel(
+                    parent,
+                    text=duration_str,
+                    font=ctk.CTkFont(size=9),
+                    text_color=VSCODE_COLORS["text_secondary"]
+                )
+                duration_label.pack()
+        except:
+            pass
+            
+    def format_file_size(self, size_bytes):
+        """Format file size in human readable format"""
+        if size_bytes == 0:
+            return "0 B"
+        size_names = ["B", "KB", "MB", "GB"]
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_names[i]}"
+        
+    def on_use(self):
+        """Handle use button click"""
+        if self.on_use_callback:
+            self.on_use_callback(self.asset_path, self.asset_type)
+            
+    def on_remove(self):
+        """Handle remove button click"""
+        if self.on_remove_callback:
+            self.on_remove_callback(self.asset_path, self)
+
+class VideoPlayerWidget(ctk.CTkFrame):
+    """Professional video player with actual playback capability"""
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, **kwargs)
+        
+        self.video_path = None
+        self.cap = None
+        self.is_playing = False
+        self.current_frame = 0
+        self.total_frames = 0
+        self.fps = 30
+        self.frame_delay = 33  # milliseconds
+        self.play_thread = None
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the video player interface"""
+        # Configure grid
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        
+        # Video display area
+        self.video_frame = ctk.CTkFrame(self, fg_color="black")
+        self.video_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 5))
+        
+        # Video canvas
+        self.canvas = tk.Canvas(
+            self.video_frame,
+            bg="black",
+            highlightthickness=0,
+            relief="flat"
+        )
+        self.canvas.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Default placeholder
+        self.show_placeholder()
+        
+        # Controls frame
+        self.controls_frame = ctk.CTkFrame(self, height=70)
+        self.controls_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self.controls_frame.grid_columnconfigure(1, weight=1)
+        
+        # Play controls
+        controls_left = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
+        controls_left.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        
+        # Play/Pause button
+        self.play_button = ctk.CTkButton(
+            controls_left,
+            text="▶",
+            width=50,
+            height=40,
+            font=ctk.CTkFont(size=20),
+            command=self.toggle_playback,
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        self.play_button.pack(side="left", padx=(0, 10))
+        
+        # Stop button
+        self.stop_button = ctk.CTkButton(
+            controls_left,
+            text="⏹",
+            width=40,
+            height=40,
+            font=ctk.CTkFont(size=16),
+            command=self.stop_playback,
+            fg_color=VSCODE_COLORS["surface_light"],
+            hover_color=VSCODE_COLORS["border"]
+        )
+        self.stop_button.pack(side="left", padx=(0, 10))
+        
+        # Time display
+        self.time_label = ctk.CTkLabel(
+            controls_left,
+            text="00:00 / 00:00",
+            font=ctk.CTkFont(family="Monaco", size=14),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.time_label.pack(side="left", padx=(0, 10))
+        
+        # Progress bar
+        self.progress_var = ctk.DoubleVar()
+        self.progress_slider = ctk.CTkSlider(
+            self.controls_frame,
+            from_=0,
+            to=100,
+            variable=self.progress_var,
+            command=self.seek_to_position,
+            height=20
+        )
+        self.progress_slider.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
+        
+        # Volume control
+        controls_right = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
+        controls_right.grid(row=0, column=2, sticky="e", padx=15, pady=10)
+        
+        # Frame info
+        self.frame_label = ctk.CTkLabel(
+            controls_right,
+            text="Frame: 0/0",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.frame_label.pack(side="right")
+        
+    def show_placeholder(self):
+        """Show placeholder text when no video is loaded"""
+        self.canvas.delete("all")
+        canvas_width = self.canvas.winfo_width() or 400
+        canvas_height = self.canvas.winfo_height() or 300
+        
+        # Create placeholder text
+        self.canvas.create_rectangle(
+            0, 0, canvas_width, canvas_height,
+            fill="black", outline=""
+        )
+        
+        self.canvas.create_text(
+            canvas_width/2, canvas_height/2 - 20,
+            text="🎬",
+            font=("Arial", 48),
+            fill="#4a5568"
+        )
+        
+        self.canvas.create_text(
+            canvas_width/2, canvas_height/2 + 30,
+            text="Preview will appear here",
+            font=("Arial", 16),
+            fill="#6b7280"
+        )
+        
+        self.canvas.create_text(
+            canvas_width/2, canvas_height/2 + 55,
+            text="Click 'Quick Preview' to generate preview",
+            font=("Arial", 12),
+            fill="#9ca3af"
+        )
+        
+    def load_video(self, video_path):
+        """Load video file for playback"""
+        self.video_path = video_path
+        
+        # Release previous video if any
+        if self.cap:
+            self.cap.release()
+            
+        try:
+            # Open video file
+            self.cap = cv2.VideoCapture(video_path)
+            
+            if not self.cap.isOpened():
+                raise Exception("Could not open video file")
+                
+            # Get video properties
+            self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
+            self.frame_delay = int(1000 / self.fps)
+            
+            # Reset playback state
+            self.current_frame = 0
+            self.is_playing = False
+            self.play_button.configure(text="▶")
+            
+            # Show first frame
+            self.display_frame(0)
+            self.update_time_display()
+            self.update_frame_display()
+            
+            logger.info(f"Video loaded: {video_path}")
+            logger.info(f"Properties: {self.total_frames} frames, {self.fps} fps")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error loading video: {e}")
+            self.show_error(f"Failed to load video:\n{str(e)}")
+            return False
+            
+    def display_frame(self, frame_number):
+        """Display specific frame"""
+        if not self.cap:
+            return
+            
+        # Set frame position
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+        ret, frame = self.cap.read()
+        
+        if not ret:
+            return
+            
+        # Get canvas dimensions
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+        
+        if canvas_width <= 1 or canvas_height <= 1:
+            # Canvas not ready, try again later
+            self.canvas.after(100, lambda: self.display_frame(frame_number))
+            return
+            
+        # Convert BGR to RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # Calculate display size maintaining aspect ratio
+        frame_height, frame_width = frame_rgb.shape[:2]
+        aspect_ratio = frame_width / frame_height
+        
+        # Calculate display dimensions
+        if canvas_width / canvas_height > aspect_ratio:
+            # Fit to height
+            display_height = canvas_height - 20
+            display_width = int(display_height * aspect_ratio)
+        else:
+            # Fit to width
+            display_width = canvas_width - 20
+            display_height = int(display_width / aspect_ratio)
+            
+        # Resize frame
+        frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
+        
+        # Convert to PhotoImage
+        image = Image.fromarray(frame_resized)
+        self.photo = ImageTk.PhotoImage(image)
+        
+        # Clear canvas and display image
+        self.canvas.delete("all")
+        self.canvas.create_image(
+            canvas_width // 2,
+            canvas_height // 2,
+            image=self.photo,
+            anchor="center"
+        )
+        
+        # Update progress
+        progress = (frame_number / max(self.total_frames - 1, 1)) * 100
+        self.progress_var.set(progress)
+        
+    def toggle_playback(self):
+        """Toggle play/pause"""
+        if not self.cap:
+            return
+            
+        self.is_playing = not self.is_playing
+        
+        if self.is_playing:
+            self.play_button.configure(text="⏸")
+            self.start_playback()
+        else:
+            self.play_button.configure(text="▶")
+            self.stop_playback_thread()
+            
+    def start_playback(self):
+        """Start video playback in separate thread"""
+        if self.is_playing and not self.play_thread:
+            self.play_thread = threading.Thread(target=self.playback_loop, daemon=True)
+            self.play_thread.start()
+            
+    def playback_loop(self):
+        """Main playback loop"""
+        while self.is_playing and self.current_frame < self.total_frames - 1:
+            start_time = time.time()
+            
+            # Display next frame
+            self.current_frame += 1
+            
+            # Schedule frame display in main thread
+            self.canvas.after_idle(lambda: self.display_frame(self.current_frame))
+            self.canvas.after_idle(self.update_time_display)
+            self.canvas.after_idle(self.update_frame_display)
+            
+            # Calculate sleep time for correct FPS
+            elapsed = (time.time() - start_time) * 1000
+            sleep_time = max(0, self.frame_delay - elapsed) / 1000
+            time.sleep(sleep_time)
+            
+        # End of video
+        if self.current_frame >= self.total_frames - 1:
+            self.canvas.after_idle(self.stop_playback)
+            
+    def stop_playback(self):
+        """Stop playback"""
+        self.is_playing = False
+        self.play_button.configure(text="▶")
+        self.stop_playback_thread()
+        
+    def stop_playback_thread(self):
+        """Stop playback thread"""
+        if self.play_thread and self.play_thread.is_alive():
+            self.play_thread = None
+            
+        # Reset to first frame
+        self.current_frame = 0
+        if self.cap:
+            self.display_frame(0)
+            self.update_time_display()
+            self.update_frame_display()
+            
+    def seek_to_position(self, value):
+        """Seek to position based on slider"""
+        if not self.cap:
+            return
+            
+        # Calculate frame number
+        frame_number = int((value / 100) * (self.total_frames - 1))
+        self.current_frame = frame_number
+        
+        # Display frame
+        self.display_frame(frame_number)
+        self.update_time_display()
+        self.update_frame_display()
+        
+    def update_time_display(self):
+        """Update time display"""
+        if not self.cap:
+            return
+            
+        current_seconds = self.current_frame / self.fps
+        total_seconds = self.total_frames / self.fps
+        
+        current_time = f"{int(current_seconds // 60):02d}:{int(current_seconds % 60):02d}"
+        total_time = f"{int(total_seconds // 60):02d}:{int(total_seconds % 60):02d}"
+        
+        self.time_label.configure(text=f"{current_time} / {total_time}")
+        
+    def update_frame_display(self):
+        """Update frame counter"""
+        self.frame_label.configure(text=f"Frame: {self.current_frame}/{self.total_frames}")
+        
+    def show_error(self, message):
+        """Show error message in video area"""
+        self.canvas.delete("all")
+        canvas_width = self.canvas.winfo_width() or 400
+        canvas_height = self.canvas.winfo_height() or 300
+        
+        self.canvas.create_rectangle(
+            0, 0, canvas_width, canvas_height,
+            fill="#2d1b1b", outline=""
+        )
+        
+        self.canvas.create_text(
+            canvas_width/2, canvas_height/2 - 20,
+            text="⚠️",
+            font=("Arial", 32),
+            fill="#ef4444"
+        )
+        
+        # Split message into lines for better display
+        lines = message.split('\n')
+        for i, line in enumerate(lines):
+            self.canvas.create_text(
+                canvas_width/2, canvas_height/2 + 20 + i*20,
+                text=line,
+                font=("Arial", 12),
+                fill="#ef4444",
+                width=canvas_width-40
+            )
+            
+    def clear(self):
+        """Clear video player"""
+        self.stop_playback()
+        
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+            
+        self.video_path = None
+        self.current_frame = 0
+        self.total_frames = 0
+        
+        self.progress_var.set(0)
+        self.time_label.configure(text="00:00 / 00:00")
+        self.frame_label.configure(text="Frame: 0/0")
+        
+        self.show_placeholder()
+
+class ManimStudioApp:
+    def __init__(self):
+        # Initialize main window
+        self.root = ctk.CTk()
+        self.root.title(f"{APP_NAME} - Professional Edition v{APP_VERSION}")
+        self.root.geometry("1600x1000")
+        
+        # Set minimum size
+        self.root.minsize(1200, 800)
+        
+        # Try to set icon
+        try:
+            self.root.iconbitmap("icon.ico")
+        except:
+            pass
+            
+        # Initialize virtual environment manager
+        self.venv_manager = VirtualEnvironmentManager(self)
+        
+        # Load settings
+        self.load_settings()
+        
+        # Initialize variables
+        self.initialize_variables()
+        
+        # Setup UI
+        self.create_ui()
+        
+        # Apply VSCode color scheme
+        self.apply_vscode_theme()
+        
+        # Start background tasks
+        self.start_background_tasks()
+        
+    def load_settings(self):
+        """Load settings from file"""
+        self.settings_file = os.path.join(os.path.expanduser("~"), ".manim_studio", "settings.json")
+        
+        # Default settings with virtual environment as default
+        self.settings = {
+            "quality": "720p",
+            "format": "MP4 Video",
+            "fps": 30,
+            "preview_quality": "Medium",
+            "auto_preview": False,
+            "theme": "dark",
+            "font_size": 14,
+            "current_venv": "manim_studio_default",  # Use venv by default
+            "intellisense_enabled": True,
+            "auto_completion_delay": 500,
+            "use_venv_by_default": True
+        }
+        
+        # Load from file if exists
+        try:
+            if os.path.exists(self.settings_file):
+                with open(self.settings_file, 'r') as f:
+                    saved_settings = json.load(f)
+                    self.settings.update(saved_settings)
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
+            
+        # Load virtual environment if set
+        if self.settings.get("current_venv"):
+            self.venv_manager.activate_venv(self.settings["current_venv"])
+            
+    def save_settings(self):
+        """Save settings to file"""
+        try:
+            os.makedirs(os.path.dirname(self.settings_file), exist_ok=True)
+            
+            # Update current venv in settings
+            self.settings["current_venv"] = self.venv_manager.current_venv
+            
+            with open(self.settings_file, 'w') as f:
+                json.dump(self.settings, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving settings: {e}")
+            
+    def initialize_variables(self):
+        """Initialize all application variables"""
+        # Application state
+        self.current_code = ""
+        self.current_file_path = None
+        self.video_data = None
+        self.audio_path = None
+        self.image_paths = []
+        self.last_preview_code = ""
+        
+        # UI state
+        self.is_rendering = False
+        self.is_previewing = False
+        self.render_process = None
+        self.preview_process = None
+        
+        # Asset management
+        self.asset_cards = []
+        
+        # Variables for UI controls
+        self.quality_var = ctk.StringVar(value=self.settings["quality"])
+        self.format_var = ctk.StringVar(value=self.settings["format"])
+        self.fps_var = ctk.StringVar(value=str(self.settings["fps"]))
+        self.preview_quality_var = ctk.StringVar(value=self.settings["preview_quality"])
+        self.auto_preview_var = ctk.BooleanVar(value=self.settings["auto_preview"])
+        self.font_size_var = ctk.IntVar(value=self.settings["font_size"])
+        self.intellisense_var = ctk.BooleanVar(value=self.settings["intellisense_enabled"])
+        
+    def apply_vscode_theme(self):
+        """Apply VSCode-like color theme"""
+        # Update color scheme
+        colors = VSCODE_COLORS
+        
+        # Apply to main window
+        self.root.configure(fg_color=colors["background"])
+        
+        # Apply to various components
+        if hasattr(self, 'sidebar'):
+            self.sidebar.configure(fg_color=colors["surface"])
+            
+        if hasattr(self, 'main_area'):
+            self.main_area.configure(fg_color=colors["background"])
+            
+        if hasattr(self, 'output_text'):
+            self.output_text.configure(
+                bg=colors["surface"],
+                fg=colors["text"],
+                insertbackground=colors["text"],
+                selectbackground=colors["selection"]
+            )
+            
+    def create_ui(self):
+        """Create the main user interface"""
+        # Configure main window grid
+        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_columnconfigure(1, weight=1)
+        
+        # Create main components
+        self.create_header()
+        self.create_sidebar()
+        self.create_main_area()
+        self.create_status_bar()
+        self.create_menu_bar()
+        
+        # Bind shortcuts
+        self.bind_shortcuts()
+        
+    def create_header(self):
+        """Create header with toolbar"""
+        self.header = ctk.CTkFrame(self.root, height=60, corner_radius=0, fg_color=VSCODE_COLORS["surface"])
+        self.header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        self.header.grid_columnconfigure(1, weight=1)
+        
+        # Left side - Logo and title
+        header_left = ctk.CTkFrame(self.header, fg_color="transparent")
+        header_left.grid(row=0, column=0, sticky="w", padx=20, pady=10)
+        
+        # App icon/logo
+        logo_label = ctk.CTkLabel(
+            header_left,
+            text="🎬",
+            font=ctk.CTkFont(size=28)
+        )
+        logo_label.pack(side="left", padx=(0, 10))
+        
+        # App title
+        title_label = ctk.CTkLabel(
+            header_left,
+            text=APP_NAME,
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        title_label.pack(side="left")
+        
+        # Subtitle
+        subtitle_label = ctk.CTkLabel(
+            header_left,
+            text=f"Professional Edition v{APP_VERSION}",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        subtitle_label.pack(side="left", padx=(10, 0))
+        
+        # Center - Quick actions
+        header_center = ctk.CTkFrame(self.header, fg_color="transparent")
+        header_center.grid(row=0, column=1, pady=10)
+        
+        # Quick action buttons
+        quick_actions = [
+            ("📄", "New File", self.new_file),
+            ("📁", "Open File", self.open_file),
+            ("💾", "Save File", self.save_file),
+            ("▶️", "Render Animation", self.render_animation),
+            ("👁️", "Quick Preview", self.quick_preview),
+            ("📦", "Package Manager", self.open_package_manager),
+        ]
+        
+        for icon, tooltip, command in quick_actions:
+            btn = ctk.CTkButton(
+                header_center,
+                text=icon,
+                width=45,
+                height=40,
+                font=ctk.CTkFont(size=16),
+                command=command,
+                fg_color="transparent",
+                hover_color=VSCODE_COLORS["surface_light"],
+                corner_radius=8
+            )
+            btn.pack(side="left", padx=2)
+            self.create_tooltip(btn, tooltip)
+            
+        # Right side - Virtual environment and settings
+        header_right = ctk.CTkFrame(self.header, fg_color="transparent")
+        header_right.grid(row=0, column=2, sticky="e", padx=20, pady=10)
+        
+        # IntelliSense toggle
+        self.intellisense_checkbox = ctk.CTkCheckBox(
+            header_right,
+            text="IntelliSense",
+            variable=self.intellisense_var,
+            command=self.toggle_intellisense,
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text"]
+        )
+        self.intellisense_checkbox.pack(side="right", padx=15)
+        
+        # Virtual environment display
+        venv_frame = ctk.CTkFrame(header_right, fg_color=VSCODE_COLORS["surface_light"])
+        venv_frame.pack(side="right", padx=10)
+        
+        venv_label = ctk.CTkLabel(venv_frame, text="🔧", font=ctk.CTkFont(size=14))
+        venv_label.pack(side="left", padx=(10, 5))
+        
+        venv_name = self.venv_manager.current_venv or "No venv"
+        self.venv_status_label = ctk.CTkLabel(
+            venv_frame,
+            text=venv_name,
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.venv_status_label.pack(side="left", padx=(0, 10))
+        
+        # Theme toggle
+        self.theme_button = ctk.CTkButton(
+            header_right,
+            text="🌙",
+            width=40,
+            height=40,
+            font=ctk.CTkFont(size=16),
+            command=self.toggle_theme,
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_light"],
+            corner_radius=8
+        )
+        self.theme_button.pack(side="right", padx=5)
+        self.create_tooltip(self.theme_button, "Toggle Theme")
+        
+        # Auto-preview toggle
+        self.auto_preview_checkbox = ctk.CTkCheckBox(
+            header_right,
+            text="Auto Preview",
+            variable=self.auto_preview_var,
+            command=self.toggle_auto_preview,
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text"]
+        )
+        self.auto_preview_checkbox.pack(side="right", padx=15)
+        
+    def create_sidebar(self):
+        """Create sidebar with settings and controls"""
+        self.sidebar = ctk.CTkFrame(self.root, width=350, corner_radius=0, fg_color=VSCODE_COLORS["surface"])
+        self.sidebar.grid(row=1, column=0, sticky="nsew")
+        self.sidebar.grid_rowconfigure(0, weight=1)
+        
+        # Sidebar content with scrolling
+        self.sidebar_scroll = ctk.CTkScrollableFrame(self.sidebar, fg_color=VSCODE_COLORS["surface"])
+        self.sidebar_scroll.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        
+        # Create sections
+        self.create_render_section()
+        self.create_preview_section()
+        self.create_assets_section()
+        
+    def create_render_section(self):
+        """Create render settings section"""
+        # Section header
+        render_header = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
+        render_header.pack(fill="x", pady=(0, 10))
+        
+        header_title = ctk.CTkLabel(
+            render_header,
+            text="🎬 Render Settings",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        header_title.pack(side="left", padx=15, pady=12)
+        
+        # Render settings frame
+        render_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
+        render_frame.pack(fill="x", pady=(0, 20))
+        
+        # Quality setting
+        quality_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
+        quality_frame.pack(fill="x", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            quality_frame,
+            text="Quality",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        ).pack(anchor="w")
+        
+        self.quality_combo = ctk.CTkComboBox(
+            quality_frame,
+            values=list(QUALITY_PRESETS.keys()),
+            variable=self.quality_var,
+            command=self.on_quality_change,
+            height=36,
+            font=ctk.CTkFont(size=12)
+        )
+        self.quality_combo.pack(fill="x", pady=(5, 0))
+        
+        # Quality info
+        self.quality_info = ctk.CTkLabel(
+            quality_frame,
+            text=f"Resolution: {QUALITY_PRESETS[self.settings['quality']]['resolution']}",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.quality_info.pack(anchor="w", pady=(3, 0))
+        
+        # Format setting
+        format_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
+        format_frame.pack(fill="x", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            format_frame,
+            text="Export Format",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        ).pack(anchor="w")
+        
+        self.format_combo = ctk.CTkComboBox(
+            format_frame,
+            values=list(EXPORT_FORMATS.keys()),
+            variable=self.format_var,
+            command=self.on_format_change,
+            height=36,
+            font=ctk.CTkFont(size=12)
+        )
+        self.format_combo.pack(fill="x", pady=(5, 0))
+        
+        # FPS setting
+        fps_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
+        fps_frame.pack(fill="x", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            fps_frame,
+            text="Frame Rate (FPS)",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        ).pack(anchor="w")
+        
+        self.fps_combo = ctk.CTkComboBox(
+            fps_frame,
+            values=["15", "24", "30", "60"],
+            variable=self.fps_var,
+            command=self.on_fps_change,
+            height=36,
+            font=ctk.CTkFont(size=12)
+        )
+        self.fps_combo.pack(fill="x", pady=(5, 0))
+        
+        # Render button
+        self.render_button = ctk.CTkButton(
+            render_frame,
+            text="🚀 Render Animation",
+            command=self.render_animation,
+            height=50,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        self.render_button.pack(fill="x", padx=15, pady=15)
+        
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(render_frame)
+        self.progress_bar.pack(fill="x", padx=15, pady=(0, 10))
+        self.progress_bar.set(0)
+        
+        # Progress label
+        self.progress_label = ctk.CTkLabel(
+            render_frame,
+            text="Ready to render",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.progress_label.pack(pady=(0, 15))
+        
+    def create_preview_section(self):
+        """Create preview settings section"""
+        # Section header
+        preview_header = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
+        preview_header.pack(fill="x", pady=(0, 10))
+        
+        header_title = ctk.CTkLabel(
+            preview_header,
+            text="👁️ Preview Settings",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        header_title.pack(side="left", padx=15, pady=12)
+        
+        # Preview settings frame
+        preview_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
+        preview_frame.pack(fill="x", pady=(0, 20))
+        
+        # Preview quality
+        quality_frame = ctk.CTkFrame(preview_frame, fg_color="transparent")
+        quality_frame.pack(fill="x", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            quality_frame,
+            text="Preview Quality",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        ).pack(anchor="w")
+        
+        self.preview_quality_combo = ctk.CTkComboBox(
+            quality_frame,
+            values=list(PREVIEW_QUALITIES.keys()),
+            variable=self.preview_quality_var,
+            command=self.on_preview_quality_change,
+            height=36,
+            font=ctk.CTkFont(size=12)
+        )
+        self.preview_quality_combo.pack(fill="x", pady=(5, 0))
+        
+        # Preview quality info
+        self.preview_info = ctk.CTkLabel(
+            quality_frame,
+            text=f"Resolution: {PREVIEW_QUALITIES[self.settings['preview_quality']]['resolution']}",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.preview_info.pack(anchor="w", pady=(3, 0))
+        
+        # Preview buttons
+        self.quick_preview_button = ctk.CTkButton(
+            preview_frame,
+            text="⚡ Quick Preview",
+            command=self.quick_preview,
+            height=45,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["accent"],
+            hover_color=VSCODE_COLORS["info"]
+        )
+        self.quick_preview_button.pack(fill="x", padx=15, pady=15)
+        
+    def create_assets_section(self):
+        """Create enhanced assets section with visual cards"""
+        # Section header
+        assets_header = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
+        assets_header.pack(fill="x", pady=(0, 10))
+        
+        header_frame = ctk.CTkFrame(assets_header, fg_color="transparent")
+        header_frame.pack(fill="x", padx=15, pady=12)
+        header_frame.grid_columnconfigure(0, weight=1)
+        
+        header_title = ctk.CTkLabel(
+            header_frame,
+            text="🎨 Assets Manager",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        header_title.grid(row=0, column=0, sticky="w")
+        
+        # Add asset button
+        add_btn = ctk.CTkButton(
+            header_frame,
+            text="+",
+            width=30,
+            height=25,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            command=self.show_add_asset_menu,
+            fg_color=VSCODE_COLORS["success"],
+            hover_color="#117A65"
+        )
+        add_btn.grid(row=0, column=1, sticky="e")
+        
+        # Assets frame
+        self.assets_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
+        self.assets_frame.pack(fill="x", pady=(0, 20))
+        
+        # Assets scroll area
+        self.assets_scroll = ctk.CTkScrollableFrame(self.assets_frame, height=200, fg_color=VSCODE_COLORS["surface_light"])
+        self.assets_scroll.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # Assets info
+        self.assets_info = ctk.CTkLabel(
+            self.assets_frame,
+            text="Click + to add images or audio files",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.assets_info.pack(pady=(0, 15))
+        
+        # Update assets display
+        self.update_assets_display()
+        
+    def create_main_area(self):
+        """Create main content area"""
+        self.main_area = ctk.CTkFrame(self.root, corner_radius=0, fg_color=VSCODE_COLORS["background"])
+        self.main_area.grid(row=1, column=1, sticky="nsew")
+        self.main_area.grid_rowconfigure(0, weight=2)
+        self.main_area.grid_rowconfigure(1, weight=1)
+        self.main_area.grid_columnconfigure(0, weight=2)
+        self.main_area.grid_columnconfigure(1, weight=1)
+        
+        # Top left - Code editor
+        self.create_code_editor()
+        
+        # Top right - Preview
+        self.create_preview_area()
+        
+        # Bottom - Output console
+        self.create_output_area()
+        
+    def create_code_editor(self):
+        """Create enhanced code editor area with IntelliSense"""
+        editor_frame = ctk.CTkFrame(self.main_area, fg_color=VSCODE_COLORS["surface"])
+        editor_frame.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=(10, 5))
+        editor_frame.grid_rowconfigure(1, weight=1)
+        editor_frame.grid_columnconfigure(0, weight=1)
+        
+        # Editor header
+        editor_header = ctk.CTkFrame(editor_frame, height=50, fg_color=VSCODE_COLORS["surface_light"])
+        editor_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
+        editor_header.grid_columnconfigure(1, weight=1)
+        
+        # File tab frame
+        tab_frame = ctk.CTkFrame(editor_header, fg_color="transparent")
+        tab_frame.grid(row=0, column=0, sticky="w", padx=15, pady=8)
+        
+        # File tab
+        self.file_tab = ctk.CTkButton(
+            tab_frame,
+            text="📄 scene.py",
+            height=35,
+            font=ctk.CTkFont(size=12),
+            fg_color=VSCODE_COLORS["background"],
+            hover_color=VSCODE_COLORS["surface_lighter"],
+            corner_radius=8,
+            anchor="w"
+        )
+        self.file_tab.pack(side="left")
+        
+        # Editor options
+        editor_options = ctk.CTkFrame(editor_header, fg_color="transparent")
+        editor_options.grid(row=0, column=1, sticky="e", padx=15, pady=8)
+        
+        # Find/Replace buttons
+        find_btn = ctk.CTkButton(
+            editor_options,
+            text="🔍",
+            width=30,
+            height=30,
+            command=self.show_find_dialog,
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_lighter"],
+            border_width=1
+        )
+        find_btn.pack(side="left", padx=2)
+        
+        # Font size controls
+        font_controls = ctk.CTkFrame(editor_options, fg_color="transparent")
+        font_controls.pack(side="right")
+        
+        ctk.CTkButton(
+            font_controls,
+            text="A-",
+            width=30,
+            height=30,
+            command=self.decrease_font_size,
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_lighter"],
+            border_width=1
+        ).pack(side="left", padx=1)
+        
+        ctk.CTkButton(
+            font_controls,
+            text="A+",
+            width=30,
+            height=30,
+            command=self.increase_font_size,
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_lighter"],
+            border_width=1
+        ).pack(side="left", padx=1)
+        
+        # Editor container with line numbers
+        editor_container = ctk.CTkFrame(editor_frame, fg_color=VSCODE_COLORS["background"])
+        editor_container.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
+        editor_container.grid_rowconfigure(0, weight=1)
+        editor_container.grid_columnconfigure(1, weight=1)
+        
+        # Initialize the enhanced editor with IntelliSense
+        self.code_editor = EnhancedPythonEditor(
+            editor_container,
+            font=("Consolas", self.font_size_var.get())
+        )
+        self.code_editor.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=10)
+        
+        # Set parent app reference
+        self.code_editor.parent_app = self
+        
+        # Configure IntelliSense settings
+        self.code_editor.auto_completion_enabled = self.intellisense_var.get()
+        self.code_editor.autocomplete_delay = self.settings["auto_completion_delay"]
+        
+        # Create line numbers widget
+        self.line_numbers = LineNumbers(editor_container, self.code_editor)
+        self.line_numbers.grid(row=0, column=0, sticky="nsew", padx=(10, 0), pady=10)
+        
+        # Bind scrolling synchronization
+        self.code_editor.bind('<MouseWheel>', self.on_editor_scroll)
+        self.code_editor.bind('<Button-4>', self.on_editor_scroll)
+        self.code_editor.bind('<Button-5>', self.on_editor_scroll)
+        
+        # Load default code
+        self.load_default_code()
+        
+    def on_editor_scroll(self, event):
+        """Synchronize scrolling between editor and line numbers"""
+        # Redirect scroll to both editor and line numbers
+        self.line_numbers.yview_moveto(self.code_editor.yview()[0])
+        
+    def update_line_numbers(self):
+        """Update line numbers display"""
+        if hasattr(self, 'line_numbers') and hasattr(self.code_editor, 'line_count'):
+            self.line_numbers.update_line_numbers(self.code_editor.line_count)
+            
+    def create_preview_area(self):
+        """Create preview area"""
+        preview_frame = ctk.CTkFrame(self.main_area, fg_color=VSCODE_COLORS["surface"])
+        preview_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=(10, 5))
+        preview_frame.grid_rowconfigure(1, weight=1)
+        preview_frame.grid_columnconfigure(0, weight=1)
+        
+        # Preview header
+        preview_header = ctk.CTkFrame(preview_frame, height=50, fg_color=VSCODE_COLORS["surface_light"])
+        preview_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
+        preview_header.grid_columnconfigure(1, weight=1)
+        
+        # Preview title
+        preview_title = ctk.CTkLabel(
+            preview_header,
+            text="👁️ Live Preview",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        preview_title.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        
+        # Preview controls
+        preview_controls = ctk.CTkFrame(preview_header, fg_color="transparent")
+        preview_controls.grid(row=0, column=1, sticky="e", padx=15, pady=10)
+        
+        # Refresh button
+        refresh_btn = ctk.CTkButton(
+            preview_controls,
+            text="🔄",
+            width=35,
+            height=35,
+            command=self.quick_preview,
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_lighter"],
+            border_width=1
+        )
+        refresh_btn.pack(side="right", padx=2)
+        
+        # Video player
+        self.video_player = VideoPlayerWidget(preview_frame)
+        self.video_player.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
+        
+    def create_output_area(self):
+        """Create output console area"""
+        output_frame = ctk.CTkFrame(self.main_area, fg_color=VSCODE_COLORS["surface"])
+        output_frame.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=10, pady=(5, 10))
+        output_frame.grid_rowconfigure(1, weight=1)
+        output_frame.grid_columnconfigure(0, weight=1)
+        
+        # Output header
+        output_header = ctk.CTkFrame(output_frame, height=50, fg_color=VSCODE_COLORS["surface_light"])
+        output_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
+        output_header.grid_columnconfigure(1, weight=1)
+        
+        # Output title
+        output_title = ctk.CTkLabel(
+            output_header,
+            text="📋 Console Output",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        output_title.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        
+        # Output controls
+        output_controls = ctk.CTkFrame(output_header, fg_color="transparent")
+        output_controls.grid(row=0, column=1, sticky="e", padx=15, pady=10)
+        
+        # Clear button
+        clear_btn = ctk.CTkButton(
+            output_controls,
+            text="🗑️ Clear",
+            height=35,
+            command=self.clear_output,
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_lighter"],
+            border_width=1
+        )
+        clear_btn.pack(side="right")
+        
+        # Output text
+        self.output_text = tk.Text(
+            output_frame,
+            font=("Consolas", 11),
+            bg=VSCODE_COLORS["background"],
+            fg=VSCODE_COLORS["text"],
+            insertbackground=VSCODE_COLORS["text"],
+            selectbackground=VSCODE_COLORS["selection"],
+            bd=0,
+            highlightthickness=0,
+            state="disabled",
+            wrap="word"
+        )
+        self.output_text.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        # Scrollbar for output
+        output_scrollbar = ctk.CTkScrollbar(output_frame, command=self.output_text.yview)
+        output_scrollbar.grid(row=1, column=1, sticky="ns", padx=(0, 10), pady=(0, 10))
+        self.output_text.configure(yscrollcommand=output_scrollbar.set)
+        
+    def create_status_bar(self):
+        """Create status bar"""
+        self.status_bar = ctk.CTkFrame(self.root, height=35, corner_radius=0, fg_color=VSCODE_COLORS["surface"])
+        self.status_bar.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.status_bar.grid_columnconfigure(1, weight=1)
+        
+        # Left side - Status
+        status_left = ctk.CTkFrame(self.status_bar, fg_color="transparent")
+        status_left.grid(row=0, column=0, sticky="w", padx=15, pady=5)
+        
+        self.status_label = ctk.CTkLabel(
+            status_left,
+            text="Ready",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text"]
+        )
+        self.status_label.pack(side="left")
+        
+        # Center - IntelliSense status
+        status_center = ctk.CTkFrame(self.status_bar, fg_color="transparent")
+        status_center.grid(row=0, column=1, pady=5)
+        
+        self.intellisense_status = ctk.CTkLabel(
+            status_center,
+            text="IntelliSense: " + ("Enabled" if JEDI_AVAILABLE and self.intellisense_var.get() else "Disabled"),
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.intellisense_status.pack()
+        
+        # Right side - Info
+        status_right = ctk.CTkFrame(self.status_bar, fg_color="transparent")
+        status_right.grid(row=0, column=2, sticky="e", padx=15, pady=5)
+        
+        # Current time
+        self.time_label = ctk.CTkLabel(
+            status_right,
+            text=datetime.now().strftime("%H:%M"),
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.time_label.pack(side="right")
+        
+    def create_menu_bar(self):
+        """Create menu bar"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
+        file_menu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
+        file_menu.add_separator()
+        file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
+        file_menu.add_command(label="Save As", command=self.save_as_file, accelerator="Ctrl+Shift+S")
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.on_closing)
+        
+        # Edit menu
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+        edit_menu.add_command(label="Undo", command=self.undo, accelerator="Ctrl+Z")
+        edit_menu.add_command(label="Redo", command=self.redo, accelerator="Ctrl+Y")
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Cut", command=lambda: self.code_editor.event_generate("<<Cut>>"), accelerator="Ctrl+X")
+        edit_menu.add_command(label="Copy", command=lambda: self.code_editor.event_generate("<<Copy>>"), accelerator="Ctrl+C")
+        edit_menu.add_command(label="Paste", command=lambda: self.code_editor.event_generate("<<Paste>>"), accelerator="Ctrl+V")
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Find", command=self.show_find_dialog, accelerator="Ctrl+F")
+        edit_menu.add_command(label="Replace", command=self.show_replace_dialog, accelerator="Ctrl+H")
+        
+        # View menu
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="View", menu=view_menu)
+        view_menu.add_command(label="Toggle Theme", command=self.toggle_theme)
+        view_menu.add_command(label="Toggle Fullscreen", command=self.toggle_fullscreen, accelerator="F11")
+        view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
+        view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
+        view_menu.add_separator()
+        view_menu.add_checkbutton(label="IntelliSense", variable=self.intellisense_var, command=self.toggle_intellisense)
+        
+        # Tools menu
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Tools", menu=tools_menu)
+        tools_menu.add_command(label="Advanced Package Manager", command=self.open_package_manager, accelerator="Ctrl+Shift+P")
+        tools_menu.add_command(label="Virtual Environments", command=self.open_venv_manager)
+        
+        # Animation menu
+        animation_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Animation", menu=animation_menu)
+        animation_menu.add_command(label="Quick Preview", command=self.quick_preview, accelerator="F5")
+        animation_menu.add_command(label="Render Animation", command=self.render_animation, accelerator="F7")
+        animation_menu.add_command(label="Stop Process", command=self.stop_process, accelerator="Esc")
+        
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="Manim Documentation", command=self.open_manim_docs)
+        help_menu.add_command(label="Getting Started", command=self.show_getting_started)
+        help_menu.add_command(label="About", command=self.show_about)
+        
+    def bind_shortcuts(self):
+        """Bind keyboard shortcuts"""
+        self.root.bind("<Control-n>", lambda e: self.new_file())
+        self.root.bind("<Control-o>", lambda e: self.open_file())
+        self.root.bind("<Control-s>", lambda e: self.save_file())
+        self.root.bind("<Control-Shift-S>", lambda e: self.save_as_file())
+        self.root.bind("<Control-f>", lambda e: self.show_find_dialog())
+        self.root.bind("<Control-h>", lambda e: self.show_replace_dialog())
+        self.root.bind("<Control-z>", lambda e: self.undo())
+        self.root.bind("<Control-y>", lambda e: self.redo())
+        self.root.bind("<Control-Shift-P>", lambda e: self.open_package_manager())
+        self.root.bind("<F5>", lambda e: self.quick_preview())
+        self.root.bind("<F7>", lambda e: self.render_animation())
+        self.root.bind("<F11>", lambda e: self.toggle_fullscreen())
+        self.root.bind("<Escape>", lambda e: self.stop_process())
+        self.root.bind("<Control-equal>", lambda e: self.increase_font_size())
+        self.root.bind("<Control-minus>", lambda e: self.decrease_font_size())
+        
+        # Handle window closing
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+    def undo(self):
+        """Undo text operation"""
+        try:
+            self.code_editor.edit_undo()
+        except tk.TclError:
+            pass
+            
+    def redo(self):
+        """Redo text operation"""
+        try:
+            self.code_editor.edit_redo()
+        except tk.TclError:
+            pass
+        
+    def on_closing(self):
+        """Handle application closing"""
+        # Save settings
+        self.save_settings()
+        
+        # Stop any running processes
+        self.stop_process()
+        
+        # Destroy window
+        self.root.destroy()
+        
+    def load_default_code(self):
+        """Load default example code"""
+        default_code = '''from manim import *
+
+class MyScene(Scene):
+    def construct(self):
+        # Create a beautiful mathematical animation
+        
+        # Title
+        title = Text("Manim Animation Studio", font_size=48)
+        title.set_color(BLUE)
+        title.move_to(UP * 2)
+        
+        # Mathematical equation
+        equation = MathTex(
+            r"\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}",
+            font_size=36
+        )
+        equation.set_color(WHITE)
+        
+        # Geometric shapes
+        circle = Circle(radius=1, color=BLUE, fill_opacity=0.3)
+        square = Square(side_length=2, color=RED, fill_opacity=0.3)
+        triangle = Triangle(fill_opacity=0.3, color=GREEN)
+        
+        shapes = VGroup(circle, square, triangle)
+        shapes.arrange(RIGHT, buff=0.5)
+        shapes.move_to(DOWN * 2)
+        
+        # Animation sequence
+        self.play(Write(title))
+        self.wait(0.5)
+        
+        self.play(Create(equation))
+        self.wait(0.5)
+        
+        self.play(Create(shapes))
+        self.wait(0.5)
+        
+        # Transform shapes
+        self.play(
+            Transform(circle, square.copy()),
+            Transform(square, triangle.copy()),
+            Transform(triangle, circle.copy())
+        )
+        
+        self.wait(2)
+        
+        # Final fade out
+        self.play(
+            FadeOut(title),
+            FadeOut(equation),
+            FadeOut(shapes)
+        )
+'''
+        
+        self.code_editor.delete("1.0", "end")
+        self.code_editor.insert("1.0", default_code)
+        self.current_code = default_code
+        self.update_line_numbers()
+        
+    def on_text_change(self, event=None):
+        """Handle code changes"""
+        self.current_code = self.code_editor.get("1.0", "end-1c")
+        self.update_line_numbers()
+        
+        # Auto-preview if enabled
+        if self.auto_preview_var.get() and not self.is_previewing:
+            # Debounce auto-preview
+            if hasattr(self, '_auto_preview_timer'):
+                self.root.after_cancel(self._auto_preview_timer)
+            self._auto_preview_timer = self.root.after(2000, self.auto_preview)
+            
+    def auto_preview(self):
+        """Auto-preview when code changes"""
+        if self.current_code != self.last_preview_code:
+            self.quick_preview()
+            
+    # Dialog methods
+    def show_find_dialog(self):
+        """Show find and replace dialog"""
+        if not hasattr(self, 'find_dialog') or not self.find_dialog.winfo_exists():
+            self.find_dialog = FindReplaceDialog(self.root, self.code_editor)
+        else:
+            self.find_dialog.lift()
+            self.find_dialog.focus()
+            
+    def show_replace_dialog(self):
+        """Show find and replace dialog"""
+        self.show_find_dialog()
+        
+    def open_package_manager(self):
+        """Open advanced package manager"""
+        if not hasattr(self, 'package_manager') or not self.package_manager.winfo_exists():
+            self.package_manager = AdvancedPackageManager(self.root, self.venv_manager)
+        else:
+            self.package_manager.lift()
+            self.package_manager.focus()
+            
+    def open_venv_manager(self):
+        """Open virtual environment manager"""
+        self.open_package_manager()
+        # The new package manager includes virtual environment management
+            
+    # Settings callbacks
+    def on_quality_change(self, value):
+        """Handle quality change"""
+        self.settings["quality"] = value
+        quality_info = QUALITY_PRESETS[value]
+        self.quality_info.configure(text=f"Resolution: {quality_info['resolution']}")
+        self.save_settings()
+        
+    def on_format_change(self, value):
+        """Handle format change"""
+        self.settings["format"] = value
+        self.save_settings()
+        
+    def on_fps_change(self, value):
+        """Handle FPS change"""
+        self.settings["fps"] = int(value)
+        self.save_settings()
+        
+    def on_preview_quality_change(self, value):
+        """Handle preview quality change"""
+        self.settings["preview_quality"] = value
+        quality_info = PREVIEW_QUALITIES[value]
+        self.preview_info.configure(text=f"Resolution: {quality_info['resolution']}")
+        self.save_settings()
+        
+    def toggle_auto_preview(self):
+        """Toggle auto-preview"""
+        self.settings["auto_preview"] = self.auto_preview_var.get()
+        self.save_settings()
+        
+    def toggle_intellisense(self):
+        """Toggle IntelliSense"""
+        self.settings["intellisense_enabled"] = self.intellisense_var.get()
+        self.code_editor.auto_completion_enabled = self.intellisense_var.get()
+        
+        # Update status
+        status_text = "IntelliSense: " + ("Enabled" if JEDI_AVAILABLE and self.intellisense_var.get() else "Disabled")
+        self.intellisense_status.configure(text=status_text)
+        
+        self.save_settings()
+        
+    def toggle_theme(self):
+        """Toggle between light and dark theme"""
+        current_mode = ctk.get_appearance_mode()
+        new_mode = "light" if current_mode == "dark" else "dark"
+        ctk.set_appearance_mode(new_mode)
+        
+        # Update theme button
+        self.theme_button.configure(text="☀️" if new_mode == "light" else "🌙")
+        
+        # Save setting
+        self.settings["theme"] = new_mode
+        self.save_settings()
+        
+        # Update VSCode colors for new theme
+        self.apply_vscode_theme()
+        
+    def toggle_fullscreen(self):
+        """Toggle fullscreen mode"""
+        self.root.attributes("-fullscreen", not self.root.attributes("-fullscreen"))
+        
+    def increase_font_size(self):
+        """Increase editor font size"""
+        current_size = self.font_size_var.get()
+        new_size = min(current_size + 1, 24)
+        self.font_size_var.set(new_size)
+        self.settings["font_size"] = new_size
+        self.update_editor_font()
+        self.save_settings()
+        
+    def decrease_font_size(self):
+        """Decrease editor font size"""
+        current_size = self.font_size_var.get()
+        new_size = max(current_size - 1, 8)
+        self.font_size_var.set(new_size)
+        self.settings["font_size"] = new_size
+        self.update_editor_font()
+        self.save_settings()
+        
+    def update_editor_font(self):
+        """Update editor font size"""
+        font_size = self.font_size_var.get()
+        
+        # Update editor font
+        self.code_editor.configure(font=("Consolas", font_size))
+        self.line_numbers.configure(font=("Consolas", font_size))
+        
+        # Update line numbers
+        self.update_line_numbers()
+        
+    # Asset management
+    def show_add_asset_menu(self):
+        """Show menu for adding assets"""
+        menu = tk.Menu(self.root, tearoff=0)
+        menu.add_command(label="📷 Add Images", command=self.add_images)
+        menu.add_command(label="🎵 Add Audio", command=self.add_audio)
+        
+        # Get button position
+        x = self.root.winfo_rootx() + 200
+        y = self.root.winfo_rooty() + 200
+        
+        try:
+            menu.post(x, y)
+        finally:
+            menu.grab_release()
+            
+    def add_images(self):
+        """Add image assets"""
+        file_paths = filedialog.askopenfilenames(
+            title="Select Images",
+            filetypes=[("Image files", "*.png *.jpg *.jpeg *.gif *.bmp *.svg")]
+        )
+        
+        if file_paths:
+            for file_path in file_paths:
+                if file_path not in self.image_paths:
+                    self.image_paths.append(file_path)
+                    
+            self.update_assets_display()
+            self.append_output(f"Added {len(file_paths)} image(s)\n")
+            
+    def add_audio(self):
+        """Add audio asset"""
+        file_path = filedialog.askopenfilename(
+            title="Select Audio File",
+            filetypes=[("Audio files", "*.mp3 *.wav *.ogg *.m4a")]
+        )
+        
+        if file_path:
+            self.audio_path = file_path
+            self.update_assets_display()
+            self.append_output(f"Added audio: {os.path.basename(file_path)}\n")
+            
+    def update_assets_display(self):
+        """Update assets display with visual cards"""
+        # Clear existing cards
+        for widget in self.assets_scroll.winfo_children():
+            widget.destroy()
+        self.asset_cards.clear()
+        
+        # Add image assets
+        for img_path in self.image_paths:
+            card = AssetCard(
+                self.assets_scroll,
+                img_path,
+                "image",
+                self.use_asset,
+                self.remove_asset,
+                fg_color=VSCODE_COLORS["surface_lighter"]
+            )
+            card.pack(fill="x", pady=5)
+            self.asset_cards.append(card)
+            
+        # Add audio asset
+        if self.audio_path:
+            card = AssetCard(
+                self.assets_scroll,
+                self.audio_path,
+                "audio",
+                self.use_asset,
+                self.remove_asset,
+                fg_color=VSCODE_COLORS["surface_lighter"]
+            )
+            card.pack(fill="x", pady=5)
+            self.asset_cards.append(card)
+            
+        # Update info label
+        total_assets = len(self.image_paths) + (1 if self.audio_path else 0)
+        if total_assets > 0:
+            info_parts = []
+            if self.image_paths:
+                info_parts.append(f"{len(self.image_paths)} image(s)")
+            if self.audio_path:
+                info_parts.append("1 audio file")
+            self.assets_info.configure(text=", ".join(info_parts))
+        else:
+            self.assets_info.configure(text="Click + to add images or audio files")
+            
+    def use_asset(self, asset_path, asset_type):
+        """Use an asset in the code"""
+        if asset_type == "image":
+            code_snippet = f"\n# Using image: {os.path.basename(asset_path)}\n"
+            code_snippet += f"image = ImageMobject(r\"{asset_path}\")\n"
+            code_snippet += "image.scale(2)  # Adjust size as needed\n"
+            code_snippet += "self.add(image)\n"
+        else:  # audio
+            code_snippet = f"\n# Using audio: {os.path.basename(asset_path)}\n"
+            code_snippet += f"self.add_sound(\"{asset_path}\")\n"
+            
+        # Insert at current cursor position
+        current_pos = self.code_editor.index("insert")
+        self.code_editor.insert(current_pos, code_snippet)
+        
+        self.append_output(f"Inserted code for {asset_type}: {os.path.basename(asset_path)}\n")
+        
+    def remove_asset(self, asset_path, card_widget):
+        """Remove an asset"""
+        # Remove from lists
+        if asset_path in self.image_paths:
+            self.image_paths.remove(asset_path)
+        elif asset_path == self.audio_path:
+            self.audio_path = None
+            
+        # Update display
+        self.update_assets_display()
+        
+        self.append_output(f"Removed asset: {os.path.basename(asset_path)}\n")
+        
+    # File operations
+    def new_file(self):
+        """Create new file"""
+        if messagebox.askyesno("New File", "Create a new file? Unsaved changes will be lost."):
+            self.code_editor.delete("1.0", "end")
+            self.current_code = ""
+            self.current_file_path = None
+            self.file_tab.configure(text="📄 Untitled")
+            self.video_player.clear()
+            self.clear_output()
+            self.load_default_code()
+            
+    def open_file(self):
+        """Open file"""
+        file_path = filedialog.askopenfilename(
+            title="Open Python File",
+            filetypes=[("Python files", "*.py"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                self.code_editor.delete("1.0", "end")
+                self.code_editor.insert("1.0", content)
+                self.current_code = content
+                self.current_file_path = file_path
+                
+                filename = os.path.basename(file_path)
+                self.file_tab.configure(text=f"📄 {filename}")
+                self.update_status(f"Opened: {filename}")
+                self.update_line_numbers()
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to open file:\n{e}")
+                
+    def save_file(self):
+        """Save file"""
+        if self.current_file_path:
+            self.save_to_file(self.current_file_path)
+        else:
+            self.save_as_file()
+            
+    def save_as_file(self):
+        """Save file as"""
+        file_path = filedialog.asksaveasfilename(
+            title="Save Python File",
+            defaultextension=".py",
+            filetypes=[("Python files", "*.py"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            self.save_to_file(file_path)
+            self.current_file_path = file_path
+            filename = os.path.basename(file_path)
+            self.file_tab.configure(text=f"📄 {filename}")
+            
+    def save_to_file(self, file_path):
+        """Save content to file"""
+        try:
+            self.current_code = self.code_editor.get("1.0", "end-1c")
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(self.current_code)
+            self.update_status(f"Saved: {os.path.basename(file_path)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save file:\n{e}")
+            
+    # Animation operations
+    def quick_preview(self):
+        """Generate quick preview using virtual environment"""
+        if self.is_previewing:
+            return
+            
+        if not self.current_code.strip():
+            messagebox.showwarning("Warning", "Please enter code before generating preview")
+            return
+            
+        # Check if virtual environment is active
+        if not self.venv_manager.current_venv:
+            result = messagebox.askyesnocancel(
+                "No Virtual Environment",
+                "No virtual environment is active. Would you like to create one or use system Python?\n\n"
+                "Yes - Create new environment\n"
+                "No - Use system Python\n"
+                "Cancel - Abort"
+            )
+            
+            if result is None:  # Cancel
+                return
+            elif result:  # Yes - create new environment
+                self.open_package_manager()
+                return
+                
+        self.is_previewing = True
+        self.quick_preview_button.configure(text="⏳ Generating...", state="disabled")
+        self.update_status("Generating preview...")
+        
+        def preview_thread():
+            try:
+                # Create temporary directory
+                temp_dir = tempfile.mkdtemp(prefix="manim_preview_")
+                
+                # Extract scene class name
+                scene_class = self.extract_scene_class_name(self.current_code)
+                
+                # Write code to file
+                scene_file = os.path.join(temp_dir, "scene.py")
+                with open(scene_file, "w", encoding="utf-8") as f:
+                    f.write(self.current_code)
+                    
+                # Get preview settings
+                preview_quality = PREVIEW_QUALITIES[self.settings["preview_quality"]]
+                quality_flag = preview_quality["flag"]
+                
+                # Determine Python executable
+                if self.venv_manager.current_venv:
+                    python_exe = self.venv_manager.python_path
+                else:
+                    python_exe = sys.executable
+                    
+                # Build manim command
+                command = [
+                    python_exe, "-m", "manim",
+                    scene_file,
+                    scene_class,
+                    quality_flag,
+                    "--format=mp4",
+                    f"--fps={preview_quality['fps']}",
+                    "--disable_caching"
+                ]
+                
+                self.root.after(0, lambda: self.append_output(f"Generating preview with: {' '.join(command)}\n"))
+                
+                # Execute command
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    cwd=temp_dir
+                )
+                self.preview_process = process
+                
+                # Read output
+                for line in process.stdout:
+                    self.root.after(0, lambda l=line: self.append_output(l))
+                    
+                process.wait()
+                self.preview_process = None
+                
+                if process.returncode == 0:
+                    # Find output file
+                    output_file = self.find_output_file(temp_dir, scene_class, "mp4")
+                    
+                    if output_file:
+                        # Load video in player
+                        self.root.after(0, lambda: self.video_player.load_video(output_file))
+                        self.root.after(0, lambda: self.update_status("Preview generated successfully"))
+                        self.last_preview_code = self.current_code
+                        
+                        # Copy to cache for later use
+                        cache_dir = os.path.join(os.getcwd(), ".preview_cache")
+                        os.makedirs(cache_dir, exist_ok=True)
+                        cached_file = os.path.join(cache_dir, f"preview_{scene_class}.mp4")
+                        shutil.copy2(output_file, cached_file)
+                    else:
+                        self.root.after(0, lambda: self.update_status("Preview file not found"))
+                        self.root.after(0, lambda: self.append_output("Error: Preview file not generated\n"))
+                else:
+                    self.root.after(0, lambda: self.update_status("Preview generation failed"))
+                    
+                # Cleanup (delayed to allow video loading)
+                def cleanup():
+                    if os.path.exists(temp_dir):
+                        try:
+                            shutil.rmtree(temp_dir)
+                        except:
+                            pass
+                            
+                self.root.after(5000, cleanup)
+                
+            except Exception as e:
+                self.root.after(0, lambda: self.update_status(f"Preview error: {e}"))
+                self.root.after(0, lambda: self.append_output(f"Preview error: {e}\n"))
+                
+            finally:
+                self.root.after(0, lambda: self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal"))
+                self.is_previewing = False
+                
+        threading.Thread(target=preview_thread, daemon=True).start()
+        
+    def render_animation(self):
+        """Render high-quality animation using virtual environment"""
+        if self.is_rendering:
+            return
+            
+        if not self.current_code.strip():
+            messagebox.showwarning("Warning", "Please enter code before rendering")
+            return
+            
+        # Check if virtual environment is active
+        if not self.venv_manager.current_venv:
+            result = messagebox.askyesnocancel(
+                "No Virtual Environment",
+                "No virtual environment is active. Would you like to create one or use system Python?\n\n"
+                "Yes - Create new environment\n"
+                "No - Use system Python\n"
+                "Cancel - Abort"
+            )
+            
+            if result is None:  # Cancel
+                return
+            elif result:  # Yes - create new environment
+                self.open_package_manager()
+                return
+                
+        self.is_rendering = True
+        self.render_button.configure(text="⏳ Rendering...", state="disabled")
+        self.update_status("Starting render...")
+        self.progress_bar.set(0)
+        
+        def render_thread():
+            try:
+                # Create temporary directory
+                temp_dir = tempfile.mkdtemp(prefix="manim_render_")
+                
+                # Extract scene class name
+                scene_class = self.extract_scene_class_name(self.current_code)
+                
+                # Write code to file
+                scene_file = os.path.join(temp_dir, "scene.py")
+                with open(scene_file, "w", encoding="utf-8") as f:
+                    f.write(self.current_code)
+                    
+                # Get render settings
+                quality_preset = QUALITY_PRESETS[self.settings["quality"]]
+                quality_flag = quality_preset["flag"]
+                format_ext = EXPORT_FORMATS[self.settings["format"]]
+                
+                # Determine Python executable
+                if self.venv_manager.current_venv:
+                    python_exe = self.venv_manager.python_path
+                else:
+                    python_exe = sys.executable
+                    
+                # Build manim command
+                command = [
+                    python_exe, "-m", "manim",
+                    scene_file,
+                    scene_class,
+                    quality_flag,
+                    f"--format={format_ext}",
+                    f"--fps={self.settings['fps']}"
+                ]
+                
+                # Add audio if available
+                if self.audio_path and os.path.exists(self.audio_path):
+                    command.extend(["--sound", self.audio_path])
+                
+                self.root.after(0, lambda: self.append_output(f"Rendering with: {' '.join(command)}\n"))
+                self.root.after(0, lambda: self.progress_label.configure(text="Initializing render..."))
+                
+                # Execute command
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    cwd=temp_dir
+                )
+                self.render_process = process
+                
+                # Track progress
+                frame_count = 0
+                total_frames = 0
+                
+                for line in process.stdout:
+                    self.root.after(0, lambda l=line: self.append_output(l))
+                    
+                    # Extract progress information
+                    if "Rendering frame" in line:
+                        try:
+                            # Extract frame number
+                            parts = line.split()
+                            for i, part in enumerate(parts):
+                                if part == "frame" and i + 1 < len(parts):
+                                    frame_count = int(parts[i + 1])
+                                    self.root.after(0, lambda f=frame_count: self.progress_label.configure(text=f"Rendering frame {f}..."))
+                                    break
+                        except:
+                            pass
+                            
+                    # Extract total frames
+                    elif "Total" in line and "frames" in line:
+                        try:
+                            total_frames = int(re.search(r'(\d+)', line).group(1))
+                        except:
+                            pass
+                            
+                    # Update progress bar
+                    if frame_count > 0 and total_frames > 0:
+                        progress = min(0.9, frame_count / total_frames)
+                        self.root.after(0, lambda p=progress: self.progress_bar.set(p))
+                        
+                process.wait()
+                self.render_process = None
+                
+                if process.returncode == 0:
+                    self.root.after(0, lambda: self.progress_bar.set(1.0))
+                    self.root.after(0, lambda: self.progress_label.configure(text="Render completed!"))
+                    self.root.after(0, lambda: self.update_status("Render completed successfully"))
+                    
+                    # Find output file
+                    output_file = self.find_output_file(temp_dir, scene_class, format_ext)
+                    
+                    if output_file:
+                        # Save rendered file
+                        self.root.after(0, lambda: self.save_rendered_file(output_file, format_ext))
+                    else:
+                        self.root.after(0, lambda: self.append_output("Error: Output file not found\n"))
+                else:
+                    self.root.after(0, lambda: self.update_status("Render failed"))
+                    self.root.after(0, lambda: self.progress_label.configure(text="Render failed"))
+                    
+                # Cleanup
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                    
+            except Exception as e:
+                self.root.after(0, lambda: self.update_status(f"Render error: {e}"))
+                self.root.after(0, lambda: self.append_output(f"Render error: {e}\n"))
+                
+            finally:
+                self.root.after(0, lambda: self.render_button.configure(text="🚀 Render Animation", state="normal"))
+                self.root.after(0, lambda: self.progress_bar.set(0))
+                self.is_rendering = False
+                
+        threading.Thread(target=render_thread, daemon=True).start()
+        
+    def extract_scene_class_name(self, code):
+        """Extract scene class name from code"""
+        import re
+        scene_classes = re.findall(r'class\s+(\w+)\s*\([^)]*Scene[^)]*\)', code)
+        return scene_classes[0] if scene_classes else "MyScene"
+        
+    def find_output_file(self, temp_dir, scene_class, format_ext):
+        """Find rendered output file"""
+        # Common output directories
+        search_dirs = [
+            os.path.join(temp_dir, "media", "videos", "scene"),
+            os.path.join(temp_dir, "media", "videos", scene_class),
+            os.path.join(os.getcwd(), "media", "videos", "scene"),
+            os.path.join(os.getcwd(), "media", "videos", scene_class)
+        ]
+        
+        # Add quality-specific directories
+        quality_dirs = ["480p30", "720p30", "1080p60", "2160p60", "4320p60"]
+        for base_dir in search_dirs.copy():
+            for quality_dir in quality_dirs:
+                search_dirs.append(os.path.join(base_dir, quality_dir))
+                
+        # Search for output file
+        for search_dir in search_dirs:
+            if os.path.exists(search_dir):
+                for root, dirs, files in os.walk(search_dir):
+                    for file in files:
+                        if file.endswith(f".{format_ext}") and scene_class in file:
+                            return os.path.join(root, file)
+                            
+        return None
+        
+    def save_rendered_file(self, source_file, format_ext):
+        """Save rendered file to user location"""
+        # Ask user where to save
+        file_path = filedialog.asksaveasfilename(
+            title="Save Rendered Animation",
+            defaultextension=f".{format_ext}",
+            filetypes=[(f"{format_ext.upper()} files", f"*.{format_ext}")]
+        )
+        
+        if file_path:
+            try:
+                shutil.copy2(source_file, file_path)
+                self.append_output(f"Animation saved to: {file_path}\n")
+                messagebox.showinfo("Success", f"Animation saved successfully!\n\nLocation: {file_path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save file:\n{e}")
+                
+    def stop_process(self):
+        """Stop current process"""
+        stopped = False
+        
+        if self.render_process:
+            try:
+                self.render_process.terminate()
+                self.render_process = None
+                self.is_rendering = False
+                self.render_button.configure(text="🚀 Render Animation", state="normal")
+                self.progress_bar.set(0)
+                self.progress_label.configure(text="Render stopped")
+                stopped = True
+            except:
+                pass
+                
+        if self.preview_process:
+            try:
+                self.preview_process.terminate()
+                self.preview_process = None
+                self.is_previewing = False
+                self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                stopped = True
+            except:
+                pass
+                
+        if stopped:
+            self.update_status("Process stopped")
+            self.append_output("Process stopped by user\n")
+        else:
+            self.update_status("No process running")
+    
+    # Utility methods
+    def create_tooltip(self, widget, text):
+        """Create tooltip for widget"""
+        def on_enter(event):
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+            
+            label = tk.Label(
+                tooltip,
+                text=text,
+                background="#2D2D30",
+                foreground="#CCCCCC",
+                relief="solid",
+                borderwidth=1,
+                font=("Arial", 9)
+            )
+            label.pack()
+            
+            widget.tooltip = tooltip
+            
+        def on_leave(event):
+            if hasattr(widget, 'tooltip'):
+                widget.tooltip.destroy()
+                del widget.tooltip
+                
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
+        
+    def update_status(self, message):
+        """Update status bar"""
+        self.status_label.configure(text=message)
+        self.root.update_idletasks()
+        
+    def append_output(self, text):
+        """Append text to output console"""
+        self.output_text.configure(state="normal")
+        self.output_text.insert("end", text)
+        self.output_text.configure(state="disabled")
+        self.output_text.see("end")
+        
+    def clear_output(self):
+        """Clear output console"""
+        self.output_text.configure(state="normal")
+        self.output_text.delete("1.0", "end")
+        self.output_text.configure(state="disabled")
+        
+    def start_background_tasks(self):
+        """Start background tasks"""
+        # Update time every minute
+        def update_time():
+            self.time_label.configure(text=datetime.now().strftime("%H:%M"))
+            self.root.after(60000, update_time)
+            
+        update_time()
+        
+        # Update virtual environment status
+        def update_venv_status():
+            if self.venv_manager.current_venv:
+                self.venv_status_label.configure(text=self.venv_manager.current_venv)
+            else:
+                self.venv_status_label.configure(text="No venv")
+            self.root.after(5000, update_venv_status)
+            
+        update_venv_status()
+        
+        # Check for dependencies
+        self.root.after(1000, self.check_dependencies)
+        
+    def check_dependencies(self):
+        """Check if required dependencies are installed"""
+        def check_thread():
+            required = ["manim", "numpy", "PIL", "cv2"]
+            missing = []
+            
+            # Use current virtual environment if available
+            if self.venv_manager.current_venv:
+                python_exe = self.venv_manager.python_path
+            else:
+                python_exe = sys.executable
+                
+            for package in required:
+                try:
+                    # Check if package is installed
+                    result = subprocess.run([
+                        python_exe, "-c", f"import {package if package != 'PIL' else 'PIL'}"
+                    ], capture_output=True)
+                    
+                    if result.returncode != 0:
+                        missing.append(package)
+                except:
+                    missing.append(package)
+                    
+            if missing:
+                # Map package names for installation
+                install_names = []
+                for pkg in missing:
+                    if pkg == "PIL":
+                        install_names.append("Pillow")
+                    elif pkg == "cv2":
+                        install_names.append("opencv-python")
+                    else:
+                        install_names.append(pkg)
+                        
+                self.root.after(0, lambda: self.show_dependency_dialog(missing, install_names))
+            else:
+                self.root.after(0, lambda: self.update_status("All dependencies ready"))
+                
+        threading.Thread(target=check_thread, daemon=True).start()
+        
+    def show_dependency_dialog(self, missing_packages, install_names):
+        """Show dialog for missing dependencies"""
+        if messagebox.askyesno(
+            "Missing Dependencies",
+            f"The following packages are missing: {', '.join(missing_packages)}\n\n"
+            "Would you like to open the Package Manager to install them?"
+        ):
+            self.open_package_manager()
+            
+    # Help functions
+    def open_manim_docs(self):
+        """Open Manim documentation"""
+        import webbrowser
+        webbrowser.open("https://docs.manim.community/")
+        
+    def show_getting_started(self):
+        """Show getting started guide"""
+        getting_started_dialog = GettingStartedDialog(self.root)
+        
+    def show_about(self):
+        """Show about dialog"""
+        about_dialog = ctk.CTkToplevel(self.root)
+        about_dialog.title(f"About {APP_NAME}")
+        about_dialog.geometry("500x600")
+        about_dialog.transient(self.root)
+        about_dialog.grab_set()
+        
+        # Center the dialog
+        about_dialog.geometry("+%d+%d" % (
+            self.root.winfo_rootx() + 100,
+            self.root.winfo_rooty() + 100
+        ))
+        
+        # Content frame
+        content_frame = ctk.CTkFrame(about_dialog, fg_color=VSCODE_COLORS["surface"])
+        content_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # App icon
+        icon_label = ctk.CTkLabel(
+            content_frame,
+            text="🎬",
+            font=ctk.CTkFont(size=48)
+        )
+        icon_label.pack(pady=(20, 10))
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            content_frame,
+            text=APP_NAME,
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        title_label.pack(pady=5)
+        
+        # Subtitle
+        subtitle_label = ctk.CTkLabel(
+            content_frame,
+            text=f"Professional Edition v{APP_VERSION}",
+            font=ctk.CTkFont(size=16),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        subtitle_label.pack(pady=(0, 20))
+        
+        # Description
+        # Description
+        description = f"""A modern, professional desktop application for creating
+mathematical animations using the Manim library.
+
+✨ Features:
+- Advanced VSCode-like editor with IntelliSense
+- Real-time Python autocompletion using Jedi
+- Professional package manager with extensive PyPI integration
+- Virtual environment management with default setup
+- Real-time video preview with playback controls
+- Multiple export formats (MP4, GIF, WebM, PNG)
+- High-quality rendering up to 8K resolution
+- Visual asset management with previews
+- Professional UI with VSCode theme
+- Advanced find/replace functionality
+- Smart auto-indentation and bracket matching
+- Comprehensive package categories and search
+- One-click environment creation and activation
+- Professional syntax highlighting
+- Multi-threaded rendering and preview
+- Integrated asset manager for images and audio
+
+🛠️ Built with:
+- Python & CustomTkinter for modern UI
+- Jedi Language Server for IntelliSense
+- Advanced Text Widget with syntax highlighting
+- Manim Community Edition for animations
+- OpenCV for video processing
+- PIL for image handling
+- Async PyPI search engine
+- Professional virtual environment management
+
+👨‍💻 Author: {APP_AUTHOR}
+📧 Email: {APP_EMAIL}
+
+© 2024 {APP_AUTHOR}
+Licensed under MIT License"""
+        
+        desc_label = ctk.CTkLabel(
+            content_frame,
+            text=description,
+            font=ctk.CTkFont(size=12),
+            justify="left",
+            text_color=VSCODE_COLORS["text"]
+        )
+        desc_label.pack(pady=(0, 20), padx=20)
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        button_frame.pack(pady=10)
+        
+        docs_btn = ctk.CTkButton(
+            button_frame,
+            text="📚 Documentation",
+            command=self.open_manim_docs,
+            width=120,
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        docs_btn.pack(side="left", padx=5)
+        
+        close_btn = ctk.CTkButton(
+            button_frame,
+            text="Close",
+            command=about_dialog.destroy,
+            width=80
+        )
+        close_btn.pack(side="left", padx=5)
+        
+    def run(self):
+        """Start the application"""
+        try:
+            self.root.mainloop()
+        except Exception as e:
+            logger.error(f"Application error: {e}")
+            messagebox.showerror("Error", f"Application error: {e}")
+
+class GettingStartedDialog(ctk.CTkToplevel):
+    """Getting started guide dialog"""
+    
+    def __init__(self, parent):
+        super().__init__(parent)
+        
+        self.title("Getting Started - Manim Animation Studio")
+        self.geometry("700x600")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 50,
+            parent.winfo_rooty() + 50
+        ))
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the getting started UI"""
+        # Create notebook for steps
+        self.notebook = ctk.CTkTabview(self)
+        self.notebook.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Step 1: Setup
+        self.step1 = self.notebook.add("1. Setup")
+        self.create_setup_tab()
+        
+        # Step 2: First Animation
+        self.step2 = self.notebook.add("2. First Animation")
+        self.create_first_animation_tab()
+        
+        # Step 3: Advanced Features
+        self.step3 = self.notebook.add("3. Advanced Features")
+        self.create_advanced_tab()
+        
+        # Navigation buttons
+        nav_frame = ctk.CTkFrame(self)
+        nav_frame.pack(fill="x", padx=20, pady=(0, 20))
+        
+        ctk.CTkButton(
+            nav_frame,
+            text="Previous",
+            command=self.previous_step,
+            width=100
+        ).pack(side="left", padx=10)
+        
+        ctk.CTkButton(
+            nav_frame,
+            text="Next",
+            command=self.next_step,
+            width=100
+        ).pack(side="right", padx=10)
+        
+        ctk.CTkButton(
+            nav_frame,
+            text="Close",
+            command=self.destroy,
+            width=100
+        ).pack(side="right")
+        
+    def create_setup_tab(self):
+        """Create setup tab content"""
+        content = ctk.CTkScrollableFrame(self.step1)
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # Title
+        ctk.CTkLabel(
+            content,
+            text="🚀 Getting Started with Manim Studio",
+            font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(pady=(0, 20))
+        
+        # Steps
+        steps = [
+            ("1. Virtual Environment Setup", """
+✅ Manim Studio automatically creates a default virtual environment
+✅ All essential packages are pre-installed (manim, numpy, matplotlib, jedi)
+✅ Virtual environments keep your projects isolated and organized
+✅ You can create additional environments for different projects
+            """),
+            ("2. Package Management", """
+✅ Use the advanced Package Manager (Ctrl+Shift+P)
+✅ Browse packages by category or search for specific ones
+✅ One-click installation of Python packages
+✅ Automatic dependency management
+✅ Export/import requirements.txt files
+            """),
+            ("3. Your First Scene", """
+✅ The editor comes with a complete example scene
+✅ Modify the default code or create your own
+✅ Use IntelliSense for smart autocompletion
+✅ Click 'Quick Preview' to test your animation
+✅ Use 'Render Animation' for final high-quality output
+            """)
+        ]
+        
+        for title, desc in steps:
+            step_frame = ctk.CTkFrame(content)
+            step_frame.pack(fill="x", pady=10)
+            
+            ctk.CTkLabel(
+                step_frame,
+                text=title,
+                font=ctk.CTkFont(size=16, weight="bold")
+            ).pack(anchor="w", padx=15, pady=(10, 5))
+            
+            ctk.CTkLabel(
+                step_frame,
+                text=desc.strip(),
+                font=ctk.CTkFont(size=12),
+                justify="left"
+            ).pack(anchor="w", padx=15, pady=(0, 10))
+            
+    def create_first_animation_tab(self):
+        """Create first animation tab content"""
+        content = ctk.CTkScrollableFrame(self.step2)
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # Title
+        ctk.CTkLabel(
+            content,
+            text="🎬 Creating Your First Animation",
+            font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(pady=(0, 20))
+        
+        # Code example
+        code_frame = ctk.CTkFrame(content)
+        code_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            code_frame,
+            text="Basic Scene Example:",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(10, 5))
+        
+        example_code = '''from manim import *
+
+class HelloWorld(Scene):
+    def construct(self):
+        # Create text
+        text = Text("Hello, World!")
+        text.set_color(BLUE)
+        
+        # Animate text appearance
+        self.play(Write(text))
+        self.wait(1)
+        
+        # Transform text
+        new_text = Text("Welcome to Manim!")
+        new_text.set_color(GREEN)
+        
+        self.play(Transform(text, new_text))
+        self.wait(2)'''
+        
+        code_text = ctk.CTkTextbox(code_frame, height=250)
+        code_text.pack(fill="x", padx=15, pady=(0, 10))
+        code_text.insert("1.0", example_code)
+        
+        # Instructions
+        instructions = [
+            "1. Replace the default code with this example",
+            "2. Click 'Quick Preview' to see the animation",
+            "3. Experiment with different colors and text",
+            "4. Try adding more objects and animations",
+            "5. Use IntelliSense (Ctrl+Space) for code suggestions"
+        ]
+        
+        for instruction in instructions:
+            ctk.CTkLabel(
+                content,
+                text=instruction,
+                font=ctk.CTkFont(size=12),
+                anchor="w"
+            ).pack(fill="x", padx=15, pady=2)
+            
+    def create_advanced_tab(self):
+        """Create advanced features tab content"""
+        content = ctk.CTkScrollableFrame(self.step3)
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # Title
+        ctk.CTkLabel(
+            content,
+            text="⚡ Advanced Features",
+            font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(pady=(0, 20))
+        
+        # Features
+        features = [
+            ("Virtual Environment Management", """
+🐍 Create isolated environments for different projects
+🐍 Automatic package management and dependency resolution
+🐍 One-click activation and deactivation
+🐍 Default environment with essential packages pre-installed
+            """),
+            ("Advanced Package Manager", """
+📦 Browse 18+ package categories (AI/ML, Web Dev, Graphics, etc.)
+📦 Search through thousands of PyPI packages
+📦 Smart filtering and sorting options
+📦 Visual package cards with detailed information
+📦 One-click installation and management
+📦 Export/import requirements.txt files
+            """),
+            ("IntelliSense & Code Editor", """
+💡 Real-time autocompletion using Jedi
+💡 Function signatures and documentation
+💡 Advanced syntax highlighting
+💡 Smart indentation and bracket matching
+💡 Find and replace with regex support
+💡 Line manipulation (duplicate, move, comment)
+            """),
+            ("Professional Features", """
+🎨 Visual asset manager for images and audio
+🎨 Real-time video preview with playback controls
+🎨 Multiple output formats (MP4, GIF, WebM, PNG)
+🎨 Quality presets from 480p to 8K
+🎨 Professional VSCode-like interface
+🎨 Comprehensive keyboard shortcuts
+            """),
+            ("Keyboard Shortcuts", """
+⌨️ Ctrl+S: Save file
+⌨️ F5: Quick preview
+⌨️ F7: Render animation
+⌨️ Ctrl+Space: Trigger autocompletion
+⌨️ Ctrl+F: Find and replace
+⌨️ Ctrl+Shift+P: Package Manager
+⌨️ Ctrl+/: Toggle comments
+⌨️ Alt+Up/Down: Move lines
+            """)
+        ]
+        
+        for title, desc in features:
+            feature_frame = ctk.CTkFrame(content)
+            feature_frame.pack(fill="x", pady=10)
+            
+            ctk.CTkLabel(
+                feature_frame,
+                text=title,
+                font=ctk.CTkFont(size=16, weight="bold")
+            ).pack(anchor="w", padx=15, pady=(10, 5))
+            
+            ctk.CTkLabel(
+                feature_frame,
+                text=desc.strip(),
+                font=ctk.CTkFont(size=12),
+                justify="left"
+            ).pack(anchor="w", padx=15, pady=(0, 10))
+            
+    def previous_step(self):
+        """Go to previous step"""
+        current = self.notebook.get()
+        if current == "2. First Animation":
+            self.notebook.set("1. Setup")
+        elif current == "3. Advanced Features":
+            self.notebook.set("2. First Animation")
+            
+    def next_step(self):
+        """Go to next step"""
+        current = self.notebook.get()
+        if current == "1. Setup":
+            self.notebook.set("2. First Animation")
+        elif current == "2. First Animation":
+            self.notebook.set("3. Advanced Features")
+
+def main():
+    """Application entry point"""
+    try:
+        # Create application directory
+        app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        os.makedirs(app_dir, exist_ok=True)
+        
+        # Set up logging
+        log_file = os.path.join(app_dir, "manim_studio.log")
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()
+            ]
+        )
+        
+        # Check for Jedi availability
+        if not JEDI_AVAILABLE:
+            print("Warning: Jedi not available. IntelliSense features will be limited.")
+            print("Install Jedi with: pip install jedi")
+        
+        # Create and run application
+        app = ManimStudioApp()
+        
+        # Show getting started on first run
+        settings_file = os.path.join(app_dir, "settings.json")
+        if not os.path.exists(settings_file):
+            app.root.after(1000, lambda: GettingStartedDialog(app.root))
+        
+        app.run()
+        
+    except Exception as e:
+        logger.error(f"Startup error: {e}")
+        messagebox.showerror("Startup Error", f"Failed to start application: {e}")
+
+if __name__ == "__main__":
+    main()
