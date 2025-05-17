@@ -31,6 +31,8 @@ import aiohttp
 import webbrowser
 from urllib.parse import quote, unquote
 import venv
+# Add to imports
+import psutil
 
 # Try to import Jedi for IntelliSense
 try:
@@ -76,7 +78,7 @@ logger = logging.getLogger(__name__)
 APP_NAME = "Manim Animation Studio"
 APP_VERSION = "3.5.0"
 APP_AUTHOR = "Manim Studio Team"
-APP_EMAIL = "contact@manimstudio.com"
+APP_EMAIL = "euler.yu@gmail.com"
 
 # Essential packages for ManimStudio
 ESSENTIAL_PACKAGES = [
@@ -125,7 +127,13 @@ OPTIONAL_PACKAGES = [
     "sympy>=1.11.0",
     "networkx>=2.8.0",
 ]
-
+# Add this to the settings variables
+CPU_USAGE_PRESETS = {
+    "Low": {"cores": 1, "description": "Use 1 core (minimal CPU usage)"},
+    "Medium": {"cores": None, "description": "Use half available cores (balanced)"},
+    "High": {"cores": -1, "description": "Use all available cores (fastest)"},
+    "Custom": {"cores": 2, "description": "Use custom number of cores"}
+}
 QUALITY_PRESETS = {
     "480p": {"resolution": "854x480", "fps": "30", "flag": "-ql"},
     "720p": {"resolution": "1280x720", "fps": "30", "flag": "-qm"},
@@ -834,7 +842,6 @@ All packages will be installed in an isolated environment that won't affect your
         else:
             self.destroy()
 
-
 class VirtualEnvironmentManager:
     """Enhanced virtual environment manager with integrated environment building"""
     
@@ -843,6 +850,9 @@ class VirtualEnvironmentManager:
         self.current_venv = None
         self.venv_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs")
         os.makedirs(self.venv_dir, exist_ok=True)
+        
+        # Add fallback flag for tracking
+        self.using_fallback = False
         
         # Try to detect existing environment first
         if not self.detect_existing_environment():
@@ -886,11 +896,33 @@ class VirtualEnvironmentManager:
         
     def check_bundled_environment(self):
         """Check if a bundled environment is available"""
-        bundled_dir = Path(os.path.dirname(sys.executable)) / "bundled_venv"
+        # First check relative to executable
+        executable_dir = Path(os.path.dirname(sys.executable))
+        bundled_dir = executable_dir / "bundled_venv"
+        
+        # For onefile builds, check in temp directory
+        if not bundled_dir.exists() and getattr(sys, 'frozen', False):
+            logger.info("Checking for bundled environment in temp directory...")
+            for path in sys.path:
+                if 'onefile_' in path and os.path.exists(path):
+                    temp_bundled = Path(path) / "bundled_venv"
+                    if temp_bundled.exists():
+                        logger.info(f"Found bundled environment in temp path: {temp_bundled}")
+                        bundled_dir = temp_bundled
+                        break
+                    # Also check parent directory
+                    parent_bundled = Path(path).parent / "bundled_venv"
+                    if parent_bundled.exists():
+                        logger.info(f"Found bundled environment in parent path: {parent_bundled}")
+                        bundled_dir = parent_bundled
+                        break
+        
+        # Development fallback
         if not bundled_dir.exists():
             # Try relative path for development
             bundled_dir = Path("bundled_venv")
             if not bundled_dir.exists():
+                logger.warning("No bundled environment found")
                 return False
         
         logger.info(f"Found bundled environment: {bundled_dir}")
@@ -913,7 +945,8 @@ class VirtualEnvironmentManager:
     def extract_bundled_environment(self):
         """Extract bundled environment to user directory"""
         if not hasattr(self, 'bundled_venv_dir'):
-            return False
+            logger.error("No bundled environment directory found")
+            return self.use_system_python_fallback()
         
         logger.info(f"Extracting bundled environment from: {self.bundled_venv_dir}")
         
@@ -921,7 +954,11 @@ class VirtualEnvironmentManager:
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
         if os.path.exists(default_venv_path):
             logger.info(f"Removing existing environment: {default_venv_path}")
-            shutil.rmtree(default_venv_path)
+            try:
+                shutil.rmtree(default_venv_path)
+            except Exception as e:
+                logger.error(f"Error removing existing environment: {e}")
+                # Continue anyway - try to create if removal fails
         
         # Create new venv
         try:
@@ -929,53 +966,102 @@ class VirtualEnvironmentManager:
             logger.info(f"Creating new environment at: {default_venv_path}")
             venv.create(default_venv_path, with_pip=True)
             
+            # Verify paths
+            if os.name == 'nt':
+                python_exe = os.path.join(default_venv_path, "Scripts", "python.exe")
+                pip_exe = os.path.join(default_venv_path, "Scripts", "pip.exe")
+            else:
+                python_exe = os.path.join(default_venv_path, "bin", "python")
+                pip_exe = os.path.join(default_venv_path, "bin", "pip")
+                
+            logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
+            logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
+            
+            if not os.path.exists(python_exe) or not os.path.exists(pip_exe):
+                logger.error("Python or pip executable not found in created environment")
+                return self.use_system_python_fallback()
+                
             # Activate it for further operations
-            self.activate_venv("manim_studio_default")
+            self.python_path = python_exe
+            self.pip_path = pip_exe
+            self.current_venv = "manim_studio_default"
             
             # Read manifest to install required packages
             manifest_path = self.bundled_venv_dir / "manifest.json"
             if manifest_path.exists():
-                with open(manifest_path, 'r') as f:
-                    import json
-                    manifest = json.load(f)
-                    essential_packages = manifest.get('essential_packages', [])
-                    
-                    # Install packages silently
-                    logger.info(f"Installing {len(essential_packages)} essential packages...")
-                    for pkg in essential_packages:
-                        try:
-                            # Create process with hidden console
-                            import subprocess
-                            if os.name == 'nt':
-                                startupinfo = subprocess.STARTUPINFO()
-                                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                                startupinfo.wShowWindow = subprocess.SW_HIDE
-                                creationflags = subprocess.CREATE_NO_WINDOW
-                            else:
-                                startupinfo = None
-                                creationflags = 0
+                try:
+                    with open(manifest_path, 'r') as f:
+                        import json
+                        manifest = json.load(f)
+                        essential_packages = manifest.get('essential_packages', [])
+                        
+                        # Install packages silently
+                        logger.info(f"Installing {len(essential_packages)} essential packages...")
+                        for pkg in essential_packages:
+                            try:
+                                # Create process with hidden console
+                                import subprocess
+                                if os.name == 'nt':
+                                    startupinfo = subprocess.STARTUPINFO()
+                                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                                    creationflags = subprocess.CREATE_NO_WINDOW
+                                else:
+                                    startupinfo = None
+                                    creationflags = 0
+                                    
+                                cmd = [self.pip_path, "install", pkg, "--quiet"]
+                                logger.info(f"Running: {' '.join(cmd)}")
+                                result = subprocess.run(
+                                    cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    startupinfo=startupinfo,
+                                    creationflags=creationflags
+                                )
                                 
-                            result = subprocess.run(
-                                [self.pip_path, "install", pkg, "--quiet"],
-                                capture_output=True,
-                                text=True,
-                                startupinfo=startupinfo,
-                                creationflags=creationflags
-                            )
-                            
-                            if result.returncode == 0:
-                                logger.info(f"Installed: {pkg}")
-                            else:
-                                logger.error(f"Failed to install {pkg}: {result.stderr}")
-                        except Exception as e:
-                            logger.error(f"Error installing {pkg}: {e}")
+                                if result.returncode == 0:
+                                    logger.info(f"Installed: {pkg}")
+                                else:
+                                    logger.error(f"Failed to install {pkg}: {result.stderr}")
+                            except Exception as e:
+                                logger.error(f"Error installing {pkg}: {e}")
+                except Exception as e:
+                    logger.error(f"Error reading or processing manifest: {e}")
+            else:
+                logger.warning("No manifest file found in bundled environment")
             
-            logger.info("Environment setup complete")
-            self.needs_setup = False
-            return True
+            # Verify installation
+            if self.verify_environment_packages(default_venv_path):
+                logger.info("Environment setup complete and verified")
+                self.needs_setup = False
+                return True
+            else:
+                logger.error("Environment verification failed after setup")
+                return self.use_system_python_fallback()
             
         except Exception as e:
             logger.error(f"Failed to extract bundled environment: {e}")
+            return self.use_system_python_fallback()
+        
+    def use_system_python_fallback(self):
+        """Use system Python as fallback when environment setup fails"""
+        logger.info("Using system Python as fallback")
+        try:
+            # Try to import manim - might work if it's installed system-wide
+            __import__("manim")
+            self.current_venv = "system_python_fallback"
+            self.python_path = sys.executable
+            self.pip_path = "pip"
+            self.needs_setup = False
+            self.using_fallback = True
+            logger.info("System Python fallback activated with manim available")
+            return True
+        except ImportError:
+            # Manim not available in system Python
+            logger.warning("Cannot use system Python as fallback - manim not available")
+            # Still mark as using fallback to avoid repeated failures
+            self.using_fallback = True
             return False
         
     def verify_current_environment(self):
@@ -1002,17 +1088,45 @@ class VirtualEnvironmentManager:
                 python_exe = os.path.join(venv_path, "Scripts", "python.exe")
             else:
                 python_exe = os.path.join(venv_path, "bin", "python")
+            
+            if not os.path.exists(python_exe):
+                logger.error(f"Python executable not found: {python_exe}")
+                return False
                 
             # Test essential packages
             essential_test = ["manim", "numpy", "customtkinter"]
+            missing_packages = []
+            
             for package in essential_test:
-                result = subprocess.run([
-                    python_exe, "-c", f"import {package}"
-                ], capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    logger.info(f"Missing package {package} in environment {venv_path}")
-                    return False
+                try:
+                    # Hide console window
+                    startupinfo = None
+                    creationflags = 0
+                    if os.name == 'nt':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        creationflags = subprocess.CREATE_NO_WINDOW
+                    
+                    result = subprocess.run(
+                        [python_exe, "-c", f"import {package}"],
+                        capture_output=True,
+                        text=True,
+                        startupinfo=startupinfo,
+                        creationflags=creationflags
+                    )
+                    
+                    if result.returncode != 0:
+                        logger.info(f"Missing package {package} in environment {venv_path}")
+                        missing_packages.append(package)
+                except Exception as e:
+                    logger.error(f"Error testing package {package}: {e}")
+                    missing_packages.append(package)
+            
+            if missing_packages:
+                logger.warning(f"Missing essential packages: {', '.join(missing_packages)}")
+                return False
+            
             return True
         except Exception as e:
             logger.error(f"Error verifying environment packages: {e}")
@@ -1033,6 +1147,12 @@ class VirtualEnvironmentManager:
             
     def show_setup_dialog(self):
         """Show the environment setup dialog"""
+        # First try system Python fallback if we're in a difficult situation
+        if self.needs_setup and not hasattr(self, 'bundled_venv_dir') and not self.using_fallback:
+            success = self.use_system_python_fallback()
+            if success:
+                return
+        
         # If we have a bundled environment, extract it silently instead
         if hasattr(self, 'bundled_venv_dir'):
             # Show a simple messagebox and extract in background
@@ -1043,16 +1163,20 @@ class VirtualEnvironmentManager:
                     "ManimStudio is setting up the required environment.\n"
                     "This will take a moment. Please wait..."
                 )
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Error showing setup messagebox: {e}")
                 
             # Extract in another thread to not block UI
             import threading
             def extract_thread():
-                success = self.extract_bundled_environment()
-                if not success:
-                    # Show dialog as fallback
-                    self.bundled_venv_dir = None  # Clear to avoid loop
+                try:
+                    success = self.extract_bundled_environment()
+                    if not success:
+                        # Show dialog as fallback
+                        self.bundled_venv_dir = None  # Clear to avoid loop
+                        self.parent_app.root.after(100, self._show_dialog)
+                except Exception as e:
+                    logger.error(f"Error in extract thread: {e}")
                     self.parent_app.root.after(100, self._show_dialog)
                     
             threading.Thread(target=extract_thread, daemon=True).start()
@@ -1061,9 +1185,14 @@ class VirtualEnvironmentManager:
             
     def _show_dialog(self):
         """Internal method to show the actual dialog"""
-        dialog = EnvironmentSetupDialog(self.parent_app.root, self)
-        self.parent_app.root.wait_window(dialog)
-        
+        try:
+            dialog = EnvironmentSetupDialog(self.parent_app.root, self)
+            self.parent_app.root.wait_window(dialog)
+        except Exception as e:
+            logger.error(f"Error showing environment setup dialog: {e}")
+            # Last resort fallback
+            self.use_system_python_fallback()
+            
     def create_default_environment(self, log_callback=None):
         """Create the default ManimStudio environment"""
         env_name = "manim_studio_default"
@@ -1094,6 +1223,8 @@ class VirtualEnvironmentManager:
                 
             # Verify creation
             if not os.path.exists(python_exe):
+                if log_callback:
+                    log_callback(f"ERROR: Python executable not found at {python_exe}")
                 raise Exception("Python executable not found after environment creation")
                 
             self.python_path = python_exe
@@ -1613,7 +1744,7 @@ print("Manim test successful")
         except Exception:
             pass
         return total_size
-
+    
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
@@ -3651,7 +3782,6 @@ class PyPISearchEngine:
         """Get list of popular packages"""
         return POPULAR_PACKAGES
 
-
 class ManimStudioApp:
     def __init__(self):
         # Initialize main window
@@ -3712,7 +3842,9 @@ class ManimStudioApp:
             "current_venv": None,
             "intellisense_enabled": True,
             "auto_completion_delay": 500,
-            "custom_theme": None
+            "custom_theme": None,
+            "cpu_usage": "Medium",
+            "cpu_custom_cores": 2
         }
         
         # Load from file if exists
@@ -3773,6 +3905,11 @@ class ManimStudioApp:
         self.font_size_var = ctk.IntVar(value=self.settings["font_size"])
         self.intellisense_var = ctk.BooleanVar(value=self.settings["intellisense_enabled"])
         self.current_theme = self.settings["theme"]
+        
+        # CPU information
+        self.cpu_count = psutil.cpu_count(logical=True)
+        self.cpu_usage_var = ctk.StringVar(value=self.settings.get("cpu_usage", "Medium"))
+        self.cpu_custom_cores_var = ctk.IntVar(value=self.settings.get("cpu_custom_cores", 2))
         
         # Load the selected theme
         if self.current_theme in THEME_SCHEMES:
@@ -4090,6 +4227,81 @@ class ManimStudioApp:
         )
         self.fps_combo.pack(fill="x", pady=(5, 0))
         
+        # CPU Usage setting
+        cpu_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
+        cpu_frame.pack(fill="x", padx=15, pady=10)
+
+        cpu_header = ctk.CTkFrame(cpu_frame, fg_color="transparent")
+        cpu_header.pack(fill="x")
+        cpu_header.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            cpu_header,
+            text="CPU Usage",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        ).grid(row=0, column=0, sticky="w")
+
+        # Show CPU cores available
+        cpu_info_text = f"{self.cpu_count} cores available"
+        self.cpu_info_label = ctk.CTkLabel(
+            cpu_header,
+            text=cpu_info_text,
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.cpu_info_label.grid(row=0, column=1, sticky="e")
+
+        # CPU usage preset selection
+        self.cpu_usage_combo = ctk.CTkComboBox(
+            cpu_frame,
+            values=list(CPU_USAGE_PRESETS.keys()),
+            variable=self.cpu_usage_var,
+            command=self.on_cpu_usage_change,
+            height=36,
+            font=ctk.CTkFont(size=12)
+        )
+        self.cpu_usage_combo.pack(fill="x", pady=(5, 0))
+
+        # Container for custom cores slider
+        self.custom_cpu_frame = ctk.CTkFrame(cpu_frame, fg_color="transparent")
+        self.custom_cpu_frame.pack(fill="x", pady=(5, 0))
+
+        # Only show custom slider when "Custom" is selected
+        if self.cpu_usage_var.get() != "Custom":
+            self.custom_cpu_frame.pack_forget()
+
+        # Custom cores slider
+        cores_slider_frame = ctk.CTkFrame(self.custom_cpu_frame, fg_color="transparent")
+        cores_slider_frame.pack(fill="x")
+
+        self.cores_slider = ctk.CTkSlider(
+            cores_slider_frame, 
+            from_=1, 
+            to=self.cpu_count,
+            number_of_steps=self.cpu_count-1,
+            variable=self.cpu_custom_cores_var,
+            command=self.update_cores_label
+        )
+        self.cores_slider.pack(side="left", fill="x", expand=True, padx=(0, 10))
+
+        self.cores_value_label = ctk.CTkLabel(
+            cores_slider_frame,
+            text=str(self.cpu_custom_cores_var.get()),
+            font=ctk.CTkFont(size=12),
+            width=30
+        )
+        self.cores_value_label.pack(side="right")
+
+        # CPU usage description
+        self.cpu_description = ctk.CTkLabel(
+            cpu_frame,
+            text=CPU_USAGE_PRESETS[self.cpu_usage_var.get()]["description"],
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.cpu_description.pack(anchor="w", pady=(3, 0))
+        
         # Render button
         self.render_button = ctk.CTkButton(
             render_frame,
@@ -4349,16 +4561,6 @@ class ManimStudioApp:
         # Load default code
         self.load_default_code()
         
-    def on_editor_scroll(self, event):
-        """Synchronize scrolling between editor and line numbers"""
-        # Redirect scroll to both editor and line numbers
-        self.line_numbers.yview_moveto(self.code_editor.yview()[0])
-        
-    def update_line_numbers(self):
-        """Update line numbers display"""
-        if hasattr(self, 'line_numbers') and hasattr(self.code_editor, 'line_count'):
-            self.line_numbers.update_line_numbers(self.code_editor.line_count)
-            
     def create_preview_area(self):
         """Create preview area"""
         preview_frame = ctk.CTkFrame(self.main_area, fg_color=VSCODE_COLORS["surface"])
@@ -4681,6 +4883,50 @@ class MyScene(Scene):
         if self.current_code != self.last_preview_code:
             self.quick_preview()
             
+    # CPU Management Methods
+    def on_cpu_usage_change(self, value):
+        """Handle CPU usage preset change"""
+        self.settings["cpu_usage"] = value
+        self.cpu_description.configure(text=CPU_USAGE_PRESETS[value]["description"])
+        
+        # Show/hide custom slider based on selection
+        if value == "Custom":
+            self.custom_cpu_frame.pack(fill="x", pady=(5, 0))
+        else:
+            self.custom_cpu_frame.pack_forget()
+        
+        self.save_settings()
+
+    def update_cores_label(self, value):
+        """Update the cores value label"""
+        cores = int(value)
+        self.cores_value_label.configure(text=str(cores))
+        self.settings["cpu_custom_cores"] = cores
+        self.save_settings()
+
+    def get_render_cores(self):
+        """Get the number of cores to use for rendering based on settings"""
+        usage_preset = self.cpu_usage_var.get()
+        preset_data = CPU_USAGE_PRESETS[usage_preset]
+        
+        # For custom setting, use the slider value
+        if usage_preset == "Custom":
+            return self.cpu_custom_cores_var.get()
+        
+        # For preset values
+        cores = preset_data["cores"]
+        
+        # Special cases
+        if cores is None:
+            # Medium - use half available cores
+            return max(1, self.cpu_count // 2)
+        elif cores == -1:
+            # High - use all cores
+            return self.cpu_count
+        
+        # Return direct value (for Low)
+        return cores
+            
     # Dialog methods
     def show_find_dialog(self):
         """Show find and replace dialog"""
@@ -4785,6 +5031,16 @@ class MyScene(Scene):
         # Update line numbers
         self.update_line_numbers()
         
+    def on_editor_scroll(self, event):
+        """Synchronize scrolling between editor and line numbers"""
+        # Redirect scroll to both editor and line numbers
+        self.line_numbers.yview_moveto(self.code_editor.yview()[0])
+        
+    def update_line_numbers(self):
+        """Update line numbers display"""
+        if hasattr(self, 'line_numbers') and hasattr(self.code_editor, 'line_count'):
+            self.line_numbers.update_line_numbers(self.code_editor.line_count)
+            
     # Asset management
     def show_add_asset_menu(self):
         """Show menu for adding assets"""
@@ -5013,6 +5269,9 @@ class MyScene(Scene):
                 
                 # Use environment Python
                 python_exe = self.venv_manager.python_path
+                
+                # Get the number of cores to use
+                num_cores = self.get_render_cores()
                     
                 # Build manim command
                 command = [
@@ -5022,10 +5281,17 @@ class MyScene(Scene):
                     quality_flag,
                     "--format=mp4",
                     f"--fps={preview_quality['fps']}",
-                    "--disable_caching"
+                    "--disable_caching",
+                    f"--renderer=cairo",  # Ensure cairo renderer for threading support
                 ]
-                
+                # Inform about CPU usage but apply it differently
+                self.root.after(0, lambda: self.append_output(f"Using {num_cores} CPU cores for rendering\n"))
+
+                # Set environment variable for CPU control instead of command-line option
+                env = os.environ.copy()
+                env["OMP_NUM_THREADS"] = str(num_cores)
                 self.root.after(0, lambda: self.append_output(f"Generating preview with: {' '.join(command)}\n"))
+                self.root.after(0, lambda: self.append_output(f"Using {num_cores} CPU cores for rendering\n"))
                 
                 # Execute command
                 process = subprocess.Popen(
@@ -5033,7 +5299,8 @@ class MyScene(Scene):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    cwd=temp_dir
+                    cwd=temp_dir,
+                    env=env
                 )
                 self.preview_process = process
                 
@@ -5128,6 +5395,9 @@ class MyScene(Scene):
                 
                 # Use environment Python
                 python_exe = self.venv_manager.python_path
+                
+                # Get the number of cores to use
+                num_cores = self.get_render_cores()
                     
                 # Build manim command
                 command = [
@@ -5136,14 +5406,20 @@ class MyScene(Scene):
                     scene_class,
                     quality_flag,
                     f"--format={format_ext}",
-                    f"--fps={self.settings['fps']}"
+                    f"--fps={self.settings['fps']}",
+                    f"--renderer=cairo"  # Keep renderer but remove threads parameter
                 ]
                 
                 # Add audio if available
                 if self.audio_path and os.path.exists(self.audio_path):
                     command.extend(["--sound", self.audio_path])
                 
+                # Add threads parameter for multi-core rendering
+                command.append(f"--renderer=cairo")  # Ensure cairo renderer for threading support
+                command.append(f"--threads={num_cores}")
+                
                 self.root.after(0, lambda: self.append_output(f"Rendering with: {' '.join(command)}\n"))
+                self.root.after(0, lambda: self.append_output(f"Using {num_cores} CPU cores for rendering\n"))
                 self.root.after(0, lambda: self.progress_label.configure(text="Initializing render..."))
                 
                 # Execute command
@@ -5152,7 +5428,8 @@ class MyScene(Scene):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    cwd=temp_dir
+                    cwd=temp_dir,
+                    env=env
                 )
                 self.render_process = process
                 
@@ -5595,7 +5872,6 @@ Licensed under MIT License"""
         except Exception as e:
             logger.error(f"Application error: {e}")
             messagebox.showerror("Error", f"Application error: {e}")
-
 
 class EnvironmentInfoDialog(ctk.CTkToplevel):
     """Dialog showing current environment information"""
