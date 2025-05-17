@@ -1,4 +1,4 @@
-# app.py - Manim Animation Studio - Professional Edition with Advanced IntelliSense and Modern Package Manager
+# app.py - Manim Animation Studio - Professional Edition with Integrated Environment Manager
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, colorchooser
@@ -30,6 +30,7 @@ import asyncio
 import aiohttp
 import webbrowser
 from urllib.parse import quote, unquote
+import venv
 
 # Try to import Jedi for IntelliSense
 try:
@@ -77,6 +78,54 @@ APP_VERSION = "3.5.0"
 APP_AUTHOR = "Manim Studio Team"
 APP_EMAIL = "contact@manimstudio.com"
 
+# Essential packages for ManimStudio
+ESSENTIAL_PACKAGES = [
+    # Core animation
+    "manim",
+    "numpy>=1.22.0",
+    "matplotlib>=3.5.0",
+    "scipy>=1.8.0",
+    
+    # Image/Video processing
+    "Pillow>=9.0.0",
+    "opencv-python>=4.6.0",
+    "imageio>=2.19.0",
+    "moviepy>=1.0.3",
+    
+    # Development tools
+    "jedi>=0.18.0",  # IntelliSense
+    "black>=22.0.0",  # Code formatter
+    "isort>=5.10.0",  # Import sorter
+    
+    # GUI and system
+    "customtkinter>=5.2.0",
+    "psutil>=5.9.0",
+    
+    # Data science (commonly used with Manim)
+    "pandas>=1.4.0",
+    "seaborn>=0.11.0",
+    
+    # Network and utilities
+    "requests>=2.28.0",
+    "aiohttp>=3.8.0",
+    
+    # Package management
+    "pip>=23.0.0",
+    "setuptools>=65.0.0",
+    "wheel>=0.38.0",
+]
+
+# Optional packages
+OPTIONAL_PACKAGES = [
+    "jupyter>=1.0.0",
+    "ipython>=8.0.0",
+    "notebook>=6.4.0",
+    "beautifulsoup4>=4.11.0",
+    "lxml>=4.9.0",
+    "sympy>=1.11.0",
+    "networkx>=2.8.0",
+]
+
 QUALITY_PRESETS = {
     "480p": {"resolution": "854x480", "fps": "30", "flag": "-ql"},
     "720p": {"resolution": "1280x720", "fps": "30", "flag": "-qm"},
@@ -98,34 +147,137 @@ EXPORT_FORMATS = {
     "PNG Sequence": "png"
 }
 
-# Professional VSCode color scheme
-VSCODE_COLORS = {
-    "primary": "#007ACC",
-    "primary_hover": "#005A9E",
-    "secondary": "#6366f1",
-    "accent": "#0E7490",
-    "success": "#16A085",
-    "warning": "#F39C12",
-    "error": "#E74C3C",
-    "info": "#3498DB",
-    "surface": "#252526",
-    "surface_light": "#2D2D30",
-    "surface_lighter": "#383838",
-    "background": "#1E1E1E",
-    "text": "#CCCCCC",
-    "text_secondary": "#858585",
-    "text_bright": "#FFFFFF",
-    "border": "#464647",
-    "selection": "#264F78",
-    "current_line": "#2A2D2E",
-    "line_numbers": "#858585",
-    "line_numbers_bg": "#252526",
-    "minimap": "#3E3E42",
-    "bracket_match": "#0E639C",
-    "indent_guide": "#404040",
-    "find_match": "#613214",
-    "find_current": "#A8AC94"
+# Enhanced Professional VSCode color schemes
+THEME_SCHEMES = {
+    "Dark+": {
+        "primary": "#007ACC",
+        "primary_hover": "#005A9E",
+        "secondary": "#6366f1",
+        "accent": "#0E7490",
+        "success": "#16A085",
+        "warning": "#F39C12",
+        "error": "#E74C3C",
+        "info": "#3498DB",
+        "surface": "#252526",
+        "surface_light": "#2D2D30",
+        "surface_lighter": "#383838",
+        "background": "#1E1E1E",
+        "text": "#CCCCCC",
+        "text_secondary": "#858585",
+        "text_bright": "#FFFFFF",
+        "border": "#464647",
+        "selection": "#264F78",
+        "current_line": "#2A2D2E",
+        "line_numbers": "#858585",
+        "line_numbers_bg": "#252526",
+        "bracket_match": "#49483E",
+        "find_match": "#515C6A",
+        "find_current": "#007ACC",
+    },
+    "Light+": {
+        "primary": "#0066CC",
+        "primary_hover": "#004499",
+        "secondary": "#5A51D8",
+        "accent": "#0E7490",
+        "success": "#16A085",
+        "warning": "#F39C12",
+        "error": "#E74C3C",
+        "info": "#3498DB",
+        "surface": "#F3F3F3",
+        "surface_light": "#FFFFFF",
+        "surface_lighter": "#F8F8F8",
+        "background": "#FFFFFF",
+        "text": "#333333",
+        "text_secondary": "#666666",
+        "text_bright": "#000000",
+        "border": "#E5E5E5",
+        "selection": "#ADD6FF",
+        "current_line": "#F0F0F0",
+        "line_numbers": "#237893",
+        "line_numbers_bg": "#F3F3F3",
+        "bracket_match": "#E7E7E7",
+        "find_match": "#FFE792",
+        "find_current": "#A8CCF0",
+    },
+    "Monokai": {
+        "primary": "#F92672",
+        "primary_hover": "#DC2566",
+        "secondary": "#AE81FF",
+        "accent": "#66D9EF",
+        "success": "#A6E22E",
+        "warning": "#FD971F",
+        "error": "#F92672",
+        "info": "#66D9EF",
+        "surface": "#272822",
+        "surface_light": "#3E3D32",
+        "surface_lighter": "#49483E",
+        "background": "#272822",
+        "text": "#F8F8F2",
+        "text_secondary": "#75715E",
+        "text_bright": "#FFFFFF",
+        "border": "#49483E",
+        "selection": "#49483E",
+        "current_line": "#3E3D32",
+        "line_numbers": "#90908A",
+        "line_numbers_bg": "#272822",
+        "bracket_match": "#49483E",
+        "find_match": "#FFE792",
+        "find_current": "#F92672",
+    },
+    "Solarized Dark": {
+        "primary": "#268BD2",
+        "primary_hover": "#2076C2",
+        "secondary": "#6C71C4",
+        "accent": "#2AA198",
+        "success": "#859900",
+        "warning": "#B58900",
+        "error": "#DC322F",
+        "info": "#268BD2",
+        "surface": "#002B36",
+        "surface_light": "#073642",
+        "surface_lighter": "#586E75",
+        "background": "#002B36",
+        "text": "#839496",
+        "text_secondary": "#586E75",
+        "text_bright": "#FDF6E3",
+        "border": "#073642",
+        "selection": "#073642",
+        "current_line": "#073642",
+        "line_numbers": "#586E75",
+        "line_numbers_bg": "#002B36",
+        "bracket_match": "#586E75",
+        "find_match": "#FFE792",
+        "find_current": "#268BD2",
+    },
+    "Custom": {
+        "primary": "#007ACC",
+        "primary_hover": "#005A9E",
+        "secondary": "#6366f1",
+        "accent": "#0E7490",
+        "success": "#16A085",
+        "warning": "#F39C12",
+        "error": "#E74C3C",
+        "info": "#3498DB",
+        "surface": "#252526",
+        "surface_light": "#2D2D30",
+        "surface_lighter": "#383838",
+        "background": "#1E1E1E",
+        "text": "#CCCCCC",
+        "text_secondary": "#858585",
+        "text_bright": "#FFFFFF",
+        "border": "#464647",
+        "selection": "#264F78",
+        "current_line": "#2A2D2E",
+        "line_numbers": "#858585",
+        "line_numbers_bg": "#252526",
+        "bracket_match": "#49483E",
+        "find_match": "#515C6A",
+        "find_current": "#007ACC",
+    }
 }
+
+# Global color scheme
+VSCODE_COLORS = THEME_SCHEMES["Dark+"]
 
 # Enhanced Python syntax highlighting colors (like VSCode Dark+)
 SYNTAX_COLORS = {
@@ -333,1671 +485,1134 @@ POPULAR_PACKAGES = [
     "python-dateutil", "arrow", "tqdm", "colorama", "python-dotenv"
 ]
 
-class PyPISearchEngine:
-    """Advanced PyPI search engine with modern features"""
-    
-    def __init__(self):
-        self.base_url = "https://pypi.org"
-        self.api_url = "https://pypi.org/pypi"
-        self.search_url = "https://pypi.org/search"
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': f'{APP_NAME}/{APP_VERSION} (Package Manager)'
-        })
-        
-        # Cache for search results
-        self.search_cache = {}
-        self.package_cache = {}
-        
-    async def search_packages(self, query: str, max_results: int = 50) -> List[PackageInfo]:
-        """Search for packages asynchronously"""
-        try:
-            # Check cache first
-            cache_key = f"{query}_{max_results}"
-            if cache_key in self.search_cache:
-                return self.search_cache[cache_key]
-                
-            # For demo, return enhanced mock data based on categories
-            packages = self._get_enhanced_package_list(query, max_results)
-            
-            # Cache results
-            self.search_cache[cache_key] = packages
-            return packages
-                    
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            return []
-    
-    def _get_enhanced_package_list(self, query: str, max_results: int) -> List[PackageInfo]:
-        """Get enhanced package list based on query and categories"""
-        packages = []
-        
-        # Enhanced package database
-        package_db = {
-            # Data Science
-            "numpy": PackageInfo("numpy", "1.24.3", "Fundamental package for array computing", "NumPy Developers", "BSD", "https://numpy.org", "", 50000000, 25000, category="Data Science & Analytics"),
-            "pandas": PackageInfo("pandas", "2.0.3", "Powerful data analysis and manipulation library", "Pandas Team", "BSD", "https://pandas.pydata.org", "", 40000000, 35000, category="Data Science & Analytics"),
-            "matplotlib": PackageInfo("matplotlib", "3.7.2", "Comprehensive library for creating static, animated visualizations", "Matplotlib Team", "PSF", "https://matplotlib.org", "", 30000000, 18000, category="Data Science & Analytics"),
-            "seaborn": PackageInfo("seaborn", "0.12.2", "Statistical data visualization based on matplotlib", "Michael Waskom", "BSD", "https://seaborn.pydata.org", "", 15000000, 10000, category="Data Science & Analytics"),
-            "scipy": PackageInfo("scipy", "1.11.1", "Fundamental algorithms for scientific computing", "SciPy Developers", "BSD", "https://scipy.org", "", 25000000, 12000, category="Scientific Computing"),
-            "scikit-learn": PackageInfo("scikit-learn", "1.3.0", "Machine learning library for Python", "Scikit-learn Developers", "BSD", "https://scikit-learn.org", "", 20000000, 15000, category="Machine Learning & AI"),
-            
-            # Machine Learning & AI
-            "tensorflow": PackageInfo("tensorflow", "2.13.0", "An end-to-end open source machine learning platform", "Google", "Apache", "https://tensorflow.org", "", 35000000, 180000, category="Machine Learning & AI"),
-            "pytorch": PackageInfo("pytorch", "2.0.1", "Tensors and Dynamic neural networks in Python", "PyTorch Team", "BSD", "https://pytorch.org", "", 30000000, 65000, category="Machine Learning & AI"),
-            "transformers": PackageInfo("transformers", "4.32.0", "State-of-the-art Machine Learning for JAX, PyTorch and TensorFlow", "Hugging Face", "Apache", "https://huggingface.co/transformers", "", 10000000, 95000, category="Machine Learning & AI"),
-            "opencv-python": PackageInfo("opencv-python", "4.8.0", "Open Source Computer Vision Library", "OpenCV Team", "MIT", "https://opencv.org", "", 18000000, 13000, category="Animation & Graphics"),
-            
-            # Web Development
-            "django": PackageInfo("django", "4.2.3", "High-level Python web framework", "Django Software Foundation", "BSD", "https://djangoproject.com", "", 25000000, 65000, category="Web Development"),
-            "flask": PackageInfo("flask", "2.3.2", "A simple framework for building complex web applications", "Armin Ronacher", "BSD", "https://flask.palletsprojects.com", "", 22000000, 62000, category="Web Development"),
-            "fastapi": PackageInfo("fastapi", "0.101.0", "FastAPI framework, high performance, easy to learn", "Sebastián Ramirez", "MIT", "https://fastapi.tiangolo.com", "", 15000000, 65000, category="Web Development"),
-            "requests": PackageInfo("requests", "2.31.0", "HTTP library for Python", "Kenneth Reitz", "Apache", "https://requests.readthedocs.io", "", 45000000, 50000, category="Web Development"),
-            
-            # GUI Development
-            "customtkinter": PackageInfo("customtkinter", "5.2.0", "Modern and customizable python UI-library based on Tkinter", "Tom Schimansky", "MIT", "https://github.com/TomSchimansky/CustomTkinter", "", 2000000, 8500, category="GUI & Desktop Development"),
-            "pyqt5": PackageInfo("pyqt5", "5.15.9", "Python bindings for the Qt cross platform library", "Riverbank Computing", "GPL", "https://riverbankcomputing.com/software/pyqt", "", 12000000, 3500, category="GUI & Desktop Development"),
-            "kivy": PackageInfo("kivy", "2.2.0", "Open source UI framework written in Python", "Kivy Organization", "MIT", "https://kivy.org", "", 5000000, 15000, category="GUI & Desktop Development"),
-            
-            # Animation & Graphics
-            "manim": PackageInfo("manim", "0.17.3", "Mathematical Animation Engine", "3b1b & Manim Community", "MIT", "https://manim.community", "", 1500000, 12000, category="Animation & Graphics"),
-            "pygame": PackageInfo("pygame", "2.5.0", "Python Game Development", "Pygame Community", "LGPL", "https://pygame.org", "", 8000000, 5000, category="Game Development"),
-            "pillow": PackageInfo("pillow", "10.0.0", "Python Imaging Library (Fork)", "Alex Clark and Contributors", "PIL", "https://python-pillow.org", "", 25000000, 11000, category="Image Processing"),
-            
-            # Development Tools
-            "pytest": PackageInfo("pytest", "7.4.0", "Framework makes it easy to write small tests", "Holger Krekel", "MIT", "https://pytest.org", "", 30000000, 11000, category="Development Tools"),
-            "black": PackageInfo("black", "23.7.0", "The uncompromising Python code formatter", "Python Software Foundation", "MIT", "https://black.readthedocs.io", "", 12000000, 35000, category="Development Tools"),
-            "jedi": PackageInfo("jedi", "0.18.2", "An autocompletion tool for Python", "David Halter", "MIT", "https://github.com/davidhalter/jedi", "", 15000000, 5500, category="Development Tools"),
-            
-            # Scientific Computing
-            "sympy": PackageInfo("sympy", "1.12", "Python library for symbolic mathematics", "SymPy Development Team", "BSD", "https://sympy.org", "", 5000000, 10000, category="Scientific Computing"),
-            "networkx": PackageInfo("networkx", "3.1", "Python package for network analysis", "NetworkX Developers", "BSD", "https://networkx.org", "", 8000000, 13000, category="Scientific Computing"),
-            
-            # Text Processing & NLP
-            "nltk": PackageInfo("nltk", "3.8.1", "Natural Language Toolkit", "NLTK Team", "Apache", "https://nltk.org", "", 10000000, 12000, category="Text Processing & NLP"),
-            "spacy": PackageInfo("spacy", "3.6.1", "Industrial-strength Natural Language Processing", "Explosion AI", "MIT", "https://spacy.io", "", 5000000, 25000, category="Text Processing & NLP"),
-            
-            # Database & ORM
-            "sqlalchemy": PackageInfo("sqlalchemy", "2.0.19", "Database Abstraction Library", "Mike Bayer", "MIT", "https://sqlalchemy.org", "", 15000000, 5000, category="Database & ORM"),
-            "pymongo": PackageInfo("pymongo", "4.4.1", "Python driver for MongoDB", "MongoDB, Inc.", "Apache", "https://pymongo.readthedocs.io", "", 8000000, 1500, category="Database & ORM"),
-            
-            # Cloud & Infrastructure
-            "boto3": PackageInfo("boto3", "1.28.22", "The AWS SDK for Python", "Amazon Web Services", "Apache", "https://boto3.amazonaws.com", "", 20000000, 8500, category="Cloud & Infrastructure"),
-            "docker": PackageInfo("docker", "6.1.3", "A Python library for the Docker Engine API", "Docker, Inc.", "Apache", "https://docker-py.readthedocs.io", "", 12000000, 6500, category="Cloud & Infrastructure"),
-            
-            # System utilities
-            "psutil": PackageInfo("psutil", "5.9.5", "Cross-platform lib for process and system monitoring", "Giampaolo Rodola", "BSD", "https://github.com/giampaolo/psutil", "", 18000000, 8500, category="System & Networking"),
-            "rich": PackageInfo("rich", "13.4.2", "Rich text and beautiful formatting in the terminal", "Will McGugan", "MIT", "https://rich.readthedocs.io", "", 5000000, 45000, category="System & Networking"),
-            
-            # Finance
-            "yfinance": PackageInfo("yfinance", "0.2.20", "Download market data from Yahoo! Finance", "Ran Aroussi", "Apache", "https://github.com/ranaroussi/yfinance", "", 2000000, 11000, category="Finance & Trading"),
-            
-            # Audio/Video
-            "moviepy": PackageInfo("moviepy", "1.0.3", "Video editing with Python", "Zulko", "MIT", "https://zulko.github.io/moviepy", "", 3000000, 11000, category="Audio & Video Processing"),
-            "pydub": PackageInfo("pydub", "0.25.1", "Manipulate audio with a simple and easy high level interface", "James Robert", "MIT", "https://github.com/jiaaro/pydub", "", 8000000, 7000, category="Audio & Video Processing"),
-        }
-        
-        # Filter packages based on query
-        if query:
-            query_lower = query.lower()
-            filtered_packages = []
-            
-            # Search in package names, descriptions, and categories
-            for pkg_name, pkg_info in package_db.items():
-                if (query_lower in pkg_name.lower() or 
-                    query_lower in pkg_info.description.lower() or
-                    query_lower in pkg_info.category.lower()):
-                    filtered_packages.append(pkg_info)
-            
-            # Sort by relevance (exact matches first)
-            filtered_packages.sort(key=lambda p: (
-                not p.name.lower().startswith(query_lower),
-                -p.downloads
-            ))
-            
-            packages = filtered_packages[:max_results]
-        else:
-            # Return popular packages if no query
-            popular_package_names = POPULAR_PACKAGES[:max_results]
-            packages = [package_db.get(name) for name in popular_package_names if name in package_db]
-            packages = [p for p in packages if p is not None]
-        
-        return packages
-    
-    async def get_package_info(self, package_name: str) -> Optional[PackageInfo]:
-        """Get detailed package information"""
-        try:
-            # Check cache first
-            if package_name in self.package_cache:
-                return self.package_cache[package_name]
-                
-            # For demo, return mock data
-            mock_packages = self._get_enhanced_package_list("", 1000)
-            for pkg in mock_packages:
-                if pkg.name == package_name:
-                    self.package_cache[package_name] = pkg
-                    return pkg
-                        
-        except Exception as e:
-            logger.error(f"Package info error: {e}")
-            return None
-    
-    def get_popular_packages(self) -> List[str]:
-        """Get list of popular packages"""
-        return POPULAR_PACKAGES
 
-class ModernPackageCard(ctk.CTkFrame):
-    """Modern package card with rich information display"""
-    
-    def __init__(self, parent, package_info: PackageInfo, on_install=None, on_uninstall=None, on_favorite=None, **kwargs):
-        super().__init__(parent, **kwargs)
-        
-        self.package_info = package_info
-        self.on_install = on_install
-        self.on_uninstall = on_uninstall
-        self.on_favorite = on_favorite
-        self.is_favorited = False
-        
-        self.configure(
-            fg_color=VSCODE_COLORS["surface_light"],
-            corner_radius=12,
-            border_width=1,
-            border_color=VSCODE_COLORS["border"]
-        )
-        
-        self.setup_ui()
-        
-    def setup_ui(self):
-        """Setup the modern card UI"""
-        # Configure grid
-        self.grid_columnconfigure(1, weight=1)
-        
-        # Header frame
-        header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=15, pady=(15, 0))
-        header_frame.grid_columnconfigure(1, weight=1)
-        
-        # Package icon/category
-        category_icon = self._get_category_icon()
-        icon_label = ctk.CTkLabel(
-            header_frame,
-            text=category_icon,
-            font=ctk.CTkFont(size=24)
-        )
-        icon_label.grid(row=0, column=0, sticky="w")
-        
-        # Package name and version
-        name_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-        name_frame.grid(row=0, column=1, sticky="ew", padx=(10, 0))
-        name_frame.grid_columnconfigure(0, weight=1)
-        
-        name_label = ctk.CTkLabel(
-            name_frame,
-            text=self.package_info.name,
-            font=ctk.CTkFont(size=16, weight="bold"),
-            anchor="w"
-        )
-        name_label.grid(row=0, column=0, sticky="ew")
-        
-        version_text = f"v{self.package_info.version}"
-        if self.package_info.is_installed:
-            version_text += f" (Installed: {self.package_info.installed_version})"
-            
-        version_label = ctk.CTkLabel(
-            name_frame,
-            text=version_text,
-            font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text_secondary"],
-            anchor="w"
-        )
-        version_label.grid(row=1, column=0, sticky="ew")
-        
-        # Actions frame
-        actions_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-        actions_frame.grid(row=0, column=2, sticky="e")
-        
-        # Favorite button
-        self.favorite_btn = ctk.CTkButton(
-            actions_frame,
-            text="⭐" if self.is_favorited else "☆",
-            width=35,
-            height=35,
-            command=self.toggle_favorite,
-            fg_color="transparent",
-            hover_color=VSCODE_COLORS["surface_lighter"]
-        )
-        self.favorite_btn.pack(side="left", padx=2)
-        
-        # Install/Uninstall button
-        if self.package_info.is_installed:
-            action_text = "Uninstall"
-            action_color = VSCODE_COLORS["error"]
-            action_command = self.uninstall_package
-        else:
-            action_text = "Install"
-            action_color = VSCODE_COLORS["success"]
-            action_command = self.install_package
-            
-        self.action_btn = ctk.CTkButton(
-            actions_frame,
-            text=action_text,
-            width=80,
-            height=35,
-            command=action_command,
-            fg_color=action_color,
-            hover_color=self._darken_color(action_color)
-        )
-        self.action_btn.pack(side="left", padx=(5, 0))
-        
-        # Description
-        if self.package_info.description:
-            desc_label = ctk.CTkLabel(
-                self,
-                text=self._truncate_text(self.package_info.description, 100),
-                font=ctk.CTkFont(size=12),
-                text_color=VSCODE_COLORS["text"],
-                anchor="w",
-                wraplength=400
-            )
-            desc_label.grid(row=1, column=0, columnspan=2, sticky="ew", padx=15, pady=(5, 0))
-        
-        # Metadata frame
-        metadata_frame = ctk.CTkFrame(self, fg_color="transparent")
-        metadata_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=15, pady=(10, 15))
-        
-        # Author and license
-        if self.package_info.author:
-            author_label = ctk.CTkLabel(
-                metadata_frame,
-                text=f"👤 {self.package_info.author}",
-                font=ctk.CTkFont(size=11),
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            author_label.pack(side="left", padx=(0, 15))
-        
-        if self.package_info.license:
-            license_label = ctk.CTkLabel(
-                metadata_frame,
-                text=f"📄 {self.package_info.license}",
-                font=ctk.CTkFont(size=11),
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            license_label.pack(side="left", padx=(0, 15))
-        
-        # Statistics
-        if self.package_info.downloads > 0:
-            downloads_text = self._format_number(self.package_info.downloads)
-            downloads_label = ctk.CTkLabel(
-                metadata_frame,
-                text=f"📥 {downloads_text}",
-                font=ctk.CTkFont(size=11),
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            downloads_label.pack(side="right", padx=(15, 0))
-        
-        if self.package_info.stars > 0:
-            stars_label = ctk.CTkLabel(
-                metadata_frame,
-                text=f"⭐ {self.package_info.stars}",
-                font=ctk.CTkFont(size=11),
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            stars_label.pack(side="right", padx=(15, 0))
-        
-        # Hover effects
-        self.bind("<Enter>", self.on_enter)
-        self.bind("<Leave>", self.on_leave)
-        
-    def _get_category_icon(self) -> str:
-        """Get icon for package category"""
-        category_icons = {
-            "Machine Learning & AI": "🤖",
-            "Data Science & Analytics": "📊",
-            "Web Development": "🌐",
-            "GUI & Desktop Development": "🖥️",
-            "Animation & Graphics": "🎨",
-            "Scientific Computing": "🔬",
-            "Development Tools": "🛠️",
-            "System & Networking": "⚙️",
-            "Security & Cryptography": "🔒",
-            "Audio & Video Processing": "🎵",
-            "Database & ORM": "🗄️",
-            "Cloud & Infrastructure": "☁️",
-            "Text Processing & NLP": "📝",
-            "Game Development": "🎮",
-            "Finance & Trading": "💰",
-            "Education & Research": "🎓",
-            "IoT & Hardware": "🔌",
-            "Image Processing": "🖼️",
-            "Utilities & Helpers": "🔧",
-        }
-        return category_icons.get(self.package_info.category, "📦")
-    
-    def _truncate_text(self, text: str, max_length: int) -> str:
-        """Truncate text with ellipsis"""
-        return text[:max_length] + "..." if len(text) > max_length else text
-    
-    def _format_number(self, num: int) -> str:
-        """Format large numbers with suffixes"""
-        if num >= 1_000_000:
-            return f"{num/1_000_000:.1f}M"
-        elif num >= 1_000:
-            return f"{num/1_000:.1f}K"
-        return str(num)
-    
-    def _darken_color(self, color: str, factor: float = 0.8) -> str:
-        """Darken a hex color"""
-        # Simple color darkening (would need proper color manipulation in reality)
-        return color
-    
-    def toggle_favorite(self):
-        """Toggle favorite status"""
-        self.is_favorited = not self.is_favorited
-        self.favorite_btn.configure(text="⭐" if self.is_favorited else "☆")
-        
-        if self.on_favorite:
-            self.on_favorite(self.package_info.name, self.is_favorited)
-    
-    def install_package(self):
-        """Install package"""
-        if self.on_install:
-            self.on_install(self.package_info.name)
-    
-    def uninstall_package(self):
-        """Uninstall package"""
-        if self.on_uninstall:
-            self.on_uninstall(self.package_info.name)
-    
-    def on_enter(self, event):
-        """Mouse enter effect"""
-        self.configure(
-            border_color=VSCODE_COLORS["primary"],
-            border_width=2
-        )
-    
-    def on_leave(self, event):
-        """Mouse leave effect"""
-        self.configure(
-            border_color=VSCODE_COLORS["border"],
-            border_width=1
-        )
-
-class VirtualEnvironmentCard(ctk.CTkFrame):
-    """Card for displaying virtual environment information"""
-    
-    def __init__(self, parent, venv_name, venv_path, is_active=False, on_activate=None, on_delete=None, **kwargs):
-        super().__init__(parent, **kwargs)
-        
-        self.venv_name = venv_name
-        self.venv_path = venv_path
-        self.is_active = is_active
-        self.on_activate = on_activate
-        self.on_delete = on_delete
-        
-        self.configure(
-            fg_color=VSCODE_COLORS["surface_light"],
-            corner_radius=12,
-            border_width=2,
-            border_color=VSCODE_COLORS["primary"] if is_active else VSCODE_COLORS["border"]
-        )
-        
-        self.setup_ui()
-        
-    def setup_ui(self):
-        """Setup the virtual environment card UI"""
-        # Main container
-        main_frame = ctk.CTkFrame(self, fg_color="transparent")
-        main_frame.pack(fill="both", expand=True, padx=15, pady=15)
-        main_frame.grid_columnconfigure(1, weight=1)
-        
-        # Icon and status
-        icon_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        icon_frame.grid(row=0, column=0, sticky="w")
-        
-        # Environment icon
-        icon_label = ctk.CTkLabel(
-            icon_frame,
-            text="🐍",
-            font=ctk.CTkFont(size=32)
-        )
-        icon_label.pack()
-        
-        # Info frame
-        info_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        info_frame.grid(row=0, column=1, sticky="ew", padx=(15, 0))
-        info_frame.grid_columnconfigure(0, weight=1)
-        
-        # Environment name
-        name_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
-        name_frame.grid(row=0, column=0, sticky="ew")
-        name_frame.grid_columnconfigure(0, weight=1)
-        
-        name_label = ctk.CTkLabel(
-            name_frame,
-            text=self.venv_name,
-            font=ctk.CTkFont(size=16, weight="bold"),
-            anchor="w"
-        )
-        name_label.grid(row=0, column=0, sticky="ew")
-        
-        if self.is_active:
-            status_label = ctk.CTkLabel(
-                name_frame,
-                text="✅ ACTIVE",
-                font=ctk.CTkFont(size=12, weight="bold"),
-                text_color=VSCODE_COLORS["success"]
-            )
-            status_label.grid(row=0, column=1, sticky="e")
-        
-        # Path
-        path_label = ctk.CTkLabel(
-            info_frame,
-            text=f"📁 {self.venv_path}",
-            font=ctk.CTkFont(size=11),
-            text_color=VSCODE_COLORS["text_secondary"],
-            anchor="w"
-        )
-        path_label.grid(row=1, column=0, sticky="ew", pady=(5, 0))
-        
-        # Python version (mock)
-        python_version = self._get_python_version()
-        version_label = ctk.CTkLabel(
-            info_frame,
-            text=f"🐍 Python {python_version}",
-            font=ctk.CTkFont(size=11),
-            text_color=VSCODE_COLORS["text_secondary"],
-            anchor="w"
-        )
-        version_label.grid(row=2, column=0, sticky="ew", pady=(2, 0))
-        
-        # Actions frame
-        actions_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        actions_frame.grid(row=0, column=2, sticky="e")
-        
-        if not self.is_active:
-            activate_btn = ctk.CTkButton(
-                actions_frame,
-                text="Activate",
-                width=80,
-                height=35,
-                command=self.activate_environment,
-                fg_color=VSCODE_COLORS["primary"],
-                hover_color=VSCODE_COLORS["primary_hover"]
-            )
-            activate_btn.pack(side="top", pady=(0, 5))
-        
-        delete_btn = ctk.CTkButton(
-            actions_frame,
-            text="Delete",
-            width=80,
-            height=35,
-            command=self.delete_environment,
-            fg_color=VSCODE_COLORS["error"],
-            hover_color="#C0392B"
-        )
-        delete_btn.pack(side="top")
-        
-    def _get_python_version(self):
-        """Get Python version for this environment"""
-        try:
-            python_exe = os.path.join(self.venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(self.venv_path, "bin", "python")
-            result = subprocess.run([python_exe, "--version"], capture_output=True, text=True)
-            if result.returncode == 0:
-                return result.stdout.strip().split()[1]
-        except:
-            pass
-        return "Unknown"
-    
-    def activate_environment(self):
-        """Activate this environment"""
-        if self.on_activate:
-            self.on_activate(self.venv_name)
-    
-    def delete_environment(self):
-        """Delete this environment"""
-        if self.on_delete:
-            self.on_delete(self.venv_name, self)
-
-class AdvancedPackageManager(ctk.CTkToplevel):
-    """Advanced package manager with modern features and virtual environment management"""
-    
-    def __init__(self, parent, venv_manager):
-        super().__init__(parent)
-        
-        self.venv_manager = venv_manager
-        self.search_engine = PyPISearchEngine()
-        
-        # Window setup
-        self.title("Advanced Package Manager")
-        self.geometry("1400x900")
-        self.transient(parent)
-        self.grab_set()
-        
-        # Center the dialog
-        self.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 50,
-            parent.winfo_rooty() + 50
-        ))
-        
-        # State variables
-        self.current_packages = []
-        self.favorite_packages = set()
-        self.search_history = []
-        self.current_category = "All"
-        self.virtual_environments = {}
-        
-        # Create UI
-        self.setup_ui()
-        
-        # Load initial data
-        self.load_popular_packages()
-        self.load_virtual_environments()
-        
-    def setup_ui(self):
-        """Setup the modern package manager UI"""
-        # Main container
-        self.grid_rowconfigure(1, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-        
-        # Header
-        self.create_header()
-        
-        # Create tabview for different sections
-        self.tabview = ctk.CTkTabview(self)
-        self.tabview.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
-        
-        # Packages tab
-        self.packages_tab = self.tabview.add("📦 Packages")
-        self.create_packages_tab()
-        
-        # Virtual Environments tab
-        self.venv_tab = self.tabview.add("🐍 Virtual Environments")
-        self.create_venv_tab()
-        
-        # Status bar
-        self.create_status_bar()
-        
-    def create_header(self):
-        """Create modern header with search and filters"""
-        header_frame = ctk.CTkFrame(self, height=100, fg_color=VSCODE_COLORS["surface"])
-        header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
-        header_frame.grid_columnconfigure(1, weight=1)
-        
-        # Title
-        title_label = ctk.CTkLabel(
-            header_frame,
-            text="📦 Advanced Package Manager",
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        )
-        title_label.grid(row=0, column=0, sticky="w", padx=20, pady=10)
-        
-        # Quick actions
-        actions_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-        actions_frame.grid(row=0, column=1, sticky="e", padx=20, pady=10)
-        
-        # Install from requirements
-        req_btn = ctk.CTkButton(
-            actions_frame,
-            text="📄 Install from requirements.txt",
-            height=35,
-            command=self.install_from_requirements,
-            fg_color=VSCODE_COLORS["info"]
-        )
-        req_btn.pack(side="left", padx=5)
-        
-        # Export requirements
-        export_btn = ctk.CTkButton(
-            actions_frame,
-            text="💾 Export requirements.txt",
-            height=35,
-            command=self.export_requirements,
-            fg_color=VSCODE_COLORS["warning"]
-        )
-        export_btn.pack(side="left", padx=5)
-        
-    def create_packages_tab(self):
-        """Create packages management tab"""
-        # Configure grid
-        self.packages_tab.grid_rowconfigure(1, weight=1)
-        self.packages_tab.grid_columnconfigure(1, weight=1)
-        
-        # Sidebar for categories
-        self.create_packages_sidebar()
-        
-        # Main content area
-        self.create_packages_content()
-        
-    def create_packages_sidebar(self):
-        """Create sidebar with categories and information"""
-        sidebar = ctk.CTkFrame(self.packages_tab, width=300, fg_color=VSCODE_COLORS["surface"])
-        sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 1), pady=0)
-        sidebar.grid_rowconfigure(1, weight=1)
-        
-        # Search frame
-        search_frame = ctk.CTkFrame(sidebar, fg_color=VSCODE_COLORS["surface_light"])
-        search_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
-        search_frame.grid_columnconfigure(1, weight=1)
-        
-        # Search icon
-        search_icon = ctk.CTkLabel(
-            search_frame,
-            text="🔍",
-            font=ctk.CTkFont(size=16)
-        )
-        search_icon.grid(row=0, column=0, padx=(15, 5), pady=10)
-        
-        # Search entry
-        self.search_var = ctk.StringVar()
-        self.search_entry = ctk.CTkEntry(
-            search_frame,
-            textvariable=self.search_var,
-            placeholder_text="Search packages...",
-            font=ctk.CTkFont(size=14),
-            height=40
-        )
-        self.search_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=10)
-        self.search_entry.bind('<KeyRelease>', self.on_search_change)
-        self.search_entry.bind('<Return>', self.perform_search)
-        
-        # Search button
-        search_btn = ctk.CTkButton(
-            search_frame,
-            text="Search",
-            width=80,
-            height=40,
-            command=self.perform_search,
-            fg_color=VSCODE_COLORS["primary"],
-            hover_color=VSCODE_COLORS["primary_hover"]
-        )
-        search_btn.grid(row=0, column=2, padx=(0, 15), pady=10)
-        
-        # Categories title
-        categories_title = ctk.CTkLabel(
-            sidebar,
-            text="📁 Categories",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            anchor="w"
-        )
-        categories_title.grid(row=1, column=0, sticky="ew", padx=15, pady=(20, 15))
-        
-        # Categories list
-        categories_frame = ctk.CTkScrollableFrame(sidebar, fg_color="transparent")
-        categories_frame.grid(row=2, column=0, sticky="nsew", padx=15, pady=(0, 15))
-        
-        # All packages category
-        all_btn = ctk.CTkButton(
-            categories_frame,
-            text="📦 All Packages",
-            anchor="w",
-            height=40,
-            command=lambda: self.select_category("All"),
-            fg_color="transparent",
-            hover_color=VSCODE_COLORS["surface_light"]
-        )
-        all_btn.pack(fill="x", pady=2)
-        
-        # Popular packages
-        popular_btn = ctk.CTkButton(
-            categories_frame,
-            text="🔥 Popular",
-            anchor="w",
-            height=40,
-            command=lambda: self.select_category("Popular"),
-            fg_color="transparent",
-            hover_color=VSCODE_COLORS["surface_light"]
-        )
-        popular_btn.pack(fill="x", pady=2)
-        
-        # Individual categories
-        for category in PACKAGE_CATEGORIES:
-            btn = ctk.CTkButton(
-                categories_frame,
-                text=f"{category.icon} {category.name}",
-                anchor="w",
-                height=40,
-                command=lambda c=category.name: self.select_category(c),
-                fg_color="transparent",
-                hover_color=VSCODE_COLORS["surface_light"]
-            )
-            btn.pack(fill="x", pady=2)
-            
-        # Quick actions
-        actions_title = ctk.CTkLabel(
-            sidebar,
-            text="⚡ Quick Actions",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            anchor="w"
-        )
-        actions_title.grid(row=3, column=0, sticky="ew", padx=15, pady=(20, 15))
-        
-        # Action buttons
-        actions_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
-        actions_frame.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 15))
-        
-        refresh_btn = ctk.CTkButton(
-            actions_frame,
-            text="🔄 Refresh Lists",
-            height=35,
-            command=self.refresh_packages,
-            fg_color=VSCODE_COLORS["accent"]
-        )
-        refresh_btn.pack(fill="x", pady=2)
-        
-        update_all_btn = ctk.CTkButton(
-            actions_frame,
-            text="⬆️ Update All",
-            height=35,
-            command=self.update_all_packages,
-            fg_color=VSCODE_COLORS["warning"]
-        )
-        update_all_btn.pack(fill="x", pady=2)
-        
-        # Environment info
-        env_info_frame = ctk.CTkFrame(sidebar, fg_color=VSCODE_COLORS["surface_light"])
-        env_info_frame.grid(row=5, column=0, sticky="ew", padx=15, pady=(0, 15))
-        
-        env_title = ctk.CTkLabel(
-            env_info_frame,
-            text="🔧 Current Environment",
-            font=ctk.CTkFont(size=14, weight="bold")
-        )
-        env_title.pack(padx=15, pady=(10, 5))
-        
-        env_name = self.venv_manager.current_venv or "System Python"
-        self.current_env_label = ctk.CTkLabel(
-            env_info_frame,
-            text=env_name,
-            font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.current_env_label.pack(padx=15, pady=(0, 10))
-        
-    def create_packages_content(self):
-        """Create main packages content area"""
-        content_frame = ctk.CTkFrame(self.packages_tab, fg_color=VSCODE_COLORS["background"])
-        content_frame.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=0, pady=0)
-        content_frame.grid_rowconfigure(1, weight=1)
-        content_frame.grid_columnconfigure(0, weight=1)
-        
-        # Content header
-        content_header = ctk.CTkFrame(content_frame, height=60, fg_color=VSCODE_COLORS["surface_light"])
-        content_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
-        content_header.grid_columnconfigure(1, weight=1)
-        
-        # Results count
-        self.results_label = ctk.CTkLabel(
-            content_header,
-            text="Loading packages...",
-            font=ctk.CTkFont(size=14),
-            anchor="w"
-        )
-        self.results_label.grid(row=0, column=0, sticky="w", padx=15, pady=15)
-        
-        # Filter options
-        filter_frame = ctk.CTkFrame(content_header, fg_color="transparent")
-        filter_frame.grid(row=0, column=1, sticky="e", padx=15, pady=15)
-        
-        # Sort options
-        ctk.CTkLabel(
-            filter_frame,
-            text="Sort by:",
-            font=ctk.CTkFont(size=12)
-        ).pack(side="left", padx=(0, 10))
-        
-        self.sort_var = ctk.StringVar(value="Relevance")
-        sort_combo = ctk.CTkComboBox(
-            filter_frame,
-            values=["Relevance", "Name", "Downloads", "Stars", "Updated"],
-            variable=self.sort_var,
-            command=self.on_sort_change,
-            width=120
-        )
-        sort_combo.pack(side="left", padx=(0, 20))
-        
-        # Quick filters
-        self.installed_only_var = ctk.BooleanVar()
-        installed_check = ctk.CTkCheckBox(
-            filter_frame,
-            text="Installed only",
-            variable=self.installed_only_var,
-            command=self.apply_filters
-        )
-        installed_check.pack(side="left", padx=(0, 10))
-        
-        self.favorites_only_var = ctk.BooleanVar()
-        favorites_check = ctk.CTkCheckBox(
-            filter_frame,
-            text="Favorites only",
-            variable=self.favorites_only_var,
-            command=self.apply_filters
-        )
-        favorites_check.pack(side="left", padx=(0, 10))
-        
-        # Loading indicator
-        self.loading_label = ctk.CTkLabel(
-            content_header,
-            text="",
-            font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.loading_label.grid(row=0, column=2, sticky="e", padx=15, pady=15)
-        
-        # Package list
-        self.package_list_frame = ctk.CTkScrollableFrame(
-            content_frame,
-            fg_color=VSCODE_COLORS["background"]
-        )
-        self.package_list_frame.grid(row=1, column=0, sticky="nsew", padx=15, pady=15)
-        
-    def create_venv_tab(self):
-        """Create virtual environments management tab"""
-        # Configure grid
-        self.venv_tab.grid_rowconfigure(1, weight=1)
-        self.venv_tab.grid_columnconfigure(0, weight=1)
-        
-        # Header with create button
-        venv_header = ctk.CTkFrame(self.venv_tab, height=80, fg_color=VSCODE_COLORS["surface_light"])
-        venv_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
-        venv_header.grid_columnconfigure(1, weight=1)
-        
-        # Title
-        title_label = ctk.CTkLabel(
-            venv_header,
-            text="🐍 Virtual Environments",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        )
-        title_label.grid(row=0, column=0, sticky="w", padx=20, pady=20)
-        
-        # Create environment button
-        create_venv_btn = ctk.CTkButton(
-            venv_header,
-            text="➕ Create New Environment",
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            command=self.create_virtual_environment,
-            fg_color=VSCODE_COLORS["success"],
-            hover_color="#117A65"
-        )
-        create_venv_btn.grid(row=0, column=1, sticky="e", padx=20, pady=20)
-        
-        # Environments list
-        self.venv_list_frame = ctk.CTkScrollableFrame(
-            self.venv_tab,
-            fg_color=VSCODE_COLORS["background"]
-        )
-        self.venv_list_frame.grid(row=1, column=0, sticky="nsew", padx=15, pady=15)
-        
-    def create_status_bar(self):
-        """Create status bar"""
-        status_frame = ctk.CTkFrame(self, height=35, fg_color=VSCODE_COLORS["surface"])
-        status_frame.grid(row=2, column=0, sticky="ew", padx=0, pady=0)
-        status_frame.grid_columnconfigure(1, weight=1)
-        
-        # Virtual environment info
-        venv_name = self.venv_manager.current_venv or "System Python"
-        venv_label = ctk.CTkLabel(
-            status_frame,
-            text=f"🔧 {venv_name}",
-            font=ctk.CTkFont(size=11)
-        )
-        venv_label.grid(row=0, column=0, sticky="w", padx=15, pady=5)
-        
-        # Status message
-        self.status_label = ctk.CTkLabel(
-            status_frame,
-            text="Ready",
-            font=ctk.CTkFont(size=11),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.status_label.grid(row=0, column=1, sticky="e", padx=15, pady=5)
-        
-    # Package management methods
-    def on_search_change(self, event=None):
-        """Handle search text changes for autocomplete"""
-        query = self.search_var.get()
-        if len(query) >= 2:
-            # Debounce search
-            if hasattr(self, '_search_timer'):
-                self.after_cancel(self._search_timer)
-            self._search_timer = self.after(500, self.show_suggestions)
-            
-    def show_suggestions(self):
-        """Show search suggestions"""
-        # Implement autocomplete suggestions here
-        pass
-        
-    def perform_search(self, event=None):
-        """Perform package search"""
-        query = self.search_var.get().strip()
-        if not query:
-            return
-            
-        self.update_status("Searching packages...")
-        self.loading_label.configure(text="🔍 Searching...")
-        
-        # Add to search history
-        if query not in self.search_history:
-            self.search_history.insert(0, query)
-            self.search_history = self.search_history[:10]  # Keep last 10 searches
-            
-        # Perform search in thread
-        threading.Thread(
-            target=self._search_packages_thread,
-            args=(query,),
-            daemon=True
-        ).start()
-        
-    def _search_packages_thread(self, query: str):
-        """Perform package search in background thread"""
-        try:
-            # Use asyncio to run async search
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            packages = loop.run_until_complete(
-                self.search_engine.search_packages(query)
-            )
-            loop.close()
-            
-            # Update UI in main thread
-            self.after(0, lambda: self._update_search_results(packages))
-            
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            self.after(0, lambda: self.update_status(f"Search error: {e}"))
-            
-    def _update_search_results(self, packages: List[PackageInfo]):
-        """Update search results in UI"""
-        self.current_packages = packages
-        self.display_packages(packages)
-        self.loading_label.configure(text="")
-        self.update_status(f"Found {len(packages)} packages")
-        
-    def load_popular_packages(self):
-        """Load popular packages"""
-        self.update_status("Loading popular packages...")
-        
-        # Use the enhanced package list
-        popular_packages = []
-        enhanced_packages = self.search_engine._get_enhanced_package_list("", 50)
-        
-        for package in enhanced_packages:
-            popular_packages.append(package)
-            
-        self.current_packages = popular_packages
-        self.display_packages(popular_packages)
-        self.update_status("Ready")
-        
-    def display_packages(self, packages: List[PackageInfo]):
-        """Display packages in the list"""
-        # Clear existing widgets
-        for widget in self.package_list_frame.winfo_children():
-            widget.destroy()
-            
-        # Filter packages
-        filtered_packages = self.apply_filters_to_packages(packages)
-        
-        # Update results count
-        self.results_label.configure(
-            text=f"Showing {len(filtered_packages)} of {len(packages)} packages"
-        )
-        
-        # Create package cards
-        for package in filtered_packages:
-            card = ModernPackageCard(
-                self.package_list_frame,
-                package,
-                on_install=self.install_package,
-                on_uninstall=self.uninstall_package,
-                on_favorite=self.toggle_favorite,
-                height=150
-            )
-            card.pack(fill="x", pady=5)
-            
-    def apply_filters_to_packages(self, packages: List[PackageInfo]) -> List[PackageInfo]:
-        """Apply current filters to package list"""
-        filtered = packages.copy()
-        
-        # Category filter
-        if self.current_category not in ["All", "Popular"]:
-            filtered = [p for p in filtered if p.category == self.current_category]
-        elif self.current_category == "Popular":
-            # Show only popular packages
-            popular_names = POPULAR_PACKAGES
-            filtered = [p for p in filtered if p.name in popular_names]
-            
-        # Installed only filter
-        if self.installed_only_var.get():
-            filtered = [p for p in filtered if p.is_installed]
-            
-        # Favorites only filter
-        if self.favorites_only_var.get():
-            filtered = [p for p in filtered if p.name in self.favorite_packages]
-            
-        # Sort packages
-        sort_key = self.sort_var.get()
-        if sort_key == "Name":
-            filtered.sort(key=lambda p: p.name.lower())
-        elif sort_key == "Downloads":
-            filtered.sort(key=lambda p: p.downloads, reverse=True)
-        elif sort_key == "Stars":
-            filtered.sort(key=lambda p: p.stars, reverse=True)
-        elif sort_key == "Updated":
-            # Sort by update date (mock implementation)
-            pass
-            
-        return filtered
-        
-    def select_category(self, category: str):
-        """Select a category"""
-        self.current_category = category
-        self.apply_filters()
-        
-    def on_sort_change(self, value):
-        """Handle sort change"""
-        self.apply_filters()
-        
-    def apply_filters(self):
-        """Apply current filters and refresh display"""
-        self.display_packages(self.current_packages)
-        
-    def install_package(self, package_name: str):
-        """Install a package"""
-        # Check if virtual environment is active and recommend creating one if not
-        if not self.venv_manager.current_venv:
-            result = messagebox.askyesnocancel(
-                "No Virtual Environment Active",
-                f"Installing {package_name} into system Python can cause conflicts.\n\n"
-                "Would you like to create a virtual environment first?\n\n"
-                "Yes - Create new environment\n"
-                "No - Install to system Python\n"
-                "Cancel - Abort installation"
-            )
-            
-            if result is None:  # Cancel
-                return
-            elif result:  # Yes - create environment
-                self.tabview.set("🐍 Virtual Environments")
-                self.create_virtual_environment()
-                return
-        
-        self.update_status(f"Installing {package_name}...")
-        
-        def install_thread():
-            success, message = self.venv_manager.install_package(
-                package_name,
-                lambda success, stdout, stderr: self.after(0, 
-                    lambda: self._on_install_complete(package_name, success, stdout, stderr)
-                )
-            )
-            
-        threading.Thread(target=install_thread, daemon=True).start()
-        
-    def _on_install_complete(self, package_name: str, success: bool, stdout: str, stderr: str):
-        """Handle installation completion"""
-        if success:
-            self.update_status(f"Successfully installed {package_name}")
-            # Update package status
-            for package in self.current_packages:
-                if package.name == package_name:
-                    package.is_installed = True
-                    break
-            self.display_packages(self.current_packages)
-        else:
-            self.update_status(f"Failed to install {package_name}")
-            messagebox.showerror("Installation Failed", f"Failed to install {package_name}:\n{stderr}")
-            
-    def uninstall_package(self, package_name: str):
-        """Uninstall a package"""
-        if messagebox.askyesno("Confirm Uninstall", 
-                              f"Are you sure you want to uninstall {package_name}?"):
-            self.update_status(f"Uninstalling {package_name}...")
-            
-            def uninstall_thread():
-                success, message = self.venv_manager.uninstall_package(
-                    package_name,
-                    lambda success, stdout, stderr: self.after(0,
-                        lambda: self._on_uninstall_complete(package_name, success, stdout, stderr)
-                    )
-                )
-                
-            threading.Thread(target=uninstall_thread, daemon=True).start()
-            
-    def _on_uninstall_complete(self, package_name: str, success: bool, stdout: str, stderr: str):
-        """Handle uninstallation completion"""
-        if success:
-            self.update_status(f"Successfully uninstalled {package_name}")
-            # Update package status
-            for package in self.current_packages:
-                if package.name == package_name:
-                    package.is_installed = False
-                    break
-            self.display_packages(self.current_packages)
-        else:
-            self.update_status(f"Failed to uninstall {package_name}")
-            messagebox.showerror("Uninstallation Failed", f"Failed to uninstall {package_name}:\n{stderr}")
-            
-    def toggle_favorite(self, package_name: str, is_favorite: bool):
-        """Toggle package favorite status"""
-        if is_favorite:
-            self.favorite_packages.add(package_name)
-        else:
-            self.favorite_packages.discard(package_name)
-            
-    def refresh_packages(self):
-        """Refresh package list"""
-        self.update_status("Refreshing packages...")
-        self.load_popular_packages()
-        
-    def update_all_packages(self):
-        """Update all installed packages"""
-        if messagebox.askyesno("Update All Packages", 
-                              "This will update all installed packages. Continue?"):
-            self.update_status("Updating all packages...")
-            # Implement update all logic
-            
-    def install_from_requirements(self):
-        """Install packages from requirements.txt file"""
-        file_path = filedialog.askopenfilename(
-            title="Select requirements.txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
-        )
-        
-        if file_path:
-            if not self.venv_manager.current_venv:
-                if not messagebox.askyesno("No Virtual Environment", 
-                                         "Installing from requirements.txt without a virtual environment can cause conflicts. Continue anyway?"):
-                    return
-            
-            self.update_status("Installing from requirements.txt...")
-            
-            def install_thread():
-                try:
-                    pip_path = self.venv_manager.pip_path if self.venv_manager.current_venv else "pip"
-                    result = subprocess.run([
-                        pip_path, "install", "-r", file_path
-                    ], capture_output=True, text=True)
-                    
-                    if result.returncode == 0:
-                        self.after(0, lambda: self.update_status("Successfully installed packages from requirements.txt"))
-                        self.after(0, lambda: messagebox.showinfo("Success", "All packages installed successfully!"))
-                    else:
-                        self.after(0, lambda: self.update_status("Failed to install some packages"))
-                        self.after(0, lambda: messagebox.showerror("Error", f"Installation failed:\n{result.stderr}"))
-                        
-                except Exception as e:
-                    self.after(0, lambda: self.update_status(f"Error: {e}"))
-                    self.after(0, lambda: messagebox.showerror("Error", str(e)))
-                    
-            threading.Thread(target=install_thread, daemon=True).start()
-            
-    def export_requirements(self):
-        """Export installed packages to requirements.txt"""
-        file_path = filedialog.asksaveasfilename(
-            title="Save requirements.txt",
-            defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
-        )
-        
-        if file_path:
-            self.update_status("Exporting requirements...")
-            
-            def export_thread():
-                try:
-                    pip_path = self.venv_manager.pip_path if self.venv_manager.current_venv else "pip"
-                    result = subprocess.run([
-                        pip_path, "freeze"
-                    ], capture_output=True, text=True)
-                    
-                    if result.returncode == 0:
-                        with open(file_path, 'w') as f:
-                            f.write(result.stdout)
-                        self.after(0, lambda: self.update_status(f"Requirements exported to {file_path}"))
-                        self.after(0, lambda: messagebox.showinfo("Success", f"Requirements exported to:\n{file_path}"))
-                    else:
-                        self.after(0, lambda: self.update_status("Failed to export requirements"))
-                        self.after(0, lambda: messagebox.showerror("Error", f"Export failed:\n{result.stderr}"))
-                        
-                except Exception as e:
-                    self.after(0, lambda: self.update_status(f"Error: {e}"))
-                    self.after(0, lambda: messagebox.showerror("Error", str(e)))
-                    
-            threading.Thread(target=export_thread, daemon=True).start()
-    
-    # Virtual Environment methods
-    def load_virtual_environments(self):
-        """Load and display virtual environments"""
-        # Clear existing environment cards
-        for widget in self.venv_list_frame.winfo_children():
-            widget.destroy()
-            
-        # Get list of virtual environments
-        venvs = self.venv_manager.list_venvs()
-        
-        if not venvs:
-            # Show message if no environments
-            no_venv_label = ctk.CTkLabel(
-                self.venv_list_frame,
-                text="No virtual environments found. Create your first environment!",
-                font=ctk.CTkFont(size=16),
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            no_venv_label.pack(pady=50)
-        else:
-            # Create cards for each environment
-            for venv_name in venvs:
-                venv_path = os.path.join(self.venv_manager.venv_dir, venv_name)
-                is_active = venv_name == self.venv_manager.current_venv
-                
-                card = VirtualEnvironmentCard(
-                    self.venv_list_frame,
-                    venv_name,
-                    venv_path,
-                    is_active=is_active,
-                    on_activate=self.activate_virtual_environment,
-                    on_delete=self.delete_virtual_environment
-                )
-                card.pack(fill="x", pady=5)
-                
-    def create_virtual_environment(self):
-        """Create a new virtual environment"""
-        dialog = CreateVirtualEnvironmentDialog(self, self.venv_manager)
-        
-    def activate_virtual_environment(self, venv_name: str):
-        """Activate a virtual environment"""
-        if self.venv_manager.activate_venv(venv_name):
-            self.update_status(f"Activated environment: {venv_name}")
-            
-            # Update current environment display
-            self.current_env_label.configure(text=venv_name)
-            
-            # Refresh environment list
-            self.load_virtual_environments()
-            
-            # Update status bar
-            status_frame_children = [child for child in self.children.values() 
-                                   if isinstance(child, ctk.CTkFrame) and child.winfo_y() > 800]
-            if status_frame_children:
-                for child in status_frame_children[0].winfo_children():
-                    if isinstance(child, ctk.CTkLabel) and "🔧" in child.cget("text"):
-                        child.configure(text=f"🔧 {venv_name}")
-                        break
-        else:
-            messagebox.showerror("Error", f"Failed to activate environment: {venv_name}")
-            
-    def delete_virtual_environment(self, venv_name: str, card_widget):
-        """Delete a virtual environment"""
-        if messagebox.askyesno("Delete Environment", 
-                              f"Are you sure you want to delete the virtual environment '{venv_name}'?\n\nThis action cannot be undone."):
-            try:
-                venv_path = os.path.join(self.venv_manager.venv_dir, venv_name)
-                
-                # Deactivate if currently active
-                if venv_name == self.venv_manager.current_venv:
-                    self.venv_manager.current_venv = None
-                    
-                # Remove directory
-                shutil.rmtree(venv_path)
-                
-                # Refresh list
-                self.load_virtual_environments()
-                
-                self.update_status(f"Deleted environment: {venv_name}")
-                
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to delete environment:\n{e}")
-                
-    def update_status(self, message: str):
-        """Update status message"""
-        self.status_label.configure(text=message)
-
-class CreateVirtualEnvironmentDialog(ctk.CTkToplevel):
-    """Dialog for creating a new virtual environment"""
+class EnvironmentSetupDialog(ctk.CTkToplevel):
+    """Dialog for setting up the default environment on first run"""
     
     def __init__(self, parent, venv_manager):
         super().__init__(parent)
         
         self.parent_window = parent
         self.venv_manager = venv_manager
+        self.setup_complete = False
         
-        self.title("Create Virtual Environment")
-        self.geometry("500x600")
+        self.title("ManimStudio - Environment Setup")
+        self.geometry("650x750")
         self.transient(parent)
         self.grab_set()
         
         # Center the dialog
         self.geometry("+%d+%d" % (
             parent.winfo_rootx() + 100,
-            parent.winfo_rooty() + 100
+            parent.winfo_rooty() + 50
         ))
+        
+        # Prevent closing during setup
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.setup_ui()
         
     def setup_ui(self):
-        """Setup the create venv dialog UI"""
+        """Setup the environment setup dialog UI"""
         # Main frame
         main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Title
+        # Header with logo
+        header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 20))
+        
+        # App icon
+        icon_label = ctk.CTkLabel(
+            header_frame,
+            text="🎬",
+            font=ctk.CTkFont(size=48)
+        )
+        icon_label.pack(pady=10)
+        
+        # Welcome text
         title_label = ctk.CTkLabel(
-            main_frame,
-            text="🐍 Create Virtual Environment",
-            font=ctk.CTkFont(size=20, weight="bold"),
+            header_frame,
+            text="Welcome to ManimStudio!",
+            font=ctk.CTkFont(size=24, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
-        title_label.pack(pady=(10, 30))
+        title_label.pack(pady=(0, 5))
         
-        # Environment name
-        name_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        name_frame.pack(fill="x", padx=15, pady=10)
-        
-        ctk.CTkLabel(
-            name_frame,
-            text="Environment Name:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-        
-        self.name_entry = ctk.CTkEntry(
-            name_frame,
-            placeholder_text="e.g., my_project_env",
-            font=ctk.CTkFont(size=12),
-            height=40
-        )
-        self.name_entry.pack(fill="x", padx=15, pady=(0, 10))
-        
-        # Python version selection
-        python_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        python_frame.pack(fill="x", padx=15, pady=10)
-        
-        ctk.CTkLabel(
-            python_frame,
-            text="Python Version:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-        
-        # Detect available Python versions
-        python_versions = self.detect_python_versions()
-        
-        self.python_var = ctk.StringVar(value=python_versions[0] if python_versions else "python")
-        
-        python_combo = ctk.CTkComboBox(
-            python_frame,
-            values=python_versions,
-            variable=self.python_var,
-            height=40,
-            font=ctk.CTkFont(size=12)
-        )
-        python_combo.pack(fill="x", padx=15, pady=(0, 10))
-        
-        # Package installation options
-        packages_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        packages_frame.pack(fill="x", padx=15, pady=10)
-        
-        ctk.CTkLabel(
-            packages_frame,
-            text="Initial Packages:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-        
-        # Package checkboxes
-        self.package_vars = {}
-        essential_packages = [
-            ("pip", "Package installer (recommended)"),
-            ("setuptools", "Package development tools"),
-            ("wheel", "Built-package format"),
-            ("manim", "Animation engine"),
-            ("jupyter", "Interactive notebooks"),
-            ("numpy", "Numerical computing"),
-            ("matplotlib", "Plotting library"),
-            ("pandas", "Data analysis"),
-            ("requests", "HTTP library"),
-            ("black", "Code formatter"),
-            ("pytest", "Testing framework"),
-        ]
-        
-        for package, description in essential_packages:
-            var = ctk.BooleanVar(value=package in ["pip", "setuptools", "wheel", "manim"])
-            self.package_vars[package] = var
-            
-            package_frame = ctk.CTkFrame(packages_frame, fg_color="transparent")
-            package_frame.pack(fill="x", padx=15, pady=2)
-            
-            checkbox = ctk.CTkCheckBox(
-                package_frame,
-                text=package,
-                variable=var,
-                font=ctk.CTkFont(size=12)
-            )
-            checkbox.pack(side="left")
-            
-            desc_label = ctk.CTkLabel(
-                package_frame,
-                text=f"- {description}",
-                font=ctk.CTkFont(size=11),
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            desc_label.pack(side="left", padx=(10, 0))
-        
-        # Options
-        options_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        options_frame.pack(fill="x", padx=15, pady=10)
-        
-        ctk.CTkLabel(
-            options_frame,
-            text="Options:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(10, 5))
-        
-        self.activate_after_creation = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(
-            options_frame,
-            text="Activate environment after creation",
-            variable=self.activate_after_creation,
-            font=ctk.CTkFont(size=12)
-        ).pack(anchor="w", padx=15, pady=2)
-        
-        self.copy_system_packages = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(
-            options_frame,
-            text="Copy system site-packages",
-            variable=self.copy_system_packages,
-            font=ctk.CTkFont(size=12)
-        ).pack(anchor="w", padx=15, pady=(2, 10))
-        
-        # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(main_frame)
-        self.progress_bar.pack(fill="x", padx=15, pady=10)
-        self.progress_bar.set(0)
-        
-        # Status label
-        self.status_label = ctk.CTkLabel(
-            main_frame,
-            text="Ready to create environment",
-            font=ctk.CTkFont(size=12),
+        subtitle_label = ctk.CTkLabel(
+            header_frame,
+            text="Setting up your animation environment...",
+            font=ctk.CTkFont(size=14),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.status_label.pack(pady=5)
+        subtitle_label.pack()
         
-        # Output text
-        output_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["background"])
-        output_frame.pack(fill="both", expand=True, padx=15, pady=10)
+        # Info section
+        info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        info_frame.pack(fill="x", pady=10)
         
-        self.output_text = ctk.CTkTextbox(output_frame, height=100)
-        self.output_text.pack(fill="both", expand=True, padx=10, pady=10)
+        info_text = """ManimStudio needs to create a Python virtual environment with all required packages.
+This process will:
+
+✓ Create a dedicated virtual environment for ManimStudio
+✓ Install Manim Community Edition for animations
+✓ Install development tools (NumPy, Matplotlib, Jedi for IntelliSense)
+✓ Install additional packages for enhanced functionality
+✓ Configure everything for optimal performance
+
+This may take a few minutes depending on your internet connection and system speed.
+All packages will be installed in an isolated environment that won't affect your system Python."""
+        
+        ctk.CTkLabel(
+            info_frame,
+            text=info_text,
+            font=ctk.CTkFont(size=12),
+            justify="left",
+            text_color=VSCODE_COLORS["text"]
+        ).pack(padx=20, pady=20)
+        
+        # Current step indicator
+        self.step_label = ctk.CTkLabel(
+            main_frame,
+            text="Ready to create environment...",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=VSCODE_COLORS["primary"]
+        )
+        self.step_label.pack(pady=(10, 5))
+        
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(main_frame, height=20)
+        self.progress_bar.pack(fill="x", padx=20, pady=10)
+        self.progress_bar.set(0)
+        
+        # Progress details
+        self.detail_label = ctk.CTkLabel(
+            main_frame,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.detail_label.pack(pady=(0, 10))
+        
+        # Log output
+        log_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["background"])
+        log_frame.pack(fill="both", expand=True, pady=10)
+        
+        ctk.CTkLabel(
+            log_frame,
+            text="Setup Log:",
+            font=ctk.CTkFont(size=12, weight="bold")
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        self.log_text = ctk.CTkTextbox(log_frame, height=200, font=ctk.CTkFont(size=10, family="Consolas"))
+        self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
         # Buttons
         button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        button_frame.pack(fill="x", pady=15)
+        button_frame.pack(fill="x", pady=10)
         
-        self.create_btn = ctk.CTkButton(
+        self.start_button = ctk.CTkButton(
             button_frame,
             text="🚀 Create Environment",
-            command=self.create_environment,
+            command=self.start_setup,
             height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
             fg_color=VSCODE_COLORS["success"],
             hover_color="#117A65"
         )
-        self.create_btn.pack(side="left", padx=15)
+        self.start_button.pack(side="left", padx=(0, 10))
         
-        ctk.CTkButton(
+        self.skip_button = ctk.CTkButton(
             button_frame,
-            text="Cancel",
-            command=self.destroy,
+            text="Skip Setup",
+            command=self.skip_setup,
             height=40,
-            width=80
-        ).pack(side="right", padx=15)
+            width=100,
+            font=ctk.CTkFont(size=12),
+            fg_color=VSCODE_COLORS["surface_lighter"],
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.skip_button.pack(side="left")
         
-        # Focus on name entry
-        self.name_entry.focus()
+        self.close_button = ctk.CTkButton(
+            button_frame,
+            text="✅ Continue",
+            command=self.continue_to_app,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            state="disabled"
+        )
+        self.close_button.pack(side="right")
         
-    def detect_python_versions(self):
-        """Detect available Python versions"""
-        versions = []
+    def log_message(self, message):
+        """Add message to log"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.insert("end", f"[{timestamp}] {message}\n")
+        self.log_text.see("end")
+        self.update_idletasks()
         
-        # Common Python executable names
-        python_names = ["python", "python3", "python3.9", "python3.10", "python3.11", "python3.12"]
+    def update_progress(self, value, step_text="", detail_text=""):
+        """Update progress bar and status"""
+        self.progress_bar.set(value)
+        if step_text:
+            self.step_label.configure(text=step_text)
+        if detail_text:
+            self.detail_label.configure(text=detail_text)
+        self.update_idletasks()
         
-        for name in python_names:
+    def start_setup(self):
+        """Start the environment setup process"""
+        self.start_button.configure(state="disabled")
+        self.skip_button.configure(state="disabled")
+        
+        self.log_message("Starting ManimStudio environment setup...")
+        self.update_progress(0.05, "Preparing...", "Initializing environment creation")
+        
+        # Run setup in background thread
+        setup_thread = threading.Thread(target=self.run_setup, daemon=True)
+        setup_thread.start()
+        
+    def run_setup(self):
+        """Run the actual setup process"""
+        try:
+            # Step 1: Create virtual environment
+            self.after(0, lambda: self.update_progress(0.1, "Creating virtual environment...", "Setting up isolated Python environment"))
+            self.after(0, lambda: self.log_message("Creating virtual environment..."))
+            
+            success = self.venv_manager.create_default_environment(self.log_message_threadsafe)
+            
+            if not success:
+                self.after(0, lambda: self.log_message("ERROR: Failed to create virtual environment"))
+                self.after(0, lambda: self.show_error("Failed to create virtual environment"))
+                return
+                
+            # Step 2: Activate environment
+            self.after(0, lambda: self.update_progress(0.2, "Activating environment...", "Configuring environment"))
+            self.after(0, lambda: self.log_message("Activating environment..."))
+            
+            # Step 3: Upgrade pip
+            self.after(0, lambda: self.update_progress(0.25, "Upgrading pip...", "Ensuring latest package manager"))
+            self.after(0, lambda: self.log_message("Upgrading pip..."))
+            
+            success = self.venv_manager.upgrade_pip(self.log_message_threadsafe)
+            if not success:
+                self.after(0, lambda: self.log_message("WARNING: Could not upgrade pip"))
+            
+            # Step 4: Install essential packages
+            self.after(0, lambda: self.update_progress(0.3, "Installing packages...", "Installing Manim and dependencies"))
+            self.after(0, lambda: self.log_message("Installing essential packages..."))
+            
+            success = self.venv_manager.install_essential_packages(
+                self.log_message_threadsafe,
+                self.update_package_progress
+            )
+            
+            if not success:
+                self.after(0, lambda: self.log_message("ERROR: Failed to install some essential packages"))
+                self.after(0, lambda: self.show_error("Some essential packages failed to install"))
+                return
+                
+            # Step 5: Install optional packages
+            self.after(0, lambda: self.update_progress(0.8, "Installing optional packages...", "Adding extra functionality"))
+            self.after(0, lambda: self.log_message("Installing optional packages..."))
+            
+            self.venv_manager.install_optional_packages(
+                self.log_message_threadsafe,
+                self.update_optional_progress
+            )
+            
+            # Step 6: Verify installation
+            self.after(0, lambda: self.update_progress(0.95, "Verifying installation...", "Testing all components"))
+            self.after(0, lambda: self.log_message("Verifying installation..."))
+            
+            success = self.venv_manager.verify_installation(self.log_message_threadsafe)
+            
+            if success:
+                self.after(0, lambda: self.update_progress(1.0, "Setup complete!", "All components ready"))
+                self.after(0, lambda: self.log_message("✅ Environment setup completed successfully!"))
+                self.after(0, lambda: self.setup_complete_ui())
+            else:
+                self.after(0, lambda: self.log_message("WARNING: Installation verification failed"))
+                self.after(0, lambda: self.show_warning("Setup completed with warnings"))
+                
+        except Exception as e:
+            error_msg = f"Setup failed with error: {str(e)}"
+            self.after(0, lambda: self.log_message(f"ERROR: {error_msg}"))
+            self.after(0, lambda: self.show_error(error_msg))
+            
+    def log_message_threadsafe(self, message):
+        """Thread-safe log message method"""
+        self.after(0, lambda: self.log_message(message))
+        
+    def update_package_progress(self, package_name, progress):
+        """Update progress for package installation"""
+        self.after(0, lambda: self.update_progress(
+            0.3 + (progress * 0.5),
+            "Installing packages...",
+            f"Installing {package_name}..."
+        ))
+        
+    def update_optional_progress(self, package_name, progress):
+        """Update progress for optional package installation"""
+        self.after(0, lambda: self.update_progress(
+            0.8 + (progress * 0.15),
+            "Installing optional packages...",
+            f"Installing {package_name}..."
+        ))
+        
+    def setup_complete_ui(self):
+        """Update UI when setup is complete"""
+        self.setup_complete = True
+        self.close_button.configure(state="normal")
+        self.step_label.configure(
+            text="🎉 Setup Complete!",
+            text_color=VSCODE_COLORS["success"]
+        )
+        self.detail_label.configure(text="ManimStudio is ready to use")
+        
+        # Show completion message
+        success_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["success"])
+        success_frame.place(relx=0.5, rely=0.5, anchor="center")
+        
+        ctk.CTkLabel(
+            success_frame,
+            text="✅ Environment Ready!",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="white"
+        ).pack(padx=30, pady=20)
+        
+        # Auto-continue after 3 seconds
+        self.after(3000, lambda: success_frame.destroy())
+        self.after(3500, self.continue_to_app)
+        
+    def show_error(self, message):
+        """Show error message"""
+        self.step_label.configure(
+            text="❌ Setup Failed",
+            text_color=VSCODE_COLORS["error"]
+        )
+        self.detail_label.configure(text=message)
+        self.start_button.configure(text="🔄 Retry Setup", state="normal")
+        self.skip_button.configure(state="normal")
+        
+    def show_warning(self, message):
+        """Show warning message"""
+        self.step_label.configure(
+            text="⚠️ Setup Completed with Warnings",
+            text_color=VSCODE_COLORS["warning"]
+        )
+        self.detail_label.configure(text=message)
+        self.close_button.configure(state="normal")
+        self.setup_complete = True
+        
+    def skip_setup(self):
+        """Skip the setup process"""
+        if messagebox.askyesno(
+            "Skip Setup",
+            "Are you sure you want to skip the environment setup?\n\n"
+            "ManimStudio may not work correctly without the required packages.",
+            parent=self
+        ):
+            self.log_message("Setup skipped by user")
+            self.continue_to_app()
+            
+    def continue_to_app(self):
+        """Continue to the main application"""
+        self.destroy()
+        
+    def on_closing(self):
+        """Handle dialog closing"""
+        if not self.setup_complete:
+            if messagebox.askyesno(
+                "Cancel Setup",
+                "Setup is not complete. Exit anyway?\n\n"
+                "ManimStudio may not work correctly.",
+                parent=self
+            ):
+                self.destroy()
+        else:
+            self.destroy()
+
+
+class VirtualEnvironmentManager:
+    """Enhanced virtual environment manager with integrated environment building"""
+    
+    def __init__(self, parent_app):
+        self.parent_app = parent_app
+        self.current_venv = None
+        self.venv_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs")
+        os.makedirs(self.venv_dir, exist_ok=True)
+        
+        # Try to detect existing environment first
+        if not self.detect_existing_environment():
+            # No environment found, will need to create default
+            self.needs_setup = True
+            logger.info("No suitable environment found. Setup required.")
+        else:
+            self.needs_setup = False
+            logger.info(f"Using existing environment: {self.current_venv}")
+            
+    def detect_existing_environment(self):
+        """Detect existing suitable environment or use bundled one"""
+        # Check for default environment
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        if self.is_valid_venv(default_venv_path) and self.verify_environment_packages(default_venv_path):
+            self.activate_venv("manim_studio_default")
+            return True
+            
+        # Check if we're already in a virtual environment
+        if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
+            venv_name = os.path.basename(sys.prefix)
+            self.current_venv = f"current_{venv_name}"
+            self.python_path = sys.executable
+            self.pip_path = os.path.join(os.path.dirname(sys.executable), "pip")
+            
+            # Check if this environment has essential packages
+            if self.verify_current_environment():
+                logger.info(f"Using current virtual environment: {venv_name}")
+                return True
+            
+        # Check system Python for Manim
+        if self.check_system_python():
+            return True
+        
+        # Check for bundled environment
+        if self.check_bundled_environment():
+            logger.info("Found bundled environment, will extract when needed")
+            return False  # Still need setup, but we have bundled environment
+            
+        return False
+        
+    def check_bundled_environment(self):
+        """Check if a bundled environment is available"""
+        bundled_dir = Path(os.path.dirname(sys.executable)) / "bundled_venv"
+        if not bundled_dir.exists():
+            # Try relative path for development
+            bundled_dir = Path("bundled_venv")
+            if not bundled_dir.exists():
+                return False
+        
+        logger.info(f"Found bundled environment: {bundled_dir}")
+        
+        # Check if there's a manifest
+        manifest_path = bundled_dir / "manifest.json"
+        if manifest_path.exists():
             try:
-                result = subprocess.run([name, "--version"], capture_output=True, text=True)
-                if result.returncode == 0:
-                    version_output = result.stdout.strip()
-                    versions.append(f"{name} ({version_output})")
-            except:
-                continue
-                
-        # If no versions found, add default
-        if not versions:
-            versions.append("python (default)")
-            
-        return versions
+                with open(manifest_path, 'r') as f:
+                    import json
+                    manifest = json.load(f)
+                    logger.info(f"Bundled environment includes: {manifest.get('essential_packages', [])}")
+            except Exception as e:
+                logger.error(f"Error reading manifest: {e}")
         
-    def create_environment(self):
-        """Create the virtual environment"""
-        env_name = self.name_entry.get().strip()
+        # Mark bundled environment available
+        self.bundled_venv_dir = bundled_dir
+        return True
         
-        # Validate name
-        if not env_name:
-            messagebox.showerror("Error", "Please enter an environment name")
-            return
-            
-        if not re.match(r'^[a-zA-Z0-9_-]+$', env_name):
-            messagebox.showerror("Error", "Environment name can only contain letters, numbers, underscores, and hyphens")
-            return
-            
-        # Check if environment already exists
-        if env_name in self.venv_manager.list_venvs():
-            messagebox.showerror("Error", f"Environment '{env_name}' already exists")
-            return
-            
-        # Disable create button
-        self.create_btn.configure(state="disabled", text="Creating...")
-        self.progress_bar.set(0)
+    def extract_bundled_environment(self):
+        """Extract bundled environment to user directory"""
+        if not hasattr(self, 'bundled_venv_dir'):
+            return False
         
-        def create_thread():
-            try:
-                # Update status
-                self.update_status("Creating virtual environment...")
-                self.log_output(f"Creating environment: {env_name}\n")
-                self.progress_bar.set(0.1)
-                
-                # Get Python executable
-                python_selection = self.python_var.get()
-                python_exe = python_selection.split()[0]  # Extract python executable name
-                
-                # Create environment
-                venv_path = os.path.join(self.venv_manager.venv_dir, env_name)
-                
-                # Build command
-                cmd = [python_exe, "-m", "venv", venv_path]
-                
-                if self.copy_system_packages.get():
-                    cmd.append("--system-site-packages")
+        logger.info(f"Extracting bundled environment from: {self.bundled_venv_dir}")
+        
+        # Create destination
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        if os.path.exists(default_venv_path):
+            logger.info(f"Removing existing environment: {default_venv_path}")
+            shutil.rmtree(default_venv_path)
+        
+        # Create new venv
+        try:
+            import venv
+            logger.info(f"Creating new environment at: {default_venv_path}")
+            venv.create(default_venv_path, with_pip=True)
+            
+            # Activate it for further operations
+            self.activate_venv("manim_studio_default")
+            
+            # Read manifest to install required packages
+            manifest_path = self.bundled_venv_dir / "manifest.json"
+            if manifest_path.exists():
+                with open(manifest_path, 'r') as f:
+                    import json
+                    manifest = json.load(f)
+                    essential_packages = manifest.get('essential_packages', [])
                     
-                self.log_output(f"Command: {' '.join(cmd)}\n")
+                    # Install packages silently
+                    logger.info(f"Installing {len(essential_packages)} essential packages...")
+                    for pkg in essential_packages:
+                        try:
+                            # Create process with hidden console
+                            import subprocess
+                            if os.name == 'nt':
+                                startupinfo = subprocess.STARTUPINFO()
+                                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                                startupinfo.wShowWindow = subprocess.SW_HIDE
+                                creationflags = subprocess.CREATE_NO_WINDOW
+                            else:
+                                startupinfo = None
+                                creationflags = 0
+                                
+                            result = subprocess.run(
+                                [self.pip_path, "install", pkg, "--quiet"],
+                                capture_output=True,
+                                text=True,
+                                startupinfo=startupinfo,
+                                creationflags=creationflags
+                            )
+                            
+                            if result.returncode == 0:
+                                logger.info(f"Installed: {pkg}")
+                            else:
+                                logger.error(f"Failed to install {pkg}: {result.stderr}")
+                        except Exception as e:
+                            logger.error(f"Error installing {pkg}: {e}")
+            
+            logger.info("Environment setup complete")
+            self.needs_setup = False
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to extract bundled environment: {e}")
+            return False
+        
+    def verify_current_environment(self):
+        """Verify that current environment has essential packages"""
+        try:
+            # Test essential packages
+            essential_test = ["manim", "numpy", "customtkinter"]
+            for package in essential_test:
+                try:
+                    __import__(package)
+                except ImportError:
+                    logger.info(f"Missing package {package} in current environment")
+                    return False
+            return True
+        except Exception as e:
+            logger.error(f"Error verifying current environment: {e}")
+            return False
+            
+    def verify_environment_packages(self, venv_path):
+        """Verify that environment has essential packages"""
+        try:
+            # Get python path
+            if os.name == 'nt':
+                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+            else:
+                python_exe = os.path.join(venv_path, "bin", "python")
                 
-                # Execute creation command
-                result = subprocess.run(cmd, capture_output=True, text=True)
+            # Test essential packages
+            essential_test = ["manim", "numpy", "customtkinter"]
+            for package in essential_test:
+                result = subprocess.run([
+                    python_exe, "-c", f"import {package}"
+                ], capture_output=True, text=True)
                 
                 if result.returncode != 0:
-                    raise Exception(f"Failed to create environment: {result.stderr}")
+                    logger.info(f"Missing package {package} in environment {venv_path}")
+                    return False
+            return True
+        except Exception as e:
+            logger.error(f"Error verifying environment packages: {e}")
+            return False
+        
+    def check_system_python(self):
+        """Check if system Python has Manim installed"""
+        try:
+            import manim
+            # Manim is available in system Python
+            self.current_venv = "system_python"
+            self.python_path = sys.executable
+            self.pip_path = "pip"
+            logger.info("Using system Python with Manim")
+            return True
+        except ImportError:
+            return False
+            
+    def show_setup_dialog(self):
+        """Show the environment setup dialog"""
+        # If we have a bundled environment, extract it silently instead
+        if hasattr(self, 'bundled_venv_dir'):
+            # Show a simple messagebox and extract in background
+            try:
+                import tkinter.messagebox as messagebox
+                messagebox.showinfo(
+                    "Setting Up Environment",
+                    "ManimStudio is setting up the required environment.\n"
+                    "This will take a moment. Please wait..."
+                )
+            except:
+                pass
+                
+            # Extract in another thread to not block UI
+            import threading
+            def extract_thread():
+                success = self.extract_bundled_environment()
+                if not success:
+                    # Show dialog as fallback
+                    self.bundled_venv_dir = None  # Clear to avoid loop
+                    self.parent_app.root.after(100, self._show_dialog)
                     
-                self.log_output("✅ Environment created successfully\n")
-                self.progress_bar.set(0.5)
+            threading.Thread(target=extract_thread, daemon=True).start()
+        else:
+            self._show_dialog()
+            
+    def _show_dialog(self):
+        """Internal method to show the actual dialog"""
+        dialog = EnvironmentSetupDialog(self.parent_app.root, self)
+        self.parent_app.root.wait_window(dialog)
+        
+    def create_default_environment(self, log_callback=None):
+        """Create the default ManimStudio environment"""
+        env_name = "manim_studio_default"
+        venv_path = os.path.join(self.venv_dir, env_name)
+        
+        if log_callback:
+            log_callback(f"Creating virtual environment at: {venv_path}")
+            
+        try:
+            # Remove existing environment if it exists
+            if os.path.exists(venv_path):
+                if log_callback:
+                    log_callback("Removing existing environment...")
+                shutil.rmtree(venv_path)
+            
+            # Create virtual environment
+            if log_callback:
+                log_callback("Creating new virtual environment...")
+            venv.create(venv_path, with_pip=True)
+            
+            # Activate the environment
+            if os.name == 'nt':
+                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
+            else:
+                python_exe = os.path.join(venv_path, "bin", "python")
+                pip_exe = os.path.join(venv_path, "bin", "pip")
                 
-                # Install packages
-                packages_to_install = [name for name, var in self.package_vars.items() if var.get()]
+            # Verify creation
+            if not os.path.exists(python_exe):
+                raise Exception("Python executable not found after environment creation")
                 
-                if packages_to_install:
-                    self.update_status("Installing packages...")
-                    self.log_output(f"Installing packages: {', '.join(packages_to_install)}\n")
+            self.python_path = python_exe
+            self.pip_path = pip_exe
+            self.current_venv = env_name
+            
+            if log_callback:
+                log_callback("Virtual environment created successfully")
+                
+            return True
+            
+        except Exception as e:
+            if log_callback:
+                log_callback(f"Error creating environment: {str(e)}")
+            logger.error(f"Failed to create default environment: {e}")
+            return False
+    
+    def upgrade_pip(self, log_callback=None):
+        """Upgrade pip in the current environment"""
+        if not self.current_venv:
+            return False
+            
+        try:
+            if log_callback:
+                log_callback("Upgrading pip...")
+            
+            # Ensure console is hidden
+            import subprocess
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+                
+            result = subprocess.run([
+                self.python_path, "-m", "pip", "install", "--upgrade", "pip"
+            ], capture_output=True, text=True, 
+               startupinfo=startupinfo, 
+               creationflags=creationflags)
+            
+            if result.returncode != 0:
+                if log_callback:
+                    log_callback(f"Warning: Failed to upgrade pip: {result.stderr}")
+                return False
+            else:
+                if log_callback:
+                    log_callback("Pip upgraded successfully")
+                return True
+                
+        except Exception as e:
+            if log_callback:
+                log_callback(f"Error upgrading pip: {str(e)}")
+            return False
+            
+    def install_essential_packages(self, log_callback=None, progress_callback=None):
+        """Install essential packages in the current environment"""
+        if not self.current_venv:
+            return False
+            
+        failed_packages = []
+        total_packages = len(ESSENTIAL_PACKAGES)
+        
+        # Set up console hiding
+        import subprocess
+        startupinfo = None
+        creationflags = 0
+        
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+        for i, package in enumerate(ESSENTIAL_PACKAGES):
+            if log_callback:
+                log_callback(f"Installing {package}...")
+                
+            if progress_callback:
+                progress_callback(package, i / total_packages)
+                
+            try:
+                result = subprocess.run([
+                    self.pip_path, "install", package
+                ], capture_output=True, text=True,
+                   startupinfo=startupinfo,
+                   creationflags=creationflags)
+                
+                if result.returncode == 0:
+                    if log_callback:
+                        log_callback(f"✓ Successfully installed {package}")
+                else:
+                    if log_callback:
+                        log_callback(f"✗ Failed to install {package}: {result.stderr}")
+                    failed_packages.append(package)
                     
-                    # Get pip path
-                    pip_path = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-                    
-                    # Install each package
-                    for i, package in enumerate(packages_to_install):
-                        self.log_output(f"Installing {package}...\n")
-                        
-                        result = subprocess.run([pip_path, "install", package], capture_output=True, text=True)
-                        
-                        if result.returncode == 0:
-                            self.log_output(f"✅ {package} installed successfully\n")
-                        else:
-                            self.log_output(f"❌ Failed to install {package}: {result.stderr}\n")
-                            
-                        # Update progress
-                        progress = 0.5 + (0.4 * (i + 1) / len(packages_to_install))
-                        self.progress_bar.set(progress)
-                
-                # Activate if requested
-                if self.activate_after_creation.get():
-                    self.update_status("Activating environment...")
-                    if self.venv_manager.activate_venv(env_name):
-                        self.log_output("✅ Environment activated\n")
-                        
-                        # Update parent window's environment display
-                        if hasattr(self.parent_window, 'current_env_label'):
-                            self.after(0, lambda: self.parent_window.current_env_label.configure(text=env_name))
-                    else:
-                        self.log_output("❌ Failed to activate environment\n")
-                
-                self.progress_bar.set(1.0)
-                self.update_status("Environment created successfully!")
-                self.log_output("\n🎉 Virtual environment setup complete!\n")
-                
-                # Refresh parent's environment list
-                if hasattr(self.parent_window, 'load_virtual_environments'):
-                    self.after(0, self.parent_window.load_virtual_environments)
-                
-                # Auto-close after 2 seconds
-                self.after(2000, self.destroy)
-                
             except Exception as e:
-                self.update_status(f"Error: {e}")
-                self.log_output(f"\n❌ Error: {e}\n")
-                logger.error(f"Environment creation error: {e}")
+                if log_callback:
+                    log_callback(f"✗ Error installing {package}: {str(e)}")
+                failed_packages.append(package)
                 
-            finally:
-                self.after(0, lambda: self.create_btn.configure(state="normal", text="🚀 Create Environment"))
+        if failed_packages:
+            if log_callback:
+                log_callback(f"Some packages failed to install: {failed_packages}")
+            return False
+        else:
+            if log_callback:
+                log_callback("All essential packages installed successfully")
+            return True
+    
+    def install_optional_packages(self, log_callback=None, progress_callback=None):
+        """Install optional packages (best effort)"""
+        if not self.current_venv:
+            return False
+            
+        # Install first 5 optional packages
+        optional_subset = OPTIONAL_PACKAGES[:5]
+        total_packages = len(optional_subset)
+        
+        if log_callback:
+            log_callback("Installing optional packages...")
+            
+        # Set up console hiding
+        import subprocess
+        startupinfo = None
+        creationflags = 0
+        
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+        for i, package in enumerate(optional_subset):
+            if log_callback:
+                log_callback(f"Installing optional {package}...")
                 
-        threading.Thread(target=create_thread, daemon=True).start()
+            if progress_callback:
+                progress_callback(package, i / total_packages)
+                
+            try:
+                result = subprocess.run([
+                    self.pip_path, "install", package
+                ], capture_output=True, text=True,
+                   startupinfo=startupinfo,
+                   creationflags=creationflags)
+                
+                if result.returncode == 0:
+                    if log_callback:
+                        log_callback(f"✓ Installed optional {package}")
+                else:
+                    if log_callback:
+                        log_callback(f"Could not install optional {package}")
+                        
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"Could not install optional {package}: {str(e)}")
+                    
+        return True
+            
+    def verify_installation(self, log_callback=None):
+        """Verify that the installation is working correctly"""
+        test_packages = ["manim", "numpy", "matplotlib", "customtkinter", "jedi"]
         
-    def update_status(self, message):
-        """Update status label"""
-        self.after(0, lambda: self.status_label.configure(text=message))
+        if log_callback:
+            log_callback("Verifying installation...")
+            
+        # Set up console hiding
+        import subprocess
+        startupinfo = None
+        creationflags = 0
         
-    def log_output(self, text):
-        """Log output to text widget"""
-        self.after(0, lambda: self._append_output(text))
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+        for package in test_packages:
+            try:
+                result = subprocess.run([
+                    self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, '__version__', 'unknown')}}')"
+                ], capture_output=True, text=True,
+                   startupinfo=startupinfo,
+                   creationflags=creationflags)
+                
+                if result.returncode == 0:
+                    if log_callback:
+                        log_callback(f"✓ {package}: {result.stdout.strip()}")
+                else:
+                    if log_callback:
+                        log_callback(f"✗ {package} verification failed")
+                    return False
+                    
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"✗ Error verifying {package}: {str(e)}")
+                return False
+                
+        # Test Manim scene creation
+        if log_callback:
+            log_callback("Testing Manim scene creation...")
         
-    def _append_output(self, text):
-        """Append text to output widget"""
-        self.output_text.insert("end", text)
-        self.output_text.see("end")
+        test_code = '''
+from manim import *
+class TestScene(Scene):
+    def construct(self):
+        text = Text("Test")
+        self.add(text)
+print("Manim test successful")
+'''
+        
+        try:
+            # Create temporary test file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                f.write(test_code)
+                temp_file = f.name
+            
+            result = subprocess.run([
+                self.python_path, temp_file
+            ], capture_output=True, text=True,
+               startupinfo=startupinfo,
+               creationflags=creationflags)
+            
+            # Clean up
+            os.unlink(temp_file)
+            
+            if result.returncode == 0:
+                if log_callback:
+                    log_callback("✓ Manim scene test successful")
+            else:
+                if log_callback:
+                    log_callback(f"✗ Manim scene test failed: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            if log_callback:
+                log_callback(f"✗ Error testing Manim: {str(e)}")
+            return False
+        
+        if log_callback:
+            log_callback("All components verified successfully")
+        return True
+        
+    def list_venvs(self):
+        """List all available virtual environments"""
+        venvs = []
+        
+        # Add current environment if it's special
+        if self.current_venv and self.current_venv.startswith(("system_", "current_")):
+            venvs.append(self.current_venv)
+        
+        # Add regular virtual environments
+        if os.path.exists(self.venv_dir):
+            for item in os.listdir(self.venv_dir):
+                venv_path = os.path.join(self.venv_dir, item)
+                if os.path.isdir(venv_path) and self.is_valid_venv(venv_path):
+                    venvs.append(item)
+                    
+        return sorted(venvs)
+        
+    def is_valid_venv(self, venv_path):
+        """Check if a directory is a valid virtual environment"""
+        if os.name == 'nt':
+            return (os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")) and
+                    os.path.exists(os.path.join(venv_path, "Scripts", "pip.exe")))
+        else:
+            return (os.path.exists(os.path.join(venv_path, "bin", "python")) and
+                    os.path.exists(os.path.join(venv_path, "bin", "pip")))
+        
+    def create_venv(self, name, python_exe="python"):
+        """Create a new virtual environment"""
+        if name.startswith(("system_", "current_")):
+            return False
+            
+        venv_path = os.path.join(self.venv_dir, name)
+        
+        try:
+            # Create virtual environment
+            venv.create(venv_path, with_pip=True)
+            return True
+        except Exception as e:
+            logger.error(f"Error creating virtual environment: {e}")
+            return False
+        
+    def activate_venv(self, name):
+        """Activate a virtual environment"""
+        if name.startswith(("system_", "current_")):
+            return True
+            
+        if name in self.list_venvs():
+            self.current_venv = name
+            venv_path = os.path.join(self.venv_dir, name)
+            
+            if os.name == 'nt':
+                scripts_path = os.path.join(venv_path, "Scripts")
+                self.python_path = os.path.join(scripts_path, "python.exe")
+                self.pip_path = os.path.join(scripts_path, "pip.exe")
+            else:
+                bin_path = os.path.join(venv_path, "bin")
+                self.python_path = os.path.join(bin_path, "python")
+                self.pip_path = os.path.join(bin_path, "pip")
+                
+            return True
+        return False
+        
+    def install_package(self, package_name, callback=None):
+        """Install a package in the current virtual environment"""
+        if not self.current_venv:
+            if callback:
+                callback(False, "", "No virtual environment active")
+            return False, "No virtual environment active"
+            
+        def install_thread():
+            try:
+                # Set up console hiding
+                import subprocess
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                    
+                result = subprocess.run([
+                    self.pip_path, "install", package_name
+                ], capture_output=True, text=True,
+                   startupinfo=startupinfo,
+                   creationflags=creationflags)
+                
+                if callback:
+                    callback(result.returncode == 0, result.stdout, result.stderr)
+                    
+            except Exception as e:
+                if callback:
+                    callback(False, "", str(e))
+                
+        threading.Thread(target=install_thread, daemon=True).start()
+        return True, "Installation started"
+        
+    def uninstall_package(self, package_name, callback=None):
+        """Uninstall a package from the current virtual environment"""
+        if not self.current_venv:
+            if callback:
+                callback(False, "", "No virtual environment active")
+            return False, "No virtual environment active"
+            
+        def uninstall_thread():
+            try:
+                # Set up console hiding
+                import subprocess
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                    
+                result = subprocess.run([
+                    self.pip_path, "uninstall", "-y", package_name
+                ], capture_output=True, text=True,
+                   startupinfo=startupinfo,
+                   creationflags=creationflags)
+                
+                if callback:
+                    callback(result.returncode == 0, result.stdout, result.stderr)
+                    
+            except Exception as e:
+                if callback:
+                    callback(False, "", str(e))
+                
+        threading.Thread(target=uninstall_thread, daemon=True).start()
+        return True, "Uninstallation started"
+        
+    def list_packages(self, callback=None):
+        """List installed packages in the current virtual environment"""
+        if not self.current_venv:
+            if callback:
+                callback(False, [], "No virtual environment active")
+            return False, "No virtual environment active"
+            
+        def list_thread():
+            try:
+                # Set up console hiding
+                import subprocess
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                    
+                result = subprocess.run([
+                    self.pip_path, "list", "--format=json"
+                ], capture_output=True, text=True,
+                   startupinfo=startupinfo,
+                   creationflags=creationflags)
+                
+                if result.returncode == 0:
+                    try:
+                        packages = json.loads(result.stdout)
+                        if callback:
+                            callback(True, packages, "")
+                    except:
+                        if callback:
+                            callback(False, [], result.stdout)
+                else:
+                    if callback:
+                        callback(False, [], result.stderr)
+                        
+            except Exception as e:
+                if callback:
+                    callback(False, [], str(e))
+                    
+        threading.Thread(target=list_thread, daemon=True).start()
+        return True, "Getting package list"
+        
+    def get_venv_info(self, venv_name):
+        """Get information about a virtual environment"""
+        if venv_name.startswith("system_"):
+            return {
+                'name': "System Python",
+                'path': sys.prefix,
+                'is_active': venv_name == self.current_venv,
+                'python_version': f"Python {sys.version.split()[0]}",
+                'packages_count': 0,
+                'size': 0
+            }
+        elif venv_name.startswith("current_"):
+            return {
+                'name': venv_name,
+                'path': sys.prefix,
+                'is_active': venv_name == self.current_venv,
+                'python_version': f"Python {sys.version.split()[0]}",
+                'packages_count': 0,
+                'size': 0
+            }
+        
+        venv_path = os.path.join(self.venv_dir, venv_name)
+        
+        info = {
+            'name': venv_name,
+            'path': venv_path,
+            'is_active': venv_name == self.current_venv,
+            'python_version': None,
+            'packages_count': 0,
+            'size': 0
+        }
+        
+        try:
+            # Get Python version
+            python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
+            
+            # Set up console hiding
+            import subprocess
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+                
+            result = subprocess.run(
+                [python_exe, "--version"], 
+                capture_output=True, 
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=creationflags
+            )
+            
+            if result.returncode == 0:
+                info['python_version'] = result.stdout.strip()
+                
+            # Get package count
+            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
+            result = subprocess.run(
+                [pip_exe, "list", "--format=json"], 
+                capture_output=True, 
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=creationflags
+            )
+            
+            if result.returncode == 0:
+                packages = json.loads(result.stdout)
+                info['packages_count'] = len(packages)
+                
+            # Get directory size
+            info['size'] = self._get_directory_size(venv_path)
+            
+        except Exception as e:
+            logger.error(f"Error getting venv info: {e}")
+            
+        return info
+        
+    def _get_directory_size(self, path):
+        """Get the total size of a directory in bytes"""
+        total_size = 0
+        try:
+            for dirpath, dirnames, filenames in os.walk(path):
+                for filename in filenames:
+                    filepath = os.path.join(dirpath, filename)
+                    try:
+                        total_size += os.path.getsize(filepath)
+                    except (OSError, IOError):
+                        continue
+        except Exception:
+            pass
+        return total_size
 
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
@@ -2117,6 +1732,7 @@ class IntelliSenseEngine:
             except Exception as e:
                 logger.error(f"Signature help error: {e}")
         return None
+
 
 class AutocompletePopup(tk.Toplevel):
     """Professional autocomplete popup window"""
@@ -2252,6 +1868,7 @@ class AutocompletePopup(tk.Toplevel):
             return self.completions[self.selected_index]
         return None
 
+
 class SignatureHelpPopup(tk.Toplevel):
     """Function signature help popup"""
     
@@ -2305,6 +1922,7 @@ class SignatureHelpPopup(tk.Toplevel):
     def hide(self):
         """Hide signature popup"""
         self.withdraw()
+
 
 class EnhancedPythonEditor(tk.Text):
     """Enhanced Python editor with advanced IntelliSense and features"""
@@ -3075,226 +2693,6 @@ class EnhancedPythonEditor(tk.Text):
             self.parent_app.show_replace_dialog()
         return "break"
 
-class VirtualEnvironmentManager:
-    """Enhanced virtual environment manager with professional features"""
-    
-    def __init__(self, parent_app):
-        self.parent_app = parent_app
-        self.current_venv = None
-        self.venv_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs")
-        os.makedirs(self.venv_dir, exist_ok=True)
-        
-        # Initialize with default virtual environment
-        self.ensure_default_venv()
-        
-    def ensure_default_venv(self):
-        """Ensure a default virtual environment exists and activate it"""
-        default_venv_name = "manim_studio_default"
-        
-        # Check if default environment exists
-        if default_venv_name not in self.list_venvs():
-            # Create default environment
-            logger.info("Creating default virtual environment...")
-            if self.create_venv(default_venv_name):
-                logger.info(f"Created default environment: {default_venv_name}")
-                
-                # Install essential packages
-                essential_packages = ["manim", "numpy", "matplotlib", "jedi"]
-                for package in essential_packages:
-                    self.install_package(package)
-                    
-        # Activate default environment
-        if self.activate_venv(default_venv_name):
-            logger.info(f"Activated default environment: {default_venv_name}")
-        
-    def list_venvs(self):
-        """List all available virtual environments"""
-        venvs = []
-        if os.path.exists(self.venv_dir):
-            for item in os.listdir(self.venv_dir):
-                venv_path = os.path.join(self.venv_dir, item)
-                if os.path.isdir(venv_path):
-                    # Check if it's a valid virtual environment
-                    if self.is_valid_venv(venv_path):
-                        venvs.append(item)
-        return sorted(venvs)
-        
-    def is_valid_venv(self, venv_path):
-        """Check if a directory is a valid virtual environment"""
-        # Check for key files that indicate a virtual environment
-        if os.name == 'nt':
-            # Windows
-            return (os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")) and
-                    os.path.exists(os.path.join(venv_path, "Scripts", "pip.exe")))
-        else:
-            # Unix/Linux/Mac
-            return (os.path.exists(os.path.join(venv_path, "bin", "python")) and
-                    os.path.exists(os.path.join(venv_path, "bin", "pip")))
-        
-    def create_venv(self, name, python_exe="python"):
-        """Create a new virtual environment"""
-        venv_path = os.path.join(self.venv_dir, name)
-        
-        try:
-            # Create virtual environment
-            result = subprocess.run([
-                python_exe, "-m", "venv", venv_path
-            ], capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                # Upgrade pip in the new environment
-                pip_path = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-                subprocess.run([pip_path, "install", "--upgrade", "pip"], capture_output=True)
-                
-                return True
-            else:
-                logger.error(f"Failed to create venv: {result.stderr}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error creating virtual environment: {e}")
-            return False
-        
-    def activate_venv(self, name):
-        """Activate a virtual environment"""
-        if name in self.list_venvs():
-            self.current_venv = name
-            venv_path = os.path.join(self.venv_dir, name)
-            
-            # Update PATH to use venv python
-            if os.name == 'nt':
-                scripts_path = os.path.join(venv_path, "Scripts")
-                self.python_path = os.path.join(scripts_path, "python.exe")
-                self.pip_path = os.path.join(scripts_path, "pip.exe")
-            else:
-                bin_path = os.path.join(venv_path, "bin")
-                self.python_path = os.path.join(bin_path, "python")
-                self.pip_path = os.path.join(bin_path, "pip")
-                
-            return True
-        return False
-        
-    def install_package(self, package_name, callback=None):
-        """Install a package in the current virtual environment"""
-        if not self.current_venv:
-            return False, "No virtual environment active"
-            
-        def install_thread():
-            try:
-                result = subprocess.run([
-                    self.pip_path, "install", package_name
-                ], capture_output=True, text=True)
-                
-                if callback:
-                    callback(result.returncode == 0, result.stdout, result.stderr)
-                    
-            except Exception as e:
-                if callback:
-                    callback(False, "", str(e))
-                
-        threading.Thread(target=install_thread, daemon=True).start()
-        return True, "Installation started"
-        
-    def uninstall_package(self, package_name, callback=None):
-        """Uninstall a package from the current virtual environment"""
-        if not self.current_venv:
-            return False, "No virtual environment active"
-            
-        def uninstall_thread():
-            try:
-                result = subprocess.run([
-                    self.pip_path, "uninstall", "-y", package_name
-                ], capture_output=True, text=True)
-                
-                if callback:
-                    callback(result.returncode == 0, result.stdout, result.stderr)
-                    
-            except Exception as e:
-                if callback:
-                    callback(False, "", str(e))
-                
-        threading.Thread(target=uninstall_thread, daemon=True).start()
-        return True, "Uninstallation started"
-        
-    def list_packages(self, callback=None):
-        """List installed packages in the current virtual environment"""
-        if not self.current_venv:
-            return False, "No virtual environment active"
-            
-        def list_thread():
-            try:
-                result = subprocess.run([
-                    self.pip_path, "list", "--format=json"
-                ], capture_output=True, text=True)
-                
-                if result.returncode == 0:
-                    try:
-                        packages = json.loads(result.stdout)
-                        if callback:
-                            callback(True, packages, "")
-                    except:
-                        if callback:
-                            callback(False, [], result.stdout)
-                else:
-                    if callback:
-                        callback(False, [], result.stderr)
-                        
-            except Exception as e:
-                if callback:
-                    callback(False, [], str(e))
-                    
-        threading.Thread(target=list_thread, daemon=True).start()
-        return True, "Getting package list"
-        
-    def get_venv_info(self, venv_name):
-        """Get information about a virtual environment"""
-        venv_path = os.path.join(self.venv_dir, venv_name)
-        
-        info = {
-            'name': venv_name,
-            'path': venv_path,
-            'is_active': venv_name == self.current_venv,
-            'python_version': None,
-            'packages_count': 0,
-            'size': 0
-        }
-        
-        try:
-            # Get Python version
-            python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
-            result = subprocess.run([python_exe, "--version"], capture_output=True, text=True)
-            if result.returncode == 0:
-                info['python_version'] = result.stdout.strip()
-                
-            # Get package count
-            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-            result = subprocess.run([pip_exe, "list", "--format=json"], capture_output=True, text=True)
-            if result.returncode == 0:
-                packages = json.loads(result.stdout)
-                info['packages_count'] = len(packages)
-                
-            # Get directory size
-            info['size'] = self._get_directory_size(venv_path)
-            
-        except Exception as e:
-            logger.error(f"Error getting venv info: {e}")
-            
-        return info
-        
-    def _get_directory_size(self, path):
-        """Get the total size of a directory in bytes"""
-        total_size = 0
-        try:
-            for dirpath, dirnames, filenames in os.walk(path):
-                for filename in filenames:
-                    filepath = os.path.join(dirpath, filename)
-                    try:
-                        total_size += os.path.getsize(filepath)
-                    except (OSError, IOError):
-                        continue
-        except Exception:
-            pass
-        return total_size
 
 class LineNumbers(tk.Text):
     """Line numbers widget that syncs with the main editor"""
@@ -3341,6 +2739,7 @@ class LineNumbers(tk.Text):
         
         # Sync scrolling with editor
         self.yview_moveto(self.editor.yview()[0])
+
 
 class FindReplaceDialog(ctk.CTkToplevel):
     """Enhanced find and replace dialog with VSCode-like features"""
@@ -3558,6 +2957,7 @@ class FindReplaceDialog(ctk.CTkToplevel):
         # Update search
         self.update_search()
 
+
 class AssetCard(ctk.CTkFrame):
     """Visual card for displaying assets"""
     def __init__(self, parent, asset_path, asset_type, on_use_callback, on_remove_callback, **kwargs):
@@ -3719,6 +3119,7 @@ class AssetCard(ctk.CTkFrame):
         """Handle remove button click"""
         if self.on_remove_callback:
             self.on_remove_callback(self.asset_path, self)
+
 
 class VideoPlayerWidget(ctk.CTkFrame):
     """Professional video player with actual playback capability"""
@@ -4096,6 +3497,161 @@ class VideoPlayerWidget(ctk.CTkFrame):
         
         self.show_placeholder()
 
+
+class PyPISearchEngine:
+    """Advanced PyPI search engine with modern features"""
+    
+    def __init__(self):
+        self.base_url = "https://pypi.org"
+        self.api_url = "https://pypi.org/pypi"
+        self.search_url = "https://pypi.org/search"
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': f'{APP_NAME}/{APP_VERSION} (Package Manager)'
+        })
+        
+        # Cache for search results
+        self.search_cache = {}
+        self.package_cache = {}
+        
+    async def search_packages(self, query: str, max_results: int = 50) -> List[PackageInfo]:
+        """Search for packages asynchronously"""
+        try:
+            # Check cache first
+            cache_key = f"{query}_{max_results}"
+            if cache_key in self.search_cache:
+                return self.search_cache[cache_key]
+                
+            # For demo, return enhanced mock data based on categories
+            packages = self._get_enhanced_package_list(query, max_results)
+            
+            # Cache results
+            self.search_cache[cache_key] = packages
+            return packages
+                    
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            return []
+    
+    def _get_enhanced_package_list(self, query: str, max_results: int) -> List[PackageInfo]:
+        """Get enhanced package list based on query and categories"""
+        packages = []
+        
+        # Enhanced package database
+        package_db = {
+            # Core Data Science
+            "numpy": PackageInfo("numpy", "1.24.3", "Fundamental package for array computing", "NumPy Developers", "BSD", "https://numpy.org", "", 50000000, 25000, category="Data Science & Analytics"),
+            "pandas": PackageInfo("pandas", "2.0.3", "Powerful data analysis and manipulation library", "Pandas Team", "BSD", "https://pandas.pydata.org", "", 40000000, 35000, category="Data Science & Analytics"),
+            "matplotlib": PackageInfo("matplotlib", "3.7.2", "Comprehensive library for creating static, animated visualizations", "Matplotlib Team", "PSF", "https://matplotlib.org", "", 30000000, 18000, category="Data Science & Analytics"),
+            "seaborn": PackageInfo("seaborn", "0.12.2", "Statistical data visualization based on matplotlib", "Michael Waskom", "BSD", "https://seaborn.pydata.org", "", 15000000, 10000, category="Data Science & Analytics"),
+            "scipy": PackageInfo("scipy", "1.11.1", "Fundamental algorithms for scientific computing", "SciPy Developers", "BSD", "https://scipy.org", "", 25000000, 12000, category="Scientific Computing"),
+            "scikit-learn": PackageInfo("scikit-learn", "1.3.0", "Machine learning library for Python", "Scikit-learn Developers", "BSD", "https://scikit-learn.org", "", 20000000, 15000, category="Machine Learning & AI"),
+            
+            # Machine Learning & AI
+            "tensorflow": PackageInfo("tensorflow", "2.13.0", "An end-to-end open source machine learning platform", "Google", "Apache", "https://tensorflow.org", "", 35000000, 180000, category="Machine Learning & AI"),
+            "pytorch": PackageInfo("pytorch", "2.0.1", "Tensors and Dynamic neural networks in Python", "PyTorch Team", "BSD", "https://pytorch.org", "", 30000000, 65000, category="Machine Learning & AI"),
+            "transformers": PackageInfo("transformers", "4.32.0", "State-of-the-art Machine Learning for JAX, PyTorch and TensorFlow", "Hugging Face", "Apache", "https://huggingface.co/transformers", "", 10000000, 95000, category="Machine Learning & AI"),
+            "opencv-python": PackageInfo("opencv-python", "4.8.0", "Open Source Computer Vision Library", "OpenCV Team", "MIT", "https://opencv.org", "", 18000000, 13000, category="Animation & Graphics"),
+            
+            # Web Development
+            "django": PackageInfo("django", "4.2.3", "High-level Python web framework", "Django Software Foundation", "BSD", "https://djangoproject.com", "", 25000000, 65000, category="Web Development"),
+            "flask": PackageInfo("flask", "2.3.2", "A simple framework for building complex web applications", "Armin Ronacher", "BSD", "https://flask.palletsprojects.com", "", 22000000, 62000, category="Web Development"),
+            "fastapi": PackageInfo("fastapi", "0.101.0", "FastAPI framework, high performance, easy to learn", "Sebastián Ramirez", "MIT", "https://fastapi.tiangolo.com", "", 15000000, 65000, category="Web Development"),
+            "requests": PackageInfo("requests", "2.31.0", "HTTP library for Python", "Kenneth Reitz", "Apache", "https://requests.readthedocs.io", "", 45000000, 50000, category="Web Development"),
+            
+            # GUI Development
+            "customtkinter": PackageInfo("customtkinter", "5.2.0", "Modern and customizable python UI-library based on Tkinter", "Tom Schimansky", "MIT", "https://github.com/TomSchimansky/CustomTkinter", "", 2000000, 8500, category="GUI & Desktop Development"),
+            "pyqt5": PackageInfo("pyqt5", "5.15.9", "Python bindings for the Qt cross platform library", "Riverbank Computing", "GPL", "https://riverbankcomputing.com/software/pyqt", "", 12000000, 3500, category="GUI & Desktop Development"),
+            "kivy": PackageInfo("kivy", "2.2.0", "Open source UI framework written in Python", "Kivy Organization", "MIT", "https://kivy.org", "", 5000000, 15000, category="GUI & Desktop Development"),
+            
+            # Animation & Graphics
+            "manim": PackageInfo("manim", "0.17.3", "Mathematical Animation Engine", "3b1b & Manim Community", "MIT", "https://manim.community", "", 1500000, 12000, category="Animation & Graphics"),
+            "pygame": PackageInfo("pygame", "2.5.0", "Python Game Development", "Pygame Community", "LGPL", "https://pygame.org", "", 8000000, 5000, category="Game Development"),
+            "pillow": PackageInfo("pillow", "10.0.0", "Python Imaging Library (Fork)", "Alex Clark and Contributors", "PIL", "https://python-pillow.org", "", 25000000, 11000, category="Image Processing"),
+            
+            # Development Tools
+            "pytest": PackageInfo("pytest", "7.4.0", "Framework makes it easy to write small tests", "Holger Krekel", "MIT", "https://pytest.org", "", 30000000, 11000, category="Development Tools"),
+            "black": PackageInfo("black", "23.7.0", "The uncompromising Python code formatter", "Python Software Foundation", "MIT", "https://black.readthedocs.io", "", 12000000, 35000, category="Development Tools"),
+            "jedi": PackageInfo("jedi", "0.18.2", "An autocompletion tool for Python", "David Halter", "MIT", "https://github.com/davidhalter/jedi", "", 15000000, 5500, category="Development Tools"),
+            
+            # Scientific Computing
+            "sympy": PackageInfo("sympy", "1.12", "Python library for symbolic mathematics", "SymPy Development Team", "BSD", "https://sympy.org", "", 5000000, 10000, category="Scientific Computing"),
+            "networkx": PackageInfo("networkx", "3.1", "Python package for network analysis", "NetworkX Developers", "BSD", "https://networkx.org", "", 8000000, 13000, category="Scientific Computing"),
+            
+            # Text Processing & NLP
+            "nltk": PackageInfo("nltk", "3.8.1", "Natural Language Toolkit", "NLTK Team", "Apache", "https://nltk.org", "", 10000000, 12000, category="Text Processing & NLP"),
+            "spacy": PackageInfo("spacy", "3.6.1", "Industrial-strength Natural Language Processing", "Explosion AI", "MIT", "https://spacy.io", "", 5000000, 25000, category="Text Processing & NLP"),
+            
+            # Database & ORM
+            "sqlalchemy": PackageInfo("sqlalchemy", "2.0.19", "Database Abstraction Library", "Mike Bayer", "MIT", "https://sqlalchemy.org", "", 15000000, 5000, category="Database & ORM"),
+            "pymongo": PackageInfo("pymongo", "4.4.1", "Python driver for MongoDB", "MongoDB, Inc.", "Apache", "https://pymongo.readthedocs.io", "", 8000000, 1500, category="Database & ORM"),
+            
+            # Cloud & Infrastructure
+            "boto3": PackageInfo("boto3", "1.28.22", "The AWS SDK for Python", "Amazon Web Services", "Apache", "https://boto3.amazonaws.com", "", 20000000, 8500, category="Cloud & Infrastructure"),
+            "docker": PackageInfo("docker", "6.1.3", "A Python library for the Docker Engine API", "Docker, Inc.", "Apache", "https://docker-py.readthedocs.io", "", 12000000, 6500, category="Cloud & Infrastructure"),
+            
+            # System utilities
+            "psutil": PackageInfo("psutil", "5.9.5", "Cross-platform lib for process and system monitoring", "Giampaolo Rodola", "BSD", "https://github.com/giampaolo/psutil", "", 18000000, 8500, category="System & Networking"),
+            "rich": PackageInfo("rich", "13.4.2", "Rich text and beautiful formatting in the terminal", "Will McGugan", "MIT", "https://rich.readthedocs.io", "", 5000000, 45000, category="System & Networking"),
+            
+            # Finance
+            "yfinance": PackageInfo("yfinance", "0.2.20", "Download market data from Yahoo! Finance", "Ran Aroussi", "Apache", "https://github.com/ranaroussi/yfinance", "", 2000000, 11000, category="Finance & Trading"),
+            
+            # Audio/Video
+            "moviepy": PackageInfo("moviepy", "1.0.3", "Video editing with Python", "Zulko", "MIT", "https://zulko.github.io/moviepy", "", 3000000, 11000, category="Audio & Video Processing"),
+            "pydub": PackageInfo("pydub", "0.25.1", "Manipulate audio with a simple and easy high level interface", "James Robert", "MIT", "https://github.com/jiaaro/pydub", "", 8000000, 7000, category="Audio & Video Processing"),
+        }
+        
+        # Filter packages based on query
+        if query:
+            query_lower = query.lower()
+            filtered_packages = []
+            
+            # Search in package names, descriptions, and categories
+            for pkg_name, pkg_info in package_db.items():
+                if (query_lower in pkg_name.lower() or 
+                    query_lower in pkg_info.description.lower() or
+                    query_lower in pkg_info.category.lower()):
+                    filtered_packages.append(pkg_info)
+            
+            # Sort by relevance (exact matches first)
+            filtered_packages.sort(key=lambda p: (
+                not p.name.lower().startswith(query_lower),
+                -p.downloads
+            ))
+            
+            packages = filtered_packages[:max_results]
+        else:
+            # Return popular packages if no query
+            popular_package_names = POPULAR_PACKAGES[:max_results]
+            packages = [package_db.get(name) for name in popular_package_names if name in package_db]
+            packages = [p for p in packages if p is not None]
+        
+        return packages
+    
+    async def get_package_info(self, package_name: str) -> Optional[PackageInfo]:
+        """Get detailed package information"""
+        try:
+            # Check cache first
+            if package_name in self.package_cache:
+                return self.package_cache[package_name]
+                
+            # For demo, return mock data
+            mock_packages = self._get_enhanced_package_list("", 1000)
+            for pkg in mock_packages:
+                if pkg.name == package_name:
+                    self.package_cache[package_name] = pkg
+                    return pkg
+                        
+        except Exception as e:
+            logger.error(f"Package info error: {e}")
+            return None
+    
+    def get_popular_packages(self) -> List[str]:
+        """Get list of popular packages"""
+        return POPULAR_PACKAGES
+
+
 class ManimStudioApp:
     def __init__(self):
         # Initialize main window
@@ -4115,6 +3671,11 @@ class ManimStudioApp:
         # Initialize virtual environment manager
         self.venv_manager = VirtualEnvironmentManager(self)
         
+        # Show setup dialog if needed
+        if self.venv_manager.needs_setup:
+            # Show setup dialog on the next UI update
+            self.root.after(100, self.check_environment_setup)
+        
         # Load settings
         self.load_settings()
         
@@ -4130,23 +3691,28 @@ class ManimStudioApp:
         # Start background tasks
         self.start_background_tasks()
         
+    def check_environment_setup(self):
+        """Check if environment setup is needed"""
+        if self.venv_manager.needs_setup:
+            self.venv_manager.show_setup_dialog()
+            
     def load_settings(self):
         """Load settings from file"""
         self.settings_file = os.path.join(os.path.expanduser("~"), ".manim_studio", "settings.json")
         
-        # Default settings with virtual environment as default
+        # Default settings
         self.settings = {
             "quality": "720p",
             "format": "MP4 Video",
             "fps": 30,
             "preview_quality": "Medium",
             "auto_preview": False,
-            "theme": "dark",
+            "theme": "Dark+",
             "font_size": 14,
-            "current_venv": "manim_studio_default",  # Use venv by default
+            "current_venv": None,
             "intellisense_enabled": True,
             "auto_completion_delay": 500,
-            "use_venv_by_default": True
+            "custom_theme": None
         }
         
         # Load from file if exists
@@ -4158,9 +3724,9 @@ class ManimStudioApp:
         except Exception as e:
             logger.error(f"Error loading settings: {e}")
             
-        # Load virtual environment if set
-        if self.settings.get("current_venv"):
-            self.venv_manager.activate_venv(self.settings["current_venv"])
+        # Apply custom theme if available
+        if self.settings.get("custom_theme"):
+            THEME_SCHEMES["Custom"] = self.settings["custom_theme"]
             
     def save_settings(self):
         """Save settings to file"""
@@ -4169,6 +3735,10 @@ class ManimStudioApp:
             
             # Update current venv in settings
             self.settings["current_venv"] = self.venv_manager.current_venv
+            
+            # Save custom theme if it exists
+            if "Custom" in THEME_SCHEMES:
+                self.settings["custom_theme"] = THEME_SCHEMES["Custom"]
             
             with open(self.settings_file, 'w') as f:
                 json.dump(self.settings, f, indent=2)
@@ -4202,6 +3772,12 @@ class ManimStudioApp:
         self.auto_preview_var = ctk.BooleanVar(value=self.settings["auto_preview"])
         self.font_size_var = ctk.IntVar(value=self.settings["font_size"])
         self.intellisense_var = ctk.BooleanVar(value=self.settings["intellisense_enabled"])
+        self.current_theme = self.settings["theme"]
+        
+        # Load the selected theme
+        if self.current_theme in THEME_SCHEMES:
+            global VSCODE_COLORS
+            VSCODE_COLORS = THEME_SCHEMES[self.current_theme].copy()
         
     def apply_vscode_theme(self):
         """Apply VSCode-like color theme"""
@@ -4226,6 +3802,44 @@ class ManimStudioApp:
                 selectbackground=colors["selection"]
             )
             
+    def apply_theme(self, theme_colors):
+        """Apply a new theme to the application"""
+        global VSCODE_COLORS
+        VSCODE_COLORS = theme_colors.copy()
+        
+        # Update CustomTkinter colors
+        ctk.set_appearance_mode("dark" if theme_colors["background"] == "#1E1E1E" else "light")
+        
+        # Apply to main components
+        self.apply_vscode_theme()
+        
+        # Update editor colors
+        if hasattr(self, 'code_editor'):
+            self.code_editor.configure(
+                bg=theme_colors["background"],
+                fg=theme_colors["text"],
+                insertbackground=theme_colors["text"],
+                selectbackground=theme_colors["selection"],
+                selectforeground=theme_colors["text_bright"]
+            )
+            
+            # Reconfigure syntax highlighting tags
+            self.code_editor.configure_tags()
+            
+            # Reapply syntax highlighting
+            self.code_editor.apply_syntax_highlighting()
+        
+        # Update line numbers
+        if hasattr(self, 'line_numbers'):
+            self.line_numbers.configure(
+                bg=theme_colors["line_numbers_bg"],
+                fg=theme_colors["line_numbers"]
+            )
+            
+        # Save the theme
+        self.settings["theme"] = "Custom"  # Mark as custom theme
+        self.save_settings()
+        
     def create_ui(self):
         """Create the main user interface"""
         # Configure main window grid
@@ -4289,7 +3903,7 @@ class ManimStudioApp:
             ("💾", "Save File", self.save_file),
             ("▶️", "Render Animation", self.render_animation),
             ("👁️", "Quick Preview", self.quick_preview),
-            ("📦", "Package Manager", self.open_package_manager),
+            ("🔧", "Environment Setup", self.manage_environment),
         ]
         
         for icon, tooltip, command in quick_actions:
@@ -4307,7 +3921,7 @@ class ManimStudioApp:
             btn.pack(side="left", padx=2)
             self.create_tooltip(btn, tooltip)
             
-        # Right side - Virtual environment and settings
+        # Right side - Settings and controls
         header_right = ctk.CTkFrame(self.header, fg_color="transparent")
         header_right.grid(row=0, column=2, sticky="e", padx=20, pady=10)
         
@@ -4329,7 +3943,7 @@ class ManimStudioApp:
         venv_label = ctk.CTkLabel(venv_frame, text="🔧", font=ctk.CTkFont(size=14))
         venv_label.pack(side="left", padx=(10, 5))
         
-        venv_name = self.venv_manager.current_venv or "No venv"
+        venv_name = self.venv_manager.current_venv or "No environment"
         self.venv_status_label = ctk.CTkLabel(
             venv_frame,
             text=venv_name,
@@ -4338,20 +3952,27 @@ class ManimStudioApp:
         )
         self.venv_status_label.pack(side="left", padx=(0, 10))
         
-        # Theme toggle
-        self.theme_button = ctk.CTkButton(
-            header_right,
-            text="🌙",
-            width=40,
-            height=40,
-            font=ctk.CTkFont(size=16),
-            command=self.toggle_theme,
-            fg_color="transparent",
-            hover_color=VSCODE_COLORS["surface_light"],
-            corner_radius=8
+        # Theme selector
+        theme_frame = ctk.CTkFrame(header_right, fg_color="transparent")
+        theme_frame.pack(side="right", padx=15)
+        
+        ctk.CTkLabel(
+            theme_frame,
+            text="Theme:",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text"]
+        ).pack(side="left", padx=(0, 5))
+        
+        self.theme_var = ctk.StringVar(value=self.current_theme)
+        theme_combo = ctk.CTkComboBox(
+            theme_frame,
+            values=list(THEME_SCHEMES.keys()),
+            variable=self.theme_var,
+            command=self.on_theme_change,
+            width=120,
+            height=35
         )
-        self.theme_button.pack(side="right", padx=5)
-        self.create_tooltip(self.theme_button, "Toggle Theme")
+        theme_combo.pack(side="left")
         
         # Auto-preview toggle
         self.auto_preview_checkbox = ctk.CTkCheckBox(
@@ -4912,7 +4533,6 @@ class ManimStudioApp:
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Toggle Theme", command=self.toggle_theme)
         view_menu.add_command(label="Toggle Fullscreen", command=self.toggle_fullscreen, accelerator="F11")
         view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
         view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
@@ -4922,8 +4542,7 @@ class ManimStudioApp:
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
-        tools_menu.add_command(label="Advanced Package Manager", command=self.open_package_manager, accelerator="Ctrl+Shift+P")
-        tools_menu.add_command(label="Virtual Environments", command=self.open_venv_manager)
+        tools_menu.add_command(label="Environment Setup", command=self.manage_environment)
         
         # Animation menu
         animation_menu = tk.Menu(menubar, tearoff=0)
@@ -4949,7 +4568,6 @@ class ManimStudioApp:
         self.root.bind("<Control-h>", lambda e: self.show_replace_dialog())
         self.root.bind("<Control-z>", lambda e: self.undo())
         self.root.bind("<Control-y>", lambda e: self.redo())
-        self.root.bind("<Control-Shift-P>", lambda e: self.open_package_manager())
         self.root.bind("<F5>", lambda e: self.quick_preview())
         self.root.bind("<F7>", lambda e: self.render_animation())
         self.root.bind("<F11>", lambda e: self.toggle_fullscreen())
@@ -5076,18 +4694,13 @@ class MyScene(Scene):
         """Show find and replace dialog"""
         self.show_find_dialog()
         
-    def open_package_manager(self):
-        """Open advanced package manager"""
-        if not hasattr(self, 'package_manager') or not self.package_manager.winfo_exists():
-            self.package_manager = AdvancedPackageManager(self.root, self.venv_manager)
+    def manage_environment(self):
+        """Open environment management dialog"""
+        if self.venv_manager.needs_setup:
+            self.venv_manager.show_setup_dialog()
         else:
-            self.package_manager.lift()
-            self.package_manager.focus()
-            
-    def open_venv_manager(self):
-        """Open virtual environment manager"""
-        self.open_package_manager()
-        # The new package manager includes virtual environment management
+            # Show environment info
+            dialog = EnvironmentInfoDialog(self.root, self.venv_manager)
             
     # Settings callbacks
     def on_quality_change(self, value):
@@ -5114,6 +4727,15 @@ class MyScene(Scene):
         self.preview_info.configure(text=f"Resolution: {quality_info['resolution']}")
         self.save_settings()
         
+    def on_theme_change(self, theme_name):
+        """Handle theme change"""
+        if theme_name in THEME_SCHEMES:
+            self.current_theme = theme_name
+            self.settings["theme"] = theme_name
+            
+            # Apply the new theme
+            self.apply_theme(THEME_SCHEMES[theme_name])
+            
     def toggle_auto_preview(self):
         """Toggle auto-preview"""
         self.settings["auto_preview"] = self.auto_preview_var.get()
@@ -5129,22 +4751,6 @@ class MyScene(Scene):
         self.intellisense_status.configure(text=status_text)
         
         self.save_settings()
-        
-    def toggle_theme(self):
-        """Toggle between light and dark theme"""
-        current_mode = ctk.get_appearance_mode()
-        new_mode = "light" if current_mode == "dark" else "dark"
-        ctk.set_appearance_mode(new_mode)
-        
-        # Update theme button
-        self.theme_button.configure(text="☀️" if new_mode == "light" else "🌙")
-        
-        # Save setting
-        self.settings["theme"] = new_mode
-        self.save_settings()
-        
-        # Update VSCode colors for new theme
-        self.apply_vscode_theme()
         
     def toggle_fullscreen(self):
         """Toggle fullscreen mode"""
@@ -5375,21 +4981,14 @@ class MyScene(Scene):
             messagebox.showwarning("Warning", "Please enter code before generating preview")
             return
             
-        # Check if virtual environment is active
+        # Check if environment is active
         if not self.venv_manager.current_venv:
-            result = messagebox.askyesnocancel(
-                "No Virtual Environment",
-                "No virtual environment is active. Would you like to create one or use system Python?\n\n"
-                "Yes - Create new environment\n"
-                "No - Use system Python\n"
-                "Cancel - Abort"
+            messagebox.showwarning(
+                "No Environment Active",
+                "No Python environment is active. Please set up an environment first.\n\n"
+                "Click the Environment Setup button to create one."
             )
-            
-            if result is None:  # Cancel
-                return
-            elif result:  # Yes - create new environment
-                self.open_package_manager()
-                return
+            return
                 
         self.is_previewing = True
         self.quick_preview_button.configure(text="⏳ Generating...", state="disabled")
@@ -5412,11 +5011,8 @@ class MyScene(Scene):
                 preview_quality = PREVIEW_QUALITIES[self.settings["preview_quality"]]
                 quality_flag = preview_quality["flag"]
                 
-                # Determine Python executable
-                if self.venv_manager.current_venv:
-                    python_exe = self.venv_manager.python_path
-                else:
-                    python_exe = sys.executable
+                # Use environment Python
+                python_exe = self.venv_manager.python_path
                     
                 # Build manim command
                 command = [
@@ -5498,21 +5094,14 @@ class MyScene(Scene):
             messagebox.showwarning("Warning", "Please enter code before rendering")
             return
             
-        # Check if virtual environment is active
+        # Check if environment is active
         if not self.venv_manager.current_venv:
-            result = messagebox.askyesnocancel(
-                "No Virtual Environment",
-                "No virtual environment is active. Would you like to create one or use system Python?\n\n"
-                "Yes - Create new environment\n"
-                "No - Use system Python\n"
-                "Cancel - Abort"
+            messagebox.showwarning(
+                "No Environment Active",
+                "No Python environment is active. Please set up an environment first.\n\n"
+                "Click the Environment Setup button to create one."
             )
-            
-            if result is None:  # Cancel
-                return
-            elif result:  # Yes - create new environment
-                self.open_package_manager()
-                return
+            return
                 
         self.is_rendering = True
         self.render_button.configure(text="⏳ Rendering...", state="disabled")
@@ -5537,11 +5126,8 @@ class MyScene(Scene):
                 quality_flag = quality_preset["flag"]
                 format_ext = EXPORT_FORMATS[self.settings["format"]]
                 
-                # Determine Python executable
-                if self.venv_manager.current_venv:
-                    python_exe = self.venv_manager.python_path
-                else:
-                    python_exe = sys.executable
+                # Use environment Python
+                python_exe = self.venv_manager.python_path
                     
                 # Build manim command
                 command = [
@@ -5779,7 +5365,7 @@ class MyScene(Scene):
             if self.venv_manager.current_venv:
                 self.venv_status_label.configure(text=self.venv_manager.current_venv)
             else:
-                self.venv_status_label.configure(text="No venv")
+                self.venv_status_label.configure(text="No environment")
             self.root.after(5000, update_venv_status)
             
         update_venv_status()
@@ -5833,10 +5419,54 @@ class MyScene(Scene):
         if messagebox.askyesno(
             "Missing Dependencies",
             f"The following packages are missing: {', '.join(missing_packages)}\n\n"
-            "Would you like to open the Package Manager to install them?"
+            f"ManimStudio can automatically install them: {', '.join(install_names)}\n\n"
+            "Would you like to install them now?"
         ):
-            self.open_package_manager()
+            self.install_missing_dependencies(install_names)
             
+    def install_missing_dependencies(self, package_names):
+        """Install missing dependencies"""
+        if not self.venv_manager.current_venv:
+            messagebox.showwarning(
+                "No Environment", 
+                "Please set up a virtual environment first before installing packages."
+            )
+            self.manage_environment()
+            return
+            
+        def install_thread():
+            success_count = 0
+            for package in package_names:
+                try:
+                    self.root.after(0, lambda p=package: self.append_output(f"Installing {p}...\n"))
+                    
+                    result = subprocess.run([
+                        self.venv_manager.pip_path, "install", package
+                    ], capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        self.root.after(0, lambda p=package: self.append_output(f"✓ Successfully installed {p}\n"))
+                        success_count += 1
+                    else:
+                        self.root.after(0, lambda p=package: self.append_output(f"✗ Failed to install {p}: {result.stderr}\n"))
+                        
+                except Exception as e:
+                    self.root.after(0, lambda p=package, e=e: self.append_output(f"✗ Error installing {p}: {e}\n"))
+                    
+            if success_count == len(package_names):
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Installation Complete",
+                    "All dependencies installed successfully!\nManimStudio is ready to use."
+                ))
+                self.root.after(0, lambda: self.update_status("All dependencies installed"))
+            else:
+                self.root.after(0, lambda: messagebox.showwarning(
+                    "Installation Incomplete",
+                    f"Installed {success_count} of {len(package_names)} packages.\nSome dependencies may still be missing."
+                ))
+                
+        threading.Thread(target=install_thread, daemon=True).start()
+        
     # Help functions
     def open_manim_docs(self):
         """Open Manim documentation"""
@@ -5892,27 +5522,25 @@ class MyScene(Scene):
         subtitle_label.pack(pady=(0, 20))
         
         # Description
-        # Description
         description = f"""A modern, professional desktop application for creating
 mathematical animations using the Manim library.
 
 ✨ Features:
 - Advanced VSCode-like editor with IntelliSense
 - Real-time Python autocompletion using Jedi
-- Professional package manager with extensive PyPI integration
-- Virtual environment management with default setup
+- Integrated environment management with automatic setup
 - Real-time video preview with playback controls
 - Multiple export formats (MP4, GIF, WebM, PNG)
 - High-quality rendering up to 8K resolution
 - Visual asset management with previews
-- Professional UI with VSCode theme
+- Professional UI with multiple themes
 - Advanced find/replace functionality
 - Smart auto-indentation and bracket matching
-- Comprehensive package categories and search
-- One-click environment creation and activation
+- One-click environment creation and package installation
 - Professional syntax highlighting
 - Multi-threaded rendering and preview
 - Integrated asset manager for images and audio
+- Custom theme support with live preview
 
 🛠️ Built with:
 - Python & CustomTkinter for modern UI
@@ -5921,8 +5549,7 @@ mathematical animations using the Manim library.
 - Manim Community Edition for animations
 - OpenCV for video processing
 - PIL for image handling
-- Async PyPI search engine
-- Professional virtual environment management
+- Integrated virtual environment management
 
 👨‍💻 Author: {APP_AUTHOR}
 📧 Email: {APP_EMAIL}
@@ -5968,6 +5595,161 @@ Licensed under MIT License"""
         except Exception as e:
             logger.error(f"Application error: {e}")
             messagebox.showerror("Error", f"Application error: {e}")
+
+
+class EnvironmentInfoDialog(ctk.CTkToplevel):
+    """Dialog showing current environment information"""
+    
+    def __init__(self, parent, venv_manager):
+        super().__init__(parent)
+        
+        self.venv_manager = venv_manager
+        self.title("Environment Information")
+        self.geometry("500x400")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 100,
+            parent.winfo_rooty() + 100
+        ))
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the environment info dialog UI"""
+        # Main frame
+        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text="🔧 Environment Information",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        title_label.pack(pady=(10, 20))
+        
+        # Environment details
+        info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        info_frame.pack(fill="both", expand=True, padx=15, pady=10)
+        
+        # Current environment
+        if self.venv_manager.current_venv:
+            env_label = ctk.CTkLabel(
+                info_frame,
+                text=f"Current Environment: {self.venv_manager.current_venv}",
+                font=ctk.CTkFont(size=14, weight="bold")
+            )
+            env_label.pack(anchor="w", padx=15, pady=(15, 5))
+            
+            # Python path
+            python_label = ctk.CTkLabel(
+                info_frame,
+                text=f"Python: {self.venv_manager.python_path}",
+                font=ctk.CTkFont(size=12),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            python_label.pack(anchor="w", padx=15, pady=2)
+            
+            # Pip path
+            pip_label = ctk.CTkLabel(
+                info_frame,
+                text=f"Pip: {self.venv_manager.pip_path}",
+                font=ctk.CTkFont(size=12),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            pip_label.pack(anchor="w", padx=15, pady=2)
+            
+        else:
+            no_env_label = ctk.CTkLabel(
+                info_frame,
+                text="No environment active",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                text_color=VSCODE_COLORS["warning"]
+            )
+            no_env_label.pack(anchor="w", padx=15, pady=(15, 5))
+            
+        # Package list
+        packages_label = ctk.CTkLabel(
+            info_frame,
+            text="Installed Packages:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        packages_label.pack(anchor="w", padx=15, pady=(20, 10))
+        
+        # Package list box
+        self.packages_text = ctk.CTkTextbox(info_frame, height=150)
+        self.packages_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        
+        # Load package list
+        self.load_packages()
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        button_frame.pack(pady=15)
+        
+        if not self.venv_manager.current_venv:
+            # Setup button if no environment
+            setup_btn = ctk.CTkButton(
+                button_frame,
+                text="🔧 Setup Environment",
+                command=self.setup_environment,
+                fg_color=VSCODE_COLORS["success"],
+                hover_color="#117A65",
+                font=ctk.CTkFont(size=14, weight="bold")
+            )
+            setup_btn.pack(side="left", padx=5)
+            
+        refresh_btn = ctk.CTkButton(
+            button_frame,
+            text="🔄 Refresh",
+            command=self.load_packages,
+            width=100
+        )
+        refresh_btn.pack(side="left", padx=5)
+        
+        close_btn = ctk.CTkButton(
+            button_frame,
+            text="Close",
+            command=self.destroy,
+            width=80
+        )
+        close_btn.pack(side="right", padx=5)
+        
+    def load_packages(self):
+        """Load and display installed packages"""
+        self.packages_text.delete("0.0", "end")
+        
+        if not self.venv_manager.current_venv:
+            self.packages_text.insert("0.0", "No environment active. Please set up an environment first.")
+            return
+            
+        self.packages_text.insert("0.0", "Loading packages...\n")
+        
+        def load_thread():
+            def callback(success, packages, error):
+                if success:
+                    text = ""
+                    for pkg in packages:
+                        text += f"{pkg['name']} == {pkg['version']}\n"
+                    self.after(0, lambda: self.packages_text.delete("0.0", "end"))
+                    self.after(0, lambda: self.packages_text.insert("0.0", text or "No packages found"))
+                else:
+                    self.after(0, lambda: self.packages_text.delete("0.0", "end"))
+                    self.after(0, lambda: self.packages_text.insert("0.0", f"Error loading packages: {error}"))
+                    
+            self.venv_manager.list_packages(callback)
+            
+        threading.Thread(target=load_thread, daemon=True).start()
+        
+    def setup_environment(self):
+        """Setup environment"""
+        self.destroy()
+        self.venv_manager.show_setup_dialog()
+
 
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
@@ -6045,25 +5827,35 @@ class GettingStartedDialog(ctk.CTkToplevel):
         
         # Steps
         steps = [
-            ("1. Virtual Environment Setup", """
-✅ Manim Studio automatically creates a default virtual environment
-✅ All essential packages are pre-installed (manim, numpy, matplotlib, jedi)
-✅ Virtual environments keep your projects isolated and organized
-✅ You can create additional environments for different projects
+            ("1. Automatic Environment Setup", """
+✅ ManimStudio automatically detects your Python environment
+✅ On first run, it will guide you through setting up a complete environment
+✅ All essential packages (manim, numpy, matplotlib, jedi) are installed automatically
+✅ No manual configuration required - everything works out of the box
+✅ Virtual environments are created and managed automatically
             """),
-            ("2. Package Management", """
-✅ Use the advanced Package Manager (Ctrl+Shift+P)
-✅ Browse packages by category or search for specific ones
+            ("2. Environment Management", """
+✅ Click the 🔧 Environment Setup button to manage your Python environment
+✅ Create isolated environments for different projects
 ✅ One-click installation of Python packages
 ✅ Automatic dependency management
 ✅ Export/import requirements.txt files
+✅ Seamless switching between environments
             """),
             ("3. Your First Scene", """
 ✅ The editor comes with a complete example scene
 ✅ Modify the default code or create your own
-✅ Use IntelliSense for smart autocompletion
+✅ Use IntelliSense for smart autocompletion (Ctrl+Space)
 ✅ Click 'Quick Preview' to test your animation
 ✅ Use 'Render Animation' for final high-quality output
+            """),
+            ("4. Professional Features", """
+✅ Choose from multiple professional themes (Dark+, Light+, Monokai, Solarized)
+✅ Advanced code editor with syntax highlighting
+✅ Real-time video preview with playback controls
+✅ Visual asset management for images and audio
+✅ Advanced find/replace with regex support
+✅ Professional rendering up to 8K resolution
             """)
         ]
         
@@ -6160,35 +5952,38 @@ class HelloWorld(Scene):
         
         # Features
         features = [
-            ("Virtual Environment Management", """
-🐍 Create isolated environments for different projects
-🐍 Automatic package management and dependency resolution
-🐍 One-click activation and deactivation
-🐍 Default environment with essential packages pre-installed
+            ("Automatic Environment Management", """
+🔧 Detects and uses existing Python environments automatically
+🔧 Creates virtual environments with one click
+🔧 Installs all required packages automatically
+🔧 Manages dependencies and package versions
+🔧 Seamless switching between environments
             """),
-            ("Advanced Package Manager", """
-📦 Browse 18+ package categories (AI/ML, Web Dev, Graphics, etc.)
-📦 Search through thousands of PyPI packages
-📦 Smart filtering and sorting options
-📦 Visual package cards with detailed information
-📦 One-click installation and management
-📦 Export/import requirements.txt files
-            """),
-            ("IntelliSense & Code Editor", """
+            ("Professional Code Editor", """
 💡 Real-time autocompletion using Jedi
 💡 Function signatures and documentation
-💡 Advanced syntax highlighting
+💡 Advanced syntax highlighting with VSCode colors
 💡 Smart indentation and bracket matching
 💡 Find and replace with regex support
 💡 Line manipulation (duplicate, move, comment)
+💡 Customizable font sizes and themes
             """),
-            ("Professional Features", """
+            ("Advanced Rendering System", """
+🎬 Real-time video preview with playback controls
+🎬 Multiple output formats (MP4, GIF, WebM, PNG)
+🎬 Quality presets from 480p to 8K
+🎬 Professional UI with progress tracking
+🎬 Multi-threaded rendering system
+🎬 Audio synchronization support
+🎬 Frame-by-frame playback controls
+            """),
+            ("Professional UI Features", """
+🎨 Multiple built-in themes (Dark+, Light+, Monokai, Solarized)
+🎨 Professional VSCode-style interface
 🎨 Visual asset manager for images and audio
-🎨 Real-time video preview with playback controls
-🎨 Multiple output formats (MP4, GIF, WebM, PNG)
-🎨 Quality presets from 480p to 8K
-🎨 Professional VSCode-like interface
-🎨 Comprehensive keyboard shortcuts
+🎨 Drag-and-drop asset integration
+🎨 Professional status bar and tooltips
+🎨 Contextual menus and shortcuts
             """),
             ("Keyboard Shortcuts", """
 ⌨️ Ctrl+S: Save file
@@ -6196,9 +5991,11 @@ class HelloWorld(Scene):
 ⌨️ F7: Render animation
 ⌨️ Ctrl+Space: Trigger autocompletion
 ⌨️ Ctrl+F: Find and replace
-⌨️ Ctrl+Shift+P: Package Manager
 ⌨️ Ctrl+/: Toggle comments
 ⌨️ Alt+Up/Down: Move lines
+⌨️ F11: Toggle fullscreen
+⌨️ Ctrl++/-: Adjust font size
+⌨️ Ctrl+D: Duplicate line
             """)
         ]
         
@@ -6235,9 +6032,70 @@ class HelloWorld(Scene):
         elif current == "2. First Animation":
             self.notebook.set("3. Advanced Features")
 
+
 def main():
     """Application entry point"""
     try:
+        # Import the no-console patch immediately to hide ALL console windows
+        try:
+            import ENHANCED_NO_CONSOLE_PATCH
+        except ImportError:
+            try:
+                import NO_CONSOLE_PATCH
+            except ImportError:
+                # No patch available, create one in-memory
+                import subprocess
+                import sys
+                if sys.platform == "win32":
+                    # Define the flag if not already defined
+                    if not hasattr(subprocess, "CREATE_NO_WINDOW"):
+                        subprocess.CREATE_NO_WINDOW = 0x08000000
+                    
+                    # Get startupinfo to hide console
+                    def get_hidden_startupinfo():
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        return startupinfo
+                        
+                    # Patch Popen
+                    original_popen = subprocess.Popen
+                    def hidden_popen(*args, **kwargs):
+                        if sys.platform == "win32":
+                            # Add flags to hide console window
+                            if 'creationflags' not in kwargs:
+                                kwargs['creationflags'] = 0
+                            kwargs['creationflags'] |= subprocess.CREATE_NO_WINDOW
+                            
+                            # Add startupinfo
+                            kwargs['startupinfo'] = get_hidden_startupinfo()
+                            
+                            # Prefer pipe over None for stdout/stderr
+                            if 'stdout' not in kwargs:
+                                kwargs['stdout'] = subprocess.PIPE
+                            if 'stderr' not in kwargs:
+                                kwargs['stderr'] = subprocess.PIPE
+                        return original_popen(*args, **kwargs)
+                    
+                    # Patch all subprocess functions
+                    subprocess.Popen = hidden_popen
+                    
+                    # Hide any existing console window using Windows API
+                    try:
+                        import ctypes
+                        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+                        user32 = ctypes.WinDLL('user32', use_last_error=True)
+                        
+                        # Constants
+                        SW_HIDE = 0
+                        
+                        # Get console window handle and hide it
+                        hwnd = kernel32.GetConsoleWindow()
+                        if hwnd:
+                            user32.ShowWindow(hwnd, SW_HIDE)
+                    except Exception:
+                        pass
+        
         # Create application directory
         app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
         os.makedirs(app_dir, exist_ok=True)
