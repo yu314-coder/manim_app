@@ -77,7 +77,7 @@ def build_self_contained_version(jobs=None):
     
     # Include critical modules that are part of standard library
     essential_modules = [
-        "json", "tempfile", "threading", "subprocess", "multiprocessing",
+        "json", "tempfile", "threading", "subprocess", 
         "os", "sys", "ctypes", "venv", "fixes", "psutil"
     ]
     
@@ -162,7 +162,407 @@ def build_self_contained_version(jobs=None):
         print(f"Return code: {return_code}")
         return None
 
-# ... [rest of the functions remain the same] ...
+def create_fixes_module():
+    """Create fixes module to handle runtime issues"""
+    fixes_content = '''# fixes.py - Applied patches for the build process
+import os
+import sys
+from pathlib import Path
+import subprocess
+import shutil
+import site
+
+def fix_manim_config():
+    """Fix the manim configuration issue by creating a default.cfg file"""
+    try:
+        # For packaged app - find the temp directory where files are extracted
+        temp_base = None
+        for path in sys.path:
+            if 'onefile_' in path and 'Temp' in path:
+                temp_base = path
+                break
+                
+        if temp_base:
+            # Create manim config directory
+            manim_config_dir = os.path.join(temp_base, 'manim', '_config')
+            os.makedirs(manim_config_dir, exist_ok=True)
+            
+            # Create a basic default.cfg file
+            default_cfg_path = os.path.join(manim_config_dir, 'default.cfg')
+            with open(default_cfg_path, 'w') as f:
+                f.write(DEFAULT_MANIM_CONFIG)
+                
+            print(f"Created manim config at: {default_cfg_path}")
+            return True
+    except Exception as e:
+        print(f"Error fixing manim config: {e}")
+    return False
+
+# Default minimal manim config content
+DEFAULT_MANIM_CONFIG = """
+[CLI]
+media_dir = ./media
+verbosity = INFO
+notify_outdated_version = True
+tex_template = 
+
+[logger]
+logging_keyword = manim
+logging_level = INFO
+
+[output]
+max_files_cached = 100
+flush_cache = False
+disable_caching = False
+
+[progress_bar]
+leave_progress_bars = True
+use_progress_bars = True
+
+[tex]
+intermediate_filetype = dvi
+text_to_replace = YourTextHere
+tex_template_file = tex_template.tex
+
+[universal]
+background_color = BLACK
+assets_dir = ./
+
+[window]
+background_opacity = 1
+fullscreen = False
+size = 1280,720
+"""
+
+# Add this to app.py's main() at the start
+def apply_fixes():
+    """Apply all fixes at startup"""
+    fix_manim_config()
+
+# Fix the subprocess conflict in our patch
+def fix_subprocess_conflict():
+    """Fix the subprocess capture_output and stdout/stderr conflict"""
+    original_run = subprocess.run
+    
+    def fixed_run(*args, **kwargs):
+        """Fixed run that properly handles stdout/stderr with capture_output"""
+        if 'capture_output' in kwargs and kwargs['capture_output']:
+            # Remove stdout/stderr if capture_output is True
+            kwargs.pop('stdout', None)
+            kwargs.pop('stderr', None)
+        return original_run(*args, **kwargs)
+    
+    subprocess.run = fixed_run
+'''
+    
+    with open("fixes.py", "w") as f:
+        f.write(fixes_content)
+    
+    print("📄 Created fixes module to handle runtime issues")
+
+def is_package_importable(package_name):
+    """Check if a package can be imported"""
+    try:
+        # Handle special cases
+        if package_name == "PIL":
+            import PIL
+            return True
+        elif package_name == "cv2":
+            import cv2
+            return True
+        else:
+            importlib.import_module(package_name)
+            return True
+    except ImportError:
+        return False
+
+def get_correct_package_name(package_name):
+    """Get the correct package name for Nuitka"""
+    # Special cases
+    if package_name == "PIL":
+        # If PIL is importable, return both PIL and Pillow
+        return "PIL"
+    elif package_name == "cv2":
+        return "cv2"
+    return package_name
+
+def get_nuitka_version():
+    """Get Nuitka version for compatibility checks"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "nuitka", "--version"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return "Unknown"
+    except Exception:
+        return "Unknown"
+
+def prepare_bundled_environment():
+    """Create a minimal bundled environment that can be included in the build"""
+    print("📦 Preparing minimal bundled environment...")
+    
+    # Create a minimal venv for bundling
+    bundled_venv_dir = Path("bundled_venv")
+    if bundled_venv_dir.exists():
+        print("🧹 Cleaning existing bundled environment...")
+        shutil.rmtree(bundled_venv_dir)
+    
+    import venv
+    print("🔨 Creating minimal bundled venv...")
+    venv.create(bundled_venv_dir, with_pip=True)
+    
+    # Create a manifest of essential packages
+    with open(bundled_venv_dir / "manifest.json", "w") as f:
+        json.dump({
+            "essential_packages": [
+                "manim", "numpy", "customtkinter", "matplotlib", "pillow", 
+                "opencv-python", "jedi"
+            ],
+            "version": "3.5.0"
+        }, f, indent=2)
+    
+    print("✅ Minimal environment prepared")
+    return bundled_venv_dir
+
+def create_no_console_patch():
+    """Create a more aggressive patch file to ensure NO subprocess calls show console windows"""
+    patch_content = '''# ENHANCED_NO_CONSOLE_PATCH.py
+# This ensures all subprocess calls hide console windows
+
+import subprocess
+import sys
+import os
+import ctypes
+
+# Define the Windows constants here to guarantee they're available
+if sys.platform == "win32":
+    # Define this constant if not available
+    if not hasattr(subprocess, "CREATE_NO_WINDOW"):
+        subprocess.CREATE_NO_WINDOW = 0x08000000
+    
+    # Other Windows constants
+    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+    DETACHED_PROCESS = 0x00000008
+    SW_HIDE = 0
+    STARTF_USESHOWWINDOW = 0x00000001
+
+# Load Windows API functions for more aggressive console hiding
+if sys.platform == "win32":
+    try:
+        # Get kernel32 functions for additional window hiding
+        try:
+            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+            user32 = ctypes.WinDLL('user32', use_last_error=True)
+            
+            # Windows API functions
+            GetConsoleWindow = kernel32.GetConsoleWindow
+            ShowWindow = user32.ShowWindow
+            
+            # Hide console immediately
+            hwnd = GetConsoleWindow()
+            if hwnd:
+                ShowWindow(hwnd, SW_HIDE)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+# Original subprocess functions
+_original_popen = subprocess.Popen
+_original_run = subprocess.run
+_original_call = subprocess.call
+_original_check_output = subprocess.check_output
+_original_check_call = subprocess.check_call
+
+# Define startupinfo to fully hide console
+def _get_hidden_startupinfo():
+    if sys.platform == "win32":
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= STARTF_USESHOWWINDOW  # Use constant defined above
+        startupinfo.wShowWindow = SW_HIDE  # Use constant defined above
+        return startupinfo
+    return None
+
+def _no_console_popen(*args, **kwargs):
+    """Enhanced Popen wrapper that guarantees hidden console windows on Windows"""
+    if sys.platform == "win32":
+        # Add flags to hide console window
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = 0
+        kwargs['creationflags'] |= CREATE_NO_WINDOW | DETACHED_PROCESS
+        
+        # Add startupinfo to hide window
+        startupinfo = _get_hidden_startupinfo()
+        kwargs['startupinfo'] = startupinfo
+        
+        # Redirect stdout/stderr to null if not already redirected
+        if 'stdout' not in kwargs:
+            kwargs['stdout'] = subprocess.PIPE
+        if 'stderr' not in kwargs:
+            kwargs['stderr'] = subprocess.PIPE
+    
+    return _original_popen(*args, **kwargs)
+
+def _no_console_run(*args, **kwargs):
+    """Run wrapper with enhanced console hiding"""
+    if sys.platform == "win32":
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = 0
+        kwargs['creationflags'] |= CREATE_NO_WINDOW | DETACHED_PROCESS
+        kwargs['startupinfo'] = _get_hidden_startupinfo()
+        
+        # Fix for capture_output conflict - cannot use with stdout/stderr
+        if 'capture_output' in kwargs and kwargs['capture_output']:
+            kwargs.pop('stdout', None)
+            kwargs.pop('stderr', None)
+        else:
+            # Redirect stdout/stderr if not specified
+            if 'stdout' not in kwargs:
+                kwargs['stdout'] = subprocess.PIPE 
+            if 'stderr' not in kwargs:
+                kwargs['stderr'] = subprocess.PIPE
+    
+    return _original_run(*args, **kwargs)
+
+def _no_console_call(*args, **kwargs):
+    """Call wrapper with enhanced console hiding"""
+    if sys.platform == "win32":
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = 0
+        kwargs['creationflags'] |= CREATE_NO_WINDOW | DETACHED_PROCESS
+        kwargs['startupinfo'] = _get_hidden_startupinfo()
+    
+    return _original_call(*args, **kwargs)
+
+def _no_console_check_output(*args, **kwargs):
+    """check_output wrapper with enhanced console hiding"""
+    if sys.platform == "win32":
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = 0
+        kwargs['creationflags'] |= CREATE_NO_WINDOW | DETACHED_PROCESS
+        kwargs['startupinfo'] = _get_hidden_startupinfo()
+    
+    return _original_check_output(*args, **kwargs)
+
+def _no_console_check_call(*args, **kwargs):
+    """check_call wrapper with enhanced console hiding"""
+    if sys.platform == "win32":
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = 0
+        kwargs['creationflags'] |= CREATE_NO_WINDOW | DETACHED_PROCESS
+        kwargs['startupinfo'] = _get_hidden_startupinfo()
+    
+    return _original_check_call(*args, **kwargs)
+
+# Monkey patch ALL subprocess functions
+subprocess.Popen = _no_console_popen
+subprocess.run = _no_console_run
+subprocess.call = _no_console_call
+subprocess.check_output = _no_console_check_output
+subprocess.check_call = _no_console_check_call
+
+# Patch Python's system function too for good measure
+if hasattr(os, 'system'):
+    _original_system = os.system
+    
+    def _no_console_system(command):
+        """system wrapper that hides console"""
+        if sys.platform == "win32":
+            # Use our patched subprocess.call instead
+            return subprocess.call(command, shell=True, 
+                                  creationflags=CREATE_NO_WINDOW,
+                                  startupinfo=_get_hidden_startupinfo())
+        return _original_system(command)
+    
+    os.system = _no_console_system
+'''
+    
+    with open("ENHANCED_NO_CONSOLE_PATCH.py", "w") as f:
+        f.write(patch_content)
+    
+    print("📄 Created enhanced no-console patch file")
+
+def create_launcher_script(exe_path):
+    """Create a batch launcher script"""
+    launcher_content = f'''@echo off
+REM Silent launcher - no console windows
+start "" "{exe_path}"
+exit
+'''
+    
+    launcher_path = Path("Launch_ManimStudio.bat")
+    with open(launcher_path, 'w') as f:
+        f.write(launcher_content)
+    
+    print(f"📝 Created silent launcher: {launcher_path}")
+
+def find_executable():
+    """Find the built executable"""
+    possible_paths = [
+        Path("dist/ManimStudio.exe"),
+        Path("dist/app.dist/ManimStudio.exe"),
+    ]
+    
+    # Search for executable
+    for path in possible_paths:
+        if path.exists():
+            return path
+    
+    # Search in subdirectories
+    dist_dir = Path("dist")
+    if dist_dir.exists():
+        for item in dist_dir.rglob("*.exe"):
+            if "ManimStudio" in item.name:
+                return item
+    
+    return None
+
+def list_contents():
+    """List contents of build directories"""
+    for dir_name in ["dist", "build"]:
+        dir_path = Path(dir_name)
+        if dir_path.exists():
+            print(f"\n📂 Contents of {dir_name}:")
+            for item in dir_path.iterdir():
+                if item.is_file():
+                    size = item.stat().st_size / (1024 * 1024)
+                    print(f"  📄 {item.name} ({size:.1f} MB)")
+                elif item.is_dir():
+                    print(f"  📁 {item.name}/")
+
+def check_requirements():
+    """Check if all build requirements are met"""
+    print("🔍 Checking build requirements...")
+    
+    required_packages = [
+        "nuitka", "customtkinter", "PIL", "numpy", "cv2", 
+        "matplotlib", "manim", "jedi"
+    ]
+    
+    missing = []
+    for package in required_packages:
+        try:
+            if package == "PIL":
+                import PIL
+            elif package == "cv2":
+                import cv2
+            else:
+                __import__(package)
+            print(f"  ✅ {package}")
+        except ImportError:
+            print(f"  ❌ {package}")
+            missing.append(package)
+    
+    if missing:
+        print(f"\n⚠️ Missing packages: {missing}")
+        print("Install with: pip install " + " ".join(missing))
+        return False
+    
+    print("✅ All requirements met!")
+    return True
 
 def main():
     """Main function with build options"""
