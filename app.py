@@ -33,7 +33,14 @@ from urllib.parse import quote, unquote
 import venv
 # Add to imports
 import psutil
-
+import re
+import glob
+import shutil
+import threading
+import tempfile
+import subprocess
+import tkinter as tk
+from tkinter import filedialog, messagebox
 # Try to import Jedi for IntelliSense
 try:
     import jedi
@@ -58,7 +65,21 @@ try:
     PYGMENTS_AVAILABLE = True
 except ImportError:
     PYGMENTS_AVAILABLE = False
+# Early load of fixes module to handle runtime issues
+try:
+    import fixes
+    fixes.apply_fixes()
+except ImportError:
+    print("Warning: fixes module not available")
+    pass
 
+# Force matplotlib backend to TkAgg
+try:
+    import matplotlib
+    matplotlib.use('TkAgg')
+except ImportError:
+    print("Warning: matplotlib not available")
+    pass
 # Configure CustomTkinter with modern appearance
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -842,8 +863,1234 @@ All packages will be installed in an isolated environment that won't affect your
         else:
             self.destroy()
 
+class EnhancedVenvManagerDialog(ctk.CTkToplevel):
+    """Enhanced dialog for manual virtual environment management"""
+    
+    def __init__(self, parent, venv_manager):
+        super().__init__(parent)
+        
+        self.parent = parent
+        self.venv_manager = venv_manager
+        self.title("Virtual Environment Manager")
+        self.geometry("800x650")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 50,
+            parent.winfo_rooty() + 50
+        ))
+        
+        self.create_ui()
+        self.load_environments()
+        
+    def create_ui(self):
+        """Create the enhanced UI with manual controls"""
+        self.columnconfigure(0, weight=0)  # Left panel
+        self.columnconfigure(1, weight=1)  # Right panel
+        self.rowconfigure(0, weight=1)
+        
+        # Left panel - Environment list
+        left_panel = ctk.CTkFrame(self, width=250, corner_radius=0)
+        left_panel.grid(row=0, column=0, sticky="nsew")
+        left_panel.grid_propagate(False)
+        
+        # Environments header
+        env_header = ctk.CTkFrame(left_panel, height=50, fg_color=VSCODE_COLORS["surface_light"])
+        env_header.pack(fill="x", pady=(0, 10))
+        
+        ctk.CTkLabel(
+            env_header, 
+            text="Python Environments",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(side="left", padx=15, pady=15)
+        
+        # Environment list with scrollbar
+        list_frame = ctk.CTkFrame(left_panel)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.env_listbox = tk.Listbox(
+            list_frame,
+            bg=VSCODE_COLORS["surface"],
+            fg=VSCODE_COLORS["text"],
+            selectbackground=VSCODE_COLORS["primary"],
+            selectforeground=VSCODE_COLORS["text_bright"],
+            borderwidth=0,
+            highlightthickness=0,
+            font=("Segoe UI", 11)
+        )
+        self.env_listbox.pack(side="left", fill="both", expand=True)
+        self.env_listbox.bind("<<ListboxSelect>>", self.on_env_select)
+        
+        scrollbar = ctk.CTkScrollbar(list_frame, command=self.env_listbox.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.env_listbox.configure(yscrollcommand=scrollbar.set)
+        
+        # Action buttons
+        btn_frame = ctk.CTkFrame(left_panel)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        
+        ctk.CTkButton(
+            btn_frame,
+            text="Create New",
+            command=self.create_new_env,
+            height=32
+        ).pack(side="left", padx=5, fill="x", expand=True)
+        
+        ctk.CTkButton(
+            btn_frame,
+            text="Refresh",
+            command=self.load_environments,
+            height=32
+        ).pack(side="right", padx=5, fill="x", expand=True)
+        
+        # Right panel - Environment details and actions
+        right_panel = ctk.CTkFrame(self)
+        right_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 0))
+        
+        # Details header
+        self.details_header = ctk.CTkFrame(right_panel, height=50, fg_color=VSCODE_COLORS["surface_light"])
+        self.details_header.pack(fill="x")
+        
+        self.header_label = ctk.CTkLabel(
+            self.details_header,
+            text="Environment Details",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        self.header_label.pack(side="left", padx=20, pady=15)
+        
+        # Main content area
+        self.content_frame = ctk.CTkFrame(right_panel, fg_color="transparent")
+        self.content_frame.pack(fill="both", expand=True, padx=30, pady=20)
+        
+        # Environment info section
+        self.info_frame = ctk.CTkFrame(self.content_frame, fg_color=VSCODE_COLORS["surface_light"])
+        self.info_frame.pack(fill="x", pady=(0, 15))
+        
+        ctk.CTkLabel(
+            self.info_frame,
+            text="Environment Information",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(15, 10))
+        
+        # Info grid
+        info_grid = ctk.CTkFrame(self.info_frame, fg_color="transparent")
+        info_grid.pack(fill="x", padx=15, pady=(0, 15))
+        info_grid.columnconfigure(1, weight=1)
+        
+        # Row 1: Path
+        ctk.CTkLabel(
+            info_grid, 
+            text="Path:",
+            font=ctk.CTkFont(weight="bold"),
+            width=100
+        ).grid(row=0, column=0, sticky="w", pady=3)
+        
+        self.path_label = ctk.CTkLabel(info_grid, text="")
+        self.path_label.grid(row=0, column=1, sticky="w", pady=3)
+        
+        # Row 2: Python Version
+        ctk.CTkLabel(
+            info_grid, 
+            text="Python:",
+            font=ctk.CTkFont(weight="bold"),
+            width=100
+        ).grid(row=1, column=0, sticky="w", pady=3)
+        
+        self.python_label = ctk.CTkLabel(info_grid, text="")
+        self.python_label.grid(row=1, column=1, sticky="w", pady=3)
+        
+        # Row 3: Packages
+        ctk.CTkLabel(
+            info_grid, 
+            text="Packages:",
+            font=ctk.CTkFont(weight="bold"),
+            width=100
+        ).grid(row=2, column=0, sticky="w", pady=3)
+        
+        self.packages_label = ctk.CTkLabel(info_grid, text="")
+        self.packages_label.grid(row=2, column=1, sticky="w", pady=3)
+        
+        # Row 4: Size
+        ctk.CTkLabel(
+            info_grid, 
+            text="Size:",
+            font=ctk.CTkFont(weight="bold"),
+            width=100
+        ).grid(row=3, column=0, sticky="w", pady=3)
+        
+        self.size_label = ctk.CTkLabel(info_grid, text="")
+        self.size_label.grid(row=3, column=1, sticky="w", pady=3)
+        
+        # Row 5: Status
+        ctk.CTkLabel(
+            info_grid, 
+            text="Status:",
+            font=ctk.CTkFont(weight="bold"),
+            width=100
+        ).grid(row=4, column=0, sticky="w", pady=3)
+        
+        self.status_label = ctk.CTkLabel(info_grid, text="")
+        self.status_label.grid(row=4, column=1, sticky="w", pady=3)
+        
+        # Package management section
+        self.package_frame = ctk.CTkFrame(self.content_frame, fg_color=VSCODE_COLORS["surface_light"])
+        self.package_frame.pack(fill="both", expand=True)
+        
+        ctk.CTkLabel(
+            self.package_frame,
+            text="Package Management",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(15, 10))
+        
+        # Package action buttons
+        pkg_action_frame = ctk.CTkFrame(self.package_frame, fg_color="transparent")
+        pkg_action_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        self.pkg_entry = ctk.CTkEntry(
+            pkg_action_frame, 
+            placeholder_text="Package name (e.g., numpy==1.21.0)",
+            height=35
+        )
+        self.pkg_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        
+        self.install_btn = ctk.CTkButton(
+            pkg_action_frame,
+            text="Install",
+            command=self.install_package,
+            width=100,
+            height=35,
+            fg_color=VSCODE_COLORS["success"]
+        )
+        self.install_btn.pack(side="left", padx=(0, 5))
+        
+        self.uninstall_btn = ctk.CTkButton(
+            pkg_action_frame,
+            text="Uninstall",
+            command=self.uninstall_package,
+            width=100,
+            height=35,
+            fg_color=VSCODE_COLORS["error"]
+        )
+        self.uninstall_btn.pack(side="left")
+        
+        # Package list
+        pkg_list_frame = ctk.CTkFrame(self.package_frame, fg_color="transparent")
+        pkg_list_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        
+        # Package list with scrollbar
+        self.pkg_listbox = tk.Listbox(
+            pkg_list_frame,
+            bg=VSCODE_COLORS["background"],
+            fg=VSCODE_COLORS["text"],
+            selectbackground=VSCODE_COLORS["selection"],
+            selectforeground=VSCODE_COLORS["text_bright"],
+            borderwidth=0,
+            highlightthickness=0,
+            font=("Segoe UI", 10)
+        )
+        self.pkg_listbox.pack(side="left", fill="both", expand=True)
+        
+        pkg_scrollbar = ctk.CTkScrollbar(pkg_list_frame, command=self.pkg_listbox.yview)
+        pkg_scrollbar.pack(side="right", fill="y")
+        self.pkg_listbox.configure(yscrollcommand=pkg_scrollbar.set)
+        
+        # Bottom buttons
+        btn_bottom_frame = ctk.CTkFrame(right_panel, height=60, fg_color=VSCODE_COLORS["surface"])
+        btn_bottom_frame.pack(fill="x")
+        
+        self.activate_btn = ctk.CTkButton(
+            btn_bottom_frame,
+            text="Activate Environment",
+            command=self.activate_environment,
+            height=35,
+            width=180,
+            fg_color=VSCODE_COLORS["primary"]
+        )
+        self.activate_btn.pack(side="left", padx=20, pady=12)
+        
+        self.delete_btn = ctk.CTkButton(
+            btn_bottom_frame,
+            text="Delete Environment",
+            command=self.delete_environment,
+            height=35,
+            width=150,
+            fg_color=VSCODE_COLORS["error"]
+        )
+        self.delete_btn.pack(side="left", padx=5, pady=12)
+        
+        ctk.CTkButton(
+            btn_bottom_frame,
+            text="Close",
+            command=self.destroy,
+            height=35,
+            width=100
+        ).pack(side="right", padx=20, pady=12)
+        
+        # Initially disable environment-specific buttons
+        self.set_controls_state("disabled")
+        
+    def load_environments(self):
+        """Load all available environments"""
+        # Clear listbox
+        self.env_listbox.delete(0, tk.END)
+        
+        # Get environments
+        environments = self.venv_manager.list_venvs()
+        
+        # Add to listbox
+        for env in environments:
+            # Mark active environment
+            display_name = env
+            if env == self.venv_manager.current_venv:
+                display_name = f"✓ {env} (Active)"
+                
+            self.env_listbox.insert(tk.END, display_name)
+            
+        # Select active environment if available
+        if self.venv_manager.current_venv in environments:
+            index = environments.index(self.venv_manager.current_venv)
+            self.env_listbox.selection_set(index)
+            self.env_listbox.see(index)
+            self.on_env_select()
+        
+    def on_env_select(self, event=None):
+        """Handle environment selection"""
+        # Get selected environment
+        selection = self.env_listbox.curselection()
+        if not selection:
+            self.clear_env_details()
+            return
+            
+        # Get environment name
+        env_name = self.env_listbox.get(selection[0])
+        if " (Active)" in env_name:
+            env_name = env_name.split(" (Active)")[0][2:]  # Remove checkmark and (Active)
+        else:
+            env_name = env_name
+            
+        # Update header
+        self.header_label.configure(text=f"Environment: {env_name}")
+        
+        # Get environment info
+        env_info = self.venv_manager.get_venv_info(env_name)
+        
+        # Update info display
+        self.path_label.configure(text=env_info['path'])
+        self.python_label.configure(text=env_info['python_version'] or "Unknown")
+        self.packages_label.configure(text=f"{env_info['packages_count']} packages")
+        
+        # Format size
+        size_mb = env_info['size'] / (1024 * 1024)
+        if size_mb > 1000:
+            size_str = f"{size_mb/1024:.1f} GB"
+        else:
+            size_str = f"{size_mb:.1f} MB"
+        self.size_label.configure(text=size_str)
+        
+        # Status
+        status = "Active" if env_info['is_active'] else "Inactive"
+        self.status_label.configure(
+            text=status,
+            text_color=VSCODE_COLORS["success"] if env_info['is_active'] else VSCODE_COLORS["text_secondary"]
+        )
+        
+        # Enable controls
+        self.set_controls_state("normal")
+        
+        # Update activate button
+        if env_info['is_active']:
+            self.activate_btn.configure(
+                text="✓ Currently Active",
+                state="disabled"
+            )
+        else:
+            self.activate_btn.configure(
+                text="Activate Environment",
+                state="normal"
+            )
+            
+        # Load packages
+        self.load_packages(env_name)
+        
+    def load_packages(self, env_name):
+        """Load packages for the selected environment"""
+        # Clear package listbox
+        self.pkg_listbox.delete(0, tk.END)
+        
+        # Add "Loading..." indicator
+        self.pkg_listbox.insert(tk.END, "Loading packages...")
+        
+        # Get packages in background thread
+        def get_packages_thread():
+            success, _ = self.venv_manager.list_packages(self.on_packages_loaded)
+            if not success:
+                self.after(0, lambda: self.pkg_listbox.delete(0, tk.END))
+                self.after(0, lambda: self.pkg_listbox.insert(tk.END, "Failed to load packages"))
+        
+        threading.Thread(target=get_packages_thread, daemon=True).start()
+        
+    def on_packages_loaded(self, success, packages, error):
+        """Handle package list loading"""
+        # Clear package listbox
+        self.pkg_listbox.delete(0, tk.END)
+        
+        if not success:
+            self.pkg_listbox.insert(tk.END, f"Error: {error}")
+            return
+            
+        # Sort packages by name
+        packages.sort(key=lambda p: p['name'].lower())
+        
+        # Add packages to listbox
+        for package in packages:
+            self.pkg_listbox.insert(tk.END, f"{package['name']} ({package['version']})")
+            
+        # Add info line
+        self.pkg_listbox.insert(tk.END, f"Total: {len(packages)} packages")
+        
+    def clear_env_details(self):
+        """Clear environment details"""
+        self.header_label.configure(text="Environment Details")
+        self.path_label.configure(text="")
+        self.python_label.configure(text="")
+        self.packages_label.configure(text="")
+        self.size_label.configure(text="")
+        self.status_label.configure(text="")
+        self.pkg_listbox.delete(0, tk.END)
+        
+        # Disable controls
+        self.set_controls_state("disabled")
+        
+    def set_controls_state(self, state):
+        """Set state of all controls"""
+        self.activate_btn.configure(state=state)
+        self.delete_btn.configure(state=state)
+        self.install_btn.configure(state=state)
+        self.uninstall_btn.configure(state=state)
+        self.pkg_entry.configure(state=state)
+        
+    def create_new_env(self):
+        """Create a new environment"""
+        # Show dialog
+        dialog = NewEnvironmentDialog(self, self.venv_manager)
+        self.wait_window(dialog)
+        
+        # Reload environments
+        self.load_environments()
+        
+    def activate_environment(self):
+        """Activate the selected environment"""
+        # Get selected environment
+        selection = self.env_listbox.curselection()
+        if not selection:
+            return
+            
+        # Get environment name
+        env_name = self.env_listbox.get(selection[0])
+        if " (Active)" in env_name:
+            env_name = env_name.split(" (Active)")[0][2:]
+            
+        # Activate environment
+        success = self.venv_manager.activate_venv(env_name)
+        
+        if success:
+            # Show success message
+            messagebox.showinfo(
+                "Environment Activated",
+                f"Environment '{env_name}' activated successfully.",
+                parent=self
+            )
+            
+            # Reload environments
+            self.load_environments()
+        else:
+            messagebox.showerror(
+                "Activation Failed",
+                f"Failed to activate environment '{env_name}'.",
+                parent=self
+            )
+            
+    def delete_environment(self):
+        """Delete the selected environment"""
+        # Get selected environment
+        selection = self.env_listbox.curselection()
+        if not selection:
+            return
+            
+        # Get environment name
+        env_name = self.env_listbox.get(selection[0])
+        if " (Active)" in env_name:
+            env_name = env_name.split(" (Active)")[0][2:]
+            
+        # Confirm deletion
+        if not messagebox.askyesno(
+            "Confirm Deletion",
+            f"Are you sure you want to delete environment '{env_name}'?\n\n"
+            "This action cannot be undone.",
+            icon="warning",
+            parent=self
+        ):
+            return
+            
+        # Check if environment is active
+        if env_name == self.venv_manager.current_venv:
+            messagebox.showerror(
+                "Cannot Delete Active Environment",
+                "You cannot delete the currently active environment.\n"
+                "Please activate a different environment first.",
+                parent=self
+            )
+            return
+            
+        # Delete environment
+        try:
+            # Get environment path
+            env_info = self.venv_manager.get_venv_info(env_name)
+            env_path = env_info['path']
+            
+            # Delete directory
+            shutil.rmtree(env_path)
+            
+            # Show success message
+            messagebox.showinfo(
+                "Environment Deleted",
+                f"Environment '{env_name}' deleted successfully.",
+                parent=self
+            )
+            
+            # Reload environments
+            self.load_environments()
+            
+        except Exception as e:
+            messagebox.showerror(
+                "Deletion Failed",
+                f"Failed to delete environment '{env_name}':\n{str(e)}",
+                parent=self
+            )
+            
+    def install_package(self):
+        """Install a package in the selected environment"""
+        # Get package name
+        package_name = self.pkg_entry.get().strip()
+        if not package_name:
+            messagebox.showwarning(
+                "Package Name Required",
+                "Please enter a package name to install.",
+                parent=self
+            )
+            return
+            
+        # Get selected environment
+        selection = self.env_listbox.curselection()
+        if not selection:
+            return
+            
+        # Get environment name
+        env_name = self.env_listbox.get(selection[0])
+        if " (Active)" in env_name:
+            env_name = env_name.split(" (Active)")[0][2:]
+            
+        # Show confirmation
+        if not messagebox.askyesno(
+            "Confirm Installation",
+            f"Install package '{package_name}' in environment '{env_name}'?",
+            parent=self
+        ):
+            return
+            
+        # Disable controls during installation
+        self.install_btn.configure(text="Installing...", state="disabled")
+        self.pkg_entry.configure(state="disabled")
+        
+        # Install package
+        def on_install_complete(success, stdout, stderr):
+            self.install_btn.configure(text="Install", state="normal")
+            self.pkg_entry.configure(state="normal")
+            
+            if success:
+                messagebox.showinfo(
+                    "Installation Complete",
+                    f"Package '{package_name}' installed successfully.",
+                    parent=self
+                )
+                self.pkg_entry.delete(0, tk.END)
+                self.load_packages(env_name)
+            else:
+                messagebox.showerror(
+                    "Installation Failed",
+                    f"Failed to install package '{package_name}':\n{stderr}",
+                    parent=self
+                )
+        
+        # Start installation
+        self.venv_manager.install_package(package_name, on_install_complete)
+        
+    def uninstall_package(self):
+        """Uninstall a package from the selected environment"""
+        # Get selected package
+        selection = self.pkg_listbox.curselection()
+        if not selection:
+            messagebox.showwarning(
+                "No Package Selected",
+                "Please select a package to uninstall.",
+                parent=self
+            )
+            return
+            
+        # Get package name
+        package_info = self.pkg_listbox.get(selection[0])
+        if "Total:" in package_info:
+            return
+            
+        package_name = package_info.split(" (")[0]
+        
+        # Get selected environment
+        env_selection = self.env_listbox.curselection()
+        if not env_selection:
+            return
+            
+        # Get environment name
+        env_name = self.env_listbox.get(env_selection[0])
+        if " (Active)" in env_name:
+            env_name = env_name.split(" (Active)")[0][2:]
+            
+        # Show confirmation
+        if not messagebox.askyesno(
+            "Confirm Uninstallation",
+            f"Uninstall package '{package_name}' from environment '{env_name}'?\n\n"
+            "This may break dependencies in your environment.",
+            icon="warning",
+            parent=self
+        ):
+            return
+            
+        # Disable controls during uninstallation
+        self.uninstall_btn.configure(text="Uninstalling...", state="disabled")
+        
+        # Uninstall package
+        def on_uninstall_complete(success, stdout, stderr):
+            self.uninstall_btn.configure(text="Uninstall", state="normal")
+            
+            if success:
+                messagebox.showinfo(
+                    "Uninstallation Complete",
+                    f"Package '{package_name}' uninstalled successfully.",
+                    parent=self
+                )
+                self.load_packages(env_name)
+            else:
+                messagebox.showerror(
+                    "Uninstallation Failed",
+                    f"Failed to uninstall package '{package_name}':\n{stderr}",
+                    parent=self
+                )
+        
+        # Start uninstallation
+        self.venv_manager.uninstall_package(package_name, on_uninstall_complete)
+
+
+class NewEnvironmentDialog(ctk.CTkToplevel):
+    """Dialog for creating a new environment"""
+    
+    def __init__(self, parent, venv_manager):
+        super().__init__(parent)
+        
+        self.parent = parent
+        self.venv_manager = venv_manager
+        
+        self.title("Create New Environment")
+        self.geometry("500x550")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 150,
+            parent.winfo_rooty() + 100
+        ))
+        
+        self.create_ui()
+        
+    def create_ui(self):
+        """Create dialog UI"""
+        # Main frame
+        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        ctk.CTkLabel(
+            main_frame,
+            text="Create New Virtual Environment",
+            font=ctk.CTkFont(size=18, weight="bold")
+        ).pack(pady=(0, 20))
+        
+        # Environment settings
+        settings_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        settings_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(
+            settings_frame,
+            text="Environment Settings",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(15, 10))
+        
+        # Environment name
+        name_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        name_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            name_frame,
+            text="Name:",
+            width=100
+        ).pack(side="left")
+        
+        self.name_entry = ctk.CTkEntry(
+            name_frame,
+            placeholder_text="e.g., manim_project"
+        )
+        self.name_entry.pack(side="left", fill="x", expand=True)
+        
+        # Python interpreter (if multiple are available)
+        python_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        python_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            python_frame,
+            text="Python:",
+            width=100
+        ).pack(side="left")
+        
+        self.python_var = ctk.StringVar(value=sys.executable)
+        
+        # Python interpreters dropdown
+        interpreters = self.find_python_interpreters()
+        self.python_dropdown = ctk.CTkComboBox(
+            python_frame,
+            values=interpreters,
+            variable=self.python_var,
+            state="readonly"
+        )
+        self.python_dropdown.pack(side="left", fill="x", expand=True)
+        
+        # Location option
+        location_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        location_frame.pack(fill="x", padx=15, pady=(0, 15))
+        
+        ctk.CTkLabel(
+            location_frame,
+            text="Location:",
+            width=100
+        ).pack(side="left")
+        
+        # Default location
+        default_location = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs")
+        self.location_var = ctk.StringVar(value=default_location)
+        
+        location_entry = ctk.CTkEntry(
+            location_frame,
+            textvariable=self.location_var,
+            state="readonly"
+        )
+        location_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        browse_btn = ctk.CTkButton(
+            location_frame,
+            text="...",
+            width=30,
+            command=self.browse_location
+        )
+        browse_btn.pack(side="left")
+        
+        # Package selection
+        packages_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        packages_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        ctk.CTkLabel(
+            packages_frame,
+            text="Select Packages to Install",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(15, 10))
+        
+        # Essential packages
+        essential_frame = ctk.CTkFrame(packages_frame, fg_color="transparent")
+        essential_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        self.essential_var = ctk.BooleanVar(value=True)
+        essential_check = ctk.CTkCheckBox(
+            essential_frame,
+            text="Essential Packages",
+            variable=self.essential_var,
+            onvalue=True,
+            offvalue=False
+        )
+        essential_check.pack(anchor="w")
+        
+        ctk.CTkLabel(
+            essential_frame,
+            text="(manim, numpy, matplotlib, jedi, etc.)",
+            font=ctk.CTkFont(size=10),
+            text_color=VSCODE_COLORS["text_secondary"]
+        ).pack(anchor="w", padx=(25, 0))
+        
+        # Common packages - create scrollable area
+        pkg_scroll = ctk.CTkScrollableFrame(
+            packages_frame,
+            label_text="Additional Packages",
+            fg_color="transparent"
+        )
+        pkg_scroll.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        
+        # Common packages
+        common_packages = [
+            ("PIL", "Image processing"),
+            ("opencv-python", "Computer vision"),
+            ("scipy", "Scientific computing"),
+            ("ipython", "Enhanced interactive console"),
+            ("pandas", "Data analysis"),
+            ("seaborn", "Statistical visualization"),
+            ("sympy", "Symbolic mathematics"),
+            ("jupyter", "Interactive notebooks"),
+            ("tqdm", "Progress bars")
+        ]
+        
+        self.package_vars = {}
+        for pkg, desc in common_packages:
+            var = ctk.BooleanVar(value=False)
+            self.package_vars[pkg] = var
+            
+            pkg_frame = ctk.CTkFrame(pkg_scroll, fg_color="transparent")
+            pkg_frame.pack(fill="x", pady=2)
+            
+            check = ctk.CTkCheckBox(
+                pkg_frame,
+                text=pkg,
+                variable=var,
+                onvalue=True,
+                offvalue=False
+            )
+            check.pack(side="left")
+            
+            ctk.CTkLabel(
+                pkg_frame,
+                text=f"({desc})",
+                font=ctk.CTkFont(size=10),
+                text_color=VSCODE_COLORS["text_secondary"]
+            ).pack(side="left", padx=(10, 0))
+            
+        # Custom package
+        custom_frame = ctk.CTkFrame(packages_frame, fg_color="transparent")
+        custom_frame.pack(fill="x", padx=15, pady=(0, 15))
+        
+        ctk.CTkLabel(
+            custom_frame,
+            text="Custom Packages:"
+        ).pack(anchor="w", pady=(0, 5))
+        
+        self.custom_packages = ctk.CTkTextbox(
+            custom_frame,
+            height=60,
+            font=ctk.CTkFont(size=12)
+        )
+        self.custom_packages.pack(fill="x")
+        
+        ctk.CTkLabel(
+            custom_frame,
+            text="Enter package names, one per line. You can include version specifiers (e.g., numpy==1.21.0)",
+            font=ctk.CTkFont(size=10),
+            text_color=VSCODE_COLORS["text_secondary"],
+            wraplength=400
+        ).pack(anchor="w", pady=(5, 0))
+        
+        # Buttons
+        btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        btn_frame.pack(fill="x", pady=(0, 0))
+        
+        ctk.CTkButton(
+            btn_frame,
+            text="Cancel",
+            command=self.destroy,
+            width=100
+        ).pack(side="left")
+        
+        ctk.CTkButton(
+            btn_frame,
+            text="Create Environment",
+            command=self.create_environment,
+            width=150,
+            fg_color=VSCODE_COLORS["success"]
+        ).pack(side="right")
+        
+    def find_python_interpreters(self):
+        """Find available Python interpreters"""
+        interpreters = [sys.executable]
+        
+        # Try to find other Python installations
+        if sys.platform == "win32":
+            # Check common Python installation paths on Windows
+            common_paths = [
+                os.path.join(os.environ.get("ProgramFiles", ""), "Python*"),
+                os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Python*"),
+                os.path.join(os.environ.get("LocalAppData", ""), "Programs", "Python", "Python*")
+            ]
+            
+            for path_pattern in common_paths:
+                for path in glob.glob(path_pattern):
+                    python_exe = os.path.join(path, "python.exe")
+                    if os.path.exists(python_exe) and python_exe not in interpreters:
+                        interpreters.append(python_exe)
+        else:
+            # On Unix, check PATH for python executables
+            for path in os.environ.get("PATH", "").split(os.pathsep):
+                for name in ["python3", "python"]:
+                    python_exe = os.path.join(path, name)
+                    if os.path.exists(python_exe) and os.access(python_exe, os.X_OK) and python_exe not in interpreters:
+                        interpreters.append(python_exe)
+                        
+        return interpreters
+        
+    def browse_location(self):
+        """Browse for environment location"""
+        location = filedialog.askdirectory(
+            title="Select Environment Location",
+            initialdir=self.location_var.get()
+        )
+        
+        if location:
+            self.location_var.set(location)
+            
+    def create_environment(self):
+        """Create the new environment"""
+        # Get settings
+        name = self.name_entry.get().strip()
+        location = self.location_var.get()
+        python_exe = self.python_var.get()
+        
+        # Validate name
+        if not name:
+            messagebox.showerror(
+                "Invalid Name",
+                "Please enter a name for the environment.",
+                parent=self
+            )
+            return
+            
+        # Check if name contains invalid characters
+        if not re.match(r'^[a-zA-Z0-9_.-]+$', name):
+            messagebox.showerror(
+                "Invalid Name",
+                "Environment name can only contain letters, numbers, underscores, dots, and hyphens.",
+                parent=self
+            )
+            return
+            
+        # Check if environment already exists
+        env_path = os.path.join(location, name)
+        if os.path.exists(env_path):
+            if not messagebox.askyesno(
+                "Environment Exists",
+                f"An environment with the name '{name}' already exists.\n"
+                "Do you want to remove it and create a new one?",
+                icon="warning",
+                parent=self
+            ):
+                return
+                
+            # Remove existing environment
+            try:
+                shutil.rmtree(env_path)
+            except Exception as e:
+                messagebox.showerror(
+                    "Removal Failed",
+                    f"Failed to remove existing environment:\n{str(e)}",
+                    parent=self
+                )
+                return
+                
+        # Create progress dialog
+        progress_dialog = EnvCreationProgressDialog(self, name, location, python_exe, self.get_packages())
+        self.wait_window(progress_dialog)
+        
+        # Close dialog
+        self.destroy()
+        
+    def get_packages(self):
+        """Get selected packages"""
+        packages = []
+        
+        # Add essential packages
+        if self.essential_var.get():
+            packages.extend([
+                "manim",
+                "numpy",
+                "matplotlib",
+                "jedi",
+                "customtkinter",
+                "pillow"
+            ])
+            
+        # Add selected common packages
+        for pkg, var in self.package_vars.items():
+            if var.get():
+                packages.append(pkg)
+                
+        # Add custom packages
+        custom = self.custom_packages.get("1.0", tk.END).strip()
+        if custom:
+            for line in custom.split("\n"):
+                line = line.strip()
+                if line:
+                    packages.append(line)
+                    
+        return packages
+
+
+class EnvCreationProgressDialog(ctk.CTkToplevel):
+    """Dialog showing environment creation progress"""
+    
+    def __init__(self, parent, env_name, location, python_exe, packages):
+        super().__init__(parent)
+        
+        self.parent = parent
+        self.env_name = env_name
+        self.location = location
+        self.python_exe = python_exe
+        self.packages = packages
+        
+        self.title("Creating Environment")
+        self.geometry("500x400")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Prevent closing
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 150,
+            parent.winfo_rooty() + 150
+        ))
+        
+        self.create_ui()
+        self.start_creation()
+        
+    def create_ui(self):
+        """Create dialog UI"""
+        # Main frame
+        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        ctk.CTkLabel(
+            main_frame,
+            text=f"Creating Environment: {self.env_name}",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(pady=(0, 20))
+        
+        # Status
+        self.status_label = ctk.CTkLabel(
+            main_frame,
+            text="Initializing...",
+            font=ctk.CTkFont(size=14)
+        )
+        self.status_label.pack(pady=(0, 10))
+        
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(main_frame)
+        self.progress_bar.pack(fill="x", pady=(0, 10))
+        self.progress_bar.set(0)
+        
+        # Details
+        self.details_label = ctk.CTkLabel(
+            main_frame,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.details_label.pack(pady=(0, 10))
+        
+        # Log
+        log_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["background"])
+        log_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Log with scrollbar
+        self.log_text = ctk.CTkTextbox(
+            log_frame,
+            font=ctk.CTkFont(size=11, family="Consolas"),
+            fg_color=VSCODE_COLORS["background"],
+            text_color="#CCCCCC"
+        )
+        self.log_text.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Buttons
+        self.btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        self.btn_frame.pack(fill="x")
+        
+        self.cancel_btn = ctk.CTkButton(
+            self.btn_frame,
+            text="Cancel",
+            command=self.cancel_creation,
+            width=100
+        )
+        self.cancel_btn.pack(side="left")
+        
+        self.done_btn = ctk.CTkButton(
+            self.btn_frame,
+            text="Done",
+            command=self.destroy,
+            width=100,
+            state="disabled"
+        )
+        self.done_btn.pack(side="right")
+        
+    def start_creation(self):
+        """Start environment creation process"""
+        # Log environment details
+        self.log(f"Creating environment: {self.env_name}")
+        self.log(f"Location: {self.location}")
+        self.log(f"Python: {self.python_exe}")
+        self.log(f"Packages: {', '.join(self.packages)}")
+        self.log("")
+        
+        # Start creation in background thread
+        self.creation_thread = threading.Thread(target=self.create_environment, daemon=True)
+        self.creation_thread.start()
+        
+    def create_environment(self):
+        """Create the environment"""
+        try:
+            # Update status
+            self.update_status("Creating virtual environment...", 0.1)
+            
+            # Create environment directory
+            env_path = os.path.join(self.location, self.env_name)
+            os.makedirs(self.location, exist_ok=True)
+            
+            # Create virtual environment
+            self.log("Creating virtual environment...")
+            import venv
+            venv.create(env_path, with_pip=True)
+            
+            # Get Python and pip paths
+            if sys.platform == "win32":
+                python_path = os.path.join(env_path, "Scripts", "python.exe")
+                pip_path = os.path.join(env_path, "Scripts", "pip.exe")
+            else:
+                python_path = os.path.join(env_path, "bin", "python")
+                pip_path = os.path.join(env_path, "bin", "pip")
+                
+            # Verify paths
+            if not os.path.exists(python_path) or not os.path.exists(pip_path):
+                self.log(f"ERROR: Python or pip executable not found in created environment")
+                self.log(f"Python path: {python_path}, exists: {os.path.exists(python_path)}")
+                self.log(f"Pip path: {pip_path}, exists: {os.path.exists(pip_path)}")
+                self.update_status("Creation failed!", 0)
+                self.finish(success=False)
+                return
+                
+            # Upgrade pip
+            self.update_status("Upgrading pip...", 0.15)
+            self.log("Upgrading pip...")
+            
+            result = self.run_command([pip_path, "install", "--upgrade", "pip"])
+            if result.returncode != 0:
+                self.log(f"WARNING: Failed to upgrade pip: {result.stderr}")
+            else:
+                self.log("Pip upgraded successfully")
+                
+            # Install packages
+            if self.packages:
+                self.update_status("Installing packages...", 0.2)
+                self.log("\nInstalling packages...")
+                
+                for i, package in enumerate(self.packages):
+                    progress = 0.2 + (i / len(self.packages) * 0.7)
+                    self.update_status(f"Installing {package}...", progress)
+                    
+                    self.log(f"Installing {package}...")
+                    result = self.run_command([pip_path, "install", package])
+                    
+                    if result.returncode == 0:
+                        self.log(f"✓ Successfully installed {package}")
+                    else:
+                        self.log(f"✗ Failed to install {package}: {result.stderr}")
+                        
+            # Finish
+            self.update_status("Environment created successfully!", 1.0)
+            self.log("\n✅ Environment created successfully!")
+            self.finish(success=True)
+            
+        except Exception as e:
+            self.log(f"ERROR: {str(e)}")
+            import traceback
+            self.log(traceback.format_exc())
+            self.update_status("Creation failed!", 0)
+            self.finish(success=False)
+            
+    def run_command(self, command):
+        """Run command with hidden console"""
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+        return subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            startupinfo=startupinfo,
+            creationflags=creationflags
+        )
+        
+    def update_status(self, status, progress):
+        """Update status and progress bar"""
+        self.after(0, lambda: self.status_label.configure(text=status))
+        self.after(0, lambda: self.progress_bar.set(progress))
+        self.after(0, lambda: self.details_label.configure(text=f"Progress: {int(progress * 100)}%"))
+        
+    def log(self, message):
+        """Add message to log"""
+        self.after(0, lambda: self.log_text.insert("end", f"{message}\n"))
+        self.after(0, lambda: self.log_text.see("end"))
+        
+    def finish(self, success):
+        """Finish creation process"""
+        self.after(0, lambda: self.done_btn.configure(state="normal"))
+        self.after(0, lambda: self.cancel_btn.configure(state="disabled"))
+        
+        if success:
+            self.after(0, lambda: messagebox.showinfo(
+                "Environment Created",
+                f"Environment '{self.env_name}' created successfully!",
+                parent=self
+            ))
+        else:
+            self.after(0, lambda: messagebox.showerror(
+                "Creation Failed",
+                f"Failed to create environment '{self.env_name}'.\nCheck the log for details.",
+                parent=self
+            ))
+            
+    def cancel_creation(self):
+        """Cancel environment creation"""
+        if messagebox.askyesno(
+            "Cancel Creation",
+            "Are you sure you want to cancel environment creation?",
+            parent=self
+        ):
+            self.destroy()
+            
+    def on_close(self):
+        """Handle window close attempt"""
+        # Ignore if creation is in progress
+        pass
 class VirtualEnvironmentManager:
-    """Enhanced virtual environment manager with integrated environment building"""
+    """Enhanced virtual environment manager with integrated environment building and detailed logging"""
     
     def __init__(self, parent_app):
         self.parent_app = parent_app
@@ -851,26 +2098,55 @@ class VirtualEnvironmentManager:
         self.venv_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs")
         os.makedirs(self.venv_dir, exist_ok=True)
         
+        # Set up dedicated logger
+        self.logger = logging.getLogger("VenvManager")
+        self.logger.setLevel(logging.DEBUG)
+        
+        # Add file handler with explicit UTF-8 encoding
+        log_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = logging.FileHandler(
+            os.path.join(log_dir, "venv_manager.log"),
+            mode='w',
+            encoding='utf-8'  # Explicitly use UTF-8 encoding
+        )
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        self.logger.addHandler(file_handler)
+        
         # Add fallback flag for tracking
         self.using_fallback = False
+        
+        self.logger.info("VirtualEnvironmentManager initialized")
+        self.logger.info(f"Virtual environments directory: {self.venv_dir}")
         
         # Try to detect existing environment first
         if not self.detect_existing_environment():
             # No environment found, will need to create default
             self.needs_setup = True
-            logger.info("No suitable environment found. Setup required.")
+            self.logger.info("No suitable environment found. Setup required.")
         else:
             self.needs_setup = False
-            logger.info(f"Using existing environment: {self.current_venv}")
+            self.logger.info(f"Using existing environment: {self.current_venv}")
             
     def detect_existing_environment(self):
         """Detect existing suitable environment or use bundled one"""
+        self.logger.info("Detecting existing environments...")
+        
         # Check for default environment
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-        if self.is_valid_venv(default_venv_path) and self.verify_environment_packages(default_venv_path):
-            self.activate_venv("manim_studio_default")
-            return True
-            
+        if os.path.exists(default_venv_path):
+            self.logger.info(f"Found default environment at: {default_venv_path}")
+            if self.is_valid_venv(default_venv_path):
+                self.logger.info("Default environment structure is valid")
+                if self.verify_environment_packages(default_venv_path):
+                    self.logger.info("Default environment has all required packages")
+                    self.activate_venv("manim_studio_default")
+                    return True
+                else:
+                    self.logger.warning("Default environment missing required packages")
+            else:
+                self.logger.warning("Default environment structure is invalid")
+                
         # Check if we're already in a virtual environment
         if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
             venv_name = os.path.basename(sys.prefix)
@@ -880,7 +2156,7 @@ class VirtualEnvironmentManager:
             
             # Check if this environment has essential packages
             if self.verify_current_environment():
-                logger.info(f"Using current virtual environment: {venv_name}")
+                self.logger.info(f"Using current virtual environment: {venv_name}")
                 return True
             
         # Check system Python for Manim
@@ -889,31 +2165,33 @@ class VirtualEnvironmentManager:
         
         # Check for bundled environment
         if self.check_bundled_environment():
-            logger.info("Found bundled environment, will extract when needed")
+            self.logger.info("Found bundled environment, will extract when needed")
             return False  # Still need setup, but we have bundled environment
             
         return False
         
     def check_bundled_environment(self):
         """Check if a bundled environment is available"""
+        self.logger.info("Checking for bundled environment...")
+        
         # First check relative to executable
         executable_dir = Path(os.path.dirname(sys.executable))
         bundled_dir = executable_dir / "bundled_venv"
         
         # For onefile builds, check in temp directory
         if not bundled_dir.exists() and getattr(sys, 'frozen', False):
-            logger.info("Checking for bundled environment in temp directory...")
+            self.logger.info("Checking for bundled environment in temp directory...")
             for path in sys.path:
                 if 'onefile_' in path and os.path.exists(path):
                     temp_bundled = Path(path) / "bundled_venv"
                     if temp_bundled.exists():
-                        logger.info(f"Found bundled environment in temp path: {temp_bundled}")
+                        self.logger.info(f"Found bundled environment in temp path: {temp_bundled}")
                         bundled_dir = temp_bundled
                         break
                     # Also check parent directory
                     parent_bundled = Path(path).parent / "bundled_venv"
                     if parent_bundled.exists():
-                        logger.info(f"Found bundled environment in parent path: {parent_bundled}")
+                        self.logger.info(f"Found bundled environment in parent path: {parent_bundled}")
                         bundled_dir = parent_bundled
                         break
         
@@ -922,10 +2200,10 @@ class VirtualEnvironmentManager:
             # Try relative path for development
             bundled_dir = Path("bundled_venv")
             if not bundled_dir.exists():
-                logger.warning("No bundled environment found")
+                self.logger.warning("No bundled environment found")
                 return False
         
-        logger.info(f"Found bundled environment: {bundled_dir}")
+        self.logger.info(f"Found bundled environment: {bundled_dir}")
         
         # Check if there's a manifest
         manifest_path = bundled_dir / "manifest.json"
@@ -934,9 +2212,9 @@ class VirtualEnvironmentManager:
                 with open(manifest_path, 'r') as f:
                     import json
                     manifest = json.load(f)
-                    logger.info(f"Bundled environment includes: {manifest.get('essential_packages', [])}")
+                    self.logger.info(f"Bundled environment includes: {manifest.get('essential_packages', [])}")
             except Exception as e:
-                logger.error(f"Error reading manifest: {e}")
+                self.logger.error(f"Error reading manifest: {e}")
         
         # Mark bundled environment available
         self.bundled_venv_dir = bundled_dir
@@ -945,25 +2223,26 @@ class VirtualEnvironmentManager:
     def extract_bundled_environment(self):
         """Extract bundled environment to user directory"""
         if not hasattr(self, 'bundled_venv_dir'):
-            logger.error("No bundled environment directory found")
+            self.logger.error("No bundled environment directory found")
             return self.use_system_python_fallback()
         
-        logger.info(f"Extracting bundled environment from: {self.bundled_venv_dir}")
+        self.logger.info(f"Extracting bundled environment from: {self.bundled_venv_dir}")
         
         # Create destination
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
         if os.path.exists(default_venv_path):
-            logger.info(f"Removing existing environment: {default_venv_path}")
+            self.logger.info(f"Removing existing environment: {default_venv_path}")
             try:
                 shutil.rmtree(default_venv_path)
+                self.logger.info("Existing environment removed successfully")
             except Exception as e:
-                logger.error(f"Error removing existing environment: {e}")
+                self.logger.error(f"Error removing existing environment: {e}")
                 # Continue anyway - try to create if removal fails
         
         # Create new venv
         try:
             import venv
-            logger.info(f"Creating new environment at: {default_venv_path}")
+            self.logger.info(f"Creating new environment at: {default_venv_path}")
             venv.create(default_venv_path, with_pip=True)
             
             # Verify paths
@@ -974,11 +2253,11 @@ class VirtualEnvironmentManager:
                 python_exe = os.path.join(default_venv_path, "bin", "python")
                 pip_exe = os.path.join(default_venv_path, "bin", "pip")
                 
-            logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
-            logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
+            self.logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
+            self.logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
             
             if not os.path.exists(python_exe) or not os.path.exists(pip_exe):
-                logger.error("Python or pip executable not found in created environment")
+                self.logger.error("Python or pip executable not found in created environment")
                 return self.use_system_python_fallback()
                 
             # Activate it for further operations
@@ -996,7 +2275,7 @@ class VirtualEnvironmentManager:
                         essential_packages = manifest.get('essential_packages', [])
                         
                         # Install packages silently
-                        logger.info(f"Installing {len(essential_packages)} essential packages...")
+                        self.logger.info(f"Installing {len(essential_packages)} essential packages...")
                         for pkg in essential_packages:
                             try:
                                 # Create process with hidden console
@@ -1011,7 +2290,7 @@ class VirtualEnvironmentManager:
                                     creationflags = 0
                                     
                                 cmd = [self.pip_path, "install", pkg, "--quiet"]
-                                logger.info(f"Running: {' '.join(cmd)}")
+                                self.logger.info(f"Running: {' '.join(cmd)}")
                                 result = subprocess.run(
                                     cmd,
                                     capture_output=True,
@@ -1021,32 +2300,34 @@ class VirtualEnvironmentManager:
                                 )
                                 
                                 if result.returncode == 0:
-                                    logger.info(f"Installed: {pkg}")
+                                    self.logger.info(f"Installed: {pkg}")
                                 else:
-                                    logger.error(f"Failed to install {pkg}: {result.stderr}")
+                                    self.logger.error(f"Failed to install {pkg}: {result.stderr}")
                             except Exception as e:
-                                logger.error(f"Error installing {pkg}: {e}")
+                                self.logger.error(f"Error installing {pkg}: {e}")
                 except Exception as e:
-                    logger.error(f"Error reading or processing manifest: {e}")
+                    self.logger.error(f"Error reading or processing manifest: {e}")
             else:
-                logger.warning("No manifest file found in bundled environment")
+                self.logger.warning("No manifest file found in bundled environment")
             
             # Verify installation
             if self.verify_environment_packages(default_venv_path):
-                logger.info("Environment setup complete and verified")
+                self.logger.info("Environment setup complete and verified")
                 self.needs_setup = False
                 return True
             else:
-                logger.error("Environment verification failed after setup")
+                self.logger.error("Environment verification failed after setup")
                 return self.use_system_python_fallback()
             
         except Exception as e:
-            logger.error(f"Failed to extract bundled environment: {e}")
+            self.logger.error(f"Failed to extract bundled environment: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             return self.use_system_python_fallback()
         
     def use_system_python_fallback(self):
         """Use system Python as fallback when environment setup fails"""
-        logger.info("Using system Python as fallback")
+        self.logger.info("Using system Python as fallback")
         try:
             # Try to import manim - might work if it's installed system-wide
             __import__("manim")
@@ -1055,11 +2336,11 @@ class VirtualEnvironmentManager:
             self.pip_path = "pip"
             self.needs_setup = False
             self.using_fallback = True
-            logger.info("System Python fallback activated with manim available")
+            self.logger.info("System Python fallback activated with manim available")
             return True
         except ImportError:
             # Manim not available in system Python
-            logger.warning("Cannot use system Python as fallback - manim not available")
+            self.logger.warning("Cannot use system Python as fallback - manim not available")
             # Still mark as using fallback to avoid repeated failures
             self.using_fallback = True
             return False
@@ -1073,15 +2354,15 @@ class VirtualEnvironmentManager:
                 try:
                     __import__(package)
                 except ImportError:
-                    logger.info(f"Missing package {package} in current environment")
+                    self.logger.info(f"Missing package {package} in current environment")
                     return False
             return True
         except Exception as e:
-            logger.error(f"Error verifying current environment: {e}")
+            self.logger.error(f"Error verifying current environment: {e}")
             return False
             
     def verify_environment_packages(self, venv_path):
-        """Verify that environment has essential packages"""
+        """Verify that environment has essential packages with hidden console"""
         try:
             # Get python path
             if os.name == 'nt':
@@ -1090,46 +2371,80 @@ class VirtualEnvironmentManager:
                 python_exe = os.path.join(venv_path, "bin", "python")
             
             if not os.path.exists(python_exe):
-                logger.error(f"Python executable not found: {python_exe}")
+                self.logger.error(f"Python executable not found: {python_exe}")
                 return False
                 
             # Test essential packages
-            essential_test = ["manim", "numpy", "customtkinter"]
+            essential_test = ["manim", "numpy", "customtkinter", "PIL"]
             missing_packages = []
             
-            for package in essential_test:
-                try:
-                    # Hide console window
-                    startupinfo = None
-                    creationflags = 0
-                    if os.name == 'nt':
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        creationflags = subprocess.CREATE_NO_WINDOW
-                    
-                    result = subprocess.run(
-                        [python_exe, "-c", f"import {package}"],
-                        capture_output=True,
-                        text=True,
-                        startupinfo=startupinfo,
-                        creationflags=creationflags
-                    )
-                    
-                    if result.returncode != 0:
-                        logger.info(f"Missing package {package} in environment {venv_path}")
-                        missing_packages.append(package)
-                except Exception as e:
-                    logger.error(f"Error testing package {package}: {e}")
-                    missing_packages.append(package)
+            # Use a single process instead of multiple ones
+            # Create a test script that checks all packages at once - using ASCII instead of Unicode
+            test_script = """
+import sys
+missing = []
+for pkg in sys.argv[1:]:
+    try:
+        if pkg == 'PIL':
+            import PIL
+        else:
+            __import__(pkg)
+        print(f"[OK] {pkg}")  # Changed from ✓ to [OK]
+    except ImportError:
+        missing.append(pkg)
+        print(f"[FAIL] {pkg}")  # Changed from ✗ to [FAIL]
+if missing:
+    print(f"MISSING:{','.join(missing)}")
+    sys.exit(1)
+"""
+            # Write test script to temp file
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                f.write(test_script)
+                test_script_path = f.name
+            
+            # Hide console window
+            startupinfo = None
+            creationflags = 0
+            if os.name == 'nt':
+                import subprocess
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+            
+            # Run a single process to test all packages
+            cmd = [python_exe, test_script_path] + essential_test
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=creationflags
+            )
+            
+            try:
+                os.unlink(test_script_path)  # Clean up
+            except:
+                pass
+            
+            # Check if any packages are missing
+            if "MISSING:" in result.stdout:
+                for line in result.stdout.splitlines():
+                    if line.startswith("MISSING:"):
+                        missing_str = line.split(":", 1)[1]
+                        missing_packages = missing_str.split(",")
+                        break
             
             if missing_packages:
-                logger.warning(f"Missing essential packages: {', '.join(missing_packages)}")
+                self.logger.warning(f"Missing essential packages: {', '.join(missing_packages)}")
                 return False
             
             return True
         except Exception as e:
-            logger.error(f"Error verifying environment packages: {e}")
+            self.logger.error(f"Error verifying environment packages: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             return False
         
     def check_system_python(self):
@@ -1140,18 +2455,30 @@ class VirtualEnvironmentManager:
             self.current_venv = "system_python"
             self.python_path = sys.executable
             self.pip_path = "pip"
-            logger.info("Using system Python with Manim")
+            self.logger.info("Using system Python with Manim")
             return True
         except ImportError:
             return False
             
     def show_setup_dialog(self):
         """Show the environment setup dialog"""
+        self.logger.info("Showing environment setup dialog")
         # First try system Python fallback if we're in a difficult situation
         if self.needs_setup and not hasattr(self, 'bundled_venv_dir') and not self.using_fallback:
+            self.logger.info("Trying system Python fallback before showing dialog")
             success = self.use_system_python_fallback()
             if success:
+                self.logger.info("Using system Python fallback, no need for setup dialog")
                 return
+            else:
+                self.logger.info("System Python fallback failed, will show setup dialog")
+        
+        # Make sure the parent window is raised and visible
+        if hasattr(self.parent_app, 'root'):
+            self.parent_app.root.deiconify()
+            self.parent_app.root.lift()
+            self.parent_app.root.focus_force()
+            self.parent_app.root.update()
         
         # If we have a bundled environment, extract it silently instead
         if hasattr(self, 'bundled_venv_dir'):
@@ -1163,34 +2490,61 @@ class VirtualEnvironmentManager:
                     "ManimStudio is setting up the required environment.\n"
                     "This will take a moment. Please wait..."
                 )
+                self.logger.info("Showed setup message box")
             except Exception as e:
-                logger.error(f"Error showing setup messagebox: {e}")
+                self.logger.error(f"Error showing setup messagebox: {e}")
                 
             # Extract in another thread to not block UI
             import threading
             def extract_thread():
                 try:
+                    self.logger.info("Starting extraction in background thread")
                     success = self.extract_bundled_environment()
-                    if not success:
+                    if success:
+                        self.logger.info("Successfully extracted bundled environment")
+                    else:
                         # Show dialog as fallback
+                        self.logger.error("Failed to extract bundled environment")
                         self.bundled_venv_dir = None  # Clear to avoid loop
                         self.parent_app.root.after(100, self._show_dialog)
                 except Exception as e:
-                    logger.error(f"Error in extract thread: {e}")
+                    self.logger.error(f"Error in extract thread: {e}")
+                    import traceback
+                    self.logger.error(f"Traceback: {traceback.format_exc()}")
                     self.parent_app.root.after(100, self._show_dialog)
                     
             threading.Thread(target=extract_thread, daemon=True).start()
         else:
+            self.logger.info("No bundled environment, showing dialog")
             self._show_dialog()
             
     def _show_dialog(self):
         """Internal method to show the actual dialog"""
+        self.logger.info("Showing environment setup dialog")
         try:
-            dialog = EnvironmentSetupDialog(self.parent_app.root, self)
+            # Try EnhancedEnvironmentSetupDialog first (newest version)
+            try:
+                from app import EnhancedEnvironmentSetupDialog
+                dialog = EnhancedEnvironmentSetupDialog(self.parent_app.root, self)
+            except (ImportError, NameError):
+                # Fall back to regular EnvironmentSetupDialog
+                try:
+                    from app import EnvironmentSetupDialog
+                    dialog = EnvironmentSetupDialog(self.parent_app.root, self)
+                except (ImportError, NameError):
+                    # Emergency fallback
+                    dialog = SimpleEnvironmentDialog(self.parent_app.root, self)
+            
+            # Wait for dialog to close
             self.parent_app.root.wait_window(dialog)
+            self.logger.info("Environment setup dialog closed")
         except Exception as e:
-            logger.error(f"Error showing environment setup dialog: {e}")
-            # Last resort fallback
+            self.logger.error(f"Error showing environment setup dialog: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Last resort fallback - use system Python
+            self.logger.info("Trying system Python as last resort")
             self.use_system_python_fallback()
             
     def create_default_environment(self, log_callback=None):
@@ -1239,7 +2593,7 @@ class VirtualEnvironmentManager:
         except Exception as e:
             if log_callback:
                 log_callback(f"Error creating environment: {str(e)}")
-            logger.error(f"Failed to create default environment: {e}")
+            self.logger.error(f"Failed to create default environment: {e}")
             return False
     
     def upgrade_pip(self, log_callback=None):
@@ -1285,10 +2639,20 @@ class VirtualEnvironmentManager:
     def install_essential_packages(self, log_callback=None, progress_callback=None):
         """Install essential packages in the current environment"""
         if not self.current_venv:
+            self.logger.error("No virtual environment active")
+            if log_callback:
+                log_callback("ERROR: No virtual environment active")
             return False
             
         failed_packages = []
         total_packages = len(ESSENTIAL_PACKAGES)
+        
+        # Enhanced logging
+        if log_callback:
+            log_callback(f"Starting installation of {total_packages} essential packages")
+            log_callback(f"Python: {self.python_path}")
+            log_callback(f"Pip: {self.pip_path}")
+            log_callback(f"Environment: {self.current_venv}")
         
         # Set up console hiding
         import subprocess
@@ -1302,6 +2666,8 @@ class VirtualEnvironmentManager:
             creationflags = subprocess.CREATE_NO_WINDOW
             
         for i, package in enumerate(ESSENTIAL_PACKAGES):
+            self.logger.info(f"Installing package {i+1}/{total_packages}: {package}")
+            
             if log_callback:
                 log_callback(f"Installing {package}...")
                 
@@ -1316,25 +2682,34 @@ class VirtualEnvironmentManager:
                    creationflags=creationflags)
                 
                 if result.returncode == 0:
+                    success_msg = f"Successfully installed {package}"
+                    self.logger.info(success_msg)
                     if log_callback:
-                        log_callback(f"✓ Successfully installed {package}")
+                        log_callback(success_msg)
                 else:
+                    error_msg = f"Failed to install {package}: {result.stderr}"
+                    self.logger.warning(error_msg)
                     if log_callback:
-                        log_callback(f"✗ Failed to install {package}: {result.stderr}")
+                        log_callback(error_msg)
                     failed_packages.append(package)
                     
             except Exception as e:
+                error_msg = f"Error installing {package}: {str(e)}"
+                self.logger.error(error_msg)
                 if log_callback:
-                    log_callback(f"✗ Error installing {package}: {str(e)}")
+                    log_callback(error_msg)
                 failed_packages.append(package)
                 
         if failed_packages:
+            self.logger.warning(f"Some packages failed to install: {failed_packages}")
             if log_callback:
-                log_callback(f"Some packages failed to install: {failed_packages}")
+                log_callback(f"Some packages failed to install: {', '.join(failed_packages)}")
             return False
         else:
+            success_msg = "All essential packages installed successfully"
+            self.logger.info(success_msg)
             if log_callback:
-                log_callback("All essential packages installed successfully")
+                log_callback(success_msg)
             return True
     
     def install_optional_packages(self, log_callback=None, progress_callback=None):
@@ -1376,7 +2751,7 @@ class VirtualEnvironmentManager:
                 
                 if result.returncode == 0:
                     if log_callback:
-                        log_callback(f"✓ Installed optional {package}")
+                        log_callback(f"Installed optional {package}")
                 else:
                     if log_callback:
                         log_callback(f"Could not install optional {package}")
@@ -1408,22 +2783,22 @@ class VirtualEnvironmentManager:
         for package in test_packages:
             try:
                 result = subprocess.run([
-                    self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, '__version__', 'unknown')}}')"
+                    self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, \"__version__\", \"unknown\")}}')"
                 ], capture_output=True, text=True,
                    startupinfo=startupinfo,
                    creationflags=creationflags)
                 
                 if result.returncode == 0:
                     if log_callback:
-                        log_callback(f"✓ {package}: {result.stdout.strip()}")
+                        log_callback(f"{package}: {result.stdout.strip()}")
                 else:
                     if log_callback:
-                        log_callback(f"✗ {package} verification failed")
+                        log_callback(f"{package} verification failed")
                     return False
                     
             except Exception as e:
                 if log_callback:
-                    log_callback(f"✗ Error verifying {package}: {str(e)}")
+                    log_callback(f"Error verifying {package}: {str(e)}")
                 return False
                 
         # Test Manim scene creation
@@ -1456,15 +2831,15 @@ print("Manim test successful")
             
             if result.returncode == 0:
                 if log_callback:
-                    log_callback("✓ Manim scene test successful")
+                    log_callback("Manim scene test successful")
             else:
                 if log_callback:
-                    log_callback(f"✗ Manim scene test failed: {result.stderr}")
+                    log_callback(f"Manim scene test failed: {result.stderr}")
                 return False
                 
         except Exception as e:
             if log_callback:
-                log_callback(f"✗ Error testing Manim: {str(e)}")
+                log_callback(f"Error testing Manim: {str(e)}")
             return False
         
         if log_callback:
@@ -1509,7 +2884,7 @@ print("Manim test successful")
             venv.create(venv_path, with_pip=True)
             return True
         except Exception as e:
-            logger.error(f"Error creating virtual environment: {e}")
+            self.logger.error(f"Error creating virtual environment: {e}")
             return False
         
     def activate_venv(self, name):
@@ -1654,7 +3029,7 @@ print("Manim test successful")
         """Get information about a virtual environment"""
         if venv_name.startswith("system_"):
             return {
-                'name': "System Python",
+                'name': venv_name,
                 'path': sys.prefix,
                 'is_active': venv_name == self.current_venv,
                 'python_version': f"Python {sys.version.split()[0]}",
@@ -1687,7 +3062,6 @@ print("Manim test successful")
             python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
             
             # Set up console hiding
-            import subprocess
             startupinfo = None
             creationflags = 0
             
@@ -1726,10 +3100,10 @@ print("Manim test successful")
             info['size'] = self._get_directory_size(venv_path)
             
         except Exception as e:
-            logger.error(f"Error getting venv info: {e}")
+            print(f"Error getting venv info: {e}")
             
         return info
-        
+    
     def _get_directory_size(self, path):
         """Get the total size of a directory in bytes"""
         total_size = 0
@@ -1744,7 +3118,6 @@ print("Manim test successful")
         except Exception:
             pass
         return total_size
-    
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
@@ -4913,9 +6286,6 @@ class MyScene(Scene):
         if usage_preset == "Custom":
             return self.cpu_custom_cores_var.get()
         
-        # For preset values
-        cores = preset_data["cores"]
-        
         # Special cases
         if cores is None:
             # Medium - use half available cores
@@ -4941,13 +6311,28 @@ class MyScene(Scene):
         self.show_find_dialog()
         
     def manage_environment(self):
-        """Open environment management dialog"""
-        if self.venv_manager.needs_setup:
-            self.venv_manager.show_setup_dialog()
-        else:
-            # Show environment info
-            dialog = EnvironmentInfoDialog(self.root, self.venv_manager)
+        """Open enhanced environment management dialog"""
+        try:
+            # Check if environment needs setup first
+            if self.venv_manager.needs_setup:
+                print("Environment needs setup, showing setup dialog...")
+                self.venv_manager.show_setup_dialog()
+            else:
+               # Show enhanced environment management dialog
+                dialog = EnhancedVenvManagerDialog(self.root, self.venv_manager)
+                self.root.wait_window(dialog)
             
+                # Update venv status after dialog closes
+                if hasattr(self, 'venv_status_label') and self.venv_manager.current_venv:
+                    self.venv_status_label.configure(text=self.venv_manager.current_venv)
+        except Exception as e:
+            print(f"Error in manage_environment: {e}")
+            # Show error message if there's a problem
+            messagebox.showerror(
+                "Environment Error", 
+                f"Error opening environment dialog:\n{str(e)}\n\n"
+                "Please try restarting the application."
+            )
     # Settings callbacks
     def on_quality_change(self, value):
         """Handle quality change"""
@@ -5284,8 +6669,16 @@ class MyScene(Scene):
                     "--disable_caching",
                     f"--renderer=cairo",  # Ensure cairo renderer for threading support
                 ]
-                # Inform about CPU usage but apply it differently
-                self.root.after(0, lambda: self.append_output(f"Using {num_cores} CPU cores for rendering\n"))
+
+                # Hide console windows on Windows
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
 
                 # Set environment variable for CPU control instead of command-line option
                 env = os.environ.copy()
@@ -5300,7 +6693,9 @@ class MyScene(Scene):
                     stderr=subprocess.STDOUT,
                     text=True,
                     cwd=temp_dir,
-                    env=env
+                    env=env,
+                    startupinfo=startupinfo,
+                    creationflags=creationflags
                 )
                 self.preview_process = process
                 
@@ -5415,8 +6810,17 @@ class MyScene(Scene):
                     command.extend(["--sound", self.audio_path])
                 
                 # Add threads parameter for multi-core rendering
-                command.append(f"--renderer=cairo")  # Ensure cairo renderer for threading support
                 command.append(f"--threads={num_cores}")
+                
+                # Hide console windows on Windows
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
                 
                 self.root.after(0, lambda: self.append_output(f"Rendering with: {' '.join(command)}\n"))
                 self.root.after(0, lambda: self.append_output(f"Using {num_cores} CPU cores for rendering\n"))
@@ -5429,7 +6833,9 @@ class MyScene(Scene):
                     stderr=subprocess.STDOUT,
                     text=True,
                     cwd=temp_dir,
-                    env=env
+                    env=env,
+                    startupinfo=startupinfo,
+                    creationflags=creationflags
                 )
                 self.render_process = process
                 
@@ -5662,12 +7068,23 @@ class MyScene(Scene):
             else:
                 python_exe = sys.executable
                 
+            # Hide console windows on Windows
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+                
             for package in required:
                 try:
                     # Check if package is installed
+                    import_cmd = "PIL" if package == "PIL" else package
                     result = subprocess.run([
-                        python_exe, "-c", f"import {package if package != 'PIL' else 'PIL'}"
-                    ], capture_output=True)
+                        python_exe, "-c", f"import {import_cmd}"
+                    ], capture_output=True, startupinfo=startupinfo, creationflags=creationflags)
                     
                     if result.returncode != 0:
                         missing.append(package)
@@ -5713,13 +7130,24 @@ class MyScene(Scene):
             
         def install_thread():
             success_count = 0
+            
+            # Hide console windows on Windows
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+            
             for package in package_names:
                 try:
                     self.root.after(0, lambda p=package: self.append_output(f"Installing {p}...\n"))
                     
                     result = subprocess.run([
                         self.venv_manager.pip_path, "install", package
-                    ], capture_output=True, text=True)
+                    ], capture_output=True, text=True, startupinfo=startupinfo, creationflags=creationflags)
                     
                     if result.returncode == 0:
                         self.root.after(0, lambda p=package: self.append_output(f"✓ Successfully installed {p}\n"))
@@ -5828,10 +7256,10 @@ mathematical animations using the Manim library.
 - PIL for image handling
 - Integrated virtual environment management
 
-👨‍💻 Author: {APP_AUTHOR}
-📧 Email: {APP_EMAIL}
+👨‍💻 Author: {Euler}
+📧 Email: {euler.yu@gmail.com}
 
-© 2024 {APP_AUTHOR}
+© 2025 {Euler}
 Licensed under MIT License"""
         
         desc_label = ctk.CTkLabel(
@@ -5872,160 +7300,617 @@ Licensed under MIT License"""
         except Exception as e:
             logger.error(f"Application error: {e}")
             messagebox.showerror("Error", f"Application error: {e}")
-
-class EnvironmentInfoDialog(ctk.CTkToplevel):
-    """Dialog showing current environment information"""
+class EnhancedEnvironmentSetupDialog(ctk.CTkToplevel):
+    """Enhanced dialog for setting up the environment with better UI/UX"""
     
     def __init__(self, parent, venv_manager):
         super().__init__(parent)
         
+        self.parent_window = parent
         self.venv_manager = venv_manager
-        self.title("Environment Information")
-        self.geometry("500x400")
+        self.setup_complete = False
+        
+        self.title("Manim Studio - Environment Setup")
+        self.geometry("750x650")
         self.transient(parent)
         self.grab_set()
         
         # Center the dialog
         self.geometry("+%d+%d" % (
             parent.winfo_rootx() + 100,
-            parent.winfo_rooty() + 100
+            parent.winfo_rooty() + 50
         ))
         
+        # Prevent closing during setup
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Setup UI with dark theme colors
         self.setup_ui()
         
     def setup_ui(self):
-        """Setup the environment info dialog UI"""
-        # Main frame
-        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        """Setup the enhanced environment setup dialog UI"""
+        # Main container
+        self.main_container = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        self.main_container.pack(fill="both", expand=True, padx=0, pady=0)
         
-        # Title
-        title_label = ctk.CTkLabel(
-            main_frame,
-            text="🔧 Environment Information",
-            font=ctk.CTkFont(size=20, weight="bold"),
+        # Left panel (steps and info)
+        self.left_panel = ctk.CTkFrame(self.main_container, fg_color=VSCODE_COLORS["surface_light"], width=250)
+        self.left_panel.pack(side="left", fill="y", padx=0, pady=0)
+        
+        # Logo and title
+        logo_frame = ctk.CTkFrame(self.left_panel, fg_color="transparent", height=150)
+        logo_frame.pack(fill="x", padx=20, pady=(30, 20))
+        
+        ctk.CTkLabel(
+            logo_frame,
+            text="🎬",
+            font=ctk.CTkFont(size=48)
+        ).pack(pady=(0, 10))
+        
+        ctk.CTkLabel(
+            logo_frame,
+            text="Environment Setup",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        ).pack(pady=(0, 5))
+        
+        # Setup steps
+        steps_frame = ctk.CTkFrame(self.left_panel, fg_color="transparent")
+        steps_frame.pack(fill="x", padx=20, pady=10)
+        
+        self.step_indicators = []
+        steps = [
+            "1. Prepare Environment",
+            "2. Install Packages",
+            "3. Configure Settings",
+            "4. Verify Installation"
+        ]
+        
+        for i, step in enumerate(steps):
+            step_frame = ctk.CTkFrame(steps_frame, fg_color="transparent")
+            step_frame.pack(fill="x", pady=10)
+            
+            # Step indicator (circle)
+            indicator = ctk.CTkLabel(
+                step_frame,
+                text="○",  # Empty circle
+                font=ctk.CTkFont(size=20),
+                width=30,
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            indicator.pack(side="left")
+            self.step_indicators.append(indicator)
+            
+            # Step text
+            ctk.CTkLabel(
+                step_frame,
+                text=step,
+                font=ctk.CTkFont(size=14),
+                text_color=VSCODE_COLORS["text_secondary"]
+            ).pack(side="left", padx=(5, 0))
+        
+        # System info
+        system_frame = ctk.CTkFrame(self.left_panel, fg_color=VSCODE_COLORS["surface"], corner_radius=10)
+        system_frame.pack(fill="x", padx=20, pady=(20, 10))
+        
+        ctk.CTkLabel(
+            system_frame,
+            text="System Information",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        ).pack(anchor="w", padx=15, pady=(15, 10))
+        
+        # System data
+        system_info = [
+            f"OS: {self.get_os_info()}",
+            f"Python: {sys.version.split()[0]}",
+            f"CPU: {self.get_cpu_info()}",
+            f"Memory: {self.get_memory_info()}"
+        ]
+        
+        for info in system_info:
+            ctk.CTkLabel(
+                system_frame,
+                text=info,
+                font=ctk.CTkFont(size=12),
+                text_color=VSCODE_COLORS["text_secondary"]
+            ).pack(anchor="w", padx=15, pady=2)
+            
+        # Right panel (main content)
+        self.right_panel = ctk.CTkFrame(self.main_container, fg_color=VSCODE_COLORS["background"])
+        self.right_panel.pack(side="right", fill="both", expand=True, padx=0, pady=0)
+        
+        # Header
+        header_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["surface"], height=80)
+        header_frame.pack(fill="x", padx=0, pady=0)
+        
+        self.header_title = ctk.CTkLabel(
+            header_frame,
+            text="Setting up Manim Animation Studio",
+            font=ctk.CTkFont(size=18, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
-        title_label.pack(pady=(10, 20))
+        self.header_title.pack(anchor="w", padx=30, pady=25)
         
-        # Environment details
-        info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        info_frame.pack(fill="both", expand=True, padx=15, pady=10)
+        # Main content area
+        self.content_frame = ctk.CTkFrame(self.right_panel, fg_color="transparent")
+        self.content_frame.pack(fill="both", expand=True, padx=30, pady=20)
         
-        # Current environment
-        if self.venv_manager.current_venv:
-            env_label = ctk.CTkLabel(
-                info_frame,
-                text=f"Current Environment: {self.venv_manager.current_venv}",
-                font=ctk.CTkFont(size=14, weight="bold")
-            )
-            env_label.pack(anchor="w", padx=15, pady=(15, 5))
-            
-            # Python path
-            python_label = ctk.CTkLabel(
-                info_frame,
-                text=f"Python: {self.venv_manager.python_path}",
-                font=ctk.CTkFont(size=12),
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            python_label.pack(anchor="w", padx=15, pady=2)
-            
-            # Pip path
-            pip_label = ctk.CTkLabel(
-                info_frame,
-                text=f"Pip: {self.venv_manager.pip_path}",
-                font=ctk.CTkFont(size=12),
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            pip_label.pack(anchor="w", padx=15, pady=2)
-            
+        # Info box
+        self.info_box = ctk.CTkFrame(self.content_frame, fg_color=VSCODE_COLORS["surface_light"], corner_radius=10)
+        self.info_box.pack(fill="x", pady=(0, 20))
+        
+        self.info_title = ctk.CTkLabel(
+            self.info_box,
+            text="Welcome to Manim Studio Environment Setup",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        )
+        self.info_title.pack(anchor="w", padx=20, pady=(20, 10))
+        
+        self.info_text = ctk.CTkLabel(
+            self.info_box,
+            text="This wizard will help you set up an optimal environment for Manim Studio. We'll create a dedicated virtual environment with all required packages for mathematical animations.",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text"],
+            wraplength=400,
+            justify="left"
+        )
+        self.info_text.pack(anchor="w", padx=20, pady=(0, 20))
+        
+        # Current step indicator
+        self.step_label = ctk.CTkLabel(
+            self.content_frame,
+            text="Ready to Start",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=VSCODE_COLORS["primary"]
+        )
+        self.step_label.pack(anchor="w", pady=(0, 5))
+        
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(self.content_frame, height=20)
+        self.progress_bar.pack(fill="x", pady=10)
+        self.progress_bar.set(0)
+        
+        # Progress details
+        self.detail_label = ctk.CTkLabel(
+            self.content_frame,
+            text="Click 'Start Setup' to begin the installation process",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.detail_label.pack(anchor="w", pady=(0, 10))
+        
+        # Log output frame with improved styling
+        log_frame = ctk.CTkFrame(self.content_frame, fg_color=VSCODE_COLORS["background"])
+        log_frame.pack(fill="both", expand=True, pady=10)
+        
+        log_header = ctk.CTkFrame(log_frame, fg_color=VSCODE_COLORS["surface_lighter"], height=30)
+        log_header.pack(fill="x")
+        
+        ctk.CTkLabel(
+            log_header,
+            text="Installation Log",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        ).pack(side="left", padx=15, pady=5)
+        
+        # Terminal-style log with dark background
+        self.log_text = ctk.CTkTextbox(
+            log_frame, 
+            height=200, 
+            font=ctk.CTkFont(size=11, family="Consolas"),
+            fg_color=VSCODE_COLORS["background"],
+            text_color="#CCCCCC"
+        )
+        self.log_text.pack(fill="both", expand=True)
+        
+        # Status indicator frame
+        self.status_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["surface_lighter"], height=50)
+        self.status_frame.pack(fill="x", padx=0, pady=0)
+        
+        self.status_label = ctk.CTkLabel(
+            self.status_frame,
+            text="Ready to install",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.status_label.pack(side="left", padx=30, pady=15)
+        
+        # Buttons frame
+        self.button_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["surface"], height=80)
+        self.button_frame.pack(fill="x", padx=0, pady=0)
+        
+        self.start_button = ctk.CTkButton(
+            self.button_frame,
+            text="🚀 Start Setup",
+            command=self.start_setup,
+            height=40,
+            width=150,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["success"],
+            hover_color="#117A65"
+        )
+        self.start_button.pack(side="right", padx=30, pady=20)
+        
+        self.skip_button = ctk.CTkButton(
+            self.button_frame,
+            text="Skip Setup",
+            command=self.skip_setup,
+            height=40,
+            width=100,
+            font=ctk.CTkFont(size=12),
+            fg_color=VSCODE_COLORS["surface_lighter"],
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.skip_button.pack(side="right", padx=(0, 10), pady=20)
+        
+        self.close_button = ctk.CTkButton(
+            self.button_frame,
+            text="✅ Continue",
+            command=self.continue_to_app,
+            height=40,
+            width=150,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            state="disabled"
+        )
+        self.close_button.pack(side="right", padx=30, pady=20)
+        self.close_button.pack_forget()  # Hide initially
+        
+    def get_os_info(self):
+        """Get OS information"""
+        import platform
+        return f"{platform.system()} {platform.version()}"
+        
+    def get_cpu_info(self):
+        """Get CPU information"""
+        import multiprocessing
+        return f"{multiprocessing.cpu_count()} cores"
+        
+    def get_memory_info(self):
+        """Get memory information"""
+        import psutil
+        mem = psutil.virtual_memory()
+        return f"{mem.total // (1024**3)} GB"
+    
+    def update_step(self, step_index):
+        """Update the step indicators and header"""
+        # Reset all steps
+        for i, indicator in enumerate(self.step_indicators):
+            if i < step_index:
+                # Completed steps
+                indicator.configure(text="✓", text_color=VSCODE_COLORS["success"])
+            elif i == step_index:
+                # Current step
+                indicator.configure(text="●", text_color=VSCODE_COLORS["primary"])
+            else:
+                # Future steps
+                indicator.configure(text="○", text_color=VSCODE_COLORS["text_secondary"])
+                
+        # Update header based on step
+        headers = [
+            "Preparing Environment",
+            "Installing Required Packages",
+            "Configuring Settings",
+            "Verifying Installation"
+        ]
+        if step_index < len(headers):
+            self.header_title.configure(text=headers[step_index])
+        
+    def log_message(self, message):
+        """Add message to log with timestamp and color coding"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        # Apply color based on message content
+        if message.startswith("✓"):
+            color = "#4CAF50"  # Green for success
+        elif message.startswith("✗") or message.startswith("ERROR"):
+            color = "#F44336"  # Red for errors
+        elif message.startswith("Warning") or message.startswith("⚠️"):
+            color = "#FF9800"  # Orange for warnings
         else:
-            no_env_label = ctk.CTkLabel(
-                info_frame,
-                text="No environment active",
-                font=ctk.CTkFont(size=14, weight="bold"),
-                text_color=VSCODE_COLORS["warning"]
-            )
-            no_env_label.pack(anchor="w", padx=15, pady=(15, 5))
+            color = "#CCCCCC"  # Default color
             
-        # Package list
-        packages_label = ctk.CTkLabel(
-            info_frame,
-            text="Installed Packages:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        )
-        packages_label.pack(anchor="w", padx=15, pady=(20, 10))
+        self.log_text.insert("end", f"[{timestamp}] ", {"color": "#888888"})
+        self.log_text.insert("end", f"{message}\n", {"color": color})
+        self.log_text.see("end")
+        self.update_idletasks()
         
-        # Package list box
-        self.packages_text = ctk.CTkTextbox(info_frame, height=150)
-        self.packages_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+    def update_progress(self, value, step_text="", detail_text=""):
+        """Update progress bar and status"""
+        self.progress_bar.set(value)
+        if step_text:
+            self.step_label.configure(text=step_text)
+        if detail_text:
+            self.detail_label.configure(text=detail_text)
+        self.status_label.configure(text=step_text or "Working...")
+        self.update_idletasks()
         
-        # Load package list
-        self.load_packages()
+    def start_setup(self):
+        """Start the environment setup process"""
+        self.start_button.configure(state="disabled")
+        self.skip_button.configure(state="disabled")
         
-        # Buttons
-        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        button_frame.pack(pady=15)
+        self.log_message("Starting ManimStudio environment setup...")
+        self.update_progress(0.05, "Preparing...", "Initializing environment creation")
+        self.update_step(0)  # Set to first step
         
-        if not self.venv_manager.current_venv:
-            # Setup button if no environment
-            setup_btn = ctk.CTkButton(
-                button_frame,
-                text="🔧 Setup Environment",
-                command=self.setup_environment,
-                fg_color=VSCODE_COLORS["success"],
-                hover_color="#117A65",
-                font=ctk.CTkFont(size=14, weight="bold")
-            )
-            setup_btn.pack(side="left", padx=5)
+        # Run setup in background thread
+        setup_thread = threading.Thread(target=self.run_setup, daemon=True)
+        setup_thread.start()
+        
+    def run_setup(self):
+        """Run the actual setup process"""
+        try:
+            # Step 1: Create virtual environment
+            self.after(0, lambda: self.update_step(0))
+            self.after(0, lambda: self.update_progress(0.1, "Creating virtual environment...", "Setting up isolated Python environment"))
+            self.after(0, lambda: self.log_message("Creating virtual environment..."))
             
-        refresh_btn = ctk.CTkButton(
-            button_frame,
-            text="🔄 Refresh",
-            command=self.load_packages,
-            width=100
-        )
-        refresh_btn.pack(side="left", padx=5)
+            success = self.venv_manager.create_default_environment(self.log_message_threadsafe)
+            
+            if not success:
+                self.after(0, lambda: self.log_message("ERROR: Failed to create virtual environment"))
+                self.after(0, lambda: self.show_error("Failed to create virtual environment"))
+                return
+                
+            # Step 2: Upgrade pip
+            self.after(0, lambda: self.update_progress(0.2, "Upgrading pip...", "Ensuring latest package manager"))
+            self.after(0, lambda: self.log_message("Upgrading pip to latest version..."))
+            
+            success = self.venv_manager.upgrade_pip(self.log_message_threadsafe)
+            if not success:
+                self.after(0, lambda: self.log_message("WARNING: Could not upgrade pip, continuing with existing version"))
+            
+            # Step 3: Install essential packages
+            self.after(0, lambda: self.update_step(1))  # Move to step 2
+            self.after(0, lambda: self.update_progress(0.3, "Installing packages...", "Installing Manim and dependencies"))
+            self.after(0, lambda: self.log_message("Installing essential packages..."))
+            
+            success = self.venv_manager.install_essential_packages(
+                self.log_message_threadsafe,
+                self.update_package_progress
+            )
+            
+            if not success:
+                self.after(0, lambda: self.log_message("WARNING: Some essential packages failed to install"))
+                self.after(0, lambda: self.show_warning("Some essential packages failed to install. Basic functionality may be limited."))
+                
+            # Step 4: Install optional packages
+            self.after(0, lambda: self.update_step(2))  # Move to step 3
+            self.after(0, lambda: self.update_progress(0.8, "Installing optional packages...", "Adding extra functionality"))
+            self.after(0, lambda: self.log_message("Installing optional packages..."))
+            
+            self.venv_manager.install_optional_packages(
+                self.log_message_threadsafe,
+                self.update_optional_progress
+            )
+            
+            # Step 5: Verify installation
+            self.after(0, lambda: self.update_step(3))  # Move to step 4
+            self.after(0, lambda: self.update_progress(0.95, "Verifying installation...", "Testing all components"))
+            self.after(0, lambda: self.log_message("Verifying installation..."))
+            
+            success = self.venv_manager.verify_installation(self.log_message_threadsafe)
+            
+            if success:
+                self.after(0, lambda: self.update_progress(1.0, "Setup complete!", "All components ready"))
+                self.after(0, lambda: self.log_message("✅ Environment setup completed successfully!"))
+                self.after(0, lambda: self.setup_complete_ui())
+            else:
+                self.after(0, lambda: self.log_message("WARNING: Installation verification failed"))
+                self.after(0, lambda: self.show_warning("Setup completed with warnings - some features may be limited"))
+                
+        except Exception as e:
+            error_msg = f"Setup failed with error: {str(e)}"
+            self.after(0, lambda: self.log_message(f"ERROR: {error_msg}"))
+            self.after(0, lambda: self.show_error(error_msg))
+            import traceback
+            self.after(0, lambda: self.log_message(f"Traceback: {traceback.format_exc()}"))
+            
+    def log_message_threadsafe(self, message):
+        """Thread-safe log message method"""
+        self.after(0, lambda: self.log_message(message))
         
-        close_btn = ctk.CTkButton(
-            button_frame,
+    def update_package_progress(self, package_name, progress):
+        """Update progress for package installation"""
+        self.after(0, lambda: self.update_progress(
+            0.3 + (progress * 0.5),
+            "Installing packages...",
+            f"Installing {package_name}..."
+        ))
+        
+    def update_optional_progress(self, package_name, progress):
+        """Update progress for optional package installation"""
+        self.after(0, lambda: self.update_progress(
+            0.8 + (progress * 0.15),
+            "Installing optional packages...",
+            f"Installing {package_name}..."
+        ))
+        
+    def setup_complete_ui(self):
+        """Update UI when setup is complete"""
+        self.setup_complete = True
+        
+        # Show close button instead of start button
+        self.start_button.pack_forget()
+        self.skip_button.pack_forget()
+        self.close_button.pack(side="right", padx=30, pady=20)
+        
+        self.step_label.configure(
+            text="🎉 Setup Complete!",
+            text_color=VSCODE_COLORS["success"]
+        )
+        self.detail_label.configure(text="ManimStudio is ready to use")
+        self.status_label.configure(text="Setup completed successfully", text_color=VSCODE_COLORS["success"])
+        
+        # Show completion message
+        success_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["success"])
+        success_frame.place(relx=0.5, rely=0.45, anchor="center", width=300, height=150)
+        
+        ctk.CTkLabel(
+            success_frame,
+            text="✅ Environment Ready!",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="white"
+        ).pack(padx=30, pady=(30, 10))
+        
+        ctk.CTkLabel(
+            success_frame,
+            text="You can now use ManimStudio to create animations",
+            font=ctk.CTkFont(size=12),
+            text_color="white"
+        ).pack(padx=30, pady=(0, 30))
+        
+        # Auto-dismiss after 3 seconds
+        self.after(3000, lambda: success_frame.destroy())
+        
+    def show_error(self, message):
+        """Show error message with troubleshooting assistance"""
+        self.step_label.configure(
+            text="❌ Setup Failed",
+            text_color=VSCODE_COLORS["error"]
+        )
+        self.detail_label.configure(text=message)
+        self.status_label.configure(text="Setup failed", text_color=VSCODE_COLORS["error"])
+        
+        # Reset buttons
+        self.start_button.configure(text="🔄 Retry Setup", state="normal")
+        self.skip_button.configure(state="normal")
+        
+        # Show error dialog with troubleshooting assistance
+        error_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["error"])
+        error_frame.place(relx=0.5, rely=0.45, anchor="center", width=350, height=250)
+        
+        ctk.CTkLabel(
+            error_frame,
+            text="❌ Setup Failed",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="white"
+        ).pack(padx=30, pady=(20, 10))
+        
+        ctk.CTkLabel(
+            error_frame,
+            text=message,
+            font=ctk.CTkFont(size=12),
+            text_color="white",
+            wraplength=300
+        ).pack(padx=30, pady=(0, 10))
+        
+        # Troubleshooting tips
+        tips_text = """Troubleshooting Tips:
+- Ensure you have internet connection
+- Check your firewall settings
+- Make sure you have admin rights
+- Try running as administrator
+- Check log for detailed error message"""
+        
+        ctk.CTkLabel(
+            error_frame,
+            text=tips_text,
+            font=ctk.CTkFont(size=12),
+            text_color="white",
+            justify="left",
+            wraplength=300
+        ).pack(padx=30, pady=(10, 20))
+        
+        # Close button
+        ctk.CTkButton(
+            error_frame,
             text="Close",
-            command=self.destroy,
-            width=80
+            command=lambda: error_frame.destroy(),
+            width=100,
+            fg_color="#C62828",
+            hover_color="#B71C1C"
+        ).pack(pady=(0, 20))
+        
+    def show_warning(self, message):
+        """Show warning message but allow continuing"""
+        self.step_label.configure(
+            text="⚠️ Setup Completed with Warnings",
+            text_color=VSCODE_COLORS["warning"]
         )
-        close_btn.pack(side="right", padx=5)
+        self.detail_label.configure(text=message)
+        self.status_label.configure(text="Setup completed with warnings", text_color=VSCODE_COLORS["warning"])
         
-    def load_packages(self):
-        """Load and display installed packages"""
-        self.packages_text.delete("0.0", "end")
+        # Enable close button
+        self.start_button.pack_forget()
+        self.skip_button.pack_forget()
+        self.close_button.pack(side="right", padx=30, pady=20)
+        self.close_button.configure(state="normal")
         
-        if not self.venv_manager.current_venv:
-            self.packages_text.insert("0.0", "No environment active. Please set up an environment first.")
-            return
+        self.setup_complete = True
+        
+        # Show warning dialog
+        warning_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["warning"])
+        warning_frame.place(relx=0.5, rely=0.45, anchor="center", width=350, height=220)
+        
+        ctk.CTkLabel(
+            warning_frame,
+            text="⚠️ Setup Completed with Warnings",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="white"
+        ).pack(padx=30, pady=(20, 10))
+        
+        ctk.CTkLabel(
+            warning_frame,
+            text=message,
+            font=ctk.CTkFont(size=12),
+            text_color="white",
+            wraplength=300
+        ).pack(padx=30, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            warning_frame,
+            text="You can continue with limited functionality, or retry the setup.",
+            font=ctk.CTkFont(size=12),
+            text_color="white",
+            wraplength=300
+        ).pack(padx=30, pady=(0, 20))
+        
+        # Close button
+        ctk.CTkButton(
+            warning_frame,
+            text="Continue Anyway",
+            command=lambda: warning_frame.destroy(),
+            width=150,
+            fg_color="#E65100",
+            hover_color="#D84315"
+        ).pack(pady=(0, 20))
+        
+    def skip_setup(self):
+        """Skip the setup process with confirmation"""
+        from tkinter import messagebox
+        if messagebox.askyesno(
+            "Skip Setup",
+            "Are you sure you want to skip the environment setup?\n\n"
+            "ManimStudio requires certain packages to function correctly.\n"
+            "Without setup, animations may not work properly.",
+            icon="warning",
+            parent=self
+        ):
+            self.log_message("Setup skipped by user")
+            self.continue_to_app()
             
-        self.packages_text.insert("0.0", "Loading packages...\n")
-        
-        def load_thread():
-            def callback(success, packages, error):
-                if success:
-                    text = ""
-                    for pkg in packages:
-                        text += f"{pkg['name']} == {pkg['version']}\n"
-                    self.after(0, lambda: self.packages_text.delete("0.0", "end"))
-                    self.after(0, lambda: self.packages_text.insert("0.0", text or "No packages found"))
-                else:
-                    self.after(0, lambda: self.packages_text.delete("0.0", "end"))
-                    self.after(0, lambda: self.packages_text.insert("0.0", f"Error loading packages: {error}"))
-                    
-            self.venv_manager.list_packages(callback)
-            
-        threading.Thread(target=load_thread, daemon=True).start()
-        
-    def setup_environment(self):
-        """Setup environment"""
+    def continue_to_app(self):
+        """Continue to the main application"""
         self.destroy()
-        self.venv_manager.show_setup_dialog()
-
+        
+    def on_closing(self):
+        """Handle dialog closing with confirmation"""
+        if not hasattr(self, 'setup_complete') or not self.setup_complete:
+            from tkinter import messagebox
+            if messagebox.askyesno(
+                "Cancel Setup",
+                "Setup is not complete. Exit anyway?\n\n"
+                "ManimStudio may not work correctly without proper setup.",
+                icon="warning",
+                parent=self
+            ):
+                self.destroy()
+        else:
+            self.destroy()
 
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
@@ -6308,10 +8193,96 @@ class HelloWorld(Scene):
         elif current == "2. First Animation":
             self.notebook.set("3. Advanced Features")
 
+class SimpleEnvironmentDialog(ctk.CTkToplevel):
+    """Emergency fallback dialog if other dialogs fail"""
+    
+    def __init__(self, parent, venv_manager):
+        super().__init__(parent)
+        
+        self.venv_manager = venv_manager
+        self.title("Environment Setup")
+        self.geometry("500x300")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 100,
+            parent.winfo_rooty() + 100
+        ))
+        
+        # Main frame
+        frame = ctk.CTkFrame(self)
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        ctk.CTkLabel(
+            frame,
+            text="Manim Studio Environment Setup",
+            font=ctk.CTkFont(size=18, weight="bold")
+        ).pack(pady=(0, 20))
+        
+        # Info text
+        ctk.CTkLabel(
+            frame,
+            text="This will set up a new Python environment for Manim animations. Continue?",
+            wraplength=400
+        ).pack(pady=(0, 20))
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        button_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkButton(
+            button_frame,
+            text="Create Environment",
+            command=self.create_environment
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkButton(
+            button_frame,
+            text="Cancel",
+            command=self.destroy
+        ).pack(side="right", padx=5)
+        
+    def create_environment(self):
+        """Create environment and close"""
+        try:
+            success = self.venv_manager.create_default_environment()
+            if success:
+                from tkinter import messagebox
+                messagebox.showinfo(
+                    "Success", 
+                    "Environment created successfully!"
+                )
+                self.destroy()
+            else:
+                from tkinter import messagebox
+                messagebox.showerror(
+                    "Error", 
+                    "Failed to create environment. Please try again."
+                )
+        except Exception as e:
+            from tkinter import messagebox
+            messagebox.showerror(
+                "Error", 
+                f"Error creating environment: {str(e)}"
+            )
+
+
 
 def main():
     """Application entry point"""
+    import sys 
     try:
+        # Early console hiding for Windows
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+            except:
+                pass
+
         # Import the no-console patch immediately to hide ALL console windows
         try:
             import ENHANCED_NO_CONSOLE_PATCH
@@ -6371,6 +8342,22 @@ def main():
                             user32.ShowWindow(hwnd, SW_HIDE)
                     except Exception:
                         pass
+
+        # Early load of fixes module to handle runtime issues
+        try:
+            import fixes
+            fixes.apply_fixes()
+        except ImportError:
+            print("Warning: fixes module not available")
+            pass
+
+        # Force matplotlib backend to TkAgg
+        try:
+            import matplotlib
+            matplotlib.use('TkAgg')
+        except ImportError:
+            print("Warning: matplotlib not available")
+            pass
         
         # Create application directory
         app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
@@ -6382,7 +8369,7 @@ def main():
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_file),
+                logging.FileHandler(log_file, encoding='utf-8'),
                 logging.StreamHandler()
             ]
         )
@@ -6404,7 +8391,89 @@ def main():
         
     except Exception as e:
         logger.error(f"Startup error: {e}")
-        messagebox.showerror("Startup Error", f"Failed to start application: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        try:
+            from tkinter import messagebox
+            messagebox.showerror("Startup Error", f"Failed to start application: {e}")
+        except:
+            print(f"Failed to start application: {e}")
+
+class SimpleEnvironmentDialog(ctk.CTkToplevel):
+    """Emergency fallback dialog if other dialogs fail"""
+    
+    def __init__(self, parent, venv_manager):
+        super().__init__(parent)
+        
+        self.venv_manager = venv_manager
+        self.title("Environment Setup")
+        self.geometry("500x300")
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            parent.winfo_rootx() + 100,
+            parent.winfo_rooty() + 100
+        ))
+        
+        # Main frame
+        frame = ctk.CTkFrame(self)
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        ctk.CTkLabel(
+            frame,
+            text="Manim Studio Environment Setup",
+            font=ctk.CTkFont(size=18, weight="bold")
+        ).pack(pady=(0, 20))
+        
+        # Info text
+        ctk.CTkLabel(
+            frame,
+            text="This will set up a new Python environment for Manim animations. Continue?",
+            wraplength=400
+        ).pack(pady=(0, 20))
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        button_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkButton(
+            button_frame,
+            text="Create Environment",
+            command=self.create_environment
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkButton(
+            button_frame,
+            text="Cancel",
+            command=self.destroy
+        ).pack(side="right", padx=5)
+        
+    def create_environment(self):
+        """Create environment and close"""
+        try:
+            success = self.venv_manager.create_default_environment()
+            if success:
+                from tkinter import messagebox
+                messagebox.showinfo(
+                    "Success", 
+                    "Environment created successfully!"
+                )
+                self.destroy()
+            else:
+                from tkinter import messagebox
+                messagebox.showerror(
+                    "Error", 
+                    "Failed to create environment. Please try again."
+                )
+        except Exception as e:
+            from tkinter import messagebox
+            messagebox.showerror(
+                "Error", 
+                f"Error creating environment: {str(e)}"
+            )
 
 if __name__ == "__main__":
     main()

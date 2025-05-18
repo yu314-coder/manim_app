@@ -8,24 +8,49 @@ import shutil
 import json
 import importlib
 import argparse
+import ctypes
+import psutil
+import time
+import threading
+import io
+import codecs
 
-def build_self_contained_version(jobs=None):
+# Global flag to use ASCII instead of Unicode symbols
+USE_ASCII_ONLY = True
+
+def build_self_contained_version(jobs=None, priority="normal"):
     """Build self-contained version with NO CONSOLE EVER"""
+    
+    # Get CPU count first
+    cpu_count = multiprocessing.cpu_count()
     
     # Determine optimal job count if not specified
     if jobs is None:
-        cpu_count = multiprocessing.cpu_count()
         # Use N-1 cores by default to keep system responsive
         jobs = max(1, cpu_count - 1)
     
-    print(f"🐍 Building SELF-CONTAINED version (NO CONSOLE) with {jobs} CPU cores...")
+    # For maximum performance, oversubscribe slightly
+    if jobs == cpu_count:
+        # Oversubscription for maximum CPU utilization
+        jobs = int(cpu_count * 1.5)
+    
+    if USE_ASCII_ONLY:
+        print(f"Building SELF-CONTAINED version (NO CONSOLE) with {jobs} CPU threads...")
+    else:
+        print(f"🐍 Building SELF-CONTAINED version (NO CONSOLE) with {jobs} CPU threads...")
     
     # Clean previous builds
     if Path("build").exists():
-        print("🧹 Cleaning build directory...")
+        if USE_ASCII_ONLY:
+            print("Cleaning build directory...")
+        else:
+            print("🧹 Cleaning build directory...")
         shutil.rmtree("build")
     if Path("dist").exists():
-        print("🧹 Cleaning dist directory...")
+        if USE_ASCII_ONLY:
+            print("Cleaning dist directory...")
+        else:
+            print("🧹 Cleaning dist directory...")
         shutil.rmtree("dist")
     
     # Create assets directory if it doesn't exist
@@ -41,9 +66,20 @@ def build_self_contained_version(jobs=None):
     # Create fixes module
     create_fixes_module()
     
+    # Check system prerequisites
+    if not check_system_prerequisites():
+        if USE_ASCII_ONLY:
+            print("ERROR: System prerequisites check failed")
+        else:
+            print("❌ System prerequisites check failed")
+        return None
+    
     # Detect Nuitka version for compatibility
     nuitka_version = get_nuitka_version()
-    print(f"📊 Detected Nuitka version: {nuitka_version}")
+    if USE_ASCII_ONLY:
+        print(f"Detected Nuitka version: {nuitka_version}")
+    else:
+        print(f"📊 Detected Nuitka version: {nuitka_version}")
     
     # Basic command with universal options
     cmd = [
@@ -55,8 +91,28 @@ def build_self_contained_version(jobs=None):
     # Add console hiding - use the correct option for newer Nuitka versions
     cmd.append("--windows-console-mode=disable")
     
-    # Add basic plugins - TKinter is usually available
+    # Add GUI toolkit for matplotlib
     cmd.append("--enable-plugin=tk-inter")
+    
+    # CRITICAL: Completely disable LTO to fix the zstandard error
+    cmd.append("--lto=no")
+    
+    # Explicitly exclude problematic modules
+    cmd.append("--nofollow-import-to=zstandard")
+    cmd.append("--nofollow-import-to=zstandard.backend_cffi")
+    cmd.append("--nofollow-import-to=setuptools")
+    cmd.append("--nofollow-import-to=test.support")
+    cmd.append("--nofollow-import-to=_distutils_hack")
+    
+    # Add optimization flags that don't use LTO
+    cmd.extend([
+        "--no-progressbar",                    # Disable progress bar
+        "--remove-output",                     # Remove intermediate files to reduce I/O
+        "--assume-yes-for-downloads",          # Don't prompt for downloads
+        "--mingw64",                           # Use MinGW64 compiler
+        "--disable-ccache",                    # Disable ccache to avoid issues
+        "--show-memory",                       # Show memory usage
+    ])
     
     # Check for importable packages and include only those that exist
     essential_packages = [
@@ -71,9 +127,15 @@ def build_self_contained_version(jobs=None):
             if correct_name:
                 included_packages.append(correct_name)
                 cmd.append(f"--include-package={correct_name}")
-                print(f"✅ Including package: {correct_name}")
+                if USE_ASCII_ONLY:
+                    print(f"Including package: {correct_name}")
+                else:
+                    print(f"✅ Including package: {correct_name}")
         else:
-            print(f"⚠️ Skipping unavailable package: {package}")
+            if USE_ASCII_ONLY:
+                print(f"Skipping unavailable package: {package}")
+            else:
+                print(f"⚠️ Skipping unavailable package: {package}")
     
     # Include critical modules that are part of standard library
     essential_modules = [
@@ -103,25 +165,125 @@ def build_self_contained_version(jobs=None):
         f"--include-data-dir={bundled_venv}=bundled_venv",
     ])
     
-    # Jobs for faster compilation - use the calculated optimal job count
+    # Add custom performance flags to maximize CPU
+    cmd.append("--disable-dll-dependency-cache")
+    cmd.append("--force-stdout-spec=PIPE")
+    cmd.append("--force-stderr-spec=PIPE")
+    
+    # Jobs for faster compilation - use the calculated job count
     cmd.append(f"--jobs={jobs}")
     
     # Final target
     cmd.append("app.py")
     
-    print("🔨 Building executable with NO CONSOLE...")
+    if USE_ASCII_ONLY:
+        print("Building executable with NO CONSOLE...")
+    else:
+        print("🔨 Building executable with NO CONSOLE...")
     print("Command:", " ".join(cmd))
     print("=" * 60)
     
+    # Create environment variables to force disable LTO in GCC
+    env = os.environ.copy()
+    env["GCC_LTO"] = "0"
+    env["NUITKA_DISABLE_LTO"] = "1"
+    env["GCC_COMPILE_ARGS"] = "-fno-lto"
+    
+    # Set process priority if on Windows
+    process_priority = 0  # Normal priority by default
+    if priority == "high" and sys.platform == "win32":
+        if USE_ASCII_ONLY:
+            print("Setting HIGH process priority for maximum CPU utilization")
+        else:
+            print("🔥 Setting HIGH process priority for maximum CPU utilization")
+        process_priority = 0x00000080  # HIGH_PRIORITY_CLASS
+        
     # Run build with real-time output
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True
-    )
+    if sys.platform == "win32":
+        # Windows-specific process creation with priority setting
+        startupinfo = subprocess.STARTUPINFO()
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+            startupinfo=startupinfo,
+            creationflags=process_priority,
+            env=env
+        )
+    else:
+        # Standard process creation for other platforms
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+            env=env
+        )
+    
+    # Store process for priority management
+    try:
+        nuitka_process = psutil.Process(process.pid)
+        
+        # For non-Windows platforms, set process priority
+        if priority == "high" and sys.platform != "win32":
+            try:
+                nuitka_process.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            except:
+                pass
+                
+        # Print CPU info
+        if USE_ASCII_ONLY:
+            print(f"CPU Info: {cpu_count} logical cores available")
+            print(f"Using {jobs} compilation threads")
+        else:
+            print(f"🖥️ CPU Info: {cpu_count} logical cores available")
+            print(f"⚙️ Using {jobs} compilation threads")
+    except:
+        pass
+    
+    # Start CPU monitoring thread
+    stop_monitoring = False
+    def monitor_cpu_usage():
+        total_samples = 0
+        total_percent = 0
+        low_usage_count = 0
+        
+        while not stop_monitoring and process.poll() is None:
+            try:
+                cpu_percent = psutil.cpu_percent(interval=2.0)
+                total_samples += 1
+                total_percent += cpu_percent
+                
+                # Check for underutilization
+                if cpu_percent < 50:  # Less than 50% utilization
+                    low_usage_count += 1
+                    if low_usage_count >= 3:  # 3 consecutive low readings
+                        if USE_ASCII_ONLY:
+                            print(f"WARNING: CPU underutilized at {cpu_percent:.1f}% - compilation may be memory/IO bound")
+                        else:
+                            print(f"⚠️ CPU underutilized at {cpu_percent:.1f}% - compilation may be memory/IO bound")
+                        low_usage_count = 0
+                else:
+                    low_usage_count = 0
+                    
+                # Print current usage every few samples
+                if total_samples % 5 == 0:
+                    avg = total_percent / total_samples
+                    if USE_ASCII_ONLY:
+                        print(f"Current CPU: {cpu_percent:.1f}%, Average: {avg:.1f}%")
+                    else:
+                        print(f"⚙️ Current CPU: {cpu_percent:.1f}%, Average: {avg:.1f}%")
+            except:
+                time.sleep(2)
+    
+    # Start monitoring in background
+    monitor_thread = threading.Thread(target=monitor_cpu_usage, daemon=True)
+    monitor_thread.start()
     
     # Print output in real-time
     while True:
@@ -131,34 +293,53 @@ def build_self_contained_version(jobs=None):
         if output:
             print(output.strip())
     
+    # Stop monitoring
+    stop_monitoring = True
+    if monitor_thread.is_alive():
+        monitor_thread.join(timeout=2)
+    
     return_code = process.poll()
     
     if return_code == 0:
         print("=" * 60)
-        print("✅ NO-CONSOLE build successful!")
+        if USE_ASCII_ONLY:
+            print("NO-CONSOLE build successful!")
+        else:
+            print("✅ NO-CONSOLE build successful!")
         
         # Find executable
         exe_path = find_executable()
         
         if exe_path:
             size_mb = exe_path.stat().st_size / (1024 * 1024)
-            print(f"📁 Executable: {exe_path} ({size_mb:.1f} MB)")
-            
-            print(f"\n🎉 SUCCESS! Silent executable ready!")
-            print(f"🚀 Run: {exe_path}")
-            print(f"\n🔇 GUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
+            if USE_ASCII_ONLY:
+                print(f"Executable: {exe_path} ({size_mb:.1f} MB)")
+                print(f"\nSUCCESS! Silent executable ready!")
+                print(f"Run: {exe_path}")
+                print(f"\nGUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
+            else:
+                print(f"📁 Executable: {exe_path} ({size_mb:.1f} MB)")
+                print(f"\n🎉 SUCCESS! Silent executable ready!")
+                print(f"🚀 Run: {exe_path}")
+                print(f"\n🔇 GUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
             
             # Create a launcher script
             create_launcher_script(exe_path)
             
             return exe_path
         else:
-            print("❌ Executable not found")
+            if USE_ASCII_ONLY:
+                print("Executable not found")
+            else:
+                print("❌ Executable not found")
             list_contents()
             return None
     else:
         print("=" * 60)
-        print("❌ Build failed!")
+        if USE_ASCII_ONLY:
+            print("Build failed!")
+        else:
+            print("❌ Build failed!")
         print(f"Return code: {return_code}")
         return None
 
@@ -171,6 +352,13 @@ from pathlib import Path
 import subprocess
 import shutil
 import site
+
+# Disable zstandard to avoid linking issues - do this as early as possible
+try:
+    import sys
+    sys.modules['zstandard'] = None
+except:
+    pass
 
 def fix_manim_config():
     """Fix the manim configuration issue by creating a default.cfg file"""
@@ -255,77 +443,14 @@ def fix_subprocess_conflict():
     subprocess.run = fixed_run
 '''
     
-    with open("fixes.py", "w") as f:
+    # Write with explicit UTF-8 encoding to avoid character encoding issues
+    with open("fixes.py", "w", encoding="utf-8") as f:
         f.write(fixes_content)
     
-    print("📄 Created fixes module to handle runtime issues")
-
-def is_package_importable(package_name):
-    """Check if a package can be imported"""
-    try:
-        # Handle special cases
-        if package_name == "PIL":
-            import PIL
-            return True
-        elif package_name == "cv2":
-            import cv2
-            return True
-        else:
-            importlib.import_module(package_name)
-            return True
-    except ImportError:
-        return False
-
-def get_correct_package_name(package_name):
-    """Get the correct package name for Nuitka"""
-    # Special cases
-    if package_name == "PIL":
-        # If PIL is importable, return both PIL and Pillow
-        return "PIL"
-    elif package_name == "cv2":
-        return "cv2"
-    return package_name
-
-def get_nuitka_version():
-    """Get Nuitka version for compatibility checks"""
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "nuitka", "--version"],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-        return "Unknown"
-    except Exception:
-        return "Unknown"
-
-def prepare_bundled_environment():
-    """Create a minimal bundled environment that can be included in the build"""
-    print("📦 Preparing minimal bundled environment...")
-    
-    # Create a minimal venv for bundling
-    bundled_venv_dir = Path("bundled_venv")
-    if bundled_venv_dir.exists():
-        print("🧹 Cleaning existing bundled environment...")
-        shutil.rmtree(bundled_venv_dir)
-    
-    import venv
-    print("🔨 Creating minimal bundled venv...")
-    venv.create(bundled_venv_dir, with_pip=True)
-    
-    # Create a manifest of essential packages
-    with open(bundled_venv_dir / "manifest.json", "w") as f:
-        json.dump({
-            "essential_packages": [
-                "manim", "numpy", "customtkinter", "matplotlib", "pillow", 
-                "opencv-python", "jedi"
-            ],
-            "version": "3.5.0"
-        }, f, indent=2)
-    
-    print("✅ Minimal environment prepared")
-    return bundled_venv_dir
+    if USE_ASCII_ONLY:
+        print("Created fixes module to handle runtime issues")
+    else:
+        print("📄 Created fixes module to handle runtime issues")
 
 def create_no_console_patch():
     """Create a more aggressive patch file to ensure NO subprocess calls show console windows"""
@@ -480,10 +605,223 @@ if hasattr(os, 'system'):
     os.system = _no_console_system
 '''
     
-    with open("ENHANCED_NO_CONSOLE_PATCH.py", "w") as f:
+    # Write with explicit UTF-8 encoding
+    with open("ENHANCED_NO_CONSOLE_PATCH.py", "w", encoding="utf-8") as f:
         f.write(patch_content)
     
-    print("📄 Created enhanced no-console patch file")
+    if USE_ASCII_ONLY:
+        print("Created enhanced no-console patch file")
+    else:
+        print("📄 Created enhanced no-console patch file")
+
+def check_system_prerequisites():
+    """Check system prerequisites for Nuitka build"""
+    # Apply zstandard patch early
+    try:
+        import zstandard
+        # Disable it to prevent linking issues
+        import sys
+        sys.modules['zstandard'] = None
+        if USE_ASCII_ONLY:
+            print("Applied zstandard patch")
+        else:
+            print("✅ Applied zstandard patch")
+        
+        # Log the patch
+        import logging
+        logging.info("Applied zstandard patch")
+    except ImportError:
+        # Already not available, that's fine
+        if USE_ASCII_ONLY:
+            print("Applied zstandard patch")
+        else:
+            print("✅ Applied zstandard patch")
+        
+        # Log the patch
+        import logging
+        logging.info("Applied zstandard patch")
+    
+    # Set matplotlib backend to TkAgg
+    try:
+        import matplotlib
+        matplotlib.use('TkAgg')
+        if USE_ASCII_ONLY:
+            print(f"Matplotlib backend set to: {matplotlib.get_backend()}")
+        else:
+            print(f"✅ Matplotlib backend set to: {matplotlib.get_backend()}")
+        
+        # Log the backend setting
+        import logging
+        logging.info(f"Matplotlib backend set to: {matplotlib.get_backend()}")
+    except ImportError:
+        if USE_ASCII_ONLY:
+            print("WARNING: matplotlib not available")
+        else:
+            print("⚠️ WARNING: matplotlib not available")
+    
+    if USE_ASCII_ONLY:
+        print("Checking system prerequisites")
+    else:
+        print("🔍 Checking system prerequisites")
+    
+    # Check for Visual C++ Redistributable on Windows
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            try:
+                ctypes.windll.msvcr100  # VS 2010
+                vcredist_available = True
+            except:
+                try:
+                    ctypes.windll.msvcp140  # VS 2015+
+                    vcredist_available = True
+                except:
+                    vcredist_available = False
+            
+            if vcredist_available:
+                if USE_ASCII_ONLY:
+                    print("Visual C++ Redistributable detected")
+                else:
+                    print("✅ Visual C++ Redistributable detected")
+                logging.info("Visual C++ Redistributable detected")
+            else:
+                if USE_ASCII_ONLY:
+                    print("WARNING: Visual C++ Redistributable might be missing")
+                else:
+                    print("⚠️ WARNING: Visual C++ Redistributable might be missing")
+        except:
+            if USE_ASCII_ONLY:
+                print("WARNING: Could not check for Visual C++ Redistributable")
+            else:
+                print("⚠️ WARNING: Could not check for Visual C++ Redistributable")
+    
+    # Check for Python development components
+    try:
+        import distutils
+        if USE_ASCII_ONLY:
+            print("Python development components detected")
+        else:
+            print("✅ Python development components detected")
+        logging.info("Python development components detected")
+    except ImportError:
+        if USE_ASCII_ONLY:
+            print("WARNING: Python development components might be missing")
+        else:
+            print("⚠️ WARNING: Python development components might be missing")
+    
+    # Check for Nuitka
+    try:
+        import nuitka
+        # Get Nuitka version using subprocess instead of directly accessing attribute
+        try:
+            result = subprocess.run([sys.executable, "-m", "nuitka", "--version"], 
+                                   capture_output=True, text=True)
+            if result.returncode == 0:
+                nuitka_version = result.stdout.strip()
+                if USE_ASCII_ONLY:
+                    print(f"Nuitka version {nuitka_version} detected")
+                else:
+                    print(f"✅ Nuitka version {nuitka_version} detected")
+                logging.info(f"Nuitka version {nuitka_version} detected")
+            else:
+                if USE_ASCII_ONLY:
+                    print("Nuitka detected, but couldn't determine version")
+                else:
+                    print("✅ Nuitka detected, but couldn't determine version")
+        except Exception as e:
+            # Simpler version check fallback
+            if USE_ASCII_ONLY:
+                print("Nuitka detected")
+            else:
+                print("✅ Nuitka detected")
+            logging.info("Nuitka detected")
+    except ImportError:
+        if USE_ASCII_ONLY:
+            print("ERROR: Nuitka not found! Please install it with: pip install nuitka")
+        else:
+            print("❌ ERROR: Nuitka not found! Please install it with: pip install nuitka")
+        return False
+    
+    return True
+
+def prepare_bundled_environment():
+    """Create a minimal bundled environment that can be included in the build"""
+    if USE_ASCII_ONLY:
+        print("Preparing minimal bundled environment...")
+    else:
+        print("📦 Preparing minimal bundled environment...")
+    
+    # Create a minimal venv for bundling
+    bundled_venv_dir = Path("bundled_venv")
+    if bundled_venv_dir.exists():
+        if USE_ASCII_ONLY:
+            print("Cleaning existing bundled environment...")
+        else:
+            print("🧹 Cleaning existing bundled environment...")
+        shutil.rmtree(bundled_venv_dir)
+    
+    import venv
+    if USE_ASCII_ONLY:
+        print("Creating minimal bundled venv...")
+    else:
+        print("🔨 Creating minimal bundled venv...")
+    venv.create(bundled_venv_dir, with_pip=True)
+    
+    # Create a manifest of essential packages
+    with open(bundled_venv_dir / "manifest.json", "w", encoding="utf-8") as f:
+        json.dump({
+            "essential_packages": [
+                "manim", "numpy", "customtkinter", "matplotlib", "pillow", 
+                "opencv-python", "jedi"
+            ],
+            "version": "3.5.0"
+        }, f, indent=2)
+    
+    if USE_ASCII_ONLY:
+        print("Minimal environment prepared")
+    else:
+        print("✅ Minimal environment prepared")
+    return bundled_venv_dir
+
+def is_package_importable(package_name):
+    """Check if a package can be imported"""
+    try:
+        # Handle special cases
+        if package_name == "PIL":
+            import PIL
+            return True
+        elif package_name == "cv2":
+            import cv2
+            return True
+        else:
+            importlib.import_module(package_name)
+            return True
+    except ImportError:
+        return False
+
+def get_correct_package_name(package_name):
+    """Get the correct package name for Nuitka"""
+    # Special cases
+    if package_name == "PIL":
+        # If PIL is importable, return both PIL and Pillow
+        return "PIL"
+    elif package_name == "cv2":
+        return "cv2"
+    return package_name
+
+def get_nuitka_version():
+    """Get Nuitka version for compatibility checks"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "nuitka", "--version"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return "Unknown"
+    except Exception:
+        return "Unknown"
 
 def create_launcher_script(exe_path):
     """Create a batch launcher script"""
@@ -494,10 +832,13 @@ exit
 '''
     
     launcher_path = Path("Launch_ManimStudio.bat")
-    with open(launcher_path, 'w') as f:
+    with open(launcher_path, 'w', encoding="utf-8") as f:
         f.write(launcher_content)
     
-    print(f"📝 Created silent launcher: {launcher_path}")
+    if USE_ASCII_ONLY:
+        print(f"Created silent launcher: {launcher_path}")
+    else:
+        print(f"📝 Created silent launcher: {launcher_path}")
 
 def find_executable():
     """Find the built executable"""
@@ -525,21 +866,33 @@ def list_contents():
     for dir_name in ["dist", "build"]:
         dir_path = Path(dir_name)
         if dir_path.exists():
-            print(f"\n📂 Contents of {dir_name}:")
+            if USE_ASCII_ONLY:
+                print(f"\nContents of {dir_name}:")
+            else:
+                print(f"\n📂 Contents of {dir_name}:")
             for item in dir_path.iterdir():
                 if item.is_file():
                     size = item.stat().st_size / (1024 * 1024)
-                    print(f"  📄 {item.name} ({size:.1f} MB)")
+                    if USE_ASCII_ONLY:
+                        print(f"  {item.name} ({size:.1f} MB)")
+                    else:
+                        print(f"  📄 {item.name} ({size:.1f} MB)")
                 elif item.is_dir():
-                    print(f"  📁 {item.name}/")
+                    if USE_ASCII_ONLY:
+                        print(f"  {item.name}/")
+                    else:
+                        print(f"  📁 {item.name}/")
 
 def check_requirements():
     """Check if all build requirements are met"""
-    print("🔍 Checking build requirements...")
+    if USE_ASCII_ONLY:
+        print("Checking build requirements...")
+    else:
+        print("🔍 Checking build requirements...")
     
     required_packages = [
         "nuitka", "customtkinter", "PIL", "numpy", "cv2", 
-        "matplotlib", "manim", "jedi"
+        "matplotlib", "manim", "jedi", "psutil"
     ]
     
     missing = []
@@ -551,51 +904,110 @@ def check_requirements():
                 import cv2
             else:
                 __import__(package)
-            print(f"  ✅ {package}")
+            if USE_ASCII_ONLY:
+                print(f"  {package}")
+            else:
+                print(f"  ✅ {package}")
         except ImportError:
-            print(f"  ❌ {package}")
+            if USE_ASCII_ONLY:
+                print(f"  MISSING: {package}")
+            else:
+                print(f"  ❌ {package}")
             missing.append(package)
     
     if missing:
-        print(f"\n⚠️ Missing packages: {missing}")
+        if USE_ASCII_ONLY:
+            print(f"\nMissing packages: {missing}")
+        else:
+            print(f"\n⚠️ Missing packages: {missing}")
         print("Install with: pip install " + " ".join(missing))
         return False
     
-    print("✅ All requirements met!")
+    if USE_ASCII_ONLY:
+        print("All requirements met!")
+    else:
+        print("✅ All requirements met!")
     return True
 
 def main():
     """Main function with build options"""
-    print("🎬 Manim Studio - NO CONSOLE Builder")
+    import sys  # Explicitly import here to fix scope issue
+    # Set ASCII mode if specified
+    global USE_ASCII_ONLY
+    if USE_ASCII_ONLY:
+        print("Manim Studio - NO CONSOLE Builder")
+    else:
+        print("🎬 Manim Studio - NO CONSOLE Builder")
     print("=" * 40)
     
     # Set up command line arguments
     parser = argparse.ArgumentParser(description="Build Manim Studio executable")
-    parser.add_argument("--jobs", type=int, help="Number of CPU cores to use (default: CPU count - 1)")
-    parser.add_argument("--max-cpu", action="store_true", help="Use all available CPU cores")
+    parser.add_argument("--jobs", type=int, help="Number of CPU threads to use (default: CPU count - 1)")
+    parser.add_argument("--max-cpu", action="store_true", help="Use all available CPU cores with oversubscription")
+    parser.add_argument("--turbo", action="store_true", help="Use turbo mode - maximum CPU with high priority")
     parser.add_argument("--build-type", type=int, choices=[1, 2, 3], help="Build type: 1=silent, 2=debug, 3=both")
+    parser.add_argument("--ascii", action="store_true", help="Use ASCII output instead of Unicode symbols")
     
     # Parse args but keep default behavior if not specified
     args, remaining_args = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + remaining_args
     
+    
+    if args.ascii:
+        USE_ASCII_ONLY = True
+    
     # Determine job count
     cpu_count = multiprocessing.cpu_count()
+    process_priority = "normal"
     
-    if args.max_cpu:
-        jobs = cpu_count
-        print(f"🚀 Using maximum CPU power: {jobs} cores")
+    if args.turbo:
+        # Turbo mode: maximum cores + oversubscription + high priority
+        jobs = int(cpu_count * 2)  # Double the cores for extreme oversubscription
+        process_priority = "high"
+        if USE_ASCII_ONLY:
+            print(f"TURBO MODE: Maximum CPU power with {jobs} threads and HIGH priority!")
+        else:
+            print(f"🚀 TURBO MODE: Maximum CPU power with {jobs} threads and HIGH priority!")
+    elif args.max_cpu:
+        # Maximum cores with oversubscription
+        jobs = int(cpu_count * 1.5)  # Oversubscription by 50%
+        if USE_ASCII_ONLY:
+            print(f"Maximum CPU mode: {jobs} threads (oversubscribed from {cpu_count} cores)")
+        else:
+            print(f"🔥 Maximum CPU mode: {jobs} threads (oversubscribed from {cpu_count} cores)")
     elif args.jobs:
         jobs = args.jobs
-        print(f"⚙️ Using specified CPU cores: {jobs} of {cpu_count} available")
+        if USE_ASCII_ONLY:
+            print(f"Using specified CPU threads: {jobs} of {cpu_count} available")
+        else:
+            print(f"⚙️ Using specified CPU threads: {jobs} of {cpu_count} available")
     else:
         jobs = max(1, cpu_count - 1)
-        print(f"⚙️ Using optimal CPU cores: {jobs} of {cpu_count} available")
+        if USE_ASCII_ONLY:
+            print(f"Using optimal CPU threads: {jobs} of {cpu_count} available")
+        else:
+            print(f"⚙️ Using optimal CPU threads: {jobs} of {cpu_count} available")
     
     # Check requirements first
     if not check_requirements():
-        print("❌ Please install missing packages first")
+        if USE_ASCII_ONLY:
+            print("Please install missing packages first")
+        else:
+            print("❌ Please install missing packages first")
         sys.exit(1)
+    
+    # Configure logging
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('build.log', mode='w', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    logging.info("Building silent release version")
     
     # Use command line arg if provided, otherwise prompt
     if args.build_type:
@@ -603,40 +1015,71 @@ def main():
     else:
         # Ask for build type
         print("\nSelect build type:")
-        print("1. 🔇 Silent release build (NO CONSOLE EVER)")
-        print("2. 🐛 Debug build (with console for testing)")
-        print("3. 📦 Both builds")
+        if USE_ASCII_ONLY:
+            print("1. Silent release build (NO CONSOLE EVER)")
+            print("2. Debug build (with console for testing)")
+            print("3. Both builds")
+        else:
+            print("1. 🔇 Silent release build (NO CONSOLE EVER)")
+            print("2. 🐛 Debug build (with console for testing)")
+            print("3. 📦 Both builds")
         choice = input("\nEnter your choice (1-3): ").strip()
     
     success = False
     
     if choice == "1":
-        exe_path = build_self_contained_version(jobs=jobs)
+        exe_path = build_self_contained_version(jobs=jobs, priority=process_priority)
         success = exe_path is not None
     elif choice == "2":
-        print("Debug build option temporarily disabled while fixing compatibility issues")
+        if USE_ASCII_ONLY:
+            print("Debug build option temporarily disabled while fixing compatibility issues")
+        else:
+            print("🐛 Debug build option temporarily disabled while fixing compatibility issues")
         success = False
     elif choice == "3":
-        print("\n🔇 Building silent release version first...")
-        release_exe = build_self_contained_version(jobs=jobs)
-        print("\n🐛 Debug build option temporarily disabled")
+        if USE_ASCII_ONLY:
+            print("\nBuilding silent release version first...")
+        else:
+            print("\n🔇 Building silent release version first...")
+        release_exe = build_self_contained_version(jobs=jobs, priority=process_priority)
+        if USE_ASCII_ONLY:
+            print("\nDebug build option temporarily disabled")
+        else:
+            print("\n🐛 Debug build option temporarily disabled")
         success = release_exe is not None
     else:
-        print("❌ Invalid choice!")
+        if USE_ASCII_ONLY:
+            print("Invalid choice!")
+        else:
+            print("❌ Invalid choice!")
         sys.exit(1)
     
     print("\n" + "=" * 60)
     if success:
-        print("🎉 Build completed successfully!")
+        if USE_ASCII_ONLY:
+            print("Build completed successfully!")
+        else:
+            print("🎉 Build completed successfully!")
         if choice == "1" or choice == "3":
-            print("🔇 GUARANTEE: The release version will NEVER show console windows")
-            print("   ✅ Main app: Silent")
-            print("   ✅ Manim operations: Hidden")
-            print("   ✅ Package installs: Silent")
-            print("   ✅ All operations: Invisible")
-            print("🚀 Professional desktop application ready!")
+            if USE_ASCII_ONLY:
+                print("GUARANTEE: The release version will NEVER show console windows")
+                print("   Main app: Silent")
+                print("   Manim operations: Hidden")
+                print("   Package installs: Silent")
+                print("   All operations: Invisible")
+                print("Professional desktop application ready!")
+            else:
+                print("🔇 GUARANTEE: The release version will NEVER show console windows")
+                print("   ✅ Main app: Silent")
+                print("   ✅ Manim operations: Hidden")
+                print("   ✅ Package installs: Silent")
+                print("   ✅ All operations: Invisible")
+                print("🚀 Professional desktop application ready!")
     else:
-        print("❌ Build failed!")
+        if USE_ASCII_ONLY:
+            print("Build failed!")
+        else:
+            print("❌ Build failed!")
         sys.exit(1)
 
 if __name__ == "__main__":
