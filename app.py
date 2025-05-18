@@ -872,15 +872,25 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         self.parent = parent
         self.venv_manager = venv_manager
         self.title("Virtual Environment Manager")
-        self.geometry("800x650")
+        
+        # FIXED: Improved sizing to ensure buttons are visible
+        self.geometry("900x800")
+        self.minsize(850, 850)  # Set minimum size to ensure all controls are visible
+        self.resizable(True, True)  # Allow user to resize if needed
+        
         self.transient(parent)
         self.grab_set()
         
-        # Center the dialog
-        self.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 50,
-            parent.winfo_rooty() + 50
-        ))
+        # FIXED: Better centering on parent window
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_width = parent.winfo_width()
+        parent_height = parent.winfo_height()
+        
+        x = parent_x + (parent_width - 900) // 2
+        y = parent_y + (parent_height - 700) // 2
+        
+        self.geometry(f"+{x}+{y}")
         
         self.create_ui()
         self.load_environments()
@@ -1096,37 +1106,37 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         pkg_scrollbar.pack(side="right", fill="y")
         self.pkg_listbox.configure(yscrollcommand=pkg_scrollbar.set)
         
-        # Bottom buttons
-        btn_bottom_frame = ctk.CTkFrame(right_panel, height=60, fg_color=VSCODE_COLORS["surface"])
+        # Bottom buttons - FIXED: Made more visible with increased height and better positioning
+        btn_bottom_frame = ctk.CTkFrame(right_panel, height=70, fg_color=VSCODE_COLORS["surface"])
         btn_bottom_frame.pack(fill="x")
         
         self.activate_btn = ctk.CTkButton(
             btn_bottom_frame,
             text="Activate Environment",
             command=self.activate_environment,
-            height=35,
+            height=40,  # Increased height
             width=180,
             fg_color=VSCODE_COLORS["primary"]
         )
-        self.activate_btn.pack(side="left", padx=20, pady=12)
+        self.activate_btn.pack(side="left", padx=20, pady=15)  # Increased padding
         
         self.delete_btn = ctk.CTkButton(
             btn_bottom_frame,
             text="Delete Environment",
             command=self.delete_environment,
-            height=35,
+            height=40,  # Increased height
             width=150,
             fg_color=VSCODE_COLORS["error"]
         )
-        self.delete_btn.pack(side="left", padx=5, pady=12)
+        self.delete_btn.pack(side="left", padx=5, pady=15)  # Increased padding
         
         ctk.CTkButton(
             btn_bottom_frame,
             text="Close",
             command=self.destroy,
-            height=35,
+            height=40,  # Increased height
             width=100
-        ).pack(side="right", padx=20, pady=12)
+        ).pack(side="right", padx=20, pady=15)  # Increased padding
         
         # Initially disable environment-specific buttons
         self.set_controls_state("disabled")
@@ -1489,8 +1499,7 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         
         # Start uninstallation
         self.venv_manager.uninstall_package(package_name, on_uninstall_complete)
-
-
+        
 class NewEnvironmentDialog(ctk.CTkToplevel):
     """Dialog for creating a new environment"""
     
@@ -1845,7 +1854,6 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
                     
         return packages
 
-
 class EnvCreationProgressDialog(ctk.CTkToplevel):
     """Dialog showing environment creation progress"""
     
@@ -2089,6 +2097,7 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         """Handle window close attempt"""
         # Ignore if creation is in progress
         pass
+
 class VirtualEnvironmentManager:
     """Enhanced virtual environment manager with integrated environment building and detailed logging"""
     
@@ -2113,6 +2122,9 @@ class VirtualEnvironmentManager:
         file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(file_handler)
         
+        # NEW: Set up debug logging for executable troubleshooting
+        self.debug_log_path = self._setup_debug_logging()
+        
         # Add fallback flag for tracking
         self.using_fallback = False
         
@@ -2127,6 +2139,31 @@ class VirtualEnvironmentManager:
         else:
             self.needs_setup = False
             self.logger.info(f"Using existing environment: {self.current_venv}")
+            
+    # NEW: Debug logging method
+    def _setup_debug_logging(self):
+        """Set up debug logging to file for silent executable troubleshooting"""
+        debug_log_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "logs", "venv_debug.log")
+        
+        # Create a file handler that appends
+        debug_handler = logging.FileHandler(
+            debug_log_path,
+            mode='a',
+            encoding='utf-8'
+        )
+        debug_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        self.logger.addHandler(debug_handler)
+        
+        # Log that debug mode is on
+        self.logger.info(f"Debug logging enabled to: {debug_log_path}")
+        
+        # Log system information
+        self.logger.info(f"System: {sys.platform}")
+        self.logger.info(f"Python: {sys.executable} {sys.version}")
+        self.logger.info(f"Frozen executable: {getattr(sys, 'frozen', False)}")
+        
+        # Return the path so we can inform the user
+        return debug_log_path
             
     def detect_existing_environment(self):
         """Detect existing suitable environment or use bundled one"""
@@ -2243,7 +2280,48 @@ class VirtualEnvironmentManager:
         try:
             import venv
             self.logger.info(f"Creating new environment at: {default_venv_path}")
-            venv.create(default_venv_path, with_pip=True)
+            
+            # FIXED: Use a script-based approach for frozen executables
+            if getattr(sys, 'frozen', False):
+                self.logger.info("Using script-based venv creation for frozen executable")
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(f"""
+import venv
+import sys
+import os
+
+try:
+    venv.create(r"{default_venv_path}", with_pip=True)
+    print("SUCCESS: Virtual environment created at {default_venv_path}")
+    sys.exit(0)
+except Exception as e:
+    print(f"ERROR: {{str(e)}}")
+    sys.exit(1)
+""")
+                    script_path = f.name
+                
+                # Execute the script with visible console for debugging
+                self.logger.info(f"Running venv creation script: {script_path}")
+                result = subprocess.run(
+                    [sys.executable, script_path],
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Clean up
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                    
+                if result.returncode != 0:
+                    self.logger.error(f"Script-based venv creation failed: {result.stderr}")
+                    self.logger.error(f"Output: {result.stdout}")
+                    return self.use_system_python_fallback()
+            else:
+                # Normal direct creation when not running from executable
+                venv.create(default_venv_path, with_pip=True)
             
             # Verify paths
             if os.name == 'nt':
@@ -2278,31 +2356,80 @@ class VirtualEnvironmentManager:
                         self.logger.info(f"Installing {len(essential_packages)} essential packages...")
                         for pkg in essential_packages:
                             try:
-                                # Create process with hidden console
-                                import subprocess
-                                if os.name == 'nt':
-                                    startupinfo = subprocess.STARTUPINFO()
-                                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                                    creationflags = subprocess.CREATE_NO_WINDOW
-                                else:
-                                    startupinfo = None
-                                    creationflags = 0
+                                # FIXED: Use script-based approach for executables
+                                if getattr(sys, 'frozen', False):
+                                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                                        f.write(f"""
+import subprocess
+import sys
+import os
+
+try:
+    # Execute pip command with visible window
+    result = subprocess.run(
+        [r"{self.pip_path}", "install", "{pkg}"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print("SUCCESS: Installed {pkg}")
+        print(result.stdout)
+        sys.exit(0)
+    else:
+        print("ERROR: Failed to install {pkg}")
+        print(result.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"EXCEPTION: {{str(e)}}")
+    sys.exit(2)
+""")
+                                        script_path = f.name
+                                        
+                                    # Run the script
+                                    result = subprocess.run(
+                                        [sys.executable, script_path],
+                                        capture_output=True,
+                                        text=True
+                                    )
                                     
-                                cmd = [self.pip_path, "install", pkg, "--quiet"]
-                                self.logger.info(f"Running: {' '.join(cmd)}")
-                                result = subprocess.run(
-                                    cmd,
-                                    capture_output=True,
-                                    text=True,
-                                    startupinfo=startupinfo,
-                                    creationflags=creationflags
-                                )
-                                
-                                if result.returncode == 0:
-                                    self.logger.info(f"Installed: {pkg}")
+                                    # Clean up
+                                    try:
+                                        os.unlink(script_path)
+                                    except:
+                                        pass
+                                        
+                                    if result.returncode == 0:
+                                        self.logger.info(f"Installed: {pkg}")
+                                    else:
+                                        self.logger.error(f"Failed to install {pkg}: {result.stderr}")
                                 else:
-                                    self.logger.error(f"Failed to install {pkg}: {result.stderr}")
+                                    # Normal installation for non-frozen environment
+                                    # Create process with hidden console
+                                    import subprocess
+                                    if os.name == 'nt':
+                                        startupinfo = subprocess.STARTUPINFO()
+                                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                                        creationflags = subprocess.CREATE_NO_WINDOW
+                                    else:
+                                        startupinfo = None
+                                        creationflags = 0
+                                        
+                                    cmd = [self.pip_path, "install", pkg, "--quiet"]
+                                    self.logger.info(f"Running: {' '.join(cmd)}")
+                                    result = subprocess.run(
+                                        cmd,
+                                        capture_output=True,
+                                        text=True,
+                                        startupinfo=startupinfo,
+                                        creationflags=creationflags
+                                    )
+                                    
+                                    if result.returncode == 0:
+                                        self.logger.info(f"Installed: {pkg}")
+                                    else:
+                                        self.logger.error(f"Failed to install {pkg}: {result.stderr}")
                             except Exception as e:
                                 self.logger.error(f"Error installing {pkg}: {e}")
                 except Exception as e:
@@ -2378,9 +2505,12 @@ class VirtualEnvironmentManager:
             essential_test = ["manim", "numpy", "customtkinter", "PIL"]
             missing_packages = []
             
-            # Use a single process instead of multiple ones
-            # Create a test script that checks all packages at once - using ASCII instead of Unicode
-            test_script = """
+            # FIXED: Better verification for frozen executables
+            if getattr(sys, 'frozen', False):
+                # Create a test script for the verification
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write("""
 import sys
 missing = []
 for pkg in sys.argv[1:]:
@@ -2389,44 +2519,79 @@ for pkg in sys.argv[1:]:
             import PIL
         else:
             __import__(pkg)
-        print(f"[OK] {pkg}")  # Changed from ✓ to [OK]
+        print(f"[OK] {pkg}")
     except ImportError:
         missing.append(pkg)
-        print(f"[FAIL] {pkg}")  # Changed from ✗ to [FAIL]
+        print(f"[FAIL] {pkg}")
+if missing:
+    print(f"MISSING:{','.join(missing)}")
+    sys.exit(1)
+""")
+                    test_script_path = f.name
+                
+                # Execute without hidden console to ensure it works
+                result = subprocess.run(
+                    [python_exe, test_script_path] + essential_test,
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Clean up
+                try:
+                    os.unlink(test_script_path)
+                except:
+                    pass
+            else:
+                # Normal case - can use hidden console
+                # Use a single process instead of multiple ones
+                # Create a test script that checks all packages at once
+                test_script = """
+import sys
+missing = []
+for pkg in sys.argv[1:]:
+    try:
+        if pkg == 'PIL':
+            import PIL
+        else:
+            __import__(pkg)
+        print(f"[OK] {pkg}")
+    except ImportError:
+        missing.append(pkg)
+        print(f"[FAIL] {pkg}")
 if missing:
     print(f"MISSING:{','.join(missing)}")
     sys.exit(1)
 """
-            # Write test script to temp file
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                f.write(test_script)
-                test_script_path = f.name
-            
-            # Hide console window
-            startupinfo = None
-            creationflags = 0
-            if os.name == 'nt':
-                import subprocess
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-            
-            # Run a single process to test all packages
-            cmd = [python_exe, test_script_path] + essential_test
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                startupinfo=startupinfo,
-                creationflags=creationflags
-            )
-            
-            try:
-                os.unlink(test_script_path)  # Clean up
-            except:
-                pass
+                # Write test script to temp file
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(test_script)
+                    test_script_path = f.name
+                
+                # Hide console window
+                startupinfo = None
+                creationflags = 0
+                if os.name == 'nt':
+                    import subprocess
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                
+                # Run a single process to test all packages
+                cmd = [python_exe, test_script_path] + essential_test
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    startupinfo=startupinfo,
+                    creationflags=creationflags
+                )
+                
+                try:
+                    os.unlink(test_script_path)  # Clean up
+                except:
+                    pass
             
             # Check if any packages are missing
             if "MISSING:" in result.stdout:
@@ -2547,8 +2712,9 @@ if missing:
             self.logger.info("Trying system Python as last resort")
             self.use_system_python_fallback()
             
+    # FIXED: Fixed create_default_environment method for working with hidden consoles
     def create_default_environment(self, log_callback=None):
-        """Create the default ManimStudio environment"""
+        """Create the default ManimStudio environment with special handling for hidden console"""
         env_name = "manim_studio_default"
         venv_path = os.path.join(self.venv_dir, env_name)
         
@@ -2565,7 +2731,52 @@ if missing:
             # Create virtual environment
             if log_callback:
                 log_callback("Creating new virtual environment...")
-            venv.create(venv_path, with_pip=True)
+            
+            # FIXED: When running from a Nuitka-built executable, use script-based approach
+            if getattr(sys, 'frozen', False):
+                # We're running in a frozen/executable environment
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(f"""
+import venv
+import sys
+import os
+
+try:
+    venv.create(r"{venv_path}", with_pip=True)
+    print("SUCCESS: Virtual environment created at {venv_path}")
+    sys.exit(0)
+except Exception as e:
+    print(f"ERROR: {{str(e)}}")
+    sys.exit(1)
+""")
+                    script_path = f.name
+                
+                # Execute the script
+                if log_callback:
+                    log_callback(f"Executing venv creation script: {script_path}")
+                
+                result = subprocess.run(
+                    [sys.executable, script_path],
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Clean up
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                    
+                if result.returncode != 0:
+                    if log_callback:
+                        log_callback(f"ERROR: Virtual environment creation failed: {result.stderr}")
+                        log_callback(f"Script output: {result.stdout}")
+                    raise Exception(f"Virtual environment creation failed: {result.stderr}")
+            else:
+                # Normal direct creation when not running from executable
+                import venv
+                venv.create(venv_path, with_pip=True)
             
             # Activate the environment
             if os.name == 'nt':
@@ -2594,7 +2805,27 @@ if missing:
             if log_callback:
                 log_callback(f"Error creating environment: {str(e)}")
             self.logger.error(f"Failed to create default environment: {e}")
-            return False
+            
+            # NEW: Fallback to system Python if environment creation fails
+            if log_callback:
+                log_callback("Attempting fallback to system Python...")
+                
+            try:
+                # Try to import manim in system Python
+                import manim
+                self.current_venv = "system_python_fallback"
+                self.python_path = sys.executable
+                self.pip_path = "pip"
+                self.logger.info("Using system Python with manim as fallback")
+                
+                if log_callback:
+                    log_callback("Successfully using system Python as fallback")
+                    
+                return True
+            except ImportError:
+                if log_callback:
+                    log_callback("Failed to use system Python as fallback - manim not available")
+                return False
     
     def upgrade_pip(self, log_callback=None):
         """Upgrade pip in the current environment"""
@@ -2605,39 +2836,93 @@ if missing:
             if log_callback:
                 log_callback("Upgrading pip...")
             
-            # Ensure console is hidden
-            import subprocess
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
+            # FIXED: Special handling for executables with hidden consoles
+            if getattr(sys, 'frozen', False):
+                # Create a temporary script for the upgrade
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(f"""
+import subprocess
+import sys
+
+try:
+    result = subprocess.run(
+        [r"{self.python_path}", "-m", "pip", "install", "--upgrade", "pip"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print("SUCCESS: Pip upgraded successfully")
+        print(result.stdout)
+        sys.exit(0)
+    else:
+        print("ERROR: Failed to upgrade pip")
+        print(result.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"EXCEPTION: {{str(e)}}")
+    sys.exit(2)
+""")
+                    script_path = f.name
                 
-            result = subprocess.run([
-                self.python_path, "-m", "pip", "install", "--upgrade", "pip"
-            ], capture_output=True, text=True, 
-               startupinfo=startupinfo, 
-               creationflags=creationflags)
-            
-            if result.returncode != 0:
-                if log_callback:
-                    log_callback(f"Warning: Failed to upgrade pip: {result.stderr}")
-                return False
+                # Run the script without hiding console
+                result = subprocess.run(
+                    [sys.executable, script_path],
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Clean up
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                
+                if result.returncode != 0:
+                    if log_callback:
+                        log_callback(f"Warning: Failed to upgrade pip: {result.stderr}")
+                    return False
+                else:
+                    if log_callback:
+                        log_callback("Pip upgraded successfully")
+                    return True
             else:
-                if log_callback:
-                    log_callback("Pip upgraded successfully")
-                return True
+                # Normal case - can use hidden console
+                # Ensure console is hidden
+                import subprocess
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                    
+                result = subprocess.run([
+                    self.python_path, "-m", "pip", "install", "--upgrade", "pip"
+                ], capture_output=True, text=True, 
+                   startupinfo=startupinfo, 
+                   creationflags=creationflags)
+                
+                if result.returncode != 0:
+                    if log_callback:
+                        log_callback(f"Warning: Failed to upgrade pip: {result.stderr}")
+                    return False
+                else:
+                    if log_callback:
+                        log_callback("Pip upgraded successfully")
+                    return True
                 
         except Exception as e:
             if log_callback:
                 log_callback(f"Error upgrading pip: {str(e)}")
             return False
             
+    # FIXED: Fixed install_essential_packages method for hidden console
     def install_essential_packages(self, log_callback=None, progress_callback=None):
-        """Install essential packages in the current environment"""
+        """Install essential packages with special handling for hidden consoles"""
         if not self.current_venv:
             self.logger.error("No virtual environment active")
             if log_callback:
@@ -2654,17 +2939,7 @@ if missing:
             log_callback(f"Pip: {self.pip_path}")
             log_callback(f"Environment: {self.current_venv}")
         
-        # Set up console hiding
-        import subprocess
-        startupinfo = None
-        creationflags = 0
-        
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            creationflags = subprocess.CREATE_NO_WINDOW
-            
+        # FIXED: Special handling for executables with hidden consoles
         for i, package in enumerate(ESSENTIAL_PACKAGES):
             self.logger.info(f"Installing package {i+1}/{total_packages}: {package}")
             
@@ -2675,23 +2950,91 @@ if missing:
                 progress_callback(package, i / total_packages)
                 
             try:
-                result = subprocess.run([
-                    self.pip_path, "install", package
-                ], capture_output=True, text=True,
-                   startupinfo=startupinfo,
-                   creationflags=creationflags)
-                
-                if result.returncode == 0:
-                    success_msg = f"Successfully installed {package}"
-                    self.logger.info(success_msg)
-                    if log_callback:
-                        log_callback(success_msg)
+                if getattr(sys, 'frozen', False):
+                    # Create a temporary script for the installation
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                        f.write(f"""
+import subprocess
+import sys
+import os
+
+try:
+    # Execute pip command with visible window
+    result = subprocess.run(
+        [r"{self.pip_path}", "install", "{package}"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print("SUCCESS: Installed {package}")
+        print(result.stdout)
+        sys.exit(0)
+    else:
+        print("ERROR: Failed to install {package}")
+        print(result.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"EXCEPTION: {{str(e)}}")
+    sys.exit(2)
+""")
+                        script_path = f.name
+                        
+                    # Run the script
+                    result = subprocess.run(
+                        [sys.executable, script_path],
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    # Clean up
+                    try:
+                        os.unlink(script_path)
+                    except:
+                        pass
+                        
+                    if result.returncode == 0:
+                        success_msg = f"Successfully installed {package}"
+                        self.logger.info(success_msg)
+                        if log_callback:
+                            log_callback(success_msg)
+                    else:
+                        error_msg = f"Failed to install {package}: {result.stderr}"
+                        self.logger.warning(error_msg)
+                        if log_callback:
+                            log_callback(error_msg)
+                        failed_packages.append(package)
                 else:
-                    error_msg = f"Failed to install {package}: {result.stderr}"
-                    self.logger.warning(error_msg)
-                    if log_callback:
-                        log_callback(error_msg)
-                    failed_packages.append(package)
+                    # Normal installation for non-frozen environment
+                    # Set up console hiding
+                    import subprocess
+                    startupinfo = None
+                    creationflags = 0
+                    
+                    if os.name == 'nt':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        creationflags = subprocess.CREATE_NO_WINDOW
+                        
+                    result = subprocess.run([
+                        self.pip_path, "install", package
+                    ], capture_output=True, text=True,
+                       startupinfo=startupinfo,
+                       creationflags=creationflags)
+                    
+                    if result.returncode == 0:
+                        success_msg = f"Successfully installed {package}"
+                        self.logger.info(success_msg)
+                        if log_callback:
+                            log_callback(success_msg)
+                    else:
+                        error_msg = f"Failed to install {package}: {result.stderr}"
+                        self.logger.warning(error_msg)
+                        if log_callback:
+                            log_callback(error_msg)
+                        failed_packages.append(package)
                     
             except Exception as e:
                 error_msg = f"Error installing {package}: {str(e)}"
@@ -2712,8 +3055,9 @@ if missing:
                 log_callback(success_msg)
             return True
     
+    # FIXED: Fixed install_optional_packages method for hidden console
     def install_optional_packages(self, log_callback=None, progress_callback=None):
-        """Install optional packages (best effort)"""
+        """Install optional packages with special handling for hidden consoles"""
         if not self.current_venv:
             return False
             
@@ -2723,18 +3067,7 @@ if missing:
         
         if log_callback:
             log_callback("Installing optional packages...")
-            
-        # Set up console hiding
-        import subprocess
-        startupinfo = None
-        creationflags = 0
         
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            creationflags = subprocess.CREATE_NO_WINDOW
-            
         for i, package in enumerate(optional_subset):
             if log_callback:
                 log_callback(f"Installing optional {package}...")
@@ -2743,18 +3076,81 @@ if missing:
                 progress_callback(package, i / total_packages)
                 
             try:
-                result = subprocess.run([
-                    self.pip_path, "install", package
-                ], capture_output=True, text=True,
-                   startupinfo=startupinfo,
-                   creationflags=creationflags)
-                
-                if result.returncode == 0:
-                    if log_callback:
-                        log_callback(f"Installed optional {package}")
+                if getattr(sys, 'frozen', False):
+                    # Create a temporary script for the installation
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                        f.write(f"""
+import subprocess
+import sys
+import os
+
+try:
+    # Execute pip command without hidden window
+    result = subprocess.run(
+        [r"{self.pip_path}", "install", "{package}"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print("SUCCESS: Installed {package}")
+        print(result.stdout)
+        sys.exit(0)
+    else:
+        print("ERROR: Failed to install {package}")
+        print(result.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"EXCEPTION: {{str(e)}}")
+    sys.exit(2)
+""")
+                        script_path = f.name
+                        
+                    # Run the script
+                    result = subprocess.run(
+                        [sys.executable, script_path],
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    # Clean up
+                    try:
+                        os.unlink(script_path)
+                    except:
+                        pass
+                        
+                    if result.returncode == 0:
+                        if log_callback:
+                            log_callback(f"Installed optional {package}")
+                    else:
+                        if log_callback:
+                            log_callback(f"Could not install optional {package}")
                 else:
-                    if log_callback:
-                        log_callback(f"Could not install optional {package}")
+                    # Normal installation for non-frozen environment
+                    # Set up console hiding
+                    import subprocess
+                    startupinfo = None
+                    creationflags = 0
+                    
+                    if os.name == 'nt':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        creationflags = subprocess.CREATE_NO_WINDOW
+                        
+                    result = subprocess.run([
+                        self.pip_path, "install", package
+                    ], capture_output=True, text=True,
+                       startupinfo=startupinfo,
+                       creationflags=creationflags)
+                    
+                    if result.returncode == 0:
+                        if log_callback:
+                            log_callback(f"Installed optional {package}")
+                    else:
+                        if log_callback:
+                            log_callback(f"Could not install optional {package}")
                         
             except Exception as e:
                 if log_callback:
@@ -2762,44 +3158,92 @@ if missing:
                     
         return True
             
+    # FIXED: Fixed verify_installation method for hidden console
     def verify_installation(self, log_callback=None):
-        """Verify that the installation is working correctly"""
+        """Verify that the installation is working correctly with support for hidden consoles"""
         test_packages = ["manim", "numpy", "matplotlib", "customtkinter", "jedi"]
         
         if log_callback:
             log_callback("Verifying installation...")
-            
-        # Set up console hiding
-        import subprocess
-        startupinfo = None
-        creationflags = 0
         
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            creationflags = subprocess.CREATE_NO_WINDOW
-            
-        for package in test_packages:
-            try:
-                result = subprocess.run([
-                    self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, \"__version__\", \"unknown\")}}')"
-                ], capture_output=True, text=True,
-                   startupinfo=startupinfo,
-                   creationflags=creationflags)
-                
-                if result.returncode == 0:
-                    if log_callback:
-                        log_callback(f"{package}: {result.stdout.strip()}")
-                else:
-                    if log_callback:
-                        log_callback(f"{package} verification failed")
-                    return False
+        # FIXED: Special handling for executables with hidden consoles
+        if getattr(sys, 'frozen', False):
+            # Create a script for verification
+            for package in test_packages:
+                try:
+                    # Create a verification script
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                        f.write(f"""
+import sys
+try:
+    import {package}
+    print(f"{package} version: {{getattr({package}, '__version__', 'unknown')}}")
+    sys.exit(0)
+except ImportError as e:
+    print(f"Error importing {package}: {{e}}")
+    sys.exit(1)
+""")
+                        script_path = f.name
                     
-            except Exception as e:
-                if log_callback:
-                    log_callback(f"Error verifying {package}: {str(e)}")
-                return False
+                    # Run the script
+                    result = subprocess.run(
+                        [self.python_path, script_path],
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    # Clean up
+                    try:
+                        os.unlink(script_path)
+                    except:
+                        pass
+                        
+                    if result.returncode == 0:
+                        if log_callback:
+                            log_callback(f"{package}: {result.stdout.strip()}")
+                    else:
+                        if log_callback:
+                            log_callback(f"{package} verification failed: {result.stderr}")
+                        return False
+                
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"Error verifying {package}: {str(e)}")
+                    return False
+        else:
+            # Normal verification for non-frozen environment
+            # Set up console hiding
+            import subprocess
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+                
+            for package in test_packages:
+                try:
+                    result = subprocess.run([
+                        self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, \"__version__\", \"unknown\")}}')"
+                    ], capture_output=True, text=True,
+                       startupinfo=startupinfo,
+                       creationflags=creationflags)
+                    
+                    if result.returncode == 0:
+                        if log_callback:
+                            log_callback(f"{package}: {result.stdout.strip()}")
+                    else:
+                        if log_callback:
+                            log_callback(f"{package} verification failed")
+                        return False
+                        
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"Error verifying {package}: {str(e)}")
+                    return False
                 
         # Test Manim scene creation
         if log_callback:
@@ -2813,29 +3257,96 @@ class TestScene(Scene):
         self.add(text)
 print("Manim test successful")
 '''
-        
+
+        # FIXED: Special handling for executables with hidden consoles
         try:
-            # Create temporary test file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                f.write(test_code)
-                temp_file = f.name
-            
-            result = subprocess.run([
-                self.python_path, temp_file
-            ], capture_output=True, text=True,
-               startupinfo=startupinfo,
-               creationflags=creationflags)
-            
-            # Clean up
-            os.unlink(temp_file)
-            
-            if result.returncode == 0:
-                if log_callback:
-                    log_callback("Manim scene test successful")
+            if getattr(sys, 'frozen', False):
+                # Create a temporary test file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(test_code)
+                    temp_file = f.name
+                
+                # Create a wrapper script
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(f"""
+import subprocess
+import sys
+
+try:
+    result = subprocess.run(
+        [r"{self.python_path}", r"{temp_file}"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print("SUCCESS: Manim scene test successful")
+        print(result.stdout)
+        sys.exit(0)
+    else:
+        print("ERROR: Manim scene test failed")
+        print(result.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"EXCEPTION: {{str(e)}}")
+    sys.exit(2)
+""")
+                    wrapper_script = f.name
+                
+                # Run the wrapper script
+                result = subprocess.run(
+                    [sys.executable, wrapper_script],
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Clean up
+                try:
+                    os.unlink(temp_file)
+                    os.unlink(wrapper_script)
+                except:
+                    pass
+                
+                if result.returncode == 0:
+                    if log_callback:
+                        log_callback("Manim scene test successful")
+                else:
+                    if log_callback:
+                        log_callback(f"Manim scene test failed: {result.stderr}")
+                    return False
             else:
-                if log_callback:
-                    log_callback(f"Manim scene test failed: {result.stderr}")
-                return False
+                # Normal case - can use hidden console
+                # Create temporary test file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(test_code)
+                    temp_file = f.name
+                
+                # Set up console hiding
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                
+                result = subprocess.run([
+                    self.python_path, temp_file
+                ], capture_output=True, text=True,
+                   startupinfo=startupinfo,
+                   creationflags=creationflags)
+                
+                # Clean up
+                os.unlink(temp_file)
+                
+                if result.returncode == 0:
+                    if log_callback:
+                        log_callback("Manim scene test successful")
+                else:
+                    if log_callback:
+                        log_callback(f"Manim scene test failed: {result.stderr}")
+                    return False
                 
         except Exception as e:
             if log_callback:
@@ -2880,9 +3391,45 @@ print("Manim test successful")
         venv_path = os.path.join(self.venv_dir, name)
         
         try:
-            # Create virtual environment
-            venv.create(venv_path, with_pip=True)
-            return True
+            # FIXED: Special handling for executables with hidden consoles
+            if getattr(sys, 'frozen', False):
+                # Create a temporary script
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(f"""
+import venv
+import sys
+import os
+
+try:
+    venv.create(r"{venv_path}", with_pip=True)
+    print("SUCCESS: Virtual environment created at {venv_path}")
+    sys.exit(0)
+except Exception as e:
+    print(f"ERROR: {{str(e)}}")
+    sys.exit(1)
+""")
+                    script_path = f.name
+                
+                # Run the script
+                result = subprocess.run(
+                    [sys.executable, script_path],
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Clean up
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                
+                return result.returncode == 0
+            else:
+                # Normal case - direct creation
+                import venv
+                venv.create(venv_path, with_pip=True)
+                return True
         except Exception as e:
             self.logger.error(f"Error creating virtual environment: {e}")
             return False
@@ -2908,8 +3455,9 @@ print("Manim test successful")
             return True
         return False
         
+    # FIXED: Fixed install_package method for hidden console
     def install_package(self, package_name, callback=None):
-        """Install a package in the current virtual environment"""
+        """Install a package with special handling for hidden consoles"""
         if not self.current_venv:
             if callback:
                 callback(False, "", "No virtual environment active")
@@ -2917,25 +3465,78 @@ print("Manim test successful")
             
         def install_thread():
             try:
-                # Set up console hiding
-                import subprocess
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
+                # Special handling for executables with hidden consoles
+                if getattr(sys, 'frozen', False):
+                    # Create a temporary script for the installation
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                        f.write(f"""
+import subprocess
+import sys
+import os
+
+try:
+    # Execute pip command with visible window
+    result = subprocess.run(
+        [r"{self.pip_path}", "install", "{package_name}"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print("SUCCESS: Installed {package_name}")
+        print(result.stdout)
+        sys.exit(0)
+    else:
+        print("ERROR: Failed to install {package_name}")
+        print(result.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"EXCEPTION: {{str(e)}}")
+    sys.exit(2)
+""")
+                        script_path = f.name
+                        
+                    # Run the script
+                    result = subprocess.run(
+                        [sys.executable, script_path],
+                        capture_output=True,
+                        text=True
+                    )
                     
-                result = subprocess.run([
-                    self.pip_path, "install", package_name
-                ], capture_output=True, text=True,
-                   startupinfo=startupinfo,
-                   creationflags=creationflags)
+                    # Clean up
+                    try:
+                        os.unlink(script_path)
+                    except:
+                        pass
+                        
+                    success = result.returncode == 0
+                    stdout = result.stdout
+                    stderr = result.stderr
+                else:
+                    # Normal installation for non-frozen environment
+                    # Set up console hiding
+                    startupinfo = None
+                    creationflags = 0
+                    
+                    if os.name == 'nt':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        creationflags = subprocess.CREATE_NO_WINDOW
+                        
+                    result = subprocess.run([
+                        self.pip_path, "install", package_name
+                    ], capture_output=True, text=True,
+                       startupinfo=startupinfo,
+                       creationflags=creationflags)
+                    
+                    success = result.returncode == 0
+                    stdout = result.stdout
+                    stderr = result.stderr
                 
                 if callback:
-                    callback(result.returncode == 0, result.stdout, result.stderr)
+                    callback(success, stdout, stderr)
                     
             except Exception as e:
                 if callback:
@@ -2944,8 +3545,9 @@ print("Manim test successful")
         threading.Thread(target=install_thread, daemon=True).start()
         return True, "Installation started"
         
+    # FIXED: Fixed uninstall_package method for hidden console
     def uninstall_package(self, package_name, callback=None):
-        """Uninstall a package from the current virtual environment"""
+        """Uninstall a package with special handling for hidden consoles"""
         if not self.current_venv:
             if callback:
                 callback(False, "", "No virtual environment active")
@@ -2953,25 +3555,78 @@ print("Manim test successful")
             
         def uninstall_thread():
             try:
-                # Set up console hiding
-                import subprocess
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
+                # Special handling for executables with hidden consoles
+                if getattr(sys, 'frozen', False):
+                    # Create a temporary script for uninstallation
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                        f.write(f"""
+import subprocess
+import sys
+import os
+
+try:
+    # Execute pip command with visible window
+    result = subprocess.run(
+        [r"{self.pip_path}", "uninstall", "-y", "{package_name}"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print("SUCCESS: Uninstalled {package_name}")
+        print(result.stdout)
+        sys.exit(0)
+    else:
+        print("ERROR: Failed to uninstall {package_name}")
+        print(result.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"EXCEPTION: {{str(e)}}")
+    sys.exit(2)
+""")
+                        script_path = f.name
+                        
+                    # Run the script
+                    result = subprocess.run(
+                        [sys.executable, script_path],
+                        capture_output=True,
+                        text=True
+                    )
                     
-                result = subprocess.run([
-                    self.pip_path, "uninstall", "-y", package_name
-                ], capture_output=True, text=True,
-                   startupinfo=startupinfo,
-                   creationflags=creationflags)
+                    # Clean up
+                    try:
+                        os.unlink(script_path)
+                    except:
+                        pass
+                        
+                    success = result.returncode == 0
+                    stdout = result.stdout
+                    stderr = result.stderr
+                else:
+                    # Normal uninstallation for non-frozen environment
+                    # Set up console hiding
+                    startupinfo = None
+                    creationflags = 0
+                    
+                    if os.name == 'nt':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        creationflags = subprocess.CREATE_NO_WINDOW
+                        
+                    result = subprocess.run([
+                        self.pip_path, "uninstall", "-y", package_name
+                    ], capture_output=True, text=True,
+                       startupinfo=startupinfo,
+                       creationflags=creationflags)
+                    
+                    success = result.returncode == 0
+                    stdout = result.stdout
+                    stderr = result.stderr
                 
                 if callback:
-                    callback(result.returncode == 0, result.stdout, result.stderr)
+                    callback(success, stdout, stderr)
                     
             except Exception as e:
                 if callback:
@@ -2980,8 +3635,9 @@ print("Manim test successful")
         threading.Thread(target=uninstall_thread, daemon=True).start()
         return True, "Uninstallation started"
         
+    # FIXED: Fixed list_packages method for hidden console
     def list_packages(self, callback=None):
-        """List installed packages in the current virtual environment"""
+        """List installed packages with special handling for hidden consoles"""
         if not self.current_venv:
             if callback:
                 callback(False, [], "No virtual environment active")
@@ -2989,34 +3645,91 @@ print("Manim test successful")
             
         def list_thread():
             try:
-                # Set up console hiding
-                import subprocess
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
+                # Special handling for executables with hidden consoles
+                if getattr(sys, 'frozen', False):
+                    # Create a temporary script for listing packages
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                        f.write(f"""
+import subprocess
+import sys
+import os
+import json
+
+try:
+    # Execute pip command with visible window
+    result = subprocess.run(
+        [r"{self.pip_path}", "list", "--format=json"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print(result.stdout)
+        sys.exit(0)
+    else:
+        print("ERROR: Failed to list packages")
+        print(result.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"EXCEPTION: {{str(e)}}")
+    sys.exit(2)
+""")
+                        script_path = f.name
+                        
+                    # Run the script
+                    result = subprocess.run(
+                        [sys.executable, script_path],
+                        capture_output=True,
+                        text=True
+                    )
                     
-                result = subprocess.run([
-                    self.pip_path, "list", "--format=json"
-                ], capture_output=True, text=True,
-                   startupinfo=startupinfo,
-                   creationflags=creationflags)
-                
-                if result.returncode == 0:
+                    # Clean up
                     try:
-                        packages = json.loads(result.stdout)
-                        if callback:
-                            callback(True, packages, "")
+                        os.unlink(script_path)
                     except:
+                        pass
+                        
+                    if result.returncode == 0:
+                        try:
+                            packages = json.loads(result.stdout)
+                            if callback:
+                                callback(True, packages, "")
+                        except:
+                            if callback:
+                                callback(False, [], result.stdout)
+                    else:
                         if callback:
-                            callback(False, [], result.stdout)
+                            callback(False, [], result.stderr)
                 else:
-                    if callback:
-                        callback(False, [], result.stderr)
+                    # Normal listing for non-frozen environment
+                    # Set up console hiding
+                    startupinfo = None
+                    creationflags = 0
+                    
+                    if os.name == 'nt':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        creationflags = subprocess.CREATE_NO_WINDOW
+                        
+                    result = subprocess.run([
+                        self.pip_path, "list", "--format=json"
+                    ], capture_output=True, text=True,
+                       startupinfo=startupinfo,
+                       creationflags=creationflags)
+                    
+                    if result.returncode == 0:
+                        try:
+                            packages = json.loads(result.stdout)
+                            if callback:
+                                callback(True, packages, "")
+                        except:
+                            if callback:
+                                callback(False, [], result.stdout)
+                    else:
+                        if callback:
+                            callback(False, [], result.stderr)
                         
             except Exception as e:
                 if callback:
@@ -3061,40 +3774,129 @@ print("Manim test successful")
             # Get Python version
             python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
             
-            # Set up console hiding
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
+            # FIXED: Special handling for executables with hidden consoles
+            if getattr(sys, 'frozen', False):
+                # Create a script to get Python version
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(f"""
+import subprocess
+import sys
+
+try:
+    result = subprocess.run(
+        [r"{python_exe}", "--version"],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        print(result.stdout.strip())
+    else:
+        print("Unknown")
+except:
+    print("Unknown")
+""")
+                    script_path = f.name
                 
-            result = subprocess.run(
-                [python_exe, "--version"], 
-                capture_output=True, 
-                text=True,
-                startupinfo=startupinfo,
-                creationflags=creationflags
-            )
-            
-            if result.returncode == 0:
-                info['python_version'] = result.stdout.strip()
+                # Run the script
+                result = subprocess.run(
+                    [sys.executable, script_path],
+                    capture_output=True,
+                    text=True
+                )
                 
-            # Get package count
-            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-            result = subprocess.run(
-                [pip_exe, "list", "--format=json"], 
-                capture_output=True, 
-                text=True,
-                startupinfo=startupinfo,
-                creationflags=creationflags
-            )
-            
-            if result.returncode == 0:
-                packages = json.loads(result.stdout)
-                info['packages_count'] = len(packages)
+                # Clean up
+                try:
+                    os.unlink(script_path)
+                except:
+                    pass
+                
+                if result.returncode == 0:
+                    info['python_version'] = result.stdout.strip()
+                
+                # Get package count with a script
+                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(f"""
+import subprocess
+import sys
+import json
+
+try:
+    result = subprocess.run(
+        [r"{pip_exe}", "list", "--format=json"], 
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        packages = json.loads(result.stdout)
+        print(len(packages))
+    else:
+        print("0")
+except:
+    print("0")
+""")
+                    count_script_path = f.name
+                
+                # Run the script
+                count_result = subprocess.run(
+                    [sys.executable, count_script_path],
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Clean up
+                try:
+                    os.unlink(count_script_path)
+                except:
+                    pass
+                
+                if count_result.returncode == 0:
+                    try:
+                        info['packages_count'] = int(count_result.stdout.strip())
+                    except:
+                        pass
+            else:
+                # Normal case - can use hidden console
+                # Set up console hiding
+                startupinfo = None
+                creationflags = 0
+                
+                if os.name == 'nt':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    creationflags = subprocess.CREATE_NO_WINDOW
+                    
+                result = subprocess.run(
+                    [python_exe, "--version"], 
+                    capture_output=True, 
+                    text=True,
+                    startupinfo=startupinfo,
+                    creationflags=creationflags
+                )
+                
+                if result.returncode == 0:
+                    info['python_version'] = result.stdout.strip()
+                    
+                # Get package count
+                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
+                result = subprocess.run(
+                    [pip_exe, "list", "--format=json"], 
+                    capture_output=True, 
+                    text=True,
+                    startupinfo=startupinfo,
+                    creationflags=creationflags
+                )
+                
+                if result.returncode == 0:
+                    try:
+                        packages = json.loads(result.stdout)
+                        info['packages_count'] = len(packages)
+                    except:
+                        pass
                 
             # Get directory size
             info['size'] = self._get_directory_size(venv_path)
@@ -3118,6 +3920,7 @@ print("Manim test successful")
         except Exception:
             pass
         return total_size
+
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
@@ -6281,7 +7084,7 @@ class MyScene(Scene):
         """Get the number of cores to use for rendering based on settings"""
         usage_preset = self.cpu_usage_var.get()
         preset_data = CPU_USAGE_PRESETS[usage_preset]
-        
+        cores = preset_data["cores"]
         # For custom setting, use the slider value
         if usage_preset == "Custom":
             return self.cpu_custom_cores_var.get()
@@ -7300,617 +8103,6 @@ Licensed under MIT License"""
         except Exception as e:
             logger.error(f"Application error: {e}")
             messagebox.showerror("Error", f"Application error: {e}")
-class EnhancedEnvironmentSetupDialog(ctk.CTkToplevel):
-    """Enhanced dialog for setting up the environment with better UI/UX"""
-    
-    def __init__(self, parent, venv_manager):
-        super().__init__(parent)
-        
-        self.parent_window = parent
-        self.venv_manager = venv_manager
-        self.setup_complete = False
-        
-        self.title("Manim Studio - Environment Setup")
-        self.geometry("750x650")
-        self.transient(parent)
-        self.grab_set()
-        
-        # Center the dialog
-        self.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 100,
-            parent.winfo_rooty() + 50
-        ))
-        
-        # Prevent closing during setup
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
-        # Setup UI with dark theme colors
-        self.setup_ui()
-        
-    def setup_ui(self):
-        """Setup the enhanced environment setup dialog UI"""
-        # Main container
-        self.main_container = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
-        self.main_container.pack(fill="both", expand=True, padx=0, pady=0)
-        
-        # Left panel (steps and info)
-        self.left_panel = ctk.CTkFrame(self.main_container, fg_color=VSCODE_COLORS["surface_light"], width=250)
-        self.left_panel.pack(side="left", fill="y", padx=0, pady=0)
-        
-        # Logo and title
-        logo_frame = ctk.CTkFrame(self.left_panel, fg_color="transparent", height=150)
-        logo_frame.pack(fill="x", padx=20, pady=(30, 20))
-        
-        ctk.CTkLabel(
-            logo_frame,
-            text="🎬",
-            font=ctk.CTkFont(size=48)
-        ).pack(pady=(0, 10))
-        
-        ctk.CTkLabel(
-            logo_frame,
-            text="Environment Setup",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        ).pack(pady=(0, 5))
-        
-        # Setup steps
-        steps_frame = ctk.CTkFrame(self.left_panel, fg_color="transparent")
-        steps_frame.pack(fill="x", padx=20, pady=10)
-        
-        self.step_indicators = []
-        steps = [
-            "1. Prepare Environment",
-            "2. Install Packages",
-            "3. Configure Settings",
-            "4. Verify Installation"
-        ]
-        
-        for i, step in enumerate(steps):
-            step_frame = ctk.CTkFrame(steps_frame, fg_color="transparent")
-            step_frame.pack(fill="x", pady=10)
-            
-            # Step indicator (circle)
-            indicator = ctk.CTkLabel(
-                step_frame,
-                text="○",  # Empty circle
-                font=ctk.CTkFont(size=20),
-                width=30,
-                text_color=VSCODE_COLORS["text_secondary"]
-            )
-            indicator.pack(side="left")
-            self.step_indicators.append(indicator)
-            
-            # Step text
-            ctk.CTkLabel(
-                step_frame,
-                text=step,
-                font=ctk.CTkFont(size=14),
-                text_color=VSCODE_COLORS["text_secondary"]
-            ).pack(side="left", padx=(5, 0))
-        
-        # System info
-        system_frame = ctk.CTkFrame(self.left_panel, fg_color=VSCODE_COLORS["surface"], corner_radius=10)
-        system_frame.pack(fill="x", padx=20, pady=(20, 10))
-        
-        ctk.CTkLabel(
-            system_frame,
-            text="System Information",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        ).pack(anchor="w", padx=15, pady=(15, 10))
-        
-        # System data
-        system_info = [
-            f"OS: {self.get_os_info()}",
-            f"Python: {sys.version.split()[0]}",
-            f"CPU: {self.get_cpu_info()}",
-            f"Memory: {self.get_memory_info()}"
-        ]
-        
-        for info in system_info:
-            ctk.CTkLabel(
-                system_frame,
-                text=info,
-                font=ctk.CTkFont(size=12),
-                text_color=VSCODE_COLORS["text_secondary"]
-            ).pack(anchor="w", padx=15, pady=2)
-            
-        # Right panel (main content)
-        self.right_panel = ctk.CTkFrame(self.main_container, fg_color=VSCODE_COLORS["background"])
-        self.right_panel.pack(side="right", fill="both", expand=True, padx=0, pady=0)
-        
-        # Header
-        header_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["surface"], height=80)
-        header_frame.pack(fill="x", padx=0, pady=0)
-        
-        self.header_title = ctk.CTkLabel(
-            header_frame,
-            text="Setting up Manim Animation Studio",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        )
-        self.header_title.pack(anchor="w", padx=30, pady=25)
-        
-        # Main content area
-        self.content_frame = ctk.CTkFrame(self.right_panel, fg_color="transparent")
-        self.content_frame.pack(fill="both", expand=True, padx=30, pady=20)
-        
-        # Info box
-        self.info_box = ctk.CTkFrame(self.content_frame, fg_color=VSCODE_COLORS["surface_light"], corner_radius=10)
-        self.info_box.pack(fill="x", pady=(0, 20))
-        
-        self.info_title = ctk.CTkLabel(
-            self.info_box,
-            text="Welcome to Manim Studio Environment Setup",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        )
-        self.info_title.pack(anchor="w", padx=20, pady=(20, 10))
-        
-        self.info_text = ctk.CTkLabel(
-            self.info_box,
-            text="This wizard will help you set up an optimal environment for Manim Studio. We'll create a dedicated virtual environment with all required packages for mathematical animations.",
-            font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text"],
-            wraplength=400,
-            justify="left"
-        )
-        self.info_text.pack(anchor="w", padx=20, pady=(0, 20))
-        
-        # Current step indicator
-        self.step_label = ctk.CTkLabel(
-            self.content_frame,
-            text="Ready to Start",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=VSCODE_COLORS["primary"]
-        )
-        self.step_label.pack(anchor="w", pady=(0, 5))
-        
-        # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(self.content_frame, height=20)
-        self.progress_bar.pack(fill="x", pady=10)
-        self.progress_bar.set(0)
-        
-        # Progress details
-        self.detail_label = ctk.CTkLabel(
-            self.content_frame,
-            text="Click 'Start Setup' to begin the installation process",
-            font=ctk.CTkFont(size=11),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.detail_label.pack(anchor="w", pady=(0, 10))
-        
-        # Log output frame with improved styling
-        log_frame = ctk.CTkFrame(self.content_frame, fg_color=VSCODE_COLORS["background"])
-        log_frame.pack(fill="both", expand=True, pady=10)
-        
-        log_header = ctk.CTkFrame(log_frame, fg_color=VSCODE_COLORS["surface_lighter"], height=30)
-        log_header.pack(fill="x")
-        
-        ctk.CTkLabel(
-            log_header,
-            text="Installation Log",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        ).pack(side="left", padx=15, pady=5)
-        
-        # Terminal-style log with dark background
-        self.log_text = ctk.CTkTextbox(
-            log_frame, 
-            height=200, 
-            font=ctk.CTkFont(size=11, family="Consolas"),
-            fg_color=VSCODE_COLORS["background"],
-            text_color="#CCCCCC"
-        )
-        self.log_text.pack(fill="both", expand=True)
-        
-        # Status indicator frame
-        self.status_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["surface_lighter"], height=50)
-        self.status_frame.pack(fill="x", padx=0, pady=0)
-        
-        self.status_label = ctk.CTkLabel(
-            self.status_frame,
-            text="Ready to install",
-            font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.status_label.pack(side="left", padx=30, pady=15)
-        
-        # Buttons frame
-        self.button_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["surface"], height=80)
-        self.button_frame.pack(fill="x", padx=0, pady=0)
-        
-        self.start_button = ctk.CTkButton(
-            self.button_frame,
-            text="🚀 Start Setup",
-            command=self.start_setup,
-            height=40,
-            width=150,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=VSCODE_COLORS["success"],
-            hover_color="#117A65"
-        )
-        self.start_button.pack(side="right", padx=30, pady=20)
-        
-        self.skip_button = ctk.CTkButton(
-            self.button_frame,
-            text="Skip Setup",
-            command=self.skip_setup,
-            height=40,
-            width=100,
-            font=ctk.CTkFont(size=12),
-            fg_color=VSCODE_COLORS["surface_lighter"],
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.skip_button.pack(side="right", padx=(0, 10), pady=20)
-        
-        self.close_button = ctk.CTkButton(
-            self.button_frame,
-            text="✅ Continue",
-            command=self.continue_to_app,
-            height=40,
-            width=150,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=VSCODE_COLORS["primary"],
-            state="disabled"
-        )
-        self.close_button.pack(side="right", padx=30, pady=20)
-        self.close_button.pack_forget()  # Hide initially
-        
-    def get_os_info(self):
-        """Get OS information"""
-        import platform
-        return f"{platform.system()} {platform.version()}"
-        
-    def get_cpu_info(self):
-        """Get CPU information"""
-        import multiprocessing
-        return f"{multiprocessing.cpu_count()} cores"
-        
-    def get_memory_info(self):
-        """Get memory information"""
-        import psutil
-        mem = psutil.virtual_memory()
-        return f"{mem.total // (1024**3)} GB"
-    
-    def update_step(self, step_index):
-        """Update the step indicators and header"""
-        # Reset all steps
-        for i, indicator in enumerate(self.step_indicators):
-            if i < step_index:
-                # Completed steps
-                indicator.configure(text="✓", text_color=VSCODE_COLORS["success"])
-            elif i == step_index:
-                # Current step
-                indicator.configure(text="●", text_color=VSCODE_COLORS["primary"])
-            else:
-                # Future steps
-                indicator.configure(text="○", text_color=VSCODE_COLORS["text_secondary"])
-                
-        # Update header based on step
-        headers = [
-            "Preparing Environment",
-            "Installing Required Packages",
-            "Configuring Settings",
-            "Verifying Installation"
-        ]
-        if step_index < len(headers):
-            self.header_title.configure(text=headers[step_index])
-        
-    def log_message(self, message):
-        """Add message to log with timestamp and color coding"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        # Apply color based on message content
-        if message.startswith("✓"):
-            color = "#4CAF50"  # Green for success
-        elif message.startswith("✗") or message.startswith("ERROR"):
-            color = "#F44336"  # Red for errors
-        elif message.startswith("Warning") or message.startswith("⚠️"):
-            color = "#FF9800"  # Orange for warnings
-        else:
-            color = "#CCCCCC"  # Default color
-            
-        self.log_text.insert("end", f"[{timestamp}] ", {"color": "#888888"})
-        self.log_text.insert("end", f"{message}\n", {"color": color})
-        self.log_text.see("end")
-        self.update_idletasks()
-        
-    def update_progress(self, value, step_text="", detail_text=""):
-        """Update progress bar and status"""
-        self.progress_bar.set(value)
-        if step_text:
-            self.step_label.configure(text=step_text)
-        if detail_text:
-            self.detail_label.configure(text=detail_text)
-        self.status_label.configure(text=step_text or "Working...")
-        self.update_idletasks()
-        
-    def start_setup(self):
-        """Start the environment setup process"""
-        self.start_button.configure(state="disabled")
-        self.skip_button.configure(state="disabled")
-        
-        self.log_message("Starting ManimStudio environment setup...")
-        self.update_progress(0.05, "Preparing...", "Initializing environment creation")
-        self.update_step(0)  # Set to first step
-        
-        # Run setup in background thread
-        setup_thread = threading.Thread(target=self.run_setup, daemon=True)
-        setup_thread.start()
-        
-    def run_setup(self):
-        """Run the actual setup process"""
-        try:
-            # Step 1: Create virtual environment
-            self.after(0, lambda: self.update_step(0))
-            self.after(0, lambda: self.update_progress(0.1, "Creating virtual environment...", "Setting up isolated Python environment"))
-            self.after(0, lambda: self.log_message("Creating virtual environment..."))
-            
-            success = self.venv_manager.create_default_environment(self.log_message_threadsafe)
-            
-            if not success:
-                self.after(0, lambda: self.log_message("ERROR: Failed to create virtual environment"))
-                self.after(0, lambda: self.show_error("Failed to create virtual environment"))
-                return
-                
-            # Step 2: Upgrade pip
-            self.after(0, lambda: self.update_progress(0.2, "Upgrading pip...", "Ensuring latest package manager"))
-            self.after(0, lambda: self.log_message("Upgrading pip to latest version..."))
-            
-            success = self.venv_manager.upgrade_pip(self.log_message_threadsafe)
-            if not success:
-                self.after(0, lambda: self.log_message("WARNING: Could not upgrade pip, continuing with existing version"))
-            
-            # Step 3: Install essential packages
-            self.after(0, lambda: self.update_step(1))  # Move to step 2
-            self.after(0, lambda: self.update_progress(0.3, "Installing packages...", "Installing Manim and dependencies"))
-            self.after(0, lambda: self.log_message("Installing essential packages..."))
-            
-            success = self.venv_manager.install_essential_packages(
-                self.log_message_threadsafe,
-                self.update_package_progress
-            )
-            
-            if not success:
-                self.after(0, lambda: self.log_message("WARNING: Some essential packages failed to install"))
-                self.after(0, lambda: self.show_warning("Some essential packages failed to install. Basic functionality may be limited."))
-                
-            # Step 4: Install optional packages
-            self.after(0, lambda: self.update_step(2))  # Move to step 3
-            self.after(0, lambda: self.update_progress(0.8, "Installing optional packages...", "Adding extra functionality"))
-            self.after(0, lambda: self.log_message("Installing optional packages..."))
-            
-            self.venv_manager.install_optional_packages(
-                self.log_message_threadsafe,
-                self.update_optional_progress
-            )
-            
-            # Step 5: Verify installation
-            self.after(0, lambda: self.update_step(3))  # Move to step 4
-            self.after(0, lambda: self.update_progress(0.95, "Verifying installation...", "Testing all components"))
-            self.after(0, lambda: self.log_message("Verifying installation..."))
-            
-            success = self.venv_manager.verify_installation(self.log_message_threadsafe)
-            
-            if success:
-                self.after(0, lambda: self.update_progress(1.0, "Setup complete!", "All components ready"))
-                self.after(0, lambda: self.log_message("✅ Environment setup completed successfully!"))
-                self.after(0, lambda: self.setup_complete_ui())
-            else:
-                self.after(0, lambda: self.log_message("WARNING: Installation verification failed"))
-                self.after(0, lambda: self.show_warning("Setup completed with warnings - some features may be limited"))
-                
-        except Exception as e:
-            error_msg = f"Setup failed with error: {str(e)}"
-            self.after(0, lambda: self.log_message(f"ERROR: {error_msg}"))
-            self.after(0, lambda: self.show_error(error_msg))
-            import traceback
-            self.after(0, lambda: self.log_message(f"Traceback: {traceback.format_exc()}"))
-            
-    def log_message_threadsafe(self, message):
-        """Thread-safe log message method"""
-        self.after(0, lambda: self.log_message(message))
-        
-    def update_package_progress(self, package_name, progress):
-        """Update progress for package installation"""
-        self.after(0, lambda: self.update_progress(
-            0.3 + (progress * 0.5),
-            "Installing packages...",
-            f"Installing {package_name}..."
-        ))
-        
-    def update_optional_progress(self, package_name, progress):
-        """Update progress for optional package installation"""
-        self.after(0, lambda: self.update_progress(
-            0.8 + (progress * 0.15),
-            "Installing optional packages...",
-            f"Installing {package_name}..."
-        ))
-        
-    def setup_complete_ui(self):
-        """Update UI when setup is complete"""
-        self.setup_complete = True
-        
-        # Show close button instead of start button
-        self.start_button.pack_forget()
-        self.skip_button.pack_forget()
-        self.close_button.pack(side="right", padx=30, pady=20)
-        
-        self.step_label.configure(
-            text="🎉 Setup Complete!",
-            text_color=VSCODE_COLORS["success"]
-        )
-        self.detail_label.configure(text="ManimStudio is ready to use")
-        self.status_label.configure(text="Setup completed successfully", text_color=VSCODE_COLORS["success"])
-        
-        # Show completion message
-        success_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["success"])
-        success_frame.place(relx=0.5, rely=0.45, anchor="center", width=300, height=150)
-        
-        ctk.CTkLabel(
-            success_frame,
-            text="✅ Environment Ready!",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color="white"
-        ).pack(padx=30, pady=(30, 10))
-        
-        ctk.CTkLabel(
-            success_frame,
-            text="You can now use ManimStudio to create animations",
-            font=ctk.CTkFont(size=12),
-            text_color="white"
-        ).pack(padx=30, pady=(0, 30))
-        
-        # Auto-dismiss after 3 seconds
-        self.after(3000, lambda: success_frame.destroy())
-        
-    def show_error(self, message):
-        """Show error message with troubleshooting assistance"""
-        self.step_label.configure(
-            text="❌ Setup Failed",
-            text_color=VSCODE_COLORS["error"]
-        )
-        self.detail_label.configure(text=message)
-        self.status_label.configure(text="Setup failed", text_color=VSCODE_COLORS["error"])
-        
-        # Reset buttons
-        self.start_button.configure(text="🔄 Retry Setup", state="normal")
-        self.skip_button.configure(state="normal")
-        
-        # Show error dialog with troubleshooting assistance
-        error_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["error"])
-        error_frame.place(relx=0.5, rely=0.45, anchor="center", width=350, height=250)
-        
-        ctk.CTkLabel(
-            error_frame,
-            text="❌ Setup Failed",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color="white"
-        ).pack(padx=30, pady=(20, 10))
-        
-        ctk.CTkLabel(
-            error_frame,
-            text=message,
-            font=ctk.CTkFont(size=12),
-            text_color="white",
-            wraplength=300
-        ).pack(padx=30, pady=(0, 10))
-        
-        # Troubleshooting tips
-        tips_text = """Troubleshooting Tips:
-- Ensure you have internet connection
-- Check your firewall settings
-- Make sure you have admin rights
-- Try running as administrator
-- Check log for detailed error message"""
-        
-        ctk.CTkLabel(
-            error_frame,
-            text=tips_text,
-            font=ctk.CTkFont(size=12),
-            text_color="white",
-            justify="left",
-            wraplength=300
-        ).pack(padx=30, pady=(10, 20))
-        
-        # Close button
-        ctk.CTkButton(
-            error_frame,
-            text="Close",
-            command=lambda: error_frame.destroy(),
-            width=100,
-            fg_color="#C62828",
-            hover_color="#B71C1C"
-        ).pack(pady=(0, 20))
-        
-    def show_warning(self, message):
-        """Show warning message but allow continuing"""
-        self.step_label.configure(
-            text="⚠️ Setup Completed with Warnings",
-            text_color=VSCODE_COLORS["warning"]
-        )
-        self.detail_label.configure(text=message)
-        self.status_label.configure(text="Setup completed with warnings", text_color=VSCODE_COLORS["warning"])
-        
-        # Enable close button
-        self.start_button.pack_forget()
-        self.skip_button.pack_forget()
-        self.close_button.pack(side="right", padx=30, pady=20)
-        self.close_button.configure(state="normal")
-        
-        self.setup_complete = True
-        
-        # Show warning dialog
-        warning_frame = ctk.CTkFrame(self.right_panel, fg_color=VSCODE_COLORS["warning"])
-        warning_frame.place(relx=0.5, rely=0.45, anchor="center", width=350, height=220)
-        
-        ctk.CTkLabel(
-            warning_frame,
-            text="⚠️ Setup Completed with Warnings",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="white"
-        ).pack(padx=30, pady=(20, 10))
-        
-        ctk.CTkLabel(
-            warning_frame,
-            text=message,
-            font=ctk.CTkFont(size=12),
-            text_color="white",
-            wraplength=300
-        ).pack(padx=30, pady=(0, 10))
-        
-        ctk.CTkLabel(
-            warning_frame,
-            text="You can continue with limited functionality, or retry the setup.",
-            font=ctk.CTkFont(size=12),
-            text_color="white",
-            wraplength=300
-        ).pack(padx=30, pady=(0, 20))
-        
-        # Close button
-        ctk.CTkButton(
-            warning_frame,
-            text="Continue Anyway",
-            command=lambda: warning_frame.destroy(),
-            width=150,
-            fg_color="#E65100",
-            hover_color="#D84315"
-        ).pack(pady=(0, 20))
-        
-    def skip_setup(self):
-        """Skip the setup process with confirmation"""
-        from tkinter import messagebox
-        if messagebox.askyesno(
-            "Skip Setup",
-            "Are you sure you want to skip the environment setup?\n\n"
-            "ManimStudio requires certain packages to function correctly.\n"
-            "Without setup, animations may not work properly.",
-            icon="warning",
-            parent=self
-        ):
-            self.log_message("Setup skipped by user")
-            self.continue_to_app()
-            
-    def continue_to_app(self):
-        """Continue to the main application"""
-        self.destroy()
-        
-    def on_closing(self):
-        """Handle dialog closing with confirmation"""
-        if not hasattr(self, 'setup_complete') or not self.setup_complete:
-            from tkinter import messagebox
-            if messagebox.askyesno(
-                "Cancel Setup",
-                "Setup is not complete. Exit anyway?\n\n"
-                "ManimStudio may not work correctly without proper setup.",
-                icon="warning",
-                parent=self
-            ):
-                self.destroy()
-        else:
-            self.destroy()
 
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
@@ -8268,8 +8460,6 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
                 "Error", 
                 f"Error creating environment: {str(e)}"
             )
-
-
 
 def main():
     """Application entry point"""
