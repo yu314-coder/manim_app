@@ -514,9 +514,8 @@ POPULAR_PACKAGES = [
     "python-dateutil", "arrow", "tqdm", "colorama", "python-dotenv"
 ]
 
-
 class EnvironmentSetupDialog(ctk.CTkToplevel):
-    """Dialog for setting up the default environment on first run"""
+    """Professional dialog for setting up the default environment on first run"""
     
     def __init__(self, parent, venv_manager):
         super().__init__(parent)
@@ -526,7 +525,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         self.setup_complete = False
         
         self.title("ManimStudio - Environment Setup")
-        self.geometry("650x750")
+        self.geometry("750x780")
         self.transient(parent)
         self.grab_set()
         
@@ -576,6 +575,51 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         )
         subtitle_label.pack()
         
+        # Environment Information Section
+        env_info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        env_info_frame.pack(fill="x", pady=10)
+
+        env_info_label = ctk.CTkLabel(
+            env_info_frame,
+            text="Environment Information",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        env_info_label.pack(anchor="w", padx=15, pady=(10, 5))
+        
+        # Environment details
+        env_details_frame = ctk.CTkFrame(env_info_frame, fg_color="transparent")
+        env_details_frame.pack(fill="x", padx=15, pady=(0, 10))
+        env_details_frame.columnconfigure(1, weight=1)
+        
+        # Python version
+        ctk.CTkLabel(
+            env_details_frame,
+            text="Python:",
+            font=ctk.CTkFont(weight="bold"),
+            width=120
+        ).grid(row=0, column=0, sticky="w", pady=3)
+        
+        self.python_version_label = ctk.CTkLabel(
+            env_details_frame,
+            text=f"Python {sys.version.split()[0]}"
+        )
+        self.python_version_label.grid(row=0, column=1, sticky="w", pady=3)
+        
+        # Environment path
+        ctk.CTkLabel(
+            env_details_frame,
+            text="Environment Path:",
+            font=ctk.CTkFont(weight="bold"),
+            width=120
+        ).grid(row=1, column=0, sticky="w", pady=3)
+        
+        env_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs", "manim_studio_default")
+        self.env_path_label = ctk.CTkLabel(
+            env_details_frame,
+            text=env_path
+        )
+        self.env_path_label.grid(row=1, column=1, sticky="w", pady=3)
+        
         # Info section
         info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
         info_frame.pack(fill="x", pady=10)
@@ -600,6 +644,92 @@ All packages will be installed in an isolated environment that won't affect your
             text_color=VSCODE_COLORS["text"]
         ).pack(padx=20, pady=20)
         
+        # Package selection section
+        packages_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        packages_frame.pack(fill="x", pady=10)
+        
+        packages_header = ctk.CTkLabel(
+            packages_frame,
+            text="Packages to Install",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        packages_header.pack(anchor="w", padx=15, pady=(10, 5))
+        
+        # Essential packages list
+        essential_packages_frame = ctk.CTkScrollableFrame(
+            packages_frame, 
+            height=120,
+            fg_color="transparent"
+        )
+        essential_packages_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        # Add some essential packages with checkboxes
+        self.package_vars = {}
+        essential_packages = [
+            ("manim", "Animation engine", True),
+            ("numpy", "Numerical computing", True),
+            ("matplotlib", "Plotting library", True),
+            ("jedi", "IntelliSense engine", True),
+            ("customtkinter", "Modern UI toolkit", True),
+            ("opencv-python", "Computer vision", True),
+            ("pillow", "Image processing", True),
+        ]
+        
+        for pkg, desc, default in essential_packages:
+            var = ctk.BooleanVar(value=default)
+            self.package_vars[pkg] = var
+            
+            pkg_frame = ctk.CTkFrame(essential_packages_frame, fg_color="transparent")
+            pkg_frame.pack(fill="x", pady=2)
+            
+            check = ctk.CTkCheckBox(
+                pkg_frame,
+                text=pkg,
+                variable=var,
+                onvalue=True,
+                offvalue=False
+            )
+            check.pack(side="left", padx=(5, 10))
+            
+            ctk.CTkLabel(
+                pkg_frame,
+                text=f"({desc})",
+                font=ctk.CTkFont(size=10),
+                text_color=VSCODE_COLORS["text_secondary"]
+            ).pack(side="left")
+        
+        # Optional packages frame
+        optional_label = ctk.CTkLabel(
+            packages_frame,
+            text="Optional Packages:",
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        optional_label.pack(anchor="w", padx=15, pady=(5, 0))
+        
+        optional_packages_frame = ctk.CTkFrame(packages_frame, fg_color=VSCODE_COLORS["background"])
+        optional_packages_frame.pack(fill="x", padx=15, pady=(5, 10))
+        
+        # Add optional packages with checkboxes
+        optional_packages = [
+            ("scipy", "Scientific computing"),
+            ("sympy", "Symbolic mathematics"),
+            ("pandas", "Data analysis"),
+            ("seaborn", "Statistical visualization")
+        ]
+        
+        for i, (pkg, desc) in enumerate(optional_packages):
+            var = ctk.BooleanVar(value=False)
+            self.package_vars[pkg] = var
+            
+            check = ctk.CTkCheckBox(
+                optional_packages_frame,
+                text=f"{pkg} ({desc})",
+                variable=var,
+                onvalue=True,
+                offvalue=False
+            )
+            check.grid(row=i//2, column=i%2, sticky="w", padx=15, pady=5)
+        
         # Current step indicator
         self.step_label = ctk.CTkLabel(
             main_frame,
@@ -607,7 +737,7 @@ All packages will be installed in an isolated environment that won't affect your
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=VSCODE_COLORS["primary"]
         )
-        self.step_label.pack(pady=(10, 5))
+        self.step_label.pack(pady=(15, 5))
         
         # Progress bar
         self.progress_bar = ctk.CTkProgressBar(main_frame, height=20)
@@ -636,9 +766,47 @@ All packages will be installed in an isolated environment that won't affect your
         self.log_text = ctk.CTkTextbox(log_frame, height=200, font=ctk.CTkFont(size=10, family="Consolas"))
         self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
+        # CPU Usage frame
+        cpu_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        cpu_frame.pack(fill="x", pady=10)
+        
+        cpu_header = ctk.CTkLabel(
+            cpu_frame,
+            text="CPU Usage for Installation",
+            font=ctk.CTkFont(size=14, weight="bold")
+        )
+        cpu_header.pack(anchor="w", padx=15, pady=(10, 5))
+        
+        # CPU usage options
+        cpu_options_frame = ctk.CTkFrame(cpu_frame, fg_color="transparent")
+        cpu_options_frame.pack(fill="x", padx=15, pady=(0, 10))
+        
+        self.cpu_var = ctk.StringVar(value="Medium")
+        cpu_options = [
+            ("Low", "Use 1 core (minimal CPU usage)"),
+            ("Medium", "Use half available cores (balanced)"),
+            ("High", "Use all available cores (fastest)")
+        ]
+        
+        for i, (option, desc) in enumerate(cpu_options):
+            cpu_radio = ctk.CTkRadioButton(
+                cpu_options_frame,
+                text=option,
+                value=option,
+                variable=self.cpu_var
+            )
+            cpu_radio.grid(row=0, column=i, padx=10, pady=5, sticky="w")
+            
+            ctk.CTkLabel(
+                cpu_options_frame,
+                text=desc,
+                font=ctk.CTkFont(size=10),
+                text_color=VSCODE_COLORS["text_secondary"]
+            ).grid(row=1, column=i, padx=10, pady=(0, 5), sticky="w")
+        
         # Buttons
         button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        button_frame.pack(fill="x", pady=10)
+        button_frame.pack(fill="x", pady=15)
         
         self.start_button = ctk.CTkButton(
             button_frame,
@@ -698,11 +866,18 @@ All packages will be installed in an isolated environment that won't affect your
         self.log_message("Starting ManimStudio environment setup...")
         self.update_progress(0.05, "Preparing...", "Initializing environment creation")
         
+        # Get selected packages
+        selected_packages = [pkg for pkg, var in self.package_vars.items() if var.get()]
+        
         # Run setup in background thread
-        setup_thread = threading.Thread(target=self.run_setup, daemon=True)
+        setup_thread = threading.Thread(
+            target=self.run_setup, 
+            args=(selected_packages,),
+            daemon=True
+        )
         setup_thread.start()
         
-    def run_setup(self):
+    def run_setup(self, packages):
         """Run the actual setup process"""
         try:
             # Step 1: Create virtual environment
@@ -728,30 +903,34 @@ All packages will be installed in an isolated environment that won't affect your
             if not success:
                 self.after(0, lambda: self.log_message("WARNING: Could not upgrade pip"))
             
-            # Step 4: Install essential packages
-            self.after(0, lambda: self.update_progress(0.3, "Installing packages...", "Installing Manim and dependencies"))
-            self.after(0, lambda: self.log_message("Installing essential packages..."))
-            
-            success = self.venv_manager.install_essential_packages(
-                self.log_message_threadsafe,
-                self.update_package_progress
-            )
-            
-            if not success:
-                self.after(0, lambda: self.log_message("ERROR: Failed to install some essential packages"))
-                self.after(0, lambda: self.show_error("Some essential packages failed to install"))
-                return
+            # Step 4: Install packages
+            if packages:
+                self.after(0, lambda: self.update_progress(0.3, "Installing packages...", "Installing selected packages"))
+                self.after(0, lambda: self.log_message("Installing packages..."))
                 
-            # Step 5: Install optional packages
-            self.after(0, lambda: self.update_progress(0.8, "Installing optional packages...", "Adding extra functionality"))
-            self.after(0, lambda: self.log_message("Installing optional packages..."))
+                for i, package in enumerate(packages):
+                    progress = 0.3 + (i / len(packages) * 0.6)
+                    self.after(0, lambda p=package, prog=progress: self.update_progress(
+                        prog, 
+                        "Installing packages...", 
+                        f"Installing {p}..."
+                    ))
+                    
+                    # Install package with appropriate CPU usage
+                    cpu_setting = self.cpu_var.get()
+                    self.log_message_threadsafe(f"Installing {package} with {cpu_setting} CPU usage...")
+                    
+                    # Implement package installation with CPU control
+                    success = self.install_package_with_cpu_control(
+                        package, 
+                        cpu_setting,
+                        self.log_message_threadsafe
+                    )
+                    
+                    if not success:
+                        self.after(0, lambda p=package: self.log_message(f"ERROR: Failed to install {p}"))
             
-            self.venv_manager.install_optional_packages(
-                self.log_message_threadsafe,
-                self.update_optional_progress
-            )
-            
-            # Step 6: Verify installation
+            # Step 5: Verify installation
             self.after(0, lambda: self.update_progress(0.95, "Verifying installation...", "Testing all components"))
             self.after(0, lambda: self.log_message("Verifying installation..."))
             
@@ -770,25 +949,62 @@ All packages will be installed in an isolated environment that won't affect your
             self.after(0, lambda: self.log_message(f"ERROR: {error_msg}"))
             self.after(0, lambda: self.show_error(error_msg))
             
+    def install_package_with_cpu_control(self, package, cpu_setting, log_callback):
+        """Install package with CPU usage control"""
+        try:
+            # Determine CPU count based on setting
+            cpu_count = psutil.cpu_count(logical=True)
+            
+            if cpu_setting == "Low":
+                cores = 1
+            elif cpu_setting == "Medium":
+                cores = max(1, cpu_count // 2)
+            else:  # High
+                cores = cpu_count
+                
+            log_callback(f"Using {cores} of {cpu_count} CPU cores for installation")
+            
+            # Create environment variables for CPU control
+            env = os.environ.copy()
+            env["OMP_NUM_THREADS"] = str(cores)
+            env["OPENBLAS_NUM_THREADS"] = str(cores)
+            env["MKL_NUM_THREADS"] = str(cores)
+            env["NUMEXPR_NUM_THREADS"] = str(cores)
+            
+            # Use the platform-appropriate startupinfo to hide console
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+                
+            # Execute pip install with CPU control
+            result = subprocess.run(
+                [self.venv_manager.pip_path, "install", package],
+                capture_output=True,
+                text=True,
+                env=env,
+                startupinfo=startupinfo,
+                creationflags=creationflags
+            )
+            
+            if result.returncode == 0:
+                log_callback(f"Successfully installed {package}")
+                return True
+            else:
+                log_callback(f"Failed to install {package}: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            log_callback(f"Error installing {package}: {str(e)}")
+            return False
+    
     def log_message_threadsafe(self, message):
         """Thread-safe log message method"""
         self.after(0, lambda: self.log_message(message))
-        
-    def update_package_progress(self, package_name, progress):
-        """Update progress for package installation"""
-        self.after(0, lambda: self.update_progress(
-            0.3 + (progress * 0.5),
-            "Installing packages...",
-            f"Installing {package_name}..."
-        ))
-        
-    def update_optional_progress(self, package_name, progress):
-        """Update progress for optional package installation"""
-        self.after(0, lambda: self.update_progress(
-            0.8 + (progress * 0.15),
-            "Installing optional packages...",
-            f"Installing {package_name}..."
-        ))
         
     def setup_complete_ui(self):
         """Update UI when setup is complete"""
@@ -862,7 +1078,7 @@ All packages will be installed in an isolated environment that won't affect your
                 self.destroy()
         else:
             self.destroy()
-
+            
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
     """Enhanced dialog for manual virtual environment management"""
     
