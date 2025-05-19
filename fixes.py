@@ -6,6 +6,52 @@ import subprocess
 import shutil
 import site
 
+# Import the unified process helper early
+try:
+    from process_utils import run_hidden_process, popen_hidden_process
+except ImportError:
+    # Fallback implementation if module is missing
+    def run_hidden_process(command, **kwargs):
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+            kwargs['startupinfo'] = startupinfo
+            kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+            
+        if kwargs.get('capture_output'):
+            kwargs.pop('stdout', None)
+            kwargs.pop('stderr', None)
+        
+        return subprocess.run(command, **kwargs)
+        
+    def popen_hidden_process(command, **kwargs):
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+            kwargs['startupinfo'] = startupinfo
+            kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+        
+        return subprocess.Popen(command, **kwargs)
+
+# Disable zstandard to avoid linking issues - do this as early as possible
+try:
+    import sys
+    sys.modules['zstandard'] = None
+except:
+    pass
+
 def fix_manim_config():
     """Fix the manim configuration issue by creating a default.cfg file"""
     try:
@@ -72,18 +118,70 @@ size = 1280,720
 def apply_fixes():
     """Apply all fixes at startup"""
     fix_manim_config()
+    patch_subprocess()
 
-# Fix the subprocess conflict in our patch
-def fix_subprocess_conflict():
-    """Fix the subprocess capture_output and stdout/stderr conflict"""
-    original_run = subprocess.run
-    
-    def fixed_run(*args, **kwargs):
-        """Fixed run that properly handles stdout/stderr with capture_output"""
-        if 'capture_output' in kwargs and kwargs['capture_output']:
-            # Remove stdout/stderr if capture_output is True
-            kwargs.pop('stdout', None)
-            kwargs.pop('stderr', None)
-        return original_run(*args, **kwargs)
-    
-    subprocess.run = fixed_run
+# Enhanced subprocess patching that uses our unified helpers
+def patch_subprocess():
+    """Patch subprocess to use our hidden process helpers"""
+    try:
+        # Check if already patched to prevent recursion
+        if hasattr(subprocess, '_manimstudio_patched'):
+            return True
+            
+        # Save originals
+        original_run = subprocess.run
+        original_popen = subprocess.Popen
+        
+        # Define wrappers that don't trigger recursion
+        def safe_run_wrapper(*args, **kwargs):
+            # Add window hiding for Windows
+            if sys.platform == "win32":
+                startupinfo = kwargs.get('startupinfo')
+                if not startupinfo:
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    kwargs['startupinfo'] = startupinfo
+                
+                # Add creation flags to hide console
+                if 'creationflags' not in kwargs:
+                    kwargs['creationflags'] = 0
+                kwargs['creationflags'] |= subprocess.CREATE_NO_WINDOW
+                
+            # Handle capture_output conflict
+            if kwargs.get('capture_output') and ('stdout' in kwargs or 'stderr' in kwargs):
+                kwargs.pop('stdout', None)
+                kwargs.pop('stderr', None)
+            
+            # Call the original directly
+            return original_run(*args, **kwargs)
+        
+        def safe_popen_wrapper(*args, **kwargs):
+            # Add window hiding for Windows
+            if sys.platform == "win32":
+                startupinfo = kwargs.get('startupinfo')
+                if not startupinfo:
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    kwargs['startupinfo'] = startupinfo
+                
+                # Add creation flags to hide console
+                if 'creationflags' not in kwargs:
+                    kwargs['creationflags'] = 0
+                kwargs['creationflags'] |= subprocess.CREATE_NO_WINDOW
+            
+            # Call the original directly
+            return original_popen(*args, **kwargs)
+        
+        # Replace with our wrappers
+        subprocess.run = safe_run_wrapper
+        subprocess.Popen = safe_popen_wrapper
+        
+        # Mark as patched to prevent infinite recursion
+        subprocess._manimstudio_patched = True
+        
+        return True
+    except Exception as e:
+        print(f"Error patching subprocess: {e}")
+        return False

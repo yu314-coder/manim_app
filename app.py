@@ -2313,7 +2313,6 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         """Handle window close attempt"""
         # Ignore if creation is in progress
         pass
-
 class VirtualEnvironmentManager:
     """Enhanced virtual environment manager with integrated environment building and detailed logging"""
     
@@ -2518,8 +2517,12 @@ except Exception as e:
                     script_path = f.name
                 
                 # Execute the script with visible console for debugging
+                # Get reference to original subprocess run
+                import subprocess
+                original_run = getattr(subprocess, '_original_run', subprocess.run)
+                
                 self.logger.info(f"Running venv creation script: {script_path}")
-                result = subprocess.run(
+                result = original_run(
                     [sys.executable, script_path],
                     capture_output=True,
                     text=True
@@ -2589,21 +2592,24 @@ try:
     )
     
     if result.returncode == 0:
-        print("SUCCESS: Installed {pkg}")
-        print(result.stdout)
-        sys.exit(0)
-    else:
-        print("ERROR: Failed to install {pkg}")
-        print(result.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f"EXCEPTION: {{str(e)}}")
-    sys.exit(2)
+                                        print("SUCCESS: Installed {pkg}")
+                                        print(result.stdout)
+                                        sys.exit(0)
+                                    else:
+                                        print("ERROR: Failed to install {pkg}")
+                                        print(result.stderr)
+                                        sys.exit(1)
+                                except Exception as e:
+                                    print(f"EXCEPTION: {{str(e)}}")
+                                    sys.exit(2)
 """)
                                         script_path = f.name
                                         
                                     # Run the script
-                                    result = subprocess.run(
+                                    import subprocess
+                                    original_run = getattr(subprocess, '_original_run', subprocess.run)
+                                    
+                                    result = original_run(
                                         [sys.executable, script_path],
                                         capture_output=True,
                                         text=True
@@ -2621,25 +2627,15 @@ except Exception as e:
                                         self.logger.error(f"Failed to install {pkg}: {result.stderr}")
                                 else:
                                     # Normal installation for non-frozen environment
-                                    # Create process with hidden console
                                     import subprocess
-                                    if os.name == 'nt':
-                                        startupinfo = subprocess.STARTUPINFO()
-                                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                                        creationflags = subprocess.CREATE_NO_WINDOW
-                                    else:
-                                        startupinfo = None
-                                        creationflags = 0
-                                        
+                                    original_run = getattr(subprocess, '_original_run', subprocess.run)
+                                    
                                     cmd = [self.pip_path, "install", pkg, "--quiet"]
                                     self.logger.info(f"Running: {' '.join(cmd)}")
-                                    result = subprocess.run(
+                                    result = original_run(
                                         cmd,
                                         capture_output=True,
-                                        text=True,
-                                        startupinfo=startupinfo,
-                                        creationflags=creationflags
+                                        text=True
                                     )
                                     
                                     if result.returncode == 0:
@@ -2717,6 +2713,10 @@ except Exception as e:
                 self.logger.error(f"Python executable not found: {python_exe}")
                 return False
                 
+            # Get reference to original subprocess functions to avoid recursion
+            import subprocess
+            original_run = getattr(subprocess, '_original_run', subprocess.run)
+                
             # Test essential packages
             essential_test = ["manim", "numpy", "customtkinter", "PIL"]
             missing_packages = []
@@ -2746,7 +2746,7 @@ if missing:
                     test_script_path = f.name
                 
                 # Execute without hidden console to ensure it works
-                result = subprocess.run(
+                result = original_run(
                     [python_exe, test_script_path] + essential_test,
                     capture_output=True,
                     text=True
@@ -2758,9 +2758,7 @@ if missing:
                 except:
                     pass
             else:
-                # Normal case - can use hidden console
-                # Use a single process instead of multiple ones
-                # Create a test script that checks all packages at once
+                # Normal case - use original_run directly
                 test_script = """
 import sys
 missing = []
@@ -2784,24 +2782,12 @@ if missing:
                     f.write(test_script)
                     test_script_path = f.name
                 
-                # Hide console window
-                startupinfo = None
-                creationflags = 0
-                if os.name == 'nt':
-                    import subprocess
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
-                
-                # Run a single process to test all packages
+                # Run a single process to test all packages - use original run directly
                 cmd = [python_exe, test_script_path] + essential_test
-                result = subprocess.run(
+                result = original_run(
                     cmd,
                     capture_output=True,
-                    text=True,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags
+                    text=True
                 )
                 
                 try:
@@ -2948,6 +2934,10 @@ if missing:
             if log_callback:
                 log_callback("Creating new virtual environment...")
             
+            # Access original subprocess functions to avoid recursion
+            import subprocess
+            original_run = getattr(subprocess, '_original_run', subprocess.run)
+            
             # FIXED: When running from a Nuitka-built executable, use script-based approach
             if getattr(sys, 'frozen', False):
                 # We're running in a frozen/executable environment
@@ -2972,7 +2962,7 @@ except Exception as e:
                 if log_callback:
                     log_callback(f"Executing venv creation script: {script_path}")
                 
-                result = subprocess.run(
+                result = original_run(
                     [sys.executable, script_path],
                     capture_output=True,
                     text=True
@@ -3052,6 +3042,10 @@ except Exception as e:
             if log_callback:
                 log_callback("Upgrading pip...")
             
+            # Access original subprocess functions
+            import subprocess
+            original_run = getattr(subprocess, '_original_run', subprocess.run)
+            
             # FIXED: Special handling for executables with hidden consoles
             if getattr(sys, 'frozen', False):
                 # Create a temporary script for the upgrade
@@ -3082,8 +3076,8 @@ except Exception as e:
 """)
                     script_path = f.name
                 
-                # Run the script without hiding console
-                result = subprocess.run(
+                # Run the script
+                result = original_run(
                     [sys.executable, script_path],
                     capture_output=True,
                     text=True
@@ -3104,23 +3098,12 @@ except Exception as e:
                         log_callback("Pip upgraded successfully")
                     return True
             else:
-                # Normal case - can use hidden console
-                # Ensure console is hidden
-                import subprocess
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
-                    
-                result = subprocess.run([
-                    self.python_path, "-m", "pip", "install", "--upgrade", "pip"
-                ], capture_output=True, text=True, 
-                   startupinfo=startupinfo, 
-                   creationflags=creationflags)
+                # Normal case - use original_run directly
+                result = original_run(
+                    [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
+                    capture_output=True,
+                    text=True
+                )
                 
                 if result.returncode != 0:
                     if log_callback:
@@ -3144,6 +3127,10 @@ except Exception as e:
             if log_callback:
                 log_callback("ERROR: No virtual environment active")
             return False
+        
+        # Get reference to original subprocess functions
+        import subprocess
+        original_run = getattr(subprocess, '_original_run', subprocess.run)
             
         failed_packages = []
         total_packages = len(ESSENTIAL_PACKAGES)
@@ -3176,7 +3163,7 @@ import sys
 import os
 
 try:
-    # Execute pip command with visible window
+    # Execute pip command with basic subprocess
     result = subprocess.run(
         [r"{self.pip_path}", "install", "{package}"],
         capture_output=True,
@@ -3198,7 +3185,7 @@ except Exception as e:
                         script_path = f.name
                         
                     # Run the script
-                    result = subprocess.run(
+                    result = original_run(
                         [sys.executable, script_path],
                         capture_output=True,
                         text=True
@@ -3223,22 +3210,11 @@ except Exception as e:
                         failed_packages.append(package)
                 else:
                     # Normal installation for non-frozen environment
-                    # Set up console hiding
-                    import subprocess
-                    startupinfo = None
-                    creationflags = 0
-                    
-                    if os.name == 'nt':
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        creationflags = subprocess.CREATE_NO_WINDOW
-                        
-                    result = subprocess.run([
-                        self.pip_path, "install", package
-                    ], capture_output=True, text=True,
-                       startupinfo=startupinfo,
-                       creationflags=creationflags)
+                    result = original_run(
+                        [self.pip_path, "install", package],
+                        capture_output=True, 
+                        text=True
+                    )
                     
                     if result.returncode == 0:
                         success_msg = f"Successfully installed {package}"
@@ -3276,6 +3252,10 @@ except Exception as e:
         """Install optional packages with special handling for hidden consoles"""
         if not self.current_venv:
             return False
+        
+        # Get reference to original subprocess functions
+        import subprocess
+        original_run = getattr(subprocess, '_original_run', subprocess.run)
             
         # Install first 5 optional packages
         optional_subset = OPTIONAL_PACKAGES[:5]
@@ -3302,7 +3282,7 @@ import sys
 import os
 
 try:
-    # Execute pip command without hidden window
+    # Execute pip command without recursion
     result = subprocess.run(
         [r"{self.pip_path}", "install", "{package}"],
         capture_output=True,
@@ -3324,7 +3304,7 @@ except Exception as e:
                         script_path = f.name
                         
                     # Run the script
-                    result = subprocess.run(
+                    result = original_run(
                         [sys.executable, script_path],
                         capture_output=True,
                         text=True
@@ -3344,22 +3324,11 @@ except Exception as e:
                             log_callback(f"Could not install optional {package}")
                 else:
                     # Normal installation for non-frozen environment
-                    # Set up console hiding
-                    import subprocess
-                    startupinfo = None
-                    creationflags = 0
-                    
-                    if os.name == 'nt':
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        creationflags = subprocess.CREATE_NO_WINDOW
-                        
-                    result = subprocess.run([
-                        self.pip_path, "install", package
-                    ], capture_output=True, text=True,
-                       startupinfo=startupinfo,
-                       creationflags=creationflags)
+                    result = original_run(
+                        [self.pip_path, "install", package],
+                        capture_output=True,
+                        text=True
+                    )
                     
                     if result.returncode == 0:
                         if log_callback:
@@ -3382,6 +3351,10 @@ except Exception as e:
         if log_callback:
             log_callback("Verifying installation...")
         
+        # Get reference to original subprocess functions
+        import subprocess
+        original_run = getattr(subprocess, '_original_run', subprocess.run)
+        
         # FIXED: Special handling for executables with hidden consoles
         if getattr(sys, 'frozen', False):
             # Create a script for verification
@@ -3403,7 +3376,7 @@ except ImportError as e:
                         script_path = f.name
                     
                     # Run the script
-                    result = subprocess.run(
+                    result = original_run(
                         [self.python_path, script_path],
                         capture_output=True,
                         text=True
@@ -3429,24 +3402,14 @@ except ImportError as e:
                     return False
         else:
             # Normal verification for non-frozen environment
-            # Set up console hiding
-            import subprocess
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-                
             for package in test_packages:
                 try:
-                    result = subprocess.run([
-                        self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, \"__version__\", \"unknown\")}}')"
-                    ], capture_output=True, text=True,
-                       startupinfo=startupinfo,
-                       creationflags=creationflags)
+                    result = original_run(
+                        [self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, \"__version__\", \"unknown\")}}')"
+                        ],
+                        capture_output=True,
+                        text=True
+                    )
                     
                     if result.returncode == 0:
                         if log_callback:
@@ -3476,8 +3439,12 @@ print("Manim test successful")
 
         # FIXED: Special handling for executables with hidden consoles
         try:
+            import subprocess
+            original_run = getattr(subprocess, '_original_run', subprocess.run)
+            
             if getattr(sys, 'frozen', False):
                 # Create a temporary test file
+                import tempfile
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
                     f.write(test_code)
                     temp_file = f.name
@@ -3510,7 +3477,7 @@ except Exception as e:
                     wrapper_script = f.name
                 
                 # Run the wrapper script
-                result = subprocess.run(
+                result = original_run(
                     [sys.executable, wrapper_script],
                     capture_output=True,
                     text=True
@@ -3531,30 +3498,24 @@ except Exception as e:
                         log_callback(f"Manim scene test failed: {result.stderr}")
                     return False
             else:
-                # Normal case - can use hidden console
+                # Normal case - use original_run directly
                 # Create temporary test file
+                import tempfile
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
                     f.write(test_code)
                     temp_file = f.name
                 
-                # Set up console hiding
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
-                
-                result = subprocess.run([
-                    self.python_path, temp_file
-                ], capture_output=True, text=True,
-                   startupinfo=startupinfo,
-                   creationflags=creationflags)
+                result = original_run(
+                    [self.python_path, temp_file],
+                    capture_output=True,
+                    text=True
+                )
                 
                 # Clean up
-                os.unlink(temp_file)
+                try:
+                    os.unlink(temp_file)
+                except:
+                    pass
                 
                 if result.returncode == 0:
                     if log_callback:
@@ -3607,6 +3568,10 @@ except Exception as e:
         venv_path = os.path.join(self.venv_dir, name)
         
         try:
+            # Get reference to original subprocess functions
+            import subprocess
+            original_run = getattr(subprocess, '_original_run', subprocess.run)
+            
             # FIXED: Special handling for executables with hidden consoles
             if getattr(sys, 'frozen', False):
                 # Create a temporary script
@@ -3628,7 +3593,7 @@ except Exception as e:
                     script_path = f.name
                 
                 # Run the script
-                result = subprocess.run(
+                result = original_run(
                     [sys.executable, script_path],
                     capture_output=True,
                     text=True
@@ -3678,6 +3643,10 @@ except Exception as e:
             if callback:
                 callback(False, "", "No virtual environment active")
             return False, "No virtual environment active"
+        
+        # Get reference to original subprocess functions
+        import subprocess
+        original_run = getattr(subprocess, '_original_run', subprocess.run)
             
         def install_thread():
             try:
@@ -3692,7 +3661,7 @@ import sys
 import os
 
 try:
-    # Execute pip command with visible window
+    # Execute pip command directly
     result = subprocess.run(
         [r"{self.pip_path}", "install", "{package_name}"],
         capture_output=True,
@@ -3700,21 +3669,19 @@ try:
     )
     
     if result.returncode == 0:
-        print("SUCCESS: Installed {package_name}")
         print(result.stdout)
         sys.exit(0)
     else:
-        print("ERROR: Failed to install {package_name}")
         print(result.stderr)
         sys.exit(1)
 except Exception as e:
-    print(f"EXCEPTION: {{str(e)}}")
+    print(f"{{str(e)}}")
     sys.exit(2)
 """)
                         script_path = f.name
                         
                     # Run the script
-                    result = subprocess.run(
+                    result = original_run(
                         [sys.executable, script_path],
                         capture_output=True,
                         text=True
@@ -3731,21 +3698,11 @@ except Exception as e:
                     stderr = result.stderr
                 else:
                     # Normal installation for non-frozen environment
-                    # Set up console hiding
-                    startupinfo = None
-                    creationflags = 0
-                    
-                    if os.name == 'nt':
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        creationflags = subprocess.CREATE_NO_WINDOW
-                        
-                    result = subprocess.run([
-                        self.pip_path, "install", package_name
-                    ], capture_output=True, text=True,
-                       startupinfo=startupinfo,
-                       creationflags=creationflags)
+                    result = original_run(
+                        [self.pip_path, "install", package_name],
+                        capture_output=True,
+                        text=True
+                    )
                     
                     success = result.returncode == 0
                     stdout = result.stdout
@@ -3768,6 +3725,10 @@ except Exception as e:
             if callback:
                 callback(False, "", "No virtual environment active")
             return False, "No virtual environment active"
+        
+        # Get reference to original subprocess functions
+        import subprocess
+        original_run = getattr(subprocess, '_original_run', subprocess.run)
             
         def uninstall_thread():
             try:
@@ -3782,7 +3743,7 @@ import sys
 import os
 
 try:
-    # Execute pip command with visible window
+    # Execute pip command directly
     result = subprocess.run(
         [r"{self.pip_path}", "uninstall", "-y", "{package_name}"],
         capture_output=True,
@@ -3790,21 +3751,19 @@ try:
     )
     
     if result.returncode == 0:
-        print("SUCCESS: Uninstalled {package_name}")
         print(result.stdout)
         sys.exit(0)
     else:
-        print("ERROR: Failed to uninstall {package_name}")
         print(result.stderr)
         sys.exit(1)
 except Exception as e:
-    print(f"EXCEPTION: {{str(e)}}")
+    print(f"{{str(e)}}")
     sys.exit(2)
 """)
                         script_path = f.name
                         
                     # Run the script
-                    result = subprocess.run(
+                    result = original_run(
                         [sys.executable, script_path],
                         capture_output=True,
                         text=True
@@ -3821,21 +3780,11 @@ except Exception as e:
                     stderr = result.stderr
                 else:
                     # Normal uninstallation for non-frozen environment
-                    # Set up console hiding
-                    startupinfo = None
-                    creationflags = 0
-                    
-                    if os.name == 'nt':
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        creationflags = subprocess.CREATE_NO_WINDOW
-                        
-                    result = subprocess.run([
-                        self.pip_path, "uninstall", "-y", package_name
-                    ], capture_output=True, text=True,
-                       startupinfo=startupinfo,
-                       creationflags=creationflags)
+                    result = original_run(
+                        [self.pip_path, "uninstall", "-y", package_name],
+                        capture_output=True,
+                        text=True
+                    )
                     
                     success = result.returncode == 0
                     stdout = result.stdout
@@ -3858,6 +3807,10 @@ except Exception as e:
             if callback:
                 callback(False, [], "No virtual environment active")
             return False, "No virtual environment active"
+        
+        # Get reference to original subprocess functions
+        import subprocess
+        original_run = getattr(subprocess, '_original_run', subprocess.run)
             
         def list_thread():
             try:
@@ -3873,7 +3826,7 @@ import os
 import json
 
 try:
-    # Execute pip command with visible window
+    # Execute pip command directly without hiding
     result = subprocess.run(
         [r"{self.pip_path}", "list", "--format=json"],
         capture_output=True,
@@ -3881,20 +3834,24 @@ try:
     )
     
     if result.returncode == 0:
-        print(result.stdout)
-        sys.exit(0)
+        try:
+            packages = json.loads(result.stdout)
+            print(json.dumps(packages))
+            sys.exit(0)
+        except Exception as e:
+            print(f"{{str(e)}}")
+            sys.exit(1)
     else:
-        print("ERROR: Failed to list packages")
         print(result.stderr)
         sys.exit(1)
 except Exception as e:
-    print(f"EXCEPTION: {{str(e)}}")
+    print(f"{{str(e)}}")
     sys.exit(2)
 """)
                         script_path = f.name
                         
                     # Run the script
-                    result = subprocess.run(
+                    result = original_run(
                         [sys.executable, script_path],
                         capture_output=True,
                         text=True
@@ -3908,41 +3865,33 @@ except Exception as e:
                         
                     if result.returncode == 0:
                         try:
+                            import json
                             packages = json.loads(result.stdout)
                             if callback:
                                 callback(True, packages, "")
-                        except:
+                        except Exception as e:
                             if callback:
-                                callback(False, [], result.stdout)
+                                callback(False, [], f"Error parsing package list: {e}")
                     else:
                         if callback:
                             callback(False, [], result.stderr)
                 else:
                     # Normal listing for non-frozen environment
-                    # Set up console hiding
-                    startupinfo = None
-                    creationflags = 0
-                    
-                    if os.name == 'nt':
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        creationflags = subprocess.CREATE_NO_WINDOW
-                        
-                    result = subprocess.run([
-                        self.pip_path, "list", "--format=json"
-                    ], capture_output=True, text=True,
-                       startupinfo=startupinfo,
-                       creationflags=creationflags)
+                    result = original_run(
+                        [self.pip_path, "list", "--format=json"],
+                        capture_output=True,
+                        text=True
+                    )
                     
                     if result.returncode == 0:
                         try:
+                            import json
                             packages = json.loads(result.stdout)
                             if callback:
                                 callback(True, packages, "")
-                        except:
+                        except Exception as e:
                             if callback:
-                                callback(False, [], result.stdout)
+                                callback(False, [], f"Error parsing package list: {e}")
                     else:
                         if callback:
                             callback(False, [], result.stderr)
@@ -3990,6 +3939,10 @@ except Exception as e:
             # Get Python version
             python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
             
+            # Get reference to original subprocess run function
+            import subprocess
+            original_run = getattr(subprocess, '_original_run', subprocess.run)
+            
             # FIXED: Special handling for executables with hidden consoles
             if getattr(sys, 'frozen', False):
                 # Create a script to get Python version
@@ -4016,7 +3969,7 @@ except:
                     script_path = f.name
                 
                 # Run the script
-                result = subprocess.run(
+                result = original_run(
                     [sys.executable, script_path],
                     capture_output=True,
                     text=True
@@ -4031,6 +3984,7 @@ except:
                 if result.returncode == 0:
                     info['python_version'] = result.stdout.strip()
                 
+                # Create a more reliable package counting approach
                 # Get package count with a script
                 pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
@@ -4040,15 +3994,19 @@ import sys
 import json
 
 try:
+    # Use a simple pip command that won't trigger recursion
     result = subprocess.run(
-        [r"{pip_exe}", "list", "--format=json"], 
-        capture_output=True,
+        [r"{pip_exe}", "list", "--format=json"],
+        capture_output=True, 
         text=True
     )
     
     if result.returncode == 0:
-        packages = json.loads(result.stdout)
-        print(len(packages))
+        try:
+            packages = json.loads(result.stdout)
+            print(len(packages))
+        except:
+            print("0")
     else:
         print("0")
 except:
@@ -4057,7 +4015,7 @@ except:
                     count_script_path = f.name
                 
                 # Run the script
-                count_result = subprocess.run(
+                count_result = original_run(
                     [sys.executable, count_script_path],
                     capture_output=True,
                     text=True
@@ -4073,25 +4031,14 @@ except:
                     try:
                         info['packages_count'] = int(count_result.stdout.strip())
                     except:
-                        pass
+                        info['packages_count'] = 0
             else:
-                # Normal case - can use hidden console
-                # Set up console hiding
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
-                    
-                result = subprocess.run(
-                    [python_exe, "--version"], 
-                    capture_output=True, 
-                    text=True,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags
+                # Normal case - use original_run directly
+                # Get Python version
+                result = original_run(
+                    [python_exe, "--version"],
+                    capture_output=True,
+                    text=True
                 )
                 
                 if result.returncode == 0:
@@ -4099,43 +4046,54 @@ except:
                     
                 # Get package count
                 pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-                result = subprocess.run(
-                    [pip_exe, "list", "--format=json"], 
-                    capture_output=True, 
-                    text=True,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags
+                result = original_run(
+                    [pip_exe, "list", "--format=json"],
+                    capture_output=True,
+                    text=True
                 )
                 
                 if result.returncode == 0:
                     try:
+                        import json
                         packages = json.loads(result.stdout)
                         info['packages_count'] = len(packages)
                     except:
-                        pass
+                        info['packages_count'] = 0
                 
             # Get directory size
             info['size'] = self._get_directory_size(venv_path)
             
         except Exception as e:
-            print(f"Error getting venv info: {e}")
+            self.logger.error(f"Error getting venv info: {e}")
             
         return info
     
     def _get_directory_size(self, path):
         """Get the total size of a directory in bytes"""
+        if not os.path.exists(path):
+            return 0
+            
         total_size = 0
         try:
+            # Count files directly to avoid recursion issues
+            file_count = 0
             for dirpath, dirnames, filenames in os.walk(path):
                 for filename in filenames:
-                    filepath = os.path.join(dirpath, filename)
+                    file_count += 1
                     try:
-                        total_size += os.path.getsize(filepath)
-                    except (OSError, IOError):
+                        filepath = os.path.join(dirpath, filename)
+                        if os.path.exists(filepath) and os.path.isfile(filepath):
+                            total_size += os.path.getsize(filepath)
+                    except (OSError, IOError) as e:
+                        self.logger.error(f"Error getting file size: {e}")
                         continue
-        except Exception:
-            pass
-        return total_size
+                        
+            self.logger.info(f"Calculated size for {path}: {total_size} bytes ({file_count} files)")
+        except Exception as e:
+            self.logger.error(f"Error walking directory {path}: {e}")
+        
+        # Return at least 1KB to avoid showing 0
+        return max(1024, total_size)
 
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
@@ -7757,8 +7715,8 @@ class MyScene(Scene):
                 self.root.after(5000, cleanup)
                 
             except Exception as e:
-                self.root.after(0, lambda: self.update_status(f"Preview error: {e}"))
-                self.root.after(0, lambda: self.append_output(f"Preview error: {e}\n"))
+                self.root.after(0, lambda e=e: self.update_status(f"Preview error: {e}"))
+                self.root.after(0, lambda e=e: self.append_output(f"Preview error: {e}\n"))
                 
             finally:
                 self.root.after(0, lambda: self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal"))
@@ -7915,8 +7873,8 @@ class MyScene(Scene):
                     shutil.rmtree(temp_dir)
                     
             except Exception as e:
-                self.root.after(0, lambda: self.update_status(f"Render error: {e}"))
-                self.root.after(0, lambda: self.append_output(f"Render error: {e}\n"))
+                self.root.after(0, lambda e=e: self.update_status(f"Render error: {e}"))
+                self.root.after(0, lambda e=e: self.append_output(f"Render error: {e}\n"))
                 
             finally:
                 self.root.after(0, lambda: self.render_button.configure(text="🚀 Render Animation", state="normal"))
