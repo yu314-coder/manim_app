@@ -14,10 +14,9 @@ import time
 import threading
 import io
 import codecs
-
+import tqdm 
 # Global flag to use ASCII instead of Unicode symbols
 USE_ASCII_ONLY = True
-
 def build_self_contained_version(jobs=None, priority="normal"):
     """Build self-contained version with NO CONSOLE EVER"""
     
@@ -108,9 +107,11 @@ def build_self_contained_version(jobs=None, priority="normal"):
     cmd.append("--nofollow-import-to=test.support")
     cmd.append("--nofollow-import-to=_distutils_hack")
     
+    # IMPORTANT: Use show-progress instead of no-progressbar
+    cmd.append("--show-progress")
+    
     # Add optimization flags that don't use LTO
     cmd.extend([
-        "--no-progressbar",                    # Disable progress bar
         "--remove-output",                     # Remove intermediate files to reduce I/O
         "--assume-yes-for-downloads",          # Don't prompt for downloads
         "--mingw64",                           # Use MinGW64 compiler
@@ -121,7 +122,7 @@ def build_self_contained_version(jobs=None, priority="normal"):
     # Check for importable packages and include only those that exist
     essential_packages = [
         "customtkinter", "tkinter", "PIL", "numpy", "cv2", 
-        "matplotlib", "scipy", "manim", "jedi", "process_utils"  # Added process_utils
+        "matplotlib", "scipy", "manim", "jedi"
     ]
     
     included_packages = []
@@ -144,8 +145,8 @@ def build_self_contained_version(jobs=None, priority="normal"):
     # Include critical modules that are part of standard library
     essential_modules = [
         "json", "tempfile", "threading", "subprocess", 
-        "os", "sys", "ctypes", "venv", "fixes", "psutil", 
-        "process_utils"  # Added process_utils
+        "os", "sys", "ctypes", "venv", "fixes", "psutil",
+        "process_utils"
     ]
     
     for module in essential_modules:
@@ -202,91 +203,34 @@ def build_self_contained_version(jobs=None, priority="normal"):
         else:
             print("🔥 Setting HIGH process priority for maximum CPU utilization")
         process_priority = 0x00000080  # HIGH_PRIORITY_CLASS
-        
-    # Use unified helper for console hiding
-    process = run_hidden_process(
+    
+    # IMPORTANT: Use standard subprocess directly to ensure output is visible
+    process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        bufsize=1,
+        bufsize=1,  # Line buffered output
         universal_newlines=True,
         env=env,
         creationflags=process_priority if sys.platform == "win32" else 0
     )
     
-    # Store process for priority management
-    try:
-        nuitka_process = psutil.Process(process.pid)
-        
-        # For non-Windows platforms, set process priority
-        if priority == "high" and sys.platform != "win32":
-            try:
-                nuitka_process.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
-            except:
-                pass
-                
-        # Print CPU info
-        if USE_ASCII_ONLY:
-            print(f"CPU Info: {cpu_count} logical cores available")
-            print(f"Using {jobs} compilation threads")
-        else:
-            print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-            print(f"⚙️ Using {jobs} compilation threads")
-    except:
-        pass
-    
-    # Start CPU monitoring thread
-    stop_monitoring = False
-    def monitor_cpu_usage():
-        total_samples = 0
-        total_percent = 0
-        low_usage_count = 0
-        
-        while not stop_monitoring and process.poll() is None:
-            try:
-                cpu_percent = psutil.cpu_percent(interval=2.0)
-                total_samples += 1
-                total_percent += cpu_percent
-                
-                # Check for underutilization
-                if cpu_percent < 50:  # Less than 50% utilization
-                    low_usage_count += 1
-                    if low_usage_count >= 3:  # 3 consecutive low readings
-                        if USE_ASCII_ONLY:
-                            print(f"WARNING: CPU underutilized at {cpu_percent:.1f}% - compilation may be memory/IO bound")
-                        else:
-                            print(f"⚠️ CPU underutilized at {cpu_percent:.1f}% - compilation may be memory/IO bound")
-                        low_usage_count = 0
-                else:
-                    low_usage_count = 0
-                    
-                # Print current usage every few samples
-                if total_samples % 5 == 0:
-                    avg = total_percent / total_samples
-                    if USE_ASCII_ONLY:
-                        print(f"Current CPU: {cpu_percent:.1f}%, Average: {avg:.1f}%")
-                    else:
-                        print(f"⚙️ Current CPU: {cpu_percent:.1f}%, Average: {avg:.1f}%")
-            except:
-                time.sleep(2)
-    
-    # Start monitoring in background
-    monitor_thread = threading.Thread(target=monitor_cpu_usage, daemon=True)
-    monitor_thread.start()
+    # Display CPU info
+    if USE_ASCII_ONLY:
+        print(f"CPU Info: {cpu_count} logical cores available")
+        print(f"Using {jobs} compilation threads")
+    else:
+        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
+        print(f"⚙️ Using {jobs} compilation threads")
     
     # Print output in real-time
     while True:
-        output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
+        line = process.stdout.readline()
+        if not line and process.poll() is not None:
             break
-        if output:
-            print(output.strip())
-    
-    # Stop monitoring
-    stop_monitoring = True
-    if monitor_thread.is_alive():
-        monitor_thread.join(timeout=2)
+        if line:
+            print(line.strip())
     
     return_code = process.poll()
     
@@ -332,7 +276,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
             print("❌ Build failed!")
         print(f"Return code: {return_code}")
         return None
-
 def create_subprocess_helper():
     """Create a unified helper module for subprocess handling"""
     helper_content = '''# process_utils.py - Unified helper for subprocess handling with NO CONSOLE
