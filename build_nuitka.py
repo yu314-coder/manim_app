@@ -17,6 +17,43 @@ import codecs
 import tqdm 
 # Global flag to use ASCII instead of Unicode symbols
 USE_ASCII_ONLY = True
+
+def create_nuitka_plugin_patch():
+    """Create a patch to fix Nuitka plugin path issues with Python 3.12"""
+    patch_content = '''
+# nuitka_plugin_patch.py
+import os
+import sys
+
+# Monkey patch os.path functions that handle None incorrectly
+original_abspath = os.path.abspath
+def safe_abspath(path):
+    if path is None:
+        print("WARNING: None path detected in abspath, using empty string instead")
+        path = ""
+    return original_abspath(path)
+
+os.path.abspath = safe_abspath
+
+# Also patch normpath
+original_normpath = os.path.normpath
+def safe_normpath(path):
+    if path is None:
+        print("WARNING: None path detected in normpath, using empty string instead")
+        path = ""
+    return original_normpath(path)
+
+os.path.normpath = safe_normpath
+'''
+    
+    with open("nuitka_plugin_patch.py", "w", encoding="utf-8") as f:
+        f.write(patch_content)
+    
+    if USE_ASCII_ONLY:
+        print("Created Nuitka plugin patch")
+    else:
+        print("📄 Created Nuitka plugin patch")
+
 def build_self_contained_version(jobs=None, priority="normal"):
     """Build self-contained version with NO CONSOLE EVER"""
     
@@ -68,6 +105,9 @@ def build_self_contained_version(jobs=None, priority="normal"):
     # Create helper script for unified subprocess handling
     create_subprocess_helper()
     
+    # Create Nuitka plugin patch for Python 3.12 compatibility
+    create_nuitka_plugin_patch()
+    
     # Check system prerequisites
     if not check_system_prerequisites():
         if USE_ASCII_ONLY:
@@ -83,6 +123,18 @@ def build_self_contained_version(jobs=None, priority="normal"):
     else:
         print(f"📊 Detected Nuitka version: {nuitka_version}")
     
+    # Check for Nuitka version compatibility
+    if nuitka_version.startswith("2.6"):
+        if USE_ASCII_ONLY:
+            print("Warning: Nuitka 2.6.x has plugin issues with Python 3.12, consider updating to 2.7+")
+        else:
+            print("⚠️ Warning: Nuitka 2.6.x has plugin issues with Python 3.12, consider updating to 2.7+")
+    
+    # Apply Nuitka plugin patch for Python 3.12
+    with open("temp_fix.py", "w", encoding="utf-8") as f:
+        f.write("import nuitka_plugin_patch\n")
+    subprocess.run([sys.executable, "temp_fix.py"], check=False)
+    
     # Basic command with universal options
     cmd = [
         sys.executable, "-m", "nuitka",
@@ -90,12 +142,29 @@ def build_self_contained_version(jobs=None, priority="normal"):
         "--onefile",  # Single executable file
     ]
     
+    # Add Python 3.12 compatibility fixes if needed
+    if sys.version_info >= (3, 12, 0):
+        if USE_ASCII_ONLY:
+            print("Detected Python 3.12 - applying compatibility fixes")
+        else:
+            print("🔧 Detected Python 3.12 - applying compatibility fixes")
+        
+        # Python 3.12 compatibility fixes for Nuitka
+        cmd.append("--noinclude-default-mode=error")  # Less strict inclusion
+        cmd.append("--plugin-no-detection")  # Disable automatic plugin detection
+        cmd.append("--include-module=nuitka_plugin_patch")  # Include our patch
+    
     # Enhanced console hiding - use both modern and legacy options for maximum compatibility
     cmd.append("--windows-console-mode=disable")  # Modern option
     cmd.append("--windows-disable-console")       # Legacy option for compatibility
     
-    # Add GUI toolkit for matplotlib
-    cmd.append("--enable-plugin=tk-inter")
+    # Add GUI toolkit for matplotlib - using the safer approach for plugins
+    cmd.append("--plugin-enable=tk-inter")  # Alternative format
+    cmd.append("--enable-plugin=tk-inter")  # Standard format
+    
+    # Explicitly disable problematic plugins
+    cmd.append("--plugin-disable=numpy")
+    cmd.append("--plugin-disable=matplotlib")
     
     # CRITICAL: Completely disable LTO to fix the zstandard error
     cmd.append("--lto=no")
@@ -106,6 +175,12 @@ def build_self_contained_version(jobs=None, priority="normal"):
     cmd.append("--nofollow-import-to=setuptools")
     cmd.append("--nofollow-import-to=test.support")
     cmd.append("--nofollow-import-to=_distutils_hack")
+    
+    # NEW: Exclude Manim testing modules and pytest to avoid errors
+    cmd.append("--nofollow-import-to=manim.utils.testing")
+    cmd.append("--nofollow-import-to=pytest")
+    cmd.append("--nofollow-import-to=unittest")
+    cmd.append("--nofollow-import-to=test")
     
     # IMPORTANT: Use show-progress instead of no-progressbar
     cmd.append("--show-progress")
@@ -118,6 +193,10 @@ def build_self_contained_version(jobs=None, priority="normal"):
         "--disable-ccache",                    # Disable ccache to avoid issues
         "--show-memory",                       # Show memory usage
     ])
+    
+    # Explicitly include tkinter modules
+    for module in ["tkinter", "tkinter.ttk", "tkinter.messagebox", "tkinter.filedialog", "tkinter.colorchooser"]:
+        cmd.append(f"--include-module={module}")
     
     # Check for importable packages and include only those that exist
     essential_packages = [
@@ -146,7 +225,7 @@ def build_self_contained_version(jobs=None, priority="normal"):
     essential_modules = [
         "json", "tempfile", "threading", "subprocess", 
         "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils"
+        "process_utils", "nuitka_plugin_patch"
     ]
     
     for module in essential_modules:
@@ -189,11 +268,13 @@ def build_self_contained_version(jobs=None, priority="normal"):
     print("Command:", " ".join(cmd))
     print("=" * 60)
     
-    # Create environment variables to force disable LTO in GCC
+    # Create environment variables to force disable LTO in GCC and handle plugin paths
     env = os.environ.copy()
     env["GCC_LTO"] = "0"
     env["NUITKA_DISABLE_LTO"] = "1"
     env["GCC_COMPILE_ARGS"] = "-fno-lto"
+    env["NUITKA_PLUGIN_PATH_HANDLING"] = "strict"
+    env["NUITKA_PLUGIN_DISABLE"] = "true"  # Extra safety to disable plugins
     
     # Set process priority if on Windows
     process_priority = 0  # Normal priority by default
@@ -276,6 +357,7 @@ def build_self_contained_version(jobs=None, priority="normal"):
             print("❌ Build failed!")
         print(f"Return code: {return_code}")
         return None
+
 def create_subprocess_helper():
     """Create a unified helper module for subprocess handling"""
     helper_content = '''# process_utils.py - Unified helper for subprocess handling with NO CONSOLE
