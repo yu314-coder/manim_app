@@ -7,6 +7,11 @@ import os
 import logging
 import json
 import subprocess
+try:
+    from process_utils import popen_original, run_original
+except Exception:
+    popen_original = subprocess.Popen
+    run_original = subprocess.run
 import sys
 import time
 import uuid
@@ -484,7 +489,7 @@ class TkTerminal(tk.Text):
             if env:
                 env_vars.update(env)
                 
-            process = subprocess.Popen(
+            process = popen_original(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -1152,7 +1157,7 @@ All packages will be installed in an isolated environment that won't affect your
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
             # Execute pip install with CPU control
-            result = subprocess.run(
+            result = run_original(
                 [self.venv_manager.pip_path, "install", package],
                 capture_output=True,
                 text=True,
@@ -2433,7 +2438,7 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             startupinfo.wShowWindow = subprocess.SW_HIDE
             creationflags = subprocess.CREATE_NO_WINDOW
             
-        return subprocess.run(
+        return run_original(
             command,
             capture_output=True,
             text=True,
@@ -2600,8 +2605,8 @@ class VirtualEnvironmentManager:
         executable_dir = Path(os.path.dirname(sys.executable))
         bundled_dir = executable_dir / "bundled_venv"
         
-        # For onefile builds, check in temp directory
-        if not bundled_dir.exists() and getattr(sys, 'frozen', False):
+        # Also check temporary extraction paths used by onefile builds
+        if not bundled_dir.exists():
             self.logger.info("Checking for bundled environment in temp directory...")
             for path in sys.path:
                 if 'onefile_' in path and os.path.exists(path):
@@ -2849,7 +2854,7 @@ except ImportError:
                     
                     # Test each package
                     for pkg in essential_test:
-                        result = subprocess.run(
+                        result = run_original(
                             [python_exe, script_path, pkg],
                             capture_output=True,
                             text=True
@@ -2890,7 +2895,7 @@ if missing:
                         f.write(test_script)
                         script_path = f.name
                     
-                    result = subprocess.run(
+                    result = run_original(
                         [python_exe, script_path] + essential_test,
                         capture_output=True,
                         text=True
