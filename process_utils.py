@@ -3,15 +3,20 @@ import subprocess
 import sys
 import os
 
-# Store original references to subprocess functions before they get patched
-# This ensures we always have direct access to the original functions
-if not hasattr(subprocess, '_original_stored'):
+# Store original references to subprocess functions before they get patched.
+# If the patching has already happened (e.g. via ENHANCED_NO_CONSOLE_PATCH),
+# these attributes will already exist and we must not overwrite them.
+if not hasattr(subprocess, '_original_run'):
     subprocess._original_run = subprocess.run
+if not hasattr(subprocess, '_original_popen'):
     subprocess._original_popen = subprocess.Popen
+if not hasattr(subprocess, '_original_call'):
     subprocess._original_call = subprocess.call
+if not hasattr(subprocess, '_original_check_output'):
     subprocess._original_check_output = subprocess.check_output
+if not hasattr(subprocess, '_original_check_call'):
     subprocess._original_check_call = subprocess.check_call
-    subprocess._original_stored = True
+subprocess._original_stored = True
 
 def run_hidden_process(command, **kwargs):
     """Run a process with hidden console window
