@@ -2600,8 +2600,8 @@ class VirtualEnvironmentManager:
         executable_dir = Path(os.path.dirname(sys.executable))
         bundled_dir = executable_dir / "bundled_venv"
         
-        # For onefile builds, check in temp directory
-        if not bundled_dir.exists() and getattr(sys, 'frozen', False):
+        # Also check temporary extraction paths used by onefile builds
+        if not bundled_dir.exists():
             self.logger.info("Checking for bundled environment in temp directory...")
             for path in sys.path:
                 if 'onefile_' in path and os.path.exists(path):
