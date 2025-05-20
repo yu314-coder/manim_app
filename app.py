@@ -350,7 +350,177 @@ class PackageInfo:
     def __post_init__(self):
         if self.dependencies is None:
             self.dependencies = []
-
+# Terminal emulation in Tkinter
+class TkTerminal(tk.Text):
+    """A Tkinter-based terminal emulator widget"""
+    
+    def __init__(self, parent, **kwargs):
+        kwargs.setdefault('background', 'black')
+        kwargs.setdefault('foreground', '#00ff00')
+        kwargs.setdefault('insertbackground', 'white')
+        kwargs.setdefault('selectbackground', '#4d4d4d')
+        kwargs.setdefault('highlightthickness', 0)
+        kwargs.setdefault('relief', 'flat')
+        kwargs.setdefault('font', ('Consolas', 10))
+        super().__init__(parent, **kwargs)
+        
+        self.process = None
+        self.command_history = []
+        self.history_index = 0
+        self.command_buffer = ""
+        self.input_start = "1.0"
+        
+        # Configure tags
+        self.tag_configure("output", foreground="#aaaaaa")
+        self.tag_configure("error", foreground="#ff6666")
+        self.tag_configure("prompt", foreground="#4da6ff")
+        
+        # Initialize prompt
+        self.show_prompt()
+        
+        # Bind events
+        self.bind("<Return>", self.on_enter)
+        self.bind("<BackSpace>", self.on_backspace)
+        self.bind("<Up>", self.on_up)
+        self.bind("<Down>", self.on_down)
+        self.bind("<Key>", self.on_key)
+        
+    def show_prompt(self):
+        """Show command prompt"""
+        self.insert("end", "$ ", "prompt")
+        self.input_start = self.index("end-1c")
+        self.see("end")
+        
+    def on_enter(self, event):
+        """Handle Enter key press"""
+        command = self.get(self.input_start, "end-1c")
+        self.insert("end", "\n")
+        
+        # Execute command
+        if command.strip():
+            self.command_history.append(command)
+            self.history_index = len(self.command_history)
+            self.execute_command(command)
+        else:
+            self.show_prompt()
+            
+        return "break"
+        
+    def on_backspace(self, event):
+        """Handle Backspace key press"""
+        if self.index("insert") <= self.input_start:
+            return "break"
+        return None
+        
+    def on_up(self, event):
+        """Navigate command history up"""
+        if self.command_history and self.history_index > 0:
+            # Save current command if at the end of history
+            if self.history_index == len(self.command_history):
+                self.command_buffer = self.get(self.input_start, "end-1c")
+                
+            self.history_index -= 1
+            self.delete(self.input_start, "end-1c")
+            self.insert(self.input_start, self.command_history[self.history_index])
+            
+        return "break"
+        
+    def on_down(self, event):
+        """Navigate command history down"""
+        if self.history_index < len(self.command_history):
+            self.history_index += 1
+            self.delete(self.input_start, "end-1c")
+            
+            if self.history_index == len(self.command_history):
+                self.insert(self.input_start, self.command_buffer)
+            else:
+                self.insert(self.input_start, self.command_history[self.history_index])
+                
+        return "break"
+        
+    def on_key(self, event):
+        """Handle key press"""
+        if self.index("insert") < self.input_start:
+            self.mark_set("insert", "end")
+            
+    def execute_command(self, command):
+        """Execute command and show output"""
+        try:
+            env = os.environ.copy()
+            
+            # Execute command using subprocess
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                universal_newlines=True
+            )
+            
+            stdout, stderr = process.communicate()
+            
+            # Display output
+            if stdout:
+                self.insert("end", stdout, "output")
+            if stderr:
+                self.insert("end", stderr, "error")
+                
+            # Return code
+            if process.returncode != 0:
+                self.insert("end", f"Process exited with code {process.returncode}\n", "error")
+                
+        except Exception as e:
+            self.insert("end", f"Error: {str(e)}\n", "error")
+            
+        self.show_prompt()
+        
+    def run_command_redirected(self, command, on_complete=None, env=None):
+        """Run command and redirect output to the terminal"""
+        self.insert("end", f"Executing: {' '.join(command)}\n", "output")
+        
+        try:
+            env_vars = os.environ.copy()
+            if env:
+                env_vars.update(env)
+                
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                universal_newlines=True,
+                env=env_vars
+            )
+            
+            self.process = process
+            
+            # Start reading output in a separate thread
+            def read_output():
+                for line in process.stdout:
+                    if line:
+                        self.insert("end", line, "output")
+                        self.see("end")
+                        
+                process.wait()
+                if on_complete:
+                    on_complete(process.returncode == 0, process.returncode)
+                    
+                self.process = None
+                self.show_prompt()
+                
+            threading.Thread(target=read_output, daemon=True).start()
+            
+        except Exception as e:
+            self.insert("end", f"Error: {str(e)}\n", "error")
+            self.show_prompt()
+            if on_complete:
+                on_complete(False, -1)
+                
+    def clear(self):
+        """Clear terminal"""
+        self.delete("1.0", "end")
+        self.show_prompt()
 @dataclass
 class PackageCategory:
     """Package category definition"""
@@ -2313,8 +2483,9 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         """Handle window close attempt"""
         # Ignore if creation is in progress
         pass
+
 class VirtualEnvironmentManager:
-    """Enhanced virtual environment manager with integrated environment building and detailed logging"""
+    """Enhanced virtual environment manager with integrated terminal for command execution"""
     
     def __init__(self, parent_app):
         self.parent_app = parent_app
@@ -2337,7 +2508,7 @@ class VirtualEnvironmentManager:
         file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(file_handler)
         
-        # NEW: Set up debug logging for executable troubleshooting
+        # Set up debug logging for executable troubleshooting
         self.debug_log_path = self._setup_debug_logging()
         
         # Add fallback flag for tracking
@@ -2355,7 +2526,6 @@ class VirtualEnvironmentManager:
             self.needs_setup = False
             self.logger.info(f"Using existing environment: {self.current_venv}")
             
-    # NEW: Debug logging method
     def _setup_debug_logging(self):
         """Set up debug logging to file for silent executable troubleshooting"""
         debug_log_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "logs", "venv_debug.log")
@@ -2473,7 +2643,7 @@ class VirtualEnvironmentManager:
         return True
         
     def extract_bundled_environment(self):
-        """Extract bundled environment to user directory"""
+        """Extract bundled environment to user directory using embedded terminal"""
         if not hasattr(self, 'bundled_venv_dir'):
             self.logger.error("No bundled environment directory found")
             return self.use_system_python_fallback()
@@ -2489,19 +2659,18 @@ class VirtualEnvironmentManager:
                 self.logger.info("Existing environment removed successfully")
             except Exception as e:
                 self.logger.error(f"Error removing existing environment: {e}")
-                # Continue anyway - try to create if removal fails
         
-        # Create new venv
+        # Switch to terminal tab if available
+        if hasattr(self.parent_app, 'output_tabs'):
+            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
+        
+        # Create new venv using the terminal
         try:
             import venv
             self.logger.info(f"Creating new environment at: {default_venv_path}")
             
-            # FIXED: Use a script-based approach for frozen executables
-            if getattr(sys, 'frozen', False):
-                self.logger.info("Using script-based venv creation for frozen executable")
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(f"""
+            # Create a script to create the venv
+            script_content = f"""
 import venv
 import sys
 import os
@@ -2513,56 +2682,70 @@ try:
 except Exception as e:
     print(f"ERROR: {{str(e)}}")
     sys.exit(1)
-""")
+"""
+            script_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                    f.write(script_content)
                     script_path = f.name
                 
-                # Execute the script with visible console for debugging
-                # Get reference to original subprocess run
-                import subprocess
-                original_run = getattr(subprocess, '_original_run', subprocess.run)
-                
-                self.logger.info(f"Running venv creation script: {script_path}")
-                result = original_run(
-                    [sys.executable, script_path],
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Clean up
-                try:
-                    os.unlink(script_path)
-                except:
-                    pass
+                # Run script via terminal
+                if hasattr(self.parent_app, 'terminal'):
+                    def on_venv_created(success, return_code):
+                        if success:
+                            self.logger.info("Virtual environment created successfully")
+                            self._setup_environment_after_creation(default_venv_path)
+                        else:
+                            self.logger.error(f"Failed to create venv: exit code {return_code}")
+                            self.use_system_python_fallback()
                     
-                if result.returncode != 0:
-                    self.logger.error(f"Script-based venv creation failed: {result.stderr}")
-                    self.logger.error(f"Output: {result.stdout}")
-                    return self.use_system_python_fallback()
-            else:
-                # Normal direct creation when not running from executable
-                venv.create(default_venv_path, with_pip=True)
+                    self.parent_app.terminal.run_command_redirected(
+                        [sys.executable, script_path],
+                        on_complete=on_venv_created
+                    )
+                    return True
+                else:
+                    # Fallback to direct creation if terminal not available
+                    venv.create(default_venv_path, with_pip=True)
+                    self._setup_environment_after_creation(default_venv_path)
+                    return True
+            finally:
+                # Clean up script
+                if script_path and os.path.exists(script_path):
+                    try:
+                        os.unlink(script_path)
+                    except:
+                        pass
+        
+        except Exception as e:
+            self.logger.error(f"Failed to extract bundled environment: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            return self.use_system_python_fallback()
+    
+    def _setup_environment_after_creation(self, venv_path):
+        """Set up environment after creation"""
+        if os.name == 'nt':
+            python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
+        else:
+            python_exe = os.path.join(venv_path, "bin", "python")
+            pip_exe = os.path.join(venv_path, "bin", "pip")
             
-            # Verify paths
-            if os.name == 'nt':
-                python_exe = os.path.join(default_venv_path, "Scripts", "python.exe")
-                pip_exe = os.path.join(default_venv_path, "Scripts", "pip.exe")
-            else:
-                python_exe = os.path.join(default_venv_path, "bin", "python")
-                pip_exe = os.path.join(default_venv_path, "bin", "pip")
-                
-            self.logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
-            self.logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
+        self.logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
+        self.logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
+        
+        if not os.path.exists(python_exe) or not os.path.exists(pip_exe):
+            self.logger.error("Python or pip executable not found in created environment")
+            return self.use_system_python_fallback()
             
-            if not os.path.exists(python_exe) or not os.path.exists(pip_exe):
-                self.logger.error("Python or pip executable not found in created environment")
-                return self.use_system_python_fallback()
-                
-            # Activate it for further operations
-            self.python_path = python_exe
-            self.pip_path = pip_exe
-            self.current_venv = "manim_studio_default"
-            
-            # Read manifest to install required packages
+        # Activate it for further operations
+        self.python_path = python_exe
+        self.pip_path = pip_exe
+        self.current_venv = "manim_studio_default"
+        
+        # Read manifest to install required packages
+        if hasattr(self, 'bundled_venv_dir'):
             manifest_path = self.bundled_venv_dir / "manifest.json"
             if manifest_path.exists():
                 try:
@@ -2571,97 +2754,22 @@ except Exception as e:
                         manifest = json.load(f)
                         essential_packages = manifest.get('essential_packages', [])
                         
-                        # Install packages silently
-                        self.logger.info(f"Installing {len(essential_packages)} essential packages...")
-                        for pkg in essential_packages:
-                            try:
-                                # FIXED: Use script-based approach for executables
-                                if getattr(sys, 'frozen', False):
-                                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                                        f.write(f"""
-import subprocess
-import sys
-import os
-
-try:
-    # Execute pip command with visible window
-    result = subprocess.run(
-        [r"{self.pip_path}", "install", "{pkg}"],
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode == 0:
-                                        print("SUCCESS: Installed {pkg}")
-                                        print(result.stdout)
-                                        sys.exit(0)
-                                    else:
-                                        print("ERROR: Failed to install {pkg}")
-                                        print(result.stderr)
-                                        sys.exit(1)
-                                except Exception as e:
-                                    print(f"EXCEPTION: {{str(e)}}")
-                                    sys.exit(2)
-""")
-                                        script_path = f.name
-                                        
-                                    # Run the script
-                                    import subprocess
-                                    original_run = getattr(subprocess, '_original_run', subprocess.run)
-                                    
-                                    result = original_run(
-                                        [sys.executable, script_path],
-                                        capture_output=True,
-                                        text=True
-                                    )
-                                    
-                                    # Clean up
-                                    try:
-                                        os.unlink(script_path)
-                                    except:
-                                        pass
-                                        
-                                    if result.returncode == 0:
-                                        self.logger.info(f"Installed: {pkg}")
-                                    else:
-                                        self.logger.error(f"Failed to install {pkg}: {result.stderr}")
-                                else:
-                                    # Normal installation for non-frozen environment
-                                    import subprocess
-                                    original_run = getattr(subprocess, '_original_run', subprocess.run)
-                                    
-                                    cmd = [self.pip_path, "install", pkg, "--quiet"]
-                                    self.logger.info(f"Running: {' '.join(cmd)}")
-                                    result = original_run(
-                                        cmd,
-                                        capture_output=True,
-                                        text=True
-                                    )
-                                    
-                                    if result.returncode == 0:
-                                        self.logger.info(f"Installed: {pkg}")
-                                    else:
-                                        self.logger.error(f"Failed to install {pkg}: {result.stderr}")
-                            except Exception as e:
-                                self.logger.error(f"Error installing {pkg}: {e}")
+                        # Install packages using terminal
+                        if hasattr(self.parent_app, 'terminal') and essential_packages:
+                            for pkg in essential_packages:
+                                self.parent_app.terminal.run_command_redirected(
+                                    [self.pip_path, "install", pkg]
+                                )
                 except Exception as e:
                     self.logger.error(f"Error reading or processing manifest: {e}")
-            else:
-                self.logger.warning("No manifest file found in bundled environment")
-            
-            # Verify installation
-            if self.verify_environment_packages(default_venv_path):
-                self.logger.info("Environment setup complete and verified")
-                self.needs_setup = False
-                return True
-            else:
-                self.logger.error("Environment verification failed after setup")
-                return self.use_system_python_fallback()
-            
-        except Exception as e:
-            self.logger.error(f"Failed to extract bundled environment: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Verify installation
+        if self.verify_environment_packages(venv_path):
+            self.logger.info("Environment setup complete and verified")
+            self.needs_setup = False
+            return True
+        else:
+            self.logger.error("Environment verification failed after setup")
             return self.use_system_python_fallback()
         
     def use_system_python_fallback(self):
@@ -2701,7 +2809,7 @@ try:
             return False
             
     def verify_environment_packages(self, venv_path):
-        """Verify that environment has essential packages with hidden console"""
+        """Verify that environment has essential packages using terminal"""
         try:
             # Get python path
             if os.name == 'nt':
@@ -2713,52 +2821,52 @@ try:
                 self.logger.error(f"Python executable not found: {python_exe}")
                 return False
                 
-            # Get reference to original subprocess functions to avoid recursion
-            import subprocess
-            original_run = getattr(subprocess, '_original_run', subprocess.run)
+            # Use terminal if available
+            if hasattr(self.parent_app, 'terminal'):
+                # Test essential packages one by one
+                essential_test = ["manim", "numpy", "customtkinter", "PIL"]
+                all_passed = True
                 
-            # Test essential packages
-            essential_test = ["manim", "numpy", "customtkinter", "PIL"]
-            missing_packages = []
-            
-            # FIXED: Better verification for frozen executables
-            if getattr(sys, 'frozen', False):
-                # Create a test script for the verification
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write("""
+                # Create a test script for verification
+                test_script = """
 import sys
-missing = []
-for pkg in sys.argv[1:]:
-    try:
-        if pkg == 'PIL':
-            import PIL
-        else:
-            __import__(pkg)
-        print(f"[OK] {pkg}")
-    except ImportError:
-        missing.append(pkg)
-        print(f"[FAIL] {pkg}")
-if missing:
-    print(f"MISSING:{','.join(missing)}")
+try:
+    if sys.argv[1] == 'PIL':
+        import PIL
+    else:
+        __import__(sys.argv[1])
+    print(f"[OK] {sys.argv[1]}")
+    sys.exit(0)
+except ImportError:
+    print(f"[FAIL] {sys.argv[1]}")
     sys.exit(1)
-""")
-                    test_script_path = f.name
-                
-                # Execute without hidden console to ensure it works
-                result = original_run(
-                    [python_exe, test_script_path] + essential_test,
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Clean up
+"""
+                script_path = None
                 try:
-                    os.unlink(test_script_path)
-                except:
-                    pass
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                        f.write(test_script)
+                        script_path = f.name
+                    
+                    # Test each package
+                    for pkg in essential_test:
+                        result = subprocess.run(
+                            [python_exe, script_path, pkg],
+                            capture_output=True,
+                            text=True
+                        )
+                        if result.returncode != 0:
+                            self.logger.warning(f"Missing essential package: {pkg}")
+                            all_passed = False
+                            
+                    return all_passed
+                finally:
+                    if script_path and os.path.exists(script_path):
+                        try:
+                            os.unlink(script_path)
+                        except:
+                            pass
             else:
-                # Normal case - use original_run directly
+                # Fallback to direct subprocess call
                 test_script = """
 import sys
 missing = []
@@ -2776,38 +2884,26 @@ if missing:
     print(f"MISSING:{','.join(missing)}")
     sys.exit(1)
 """
-                # Write test script to temp file
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(test_script)
-                    test_script_path = f.name
-                
-                # Run a single process to test all packages - use original run directly
-                cmd = [python_exe, test_script_path] + essential_test
-                result = original_run(
-                    cmd,
-                    capture_output=True,
-                    text=True
-                )
-                
+                script_path = None
                 try:
-                    os.unlink(test_script_path)  # Clean up
-                except:
-                    pass
-            
-            # Check if any packages are missing
-            if "MISSING:" in result.stdout:
-                for line in result.stdout.splitlines():
-                    if line.startswith("MISSING:"):
-                        missing_str = line.split(":", 1)[1]
-                        missing_packages = missing_str.split(",")
-                        break
-            
-            if missing_packages:
-                self.logger.warning(f"Missing essential packages: {', '.join(missing_packages)}")
-                return False
-            
-            return True
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                        f.write(test_script)
+                        script_path = f.name
+                    
+                    result = subprocess.run(
+                        [python_exe, script_path] + essential_test,
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    return result.returncode == 0
+                finally:
+                    if script_path and os.path.exists(script_path):
+                        try:
+                            os.unlink(script_path)
+                        except:
+                            pass
+                            
         except Exception as e:
             self.logger.error(f"Error verifying environment packages: {e}")
             import traceback
@@ -2914,9 +3010,8 @@ if missing:
             self.logger.info("Trying system Python as last resort")
             self.use_system_python_fallback()
             
-    # FIXED: Fixed create_default_environment method for working with hidden consoles
     def create_default_environment(self, log_callback=None):
-        """Create the default ManimStudio environment with special handling for hidden console"""
+        """Create the default ManimStudio environment using terminal"""
         env_name = "manim_studio_default"
         venv_path = os.path.join(self.venv_dir, env_name)
         
@@ -2930,20 +3025,18 @@ if missing:
                     log_callback("Removing existing environment...")
                 shutil.rmtree(venv_path)
             
+            # Switch to terminal tab if available
+            if hasattr(self.parent_app, 'output_tabs'):
+                self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
+            
             # Create virtual environment
             if log_callback:
                 log_callback("Creating new virtual environment...")
             
-            # Access original subprocess functions to avoid recursion
-            import subprocess
-            original_run = getattr(subprocess, '_original_run', subprocess.run)
-            
-            # FIXED: When running from a Nuitka-built executable, use script-based approach
-            if getattr(sys, 'frozen', False):
-                # We're running in a frozen/executable environment
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(f"""
+            # Use terminal if available
+            if hasattr(self.parent_app, 'terminal'):
+                # Create a script for venv creation
+                venv_script = f"""
 import venv
 import sys
 import os
@@ -2955,58 +3048,83 @@ try:
 except Exception as e:
     print(f"ERROR: {{str(e)}}")
     sys.exit(1)
-""")
-                    script_path = f.name
-                
-                # Execute the script
-                if log_callback:
-                    log_callback(f"Executing venv creation script: {script_path}")
-                
-                result = original_run(
-                    [sys.executable, script_path],
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Clean up
+"""
+                script_path = None
                 try:
-                    os.unlink(script_path)
-                except:
-                    pass
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                        f.write(venv_script)
+                        script_path = f.name
                     
-                if result.returncode != 0:
-                    if log_callback:
-                        log_callback(f"ERROR: Virtual environment creation failed: {result.stderr}")
-                        log_callback(f"Script output: {result.stdout}")
-                    raise Exception(f"Virtual environment creation failed: {result.stderr}")
+                    # Run script in terminal
+                    def on_venv_created(success, return_code):
+                        if success:
+                            if log_callback:
+                                log_callback("Virtual environment created successfully")
+                            
+                            # Set paths and continue
+                            if os.name == 'nt':
+                                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
+                            else:
+                                python_exe = os.path.join(venv_path, "bin", "python")
+                                pip_exe = os.path.join(venv_path, "bin", "pip")
+                                
+                            self.python_path = python_exe
+                            self.pip_path = pip_exe
+                            self.current_venv = env_name
+                            
+                            if log_callback:
+                                log_callback("Environment activated")
+                        else:
+                            if log_callback:
+                                log_callback(f"ERROR: Failed to create environment (exit code {return_code})")
+                            
+                            # Try fallback
+                            if log_callback:
+                                log_callback("Attempting fallback to system Python...")
+                            
+                            self.use_system_python_fallback()
+                    
+                    self.parent_app.terminal.run_command_redirected(
+                        [sys.executable, script_path],
+                        on_complete=on_venv_created
+                    )
+                    
+                    return True
+                finally:
+                    if script_path and os.path.exists(script_path):
+                        try:
+                            os.unlink(script_path)
+                        except:
+                            pass
             else:
-                # Normal direct creation when not running from executable
+                # Fallback to direct creation if terminal not available
                 import venv
                 venv.create(venv_path, with_pip=True)
-            
-            # Activate the environment
-            if os.name == 'nt':
-                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
-            else:
-                python_exe = os.path.join(venv_path, "bin", "python")
-                pip_exe = os.path.join(venv_path, "bin", "pip")
                 
-            # Verify creation
-            if not os.path.exists(python_exe):
+                # Activate the environment
+                if os.name == 'nt':
+                    python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                    pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
+                else:
+                    python_exe = os.path.join(venv_path, "bin", "python")
+                    pip_exe = os.path.join(venv_path, "bin", "pip")
+                    
+                # Verify creation
+                if not os.path.exists(python_exe):
+                    if log_callback:
+                        log_callback(f"ERROR: Python executable not found at {python_exe}")
+                    raise Exception("Python executable not found after environment creation")
+                    
+                self.python_path = python_exe
+                self.pip_path = pip_exe
+                self.current_venv = env_name
+                
                 if log_callback:
-                    log_callback(f"ERROR: Python executable not found at {python_exe}")
-                raise Exception("Python executable not found after environment creation")
+                    log_callback("Virtual environment created successfully")
+                    
+                return True
                 
-            self.python_path = python_exe
-            self.pip_path = pip_exe
-            self.current_venv = env_name
-            
-            if log_callback:
-                log_callback("Virtual environment created successfully")
-                
-            return True
-            
         except Exception as e:
             if log_callback:
                 log_callback(f"Error creating environment: {str(e)}")
@@ -3034,7 +3152,7 @@ except Exception as e:
                 return False
     
     def upgrade_pip(self, log_callback=None):
-        """Upgrade pip in the current environment"""
+        """Upgrade pip in the current environment using terminal"""
         if not self.current_venv:
             return False
             
@@ -3042,64 +3160,28 @@ except Exception as e:
             if log_callback:
                 log_callback("Upgrading pip...")
             
-            # Access original subprocess functions
-            import subprocess
-            original_run = getattr(subprocess, '_original_run', subprocess.run)
-            
-            # FIXED: Special handling for executables with hidden consoles
-            if getattr(sys, 'frozen', False):
-                # Create a temporary script for the upgrade
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(f"""
-import subprocess
-import sys
-
-try:
-    result = subprocess.run(
-        [r"{self.python_path}", "-m", "pip", "install", "--upgrade", "pip"],
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode == 0:
-        print("SUCCESS: Pip upgraded successfully")
-        print(result.stdout)
-        sys.exit(0)
-    else:
-        print("ERROR: Failed to upgrade pip")
-        print(result.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f"EXCEPTION: {{str(e)}}")
-    sys.exit(2)
-""")
-                    script_path = f.name
+            # Switch to terminal tab if available
+            if hasattr(self.parent_app, 'output_tabs'):
+                self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
                 
-                # Run the script
-                result = original_run(
-                    [sys.executable, script_path],
-                    capture_output=True,
-                    text=True
+            # Use terminal if available
+            if hasattr(self.parent_app, 'terminal'):
+                def on_pip_upgraded(success, return_code):
+                    if success:
+                        if log_callback:
+                            log_callback("Pip upgraded successfully")
+                    else:
+                        if log_callback:
+                            log_callback(f"Warning: Failed to upgrade pip (exit code {return_code})")
+                
+                self.parent_app.terminal.run_command_redirected(
+                    [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
+                    on_complete=on_pip_upgraded
                 )
-                
-                # Clean up
-                try:
-                    os.unlink(script_path)
-                except:
-                    pass
-                
-                if result.returncode != 0:
-                    if log_callback:
-                        log_callback(f"Warning: Failed to upgrade pip: {result.stderr}")
-                    return False
-                else:
-                    if log_callback:
-                        log_callback("Pip upgraded successfully")
-                    return True
+                return True
             else:
-                # Normal case - use original_run directly
-                result = original_run(
+                # Fallback to direct subprocess
+                result = subprocess.run(
                     [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
                     capture_output=True,
                     text=True
@@ -3119,144 +3201,135 @@ except Exception as e:
                 log_callback(f"Error upgrading pip: {str(e)}")
             return False
             
-    # FIXED: Fixed install_essential_packages method for hidden console
     def install_essential_packages(self, log_callback=None, progress_callback=None):
-        """Install essential packages with special handling for hidden consoles"""
+        """Install essential packages using terminal"""
         if not self.current_venv:
             self.logger.error("No virtual environment active")
             if log_callback:
                 log_callback("ERROR: No virtual environment active")
             return False
         
-        # Get reference to original subprocess functions
-        import subprocess
-        original_run = getattr(subprocess, '_original_run', subprocess.run)
-            
-        failed_packages = []
-        total_packages = len(ESSENTIAL_PACKAGES)
+        # Switch to terminal tab if available
+        if hasattr(self.parent_app, 'output_tabs'):
+            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
         
-        # Enhanced logging
-        if log_callback:
-            log_callback(f"Starting installation of {total_packages} essential packages")
-            log_callback(f"Python: {self.python_path}")
-            log_callback(f"Pip: {self.pip_path}")
-            log_callback(f"Environment: {self.current_venv}")
-        
-        # FIXED: Special handling for executables with hidden consoles
-        for i, package in enumerate(ESSENTIAL_PACKAGES):
-            self.logger.info(f"Installing package {i+1}/{total_packages}: {package}")
+        # Use terminal if available
+        if hasattr(self.parent_app, 'terminal'):
+            failed_packages = []
+            total_packages = len(ESSENTIAL_PACKAGES)
             
+            # Enhanced logging
             if log_callback:
-                log_callback(f"Installing {package}...")
+                log_callback(f"Starting installation of {total_packages} essential packages")
+                log_callback(f"Python: {self.python_path}")
+                log_callback(f"Pip: {self.pip_path}")
+                log_callback(f"Environment: {self.current_venv}")
+            
+            # Install packages one by one
+            for i, package in enumerate(ESSENTIAL_PACKAGES):
+                self.logger.info(f"Installing package {i+1}/{total_packages}: {package}")
                 
-            if progress_callback:
-                progress_callback(package, i / total_packages)
+                if log_callback:
+                    log_callback(f"Installing {package}...")
+                    
+                if progress_callback:
+                    progress_callback(package, i / total_packages)
                 
-            try:
-                if getattr(sys, 'frozen', False):
-                    # Create a temporary script for the installation
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                        f.write(f"""
-import subprocess
-import sys
-import os
-
-try:
-    # Execute pip command with basic subprocess
-    result = subprocess.run(
-        [r"{self.pip_path}", "install", "{package}"],
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode == 0:
-        print("SUCCESS: Installed {package}")
-        print(result.stdout)
-        sys.exit(0)
-    else:
-        print("ERROR: Failed to install {package}")
-        print(result.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f"EXCEPTION: {{str(e)}}")
-    sys.exit(2)
-""")
-                        script_path = f.name
+                # Install using terminal
+                def on_package_installed(success, return_code, pkg=package, idx=i):
+                    if success:
+                        if log_callback:
+                            log_callback(f"[SUCCESS] Successfully installed {pkg}")
+                    else:
+                        if log_callback:
+                            log_callback(f"[FAIL] Failed to install {pkg} (exit code {return_code})")
+                        failed_packages.append(pkg)
+                    
+                    # Install next package or finish
+                    next_idx = idx + 1
+                    if next_idx < total_packages:
+                        next_pkg = ESSENTIAL_PACKAGES[next_idx]
+                        if progress_callback:
+                            progress_callback(next_pkg, next_idx / total_packages)
                         
-                    # Run the script
-                    result = original_run(
-                        [sys.executable, script_path],
+                        if log_callback:
+                            log_callback(f"Installing {next_pkg}...")
+                            
+                        self.parent_app.terminal.run_command_redirected(
+                            [self.pip_path, "install", next_pkg],
+                            on_complete=lambda s, r: on_package_installed(s, r, next_pkg, next_idx)
+                        )
+                    else:
+                        # All packages processed
+                        if failed_packages:
+                            if log_callback:
+                                log_callback(f"Some packages failed to install: {', '.join(failed_packages)}")
+                            return False
+                        else:
+                            if log_callback:
+                                log_callback("All essential packages installed successfully")
+                            return True
+                
+                # Start with first package
+                if i == 0:
+                    self.parent_app.terminal.run_command_redirected(
+                        [self.pip_path, "install", package],
+                        on_complete=lambda s, r: on_package_installed(s, r, package, i)
+                    )
+                
+                # Only start first package - rest will be chained in the callback
+                break
+            
+            return True
+        else:
+            # Fallback to direct installation
+            failed_packages = []
+            
+            for i, package in enumerate(ESSENTIAL_PACKAGES):
+                if log_callback:
+                    log_callback(f"Installing {package}...")
+                
+                if progress_callback:
+                    progress_callback(package, i / total_packages)
+                
+                try:
+                    result = subprocess.run(
+                        [self.pip_path, "install", package],
                         capture_output=True,
                         text=True
                     )
                     
-                    # Clean up
-                    try:
-                        os.unlink(script_path)
-                    except:
-                        pass
-                        
                     if result.returncode == 0:
-                        success_msg = f"Successfully installed {package}"
-                        self.logger.info(success_msg)
                         if log_callback:
-                            log_callback(success_msg)
+                            log_callback(f"[SUCCESS] Successfully installed {package}")
                     else:
-                        error_msg = f"Failed to install {package}: {result.stderr}"
-                        self.logger.warning(error_msg)
                         if log_callback:
-                            log_callback(error_msg)
+                            log_callback(f"[FAIL] Failed to install {package}: {result.stderr}")
                         failed_packages.append(package)
-                else:
-                    # Normal installation for non-frozen environment
-                    result = original_run(
-                        [self.pip_path, "install", package],
-                        capture_output=True, 
-                        text=True
-                    )
-                    
-                    if result.returncode == 0:
-                        success_msg = f"Successfully installed {package}"
-                        self.logger.info(success_msg)
-                        if log_callback:
-                            log_callback(success_msg)
-                    else:
-                        error_msg = f"Failed to install {package}: {result.stderr}"
-                        self.logger.warning(error_msg)
-                        if log_callback:
-                            log_callback(error_msg)
-                        failed_packages.append(package)
-                    
-            except Exception as e:
-                error_msg = f"Error installing {package}: {str(e)}"
-                self.logger.error(error_msg)
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"Error installing {package}: {str(e)}")
+                    failed_packages.append(package)
+            
+            if failed_packages:
+                self.logger.warning(f"Some packages failed to install: {failed_packages}")
                 if log_callback:
-                    log_callback(error_msg)
-                failed_packages.append(package)
-                
-        if failed_packages:
-            self.logger.warning(f"Some packages failed to install: {failed_packages}")
-            if log_callback:
-                log_callback(f"Some packages failed to install: {', '.join(failed_packages)}")
-            return False
-        else:
-            success_msg = "All essential packages installed successfully"
-            self.logger.info(success_msg)
-            if log_callback:
-                log_callback(success_msg)
-            return True
+                    log_callback(f"Some packages failed to install: {', '.join(failed_packages)}")
+                return False
+            else:
+                if log_callback:
+                    log_callback("All essential packages installed successfully")
+                return True
     
-    # FIXED: Fixed install_optional_packages method for hidden console
     def install_optional_packages(self, log_callback=None, progress_callback=None):
-        """Install optional packages with special handling for hidden consoles"""
+        """Install optional packages using terminal"""
         if not self.current_venv:
             return False
         
-        # Get reference to original subprocess functions
-        import subprocess
-        original_run = getattr(subprocess, '_original_run', subprocess.run)
-            
+        # Switch to terminal tab if available
+        if hasattr(self.parent_app, 'output_tabs'):
+            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
+        
         # Install first 5 optional packages
         optional_subset = OPTIONAL_PACKAGES[:5]
         total_packages = len(optional_subset)
@@ -3264,67 +3337,42 @@ except Exception as e:
         if log_callback:
             log_callback("Installing optional packages...")
         
-        for i, package in enumerate(optional_subset):
-            if log_callback:
-                log_callback(f"Installing optional {package}...")
-                
-            if progress_callback:
-                progress_callback(package, i / total_packages)
-                
-            try:
-                if getattr(sys, 'frozen', False):
-                    # Create a temporary script for the installation
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                        f.write(f"""
-import subprocess
-import sys
-import os
-
-try:
-    # Execute pip command without recursion
-    result = subprocess.run(
-        [r"{self.pip_path}", "install", "{package}"],
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode == 0:
-        print("SUCCESS: Installed {package}")
-        print(result.stdout)
-        sys.exit(0)
-    else:
-        print("ERROR: Failed to install {package}")
-        print(result.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f"EXCEPTION: {{str(e)}}")
-    sys.exit(2)
-""")
-                        script_path = f.name
-                        
-                    # Run the script
-                    result = original_run(
-                        [sys.executable, script_path],
-                        capture_output=True,
-                        text=True
-                    )
+        # Use terminal if available
+        if hasattr(self.parent_app, 'terminal'):
+            # Install packages one by one
+            for i, package in enumerate(optional_subset):
+                if log_callback:
+                    log_callback(f"Installing optional {package}...")
                     
-                    # Clean up
-                    try:
-                        os.unlink(script_path)
-                    except:
-                        pass
-                        
-                    if result.returncode == 0:
+                if progress_callback:
+                    progress_callback(package, i / total_packages)
+                
+                # Install using terminal
+                def on_package_installed(success, return_code, pkg=package):
+                    if success:
                         if log_callback:
-                            log_callback(f"Installed optional {package}")
+                            log_callback(f"Installed optional {pkg}")
                     else:
                         if log_callback:
-                            log_callback(f"Could not install optional {package}")
-                else:
-                    # Normal installation for non-frozen environment
-                    result = original_run(
+                            log_callback(f"Could not install optional {pkg}")
+                
+                self.parent_app.terminal.run_command_redirected(
+                    [self.pip_path, "install", package],
+                    on_complete=on_package_installed
+                )
+            
+            return True
+        else:
+            # Fallback to direct installation
+            for i, package in enumerate(optional_subset):
+                if log_callback:
+                    log_callback(f"Installing optional {package}...")
+                    
+                if progress_callback:
+                    progress_callback(package, i / total_packages)
+                    
+                try:
+                    result = subprocess.run(
                         [self.pip_path, "install", package],
                         capture_output=True,
                         text=True
@@ -3337,33 +3385,28 @@ except Exception as e:
                         if log_callback:
                             log_callback(f"Could not install optional {package}")
                         
-            except Exception as e:
-                if log_callback:
-                    log_callback(f"Could not install optional {package}: {str(e)}")
-                    
-        return True
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"Could not install optional {package}: {str(e)}")
+                        
+            return True
             
-    # FIXED: Fixed verify_installation method for hidden console
     def verify_installation(self, log_callback=None):
-        """Verify that the installation is working correctly with support for hidden consoles"""
+        """Verify that the installation is working correctly using terminal"""
         test_packages = ["manim", "numpy", "matplotlib", "customtkinter", "jedi"]
         
         if log_callback:
             log_callback("Verifying installation...")
         
-        # Get reference to original subprocess functions
-        import subprocess
-        original_run = getattr(subprocess, '_original_run', subprocess.run)
+        # Switch to terminal tab if available
+        if hasattr(self.parent_app, 'output_tabs'):
+            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
         
-        # FIXED: Special handling for executables with hidden consoles
-        if getattr(sys, 'frozen', False):
-            # Create a script for verification
+        # Use terminal if available
+        if hasattr(self.parent_app, 'terminal'):
             for package in test_packages:
-                try:
-                    # Create a verification script
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                        f.write(f"""
+                # Create a verification script
+                test_script = f"""
 import sys
 try:
     import {package}
@@ -3372,39 +3415,82 @@ try:
 except ImportError as e:
     print(f"Error importing {package}: {{e}}")
     sys.exit(1)
-""")
+"""
+                script_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                        f.write(test_script)
                         script_path = f.name
                     
-                    # Run the script
-                    result = original_run(
-                        [self.python_path, script_path],
-                        capture_output=True,
-                        text=True
-                    )
+                    def on_package_verified(success, return_code, pkg=package):
+                        if success:
+                            if log_callback:
+                                log_callback(f"{pkg} verified successfully")
+                        else:
+                            if log_callback:
+                                log_callback(f"{pkg} verification failed")
+                            return False
                     
-                    # Clean up
+                    self.parent_app.terminal.run_command_redirected(
+                        [self.python_path, script_path],
+                        on_complete=on_package_verified
+                    )
+                finally:
+                    if script_path and os.path.exists(script_path):
+                        try:
+                            os.unlink(script_path)
+                        except:
+                            pass
+            
+            # Test Manim scene creation
+            if log_callback:
+                log_callback("Testing Manim scene creation...")
+            
+            test_code = '''
+from manim import *
+class TestScene(Scene):
+    def construct(self):
+        text = Text("Test")
+        self.add(text)
+print("Manim test successful")
+'''
+            
+            script_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                    f.write(test_code)
+                    script_path = f.name
+                
+                def on_manim_tested(success, return_code):
+                    if success:
+                        if log_callback:
+                            log_callback("Manim scene test successful")
+                        return True
+                    else:
+                        if log_callback:
+                            log_callback("Manim scene test failed")
+                        return False
+                
+                self.parent_app.terminal.run_command_redirected(
+                    [self.python_path, script_path],
+                    on_complete=on_manim_tested
+                )
+            finally:
+                if script_path and os.path.exists(script_path):
                     try:
                         os.unlink(script_path)
                     except:
                         pass
-                        
-                    if result.returncode == 0:
-                        if log_callback:
-                            log_callback(f"{package}: {result.stdout.strip()}")
-                    else:
-                        if log_callback:
-                            log_callback(f"{package} verification failed: {result.stderr}")
-                        return False
-                
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"Error verifying {package}: {str(e)}")
-                    return False
+            
+            if log_callback:
+                log_callback("All components verified successfully")
+            return True
+            
         else:
-            # Normal verification for non-frozen environment
+            # Fallback to direct testing
             for package in test_packages:
                 try:
-                    result = original_run(
+                    result = subprocess.run(
                         [self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, \"__version__\", \"unknown\")}}')"
                         ],
                         capture_output=True,
@@ -3424,11 +3510,9 @@ except ImportError as e:
                         log_callback(f"Error verifying {package}: {str(e)}")
                     return False
                 
-        # Test Manim scene creation
-        if log_callback:
-            log_callback("Testing Manim scene creation...")
-        
-        test_code = '''
+            # Test Manim scene creation
+            try:
+                test_code = '''
 from manim import *
 class TestScene(Scene):
     def construct(self):
@@ -3436,103 +3520,42 @@ class TestScene(Scene):
         self.add(text)
 print("Manim test successful")
 '''
-
-        # FIXED: Special handling for executables with hidden consoles
-        try:
-            import subprocess
-            original_run = getattr(subprocess, '_original_run', subprocess.run)
+                
+                script_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                        f.write(test_code)
+                        script_path = f.name
+                    
+                    result = subprocess.run(
+                        [self.python_path, script_path],
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    if result.returncode == 0:
+                        if log_callback:
+                            log_callback("Manim scene test successful")
+                    else:
+                        if log_callback:
+                            log_callback(f"Manim scene test failed: {result.stderr}")
+                        return False
+                    
+                finally:
+                    if script_path and os.path.exists(script_path):
+                        try:
+                            os.unlink(script_path)
+                        except:
+                            pass
+                    
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"Error testing Manim: {str(e)}")
+                return False
             
-            if getattr(sys, 'frozen', False):
-                # Create a temporary test file
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(test_code)
-                    temp_file = f.name
-                
-                # Create a wrapper script
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(f"""
-import subprocess
-import sys
-
-try:
-    result = subprocess.run(
-        [r"{self.python_path}", r"{temp_file}"],
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode == 0:
-        print("SUCCESS: Manim scene test successful")
-        print(result.stdout)
-        sys.exit(0)
-    else:
-        print("ERROR: Manim scene test failed")
-        print(result.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f"EXCEPTION: {{str(e)}}")
-    sys.exit(2)
-""")
-                    wrapper_script = f.name
-                
-                # Run the wrapper script
-                result = original_run(
-                    [sys.executable, wrapper_script],
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Clean up
-                try:
-                    os.unlink(temp_file)
-                    os.unlink(wrapper_script)
-                except:
-                    pass
-                
-                if result.returncode == 0:
-                    if log_callback:
-                        log_callback("Manim scene test successful")
-                else:
-                    if log_callback:
-                        log_callback(f"Manim scene test failed: {result.stderr}")
-                    return False
-            else:
-                # Normal case - use original_run directly
-                # Create temporary test file
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(test_code)
-                    temp_file = f.name
-                
-                result = original_run(
-                    [self.python_path, temp_file],
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Clean up
-                try:
-                    os.unlink(temp_file)
-                except:
-                    pass
-                
-                if result.returncode == 0:
-                    if log_callback:
-                        log_callback("Manim scene test successful")
-                else:
-                    if log_callback:
-                        log_callback(f"Manim scene test failed: {result.stderr}")
-                    return False
-                
-        except Exception as e:
             if log_callback:
-                log_callback(f"Error testing Manim: {str(e)}")
-            return False
-        
-        if log_callback:
-            log_callback("All components verified successfully")
-        return True
+                log_callback("All components verified successfully")
+            return True
         
     def list_venvs(self):
         """List all available virtual environments"""
@@ -3561,23 +3584,20 @@ except Exception as e:
                     os.path.exists(os.path.join(venv_path, "bin", "pip")))
         
     def create_venv(self, name, python_exe="python"):
-        """Create a new virtual environment"""
+        """Create a new virtual environment using terminal"""
         if name.startswith(("system_", "current_")):
             return False
             
         venv_path = os.path.join(self.venv_dir, name)
         
-        try:
-            # Get reference to original subprocess functions
-            import subprocess
-            original_run = getattr(subprocess, '_original_run', subprocess.run)
-            
-            # FIXED: Special handling for executables with hidden consoles
-            if getattr(sys, 'frozen', False):
-                # Create a temporary script
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(f"""
+        # Switch to terminal tab if available
+        if hasattr(self.parent_app, 'output_tabs'):
+            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
+        
+        # Use terminal if available
+        if hasattr(self.parent_app, 'terminal'):
+            # Create a script for venv creation
+            script_content = f"""
 import venv
 import sys
 import os
@@ -3589,31 +3609,38 @@ try:
 except Exception as e:
     print(f"ERROR: {{str(e)}}")
     sys.exit(1)
-""")
+"""
+            script_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                    f.write(script_content)
                     script_path = f.name
                 
-                # Run the script
-                result = original_run(
+                # Run script in terminal
+                def on_venv_created(success, return_code):
+                    return success
+                
+                self.parent_app.terminal.run_command_redirected(
                     [sys.executable, script_path],
-                    capture_output=True,
-                    text=True
+                    on_complete=on_venv_created
                 )
                 
-                # Clean up
-                try:
-                    os.unlink(script_path)
-                except:
-                    pass
-                
-                return result.returncode == 0
-            else:
-                # Normal case - direct creation
+                return True
+            finally:
+                if script_path and os.path.exists(script_path):
+                    try:
+                        os.unlink(script_path)
+                    except:
+                        pass
+        else:
+            # Fallback to direct creation
+            try:
                 import venv
                 venv.create(venv_path, with_pip=True)
                 return True
-        except Exception as e:
-            self.logger.error(f"Error creating virtual environment: {e}")
-            return False
+            except Exception as e:
+                self.logger.error(f"Error creating virtual environment: {e}")
+                return False
         
     def activate_venv(self, name):
         """Activate a virtual environment"""
@@ -3636,69 +3663,36 @@ except Exception as e:
             return True
         return False
         
-    # FIXED: Fixed install_package method for hidden console
     def install_package(self, package_name, callback=None):
-        """Install a package with special handling for hidden consoles"""
+        """Install a package using terminal"""
         if not self.current_venv:
             if callback:
                 callback(False, "", "No virtual environment active")
             return False, "No virtual environment active"
         
-        # Get reference to original subprocess functions
-        import subprocess
-        original_run = getattr(subprocess, '_original_run', subprocess.run)
+        # Switch to terminal tab if available
+        if hasattr(self.parent_app, 'output_tabs'):
+            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
+        
+        # Use terminal if available
+        if hasattr(self.parent_app, 'terminal'):
+            def on_install_complete(success, return_code):
+                stdout = "Installation completed" if success else ""
+                stderr = "" if success else f"Installation failed with exit code {return_code}"
+                if callback:
+                    callback(success, stdout, stderr)
             
-        def install_thread():
-            try:
-                # Special handling for executables with hidden consoles
-                if getattr(sys, 'frozen', False):
-                    # Create a temporary script for the installation
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                        f.write(f"""
-import subprocess
-import sys
-import os
-
-try:
-    # Execute pip command directly
-    result = subprocess.run(
-        [r"{self.pip_path}", "install", "{package_name}"],
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode == 0:
-        print(result.stdout)
-        sys.exit(0)
-    else:
-        print(result.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f"{{str(e)}}")
-    sys.exit(2)
-""")
-                        script_path = f.name
-                        
-                    # Run the script
-                    result = original_run(
-                        [sys.executable, script_path],
-                        capture_output=True,
-                        text=True
-                    )
-                    
-                    # Clean up
-                    try:
-                        os.unlink(script_path)
-                    except:
-                        pass
-                        
-                    success = result.returncode == 0
-                    stdout = result.stdout
-                    stderr = result.stderr
-                else:
-                    # Normal installation for non-frozen environment
-                    result = original_run(
+            self.parent_app.terminal.run_command_redirected(
+                [self.pip_path, "install", package_name],
+                on_complete=on_install_complete
+            )
+            
+            return True, "Installation started"
+        else:
+            # Fallback to thread-based installation
+            def install_thread():
+                try:
+                    result = subprocess.run(
                         [self.pip_path, "install", package_name],
                         capture_output=True,
                         text=True
@@ -3707,80 +3701,47 @@ except Exception as e:
                     success = result.returncode == 0
                     stdout = result.stdout
                     stderr = result.stderr
-                
-                if callback:
-                    callback(success, stdout, stderr)
                     
-            except Exception as e:
-                if callback:
-                    callback(False, "", str(e))
+                    if callback:
+                        callback(success, stdout, stderr)
+                        
+                except Exception as e:
+                    if callback:
+                        callback(False, "", str(e))
                 
-        threading.Thread(target=install_thread, daemon=True).start()
-        return True, "Installation started"
+            threading.Thread(target=install_thread, daemon=True).start()
+            return True, "Installation started"
         
-    # FIXED: Fixed uninstall_package method for hidden console
     def uninstall_package(self, package_name, callback=None):
-        """Uninstall a package with special handling for hidden consoles"""
+        """Uninstall a package using terminal"""
         if not self.current_venv:
             if callback:
                 callback(False, "", "No virtual environment active")
             return False, "No virtual environment active"
         
-        # Get reference to original subprocess functions
-        import subprocess
-        original_run = getattr(subprocess, '_original_run', subprocess.run)
+        # Switch to terminal tab if available
+        if hasattr(self.parent_app, 'output_tabs'):
+            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
+        
+        # Use terminal if available
+        if hasattr(self.parent_app, 'terminal'):
+            def on_uninstall_complete(success, return_code):
+                stdout = "Uninstallation completed" if success else ""
+                stderr = "" if success else f"Uninstallation failed with exit code {return_code}"
+                if callback:
+                    callback(success, stdout, stderr)
             
-        def uninstall_thread():
-            try:
-                # Special handling for executables with hidden consoles
-                if getattr(sys, 'frozen', False):
-                    # Create a temporary script for uninstallation
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                        f.write(f"""
-import subprocess
-import sys
-import os
-
-try:
-    # Execute pip command directly
-    result = subprocess.run(
-        [r"{self.pip_path}", "uninstall", "-y", "{package_name}"],
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode == 0:
-        print(result.stdout)
-        sys.exit(0)
-    else:
-        print(result.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f"{{str(e)}}")
-    sys.exit(2)
-""")
-                        script_path = f.name
-                        
-                    # Run the script
-                    result = original_run(
-                        [sys.executable, script_path],
-                        capture_output=True,
-                        text=True
-                    )
-                    
-                    # Clean up
-                    try:
-                        os.unlink(script_path)
-                    except:
-                        pass
-                        
-                    success = result.returncode == 0
-                    stdout = result.stdout
-                    stderr = result.stderr
-                else:
-                    # Normal uninstallation for non-frozen environment
-                    result = original_run(
+            self.parent_app.terminal.run_command_redirected(
+                [self.pip_path, "uninstall", "-y", package_name],
+                on_complete=on_uninstall_complete
+            )
+            
+            return True, "Uninstallation started"
+        else:
+            # Fallback to thread-based uninstallation
+            def uninstall_thread():
+                try:
+                    result = subprocess.run(
                         [self.pip_path, "uninstall", "-y", package_name],
                         capture_output=True,
                         text=True
@@ -3789,95 +3750,111 @@ except Exception as e:
                     success = result.returncode == 0
                     stdout = result.stdout
                     stderr = result.stderr
-                
-                if callback:
-                    callback(success, stdout, stderr)
                     
-            except Exception as e:
-                if callback:
-                    callback(False, "", str(e))
+                    if callback:
+                        callback(success, stdout, stderr)
+                        
+                except Exception as e:
+                    if callback:
+                        callback(False, "", str(e))
                 
-        threading.Thread(target=uninstall_thread, daemon=True).start()
-        return True, "Uninstallation started"
+            threading.Thread(target=uninstall_thread, daemon=True).start()
+            return True, "Uninstallation started"
         
-    # FIXED: Fixed list_packages method for hidden console
     def list_packages(self, callback=None):
-        """List installed packages with special handling for hidden consoles"""
+        """List installed packages using terminal"""
         if not self.current_venv:
             if callback:
                 callback(False, [], "No virtual environment active")
             return False, "No virtual environment active"
         
-        # Get reference to original subprocess functions
-        import subprocess
-        original_run = getattr(subprocess, '_original_run', subprocess.run)
-            
-        def list_thread():
-            try:
-                # Special handling for executables with hidden consoles
-                if getattr(sys, 'frozen', False):
-                    # Create a temporary script for listing packages
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                        f.write(f"""
+        # Switch to terminal tab if available
+        if hasattr(self.parent_app, 'output_tabs'):
+            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
+        
+        # Use terminal if available
+        if hasattr(self.parent_app, 'terminal'):
+            # Create a script to list packages
+            list_script = """
 import subprocess
 import sys
-import os
 import json
 
 try:
-    # Execute pip command directly without hiding
+    # Execute pip command
+    pip_cmd = sys.argv[1]
     result = subprocess.run(
-        [r"{self.pip_path}", "list", "--format=json"],
+        [pip_cmd, "list", "--format=json"],
         capture_output=True,
         text=True
     )
     
     if result.returncode == 0:
-        try:
-            packages = json.loads(result.stdout)
-            print(json.dumps(packages))
-            sys.exit(0)
-        except Exception as e:
-            print(f"{{str(e)}}")
-            sys.exit(1)
+        print(result.stdout)
+        sys.exit(0)
     else:
-        print(result.stderr)
+        print("Error: " + result.stderr)
         sys.exit(1)
 except Exception as e:
-    print(f"{{str(e)}}")
-    sys.exit(2)
-""")
-                        script_path = f.name
-                        
-                    # Run the script
-                    result = original_run(
-                        [sys.executable, script_path],
-                        capture_output=True,
-                        text=True
-                    )
-                    
-                    # Clean up
-                    try:
-                        os.unlink(script_path)
-                    except:
-                        pass
-                        
-                    if result.returncode == 0:
+    print("Error: " + str(e))
+    sys.exit(1)
+"""
+            script_path = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                    f.write(list_script)
+                    script_path = f.name
+                
+                def on_packages_listed(success, return_code):
+                    # Parse JSON output from terminal
+                    if success and hasattr(self.parent_app, 'terminal'):
                         try:
-                            import json
-                            packages = json.loads(result.stdout)
-                            if callback:
-                                callback(True, packages, "")
+                            # Get terminal output
+                            terminal_output = self.parent_app.terminal.get("1.0", "end")
+                            # Find JSON content - looking for a line that starts with '['
+                            json_start = terminal_output.find('[{')
+                            if json_start != -1:
+                                json_content = terminal_output[json_start:]
+                                # Find end of JSON array
+                                json_end = json_content.find(']')+1
+                                if json_end != 0:
+                                    json_content = json_content[:json_end]
+                                    # Parse JSON
+                                    try:
+                                        packages = json.loads(json_content)
+                                        if callback:
+                                            callback(True, packages, "")
+                                        return
+                                    except json.JSONDecodeError as je:
+                                        if callback:
+                                            callback(False, [], f"Error parsing package list JSON: {je}")
+                                        return
                         except Exception as e:
                             if callback:
                                 callback(False, [], f"Error parsing package list: {e}")
-                    else:
-                        if callback:
-                            callback(False, [], result.stderr)
-                else:
-                    # Normal listing for non-frozen environment
-                    result = original_run(
+                            return
+                    
+                    # Fallback for errors
+                    if callback:
+                        callback(False, [], f"Failed to list packages: exit code {return_code}")
+                
+                # Pass the pip path as an argument to the script
+                self.parent_app.terminal.run_command_redirected(
+                    [sys.executable, script_path, self.pip_path],
+                    on_complete=on_packages_listed
+                )
+                
+                return True, "Getting package list"
+            finally:
+                if script_path and os.path.exists(script_path):
+                    # Use after with root to schedule deletion
+                    if hasattr(self.parent_app, 'root'):
+                        self.parent_app.root.after(5000, lambda: os.unlink(script_path) if os.path.exists(script_path) else None)
+        else:
+            # Fallback to thread-based listing
+            def list_thread():
+                try:
+                    result = subprocess.run(
                         [self.pip_path, "list", "--format=json"],
                         capture_output=True,
                         text=True
@@ -3896,12 +3873,12 @@ except Exception as e:
                         if callback:
                             callback(False, [], result.stderr)
                         
-            except Exception as e:
-                if callback:
-                    callback(False, [], str(e))
+                except Exception as e:
+                    if callback:
+                        callback(False, [], str(e))
                     
-        threading.Thread(target=list_thread, daemon=True).start()
-        return True, "Getting package list"
+            threading.Thread(target=list_thread, daemon=True).start()
+            return True, "Getting package list"
         
     def get_venv_info(self, venv_name):
         """Get information about a virtual environment"""
@@ -3936,130 +3913,34 @@ except Exception as e:
         }
         
         try:
-            # Get Python version
+            # Get Python version directly (faster than creating a terminal script)
             python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
             
-            # Get reference to original subprocess run function
-            import subprocess
-            original_run = getattr(subprocess, '_original_run', subprocess.run)
+            result = subprocess.run(
+                [python_exe, "--version"],
+                capture_output=True,
+                text=True
+            )
             
-            # FIXED: Special handling for executables with hidden consoles
-            if getattr(sys, 'frozen', False):
-                # Create a script to get Python version
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(f"""
-import subprocess
-import sys
-
-try:
-    result = subprocess.run(
-        [r"{python_exe}", "--version"],
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode == 0:
-        print(result.stdout.strip())
-    else:
-        print("Unknown")
-except:
-    print("Unknown")
-""")
-                    script_path = f.name
+            if result.returncode == 0:
+                info['python_version'] = result.stdout.strip()
                 
-                # Run the script
-                result = original_run(
-                    [sys.executable, script_path],
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Clean up
+            # Get package count directly (faster than using terminal)
+            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
+            result = subprocess.run(
+                [pip_exe, "list", "--format=json"],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
                 try:
-                    os.unlink(script_path)
+                    import json
+                    packages = json.loads(result.stdout)
+                    info['packages_count'] = len(packages)
                 except:
-                    pass
-                
-                if result.returncode == 0:
-                    info['python_version'] = result.stdout.strip()
-                
-                # Create a more reliable package counting approach
-                # Get package count with a script
-                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                    f.write(f"""
-import subprocess
-import sys
-import json
-
-try:
-    # Use a simple pip command that won't trigger recursion
-    result = subprocess.run(
-        [r"{pip_exe}", "list", "--format=json"],
-        capture_output=True, 
-        text=True
-    )
-    
-    if result.returncode == 0:
-        try:
-            packages = json.loads(result.stdout)
-            print(len(packages))
-        except:
-            print("0")
-    else:
-        print("0")
-except:
-    print("0")
-""")
-                    count_script_path = f.name
-                
-                # Run the script
-                count_result = original_run(
-                    [sys.executable, count_script_path],
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Clean up
-                try:
-                    os.unlink(count_script_path)
-                except:
-                    pass
-                
-                if count_result.returncode == 0:
-                    try:
-                        info['packages_count'] = int(count_result.stdout.strip())
-                    except:
-                        info['packages_count'] = 0
-            else:
-                # Normal case - use original_run directly
-                # Get Python version
-                result = original_run(
-                    [python_exe, "--version"],
-                    capture_output=True,
-                    text=True
-                )
-                
-                if result.returncode == 0:
-                    info['python_version'] = result.stdout.strip()
-                    
-                # Get package count
-                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-                result = original_run(
-                    [pip_exe, "list", "--format=json"],
-                    capture_output=True,
-                    text=True
-                )
-                
-                if result.returncode == 0:
-                    try:
-                        import json
-                        packages = json.loads(result.stdout)
-                        info['packages_count'] = len(packages)
-                    except:
-                        info['packages_count'] = 0
-                
+                    info['packages_count'] = 0
+            
             # Get directory size
             info['size'] = self._get_directory_size(venv_path)
             
@@ -6289,6 +6170,15 @@ class ManimStudioApp:
                 selectbackground=colors["selection"]
             )
             
+        # Apply to terminal if exists
+        if hasattr(self, 'terminal'):
+            self.terminal.configure(
+                bg=colors["background"],
+                fg=colors["text"],
+                insertbackground=colors["text"],
+                selectbackground=colors["selection"]
+            )
+            
     def apply_theme(self, theme_colors):
         """Apply a new theme to the application"""
         global VSCODE_COLORS
@@ -6804,7 +6694,7 @@ class ManimStudioApp:
         # Top right - Preview
         self.create_preview_area()
         
-        # Bottom - Output console
+        # Bottom - Output console with terminal
         self.create_output_area()
         
     def create_code_editor(self):
@@ -6919,6 +6809,7 @@ class ManimStudioApp:
         preview_frame.grid_columnconfigure(0, weight=1)
         
         # Preview header
+        # Preview header
         preview_header = ctk.CTkFrame(preview_frame, height=50, fg_color=VSCODE_COLORS["surface_light"])
         preview_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
         preview_header.grid_columnconfigure(1, weight=1)
@@ -6954,7 +6845,7 @@ class ManimStudioApp:
         self.video_player.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
         
     def create_output_area(self):
-        """Create output console area"""
+        """Create output console area with integrated terminal"""
         output_frame = ctk.CTkFrame(self.main_area, fg_color=VSCODE_COLORS["surface"])
         output_frame.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=10, pady=(5, 10))
         output_frame.grid_rowconfigure(1, weight=1)
@@ -6965,14 +6856,53 @@ class ManimStudioApp:
         output_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
         output_header.grid_columnconfigure(1, weight=1)
         
-        # Output title
-        output_title = ctk.CTkLabel(
-            output_header,
-            text="📋 Console Output",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
+        # Create tabs for output and terminal
+        self.output_tabs = ctk.CTkTabview(output_frame, fg_color=VSCODE_COLORS["surface"])
+        self.output_tabs.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        # Create Console tab
+        console_tab = self.output_tabs.add("Console")
+        console_tab.grid_rowconfigure(0, weight=1)
+        console_tab.grid_columnconfigure(0, weight=1)
+        
+        # Output text in Console tab
+        self.output_text = tk.Text(
+            console_tab,
+            font=("Consolas", 11),
+            bg=VSCODE_COLORS["background"],
+            fg=VSCODE_COLORS["text"],
+            insertbackground=VSCODE_COLORS["text"],
+            selectbackground=VSCODE_COLORS["selection"],
+            bd=0,
+            highlightthickness=0,
+            state="disabled",
+            wrap="word"
         )
-        output_title.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        self.output_text.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        
+        # Scrollbar for output
+        output_scrollbar = ctk.CTkScrollbar(console_tab, command=self.output_text.yview)
+        output_scrollbar.grid(row=0, column=1, sticky="ns", padx=(0, 0), pady=0)
+        self.output_text.configure(yscrollcommand=output_scrollbar.set)
+        
+        # Create Terminal tab
+        terminal_tab = self.output_tabs.add("Terminal")
+        terminal_tab.grid_rowconfigure(0, weight=1)
+        terminal_tab.grid_columnconfigure(0, weight=1)
+        
+        # Terminal in Terminal tab
+        self.terminal = TkTerminal(
+            terminal_tab,
+            bg=VSCODE_COLORS["background"],
+            fg=VSCODE_COLORS["text"],
+            height=10
+        )
+        self.terminal.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        
+        # Scrollbar for terminal
+        terminal_scrollbar = ctk.CTkScrollbar(terminal_tab, command=self.terminal.yview)
+        terminal_scrollbar.grid(row=0, column=1, sticky="ns", padx=(0, 0), pady=0)
+        self.terminal.configure(yscrollcommand=terminal_scrollbar.set)
         
         # Output controls
         output_controls = ctk.CTkFrame(output_header, fg_color="transparent")
@@ -6990,25 +6920,14 @@ class ManimStudioApp:
         )
         clear_btn.pack(side="right")
         
-        # Output text
-        self.output_text = tk.Text(
-            output_frame,
-            font=("Consolas", 11),
-            bg=VSCODE_COLORS["background"],
-            fg=VSCODE_COLORS["text"],
-            insertbackground=VSCODE_COLORS["text"],
-            selectbackground=VSCODE_COLORS["selection"],
-            bd=0,
-            highlightthickness=0,
-            state="disabled",
-            wrap="word"
+        # Output title
+        output_title = ctk.CTkLabel(
+            output_header,
+            text="📋 Console & Terminal",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
         )
-        self.output_text.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
-        
-        # Scrollbar for output
-        output_scrollbar = ctk.CTkScrollbar(output_frame, command=self.output_text.yview)
-        output_scrollbar.grid(row=1, column=1, sticky="ns", padx=(0, 10), pady=(0, 10))
-        self.output_text.configure(yscrollcommand=output_scrollbar.set)
+        output_title.grid(row=0, column=0, sticky="w", padx=15, pady=10)
         
     def create_status_bar(self):
         """Create status bar"""
@@ -7095,6 +7014,7 @@ class ManimStudioApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Environment Setup", command=self.manage_environment)
+        tools_menu.add_command(label="Terminal", command=self.focus_terminal)
         
         # Animation menu
         animation_menu = tk.Menu(menubar, tearoff=0)
@@ -7109,6 +7029,12 @@ class ManimStudioApp:
         help_menu.add_command(label="Manim Documentation", command=self.open_manim_docs)
         help_menu.add_command(label="Getting Started", command=self.show_getting_started)
         help_menu.add_command(label="About", command=self.show_about)
+        
+    def focus_terminal(self):
+        """Switch to terminal tab and focus it"""
+        if hasattr(self, 'output_tabs'):
+            self.output_tabs.set("Terminal")
+            self.terminal.focus_set()
         
     def bind_shortcuts(self):
         """Bind keyboard shortcuts"""
@@ -7310,6 +7236,7 @@ class MyScene(Scene):
                 f"Error opening environment dialog:\n{str(e)}\n\n"
                 "Please try restarting the application."
             )
+            
     # Settings callbacks
     def on_quality_change(self, value):
         """Handle quality change"""
@@ -7591,7 +7518,7 @@ class MyScene(Scene):
             
     # Animation operations
     def quick_preview(self):
-        """Generate quick preview using virtual environment"""
+        """Generate quick preview using terminal"""
         if self.is_previewing:
             return
             
@@ -7607,125 +7534,119 @@ class MyScene(Scene):
                 "Click the Environment Setup button to create one."
             )
             return
-                
+            
         self.is_previewing = True
         self.quick_preview_button.configure(text="⏳ Generating...", state="disabled")
         self.update_status("Generating preview...")
         
-        def preview_thread():
-            try:
-                # Create temporary directory
-                temp_dir = tempfile.mkdtemp(prefix="manim_preview_")
+        # Switch to terminal tab
+        if hasattr(self, 'output_tabs'):
+            self.output_tabs.set("Terminal")
+            
+        try:
+            # Create temporary directory
+            temp_dir = tempfile.mkdtemp(prefix="manim_preview_")
+            
+            # Extract scene class name
+            scene_class = self.extract_scene_class_name(self.current_code)
+            
+            # Write code to file
+            scene_file = os.path.join(temp_dir, "scene.py")
+            with open(scene_file, "w", encoding="utf-8") as f:
+                f.write(self.current_code)
                 
-                # Extract scene class name
-                scene_class = self.extract_scene_class_name(self.current_code)
+            # Get preview settings
+            preview_quality = PREVIEW_QUALITIES[self.settings["preview_quality"]]
+            quality_flag = preview_quality["flag"]
+            
+            # Use environment Python
+            python_exe = self.venv_manager.python_path
+            
+            # Get the number of cores to use
+            num_cores = self.get_render_cores()
                 
-                # Write code to file
-                scene_file = os.path.join(temp_dir, "scene.py")
-                with open(scene_file, "w", encoding="utf-8") as f:
-                    f.write(self.current_code)
+            # Build manim command
+            command = [
+                python_exe, "-m", "manim",
+                scene_file,
+                scene_class,
+                quality_flag,
+                "--format=mp4",
+                f"--fps={preview_quality['fps']}",
+                "--disable_caching",
+                f"--renderer=cairo"  # We'll handle cores with env vars
+            ]
+            
+            # Set environment variable for CPU control
+            env = {"OMP_NUM_THREADS": str(num_cores)}
+            
+            # On preview complete callback
+            def on_preview_complete(success, return_code):
+                # Find output file
+                output_file = self.find_output_file(temp_dir, scene_class, "mp4")
+                
+                # Reset UI state
+                self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                self.is_previewing = False
+                
+                if success and output_file and os.path.exists(output_file):
+                    # Load video in player
+                    self.video_player.load_video(output_file)
+                    self.update_status("Preview generated successfully")
+                    self.last_preview_code = self.current_code
                     
-                # Get preview settings
-                preview_quality = PREVIEW_QUALITIES[self.settings["preview_quality"]]
-                quality_flag = preview_quality["flag"]
+                    # Copy to cache for later use
+                    cache_dir = os.path.join(os.getcwd(), ".preview_cache")
+                    os.makedirs(cache_dir, exist_ok=True)
+                    cached_file = os.path.join(cache_dir, f"preview_{scene_class}.mp4")
+                    try:
+                        shutil.copy2(output_file, cached_file)
+                    except Exception as e:
+                        self.append_output(f"Warning: Could not cache preview: {e}\n")
+                else:
+                    self.update_status("Preview generation failed")
+                    self.append_output("Error: Preview file not found or generation failed\n")
                 
-                # Use environment Python
-                python_exe = self.venv_manager.python_path
-                
-                # Get the number of cores to use
-                num_cores = self.get_render_cores()
-                    
-                # Build manim command
-                command = [
-                    python_exe, "-m", "manim",
-                    scene_file,
-                    scene_class,
-                    quality_flag,
-                    "--format=mp4",
-                    f"--fps={preview_quality['fps']}",
-                    "--disable_caching",
-                    f"--renderer=cairo",  # Ensure cairo renderer for threading support
-                ]
-
-                # Hide console windows on Windows
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
-
-                # Set environment variable for CPU control instead of command-line option
-                env = os.environ.copy()
-                env["OMP_NUM_THREADS"] = str(num_cores)
-                self.root.after(0, lambda: self.append_output(f"Generating preview with: {' '.join(command)}\n"))
-                self.root.after(0, lambda: self.append_output(f"Using {num_cores} CPU cores for rendering\n"))
-                
-                # Execute command
-                process = subprocess.Popen(
+                # Cleanup temp directory
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as e:
+                    self.append_output(f"Warning: Could not clean up temp directory: {e}\n")
+            
+            # Run command in terminal
+            if hasattr(self, 'terminal'):
+                self.terminal.run_command_redirected(command, on_preview_complete, env)
+            else:
+                # Fallback to normal execution if terminal not available
+                self.preview_process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    cwd=temp_dir,
-                    env=env,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags
+                    env=os.environ.update(env),
+                    universal_newlines=True
                 )
-                self.preview_process = process
                 
-                # Read output
-                for line in process.stdout:
-                    self.root.after(0, lambda l=line: self.append_output(l))
+                # Start thread to monitor process
+                def monitor_process():
+                    for line in self.preview_process.stdout:
+                        self.append_output(line)
                     
-                process.wait()
-                self.preview_process = None
+                    self.preview_process.wait()
+                    success = self.preview_process.returncode == 0
+                    on_preview_complete(success, self.preview_process.returncode)
+                    self.preview_process = None
                 
-                if process.returncode == 0:
-                    # Find output file
-                    output_file = self.find_output_file(temp_dir, scene_class, "mp4")
-                    
-                    if output_file:
-                        # Load video in player
-                        self.root.after(0, lambda: self.video_player.load_video(output_file))
-                        self.root.after(0, lambda: self.update_status("Preview generated successfully"))
-                        self.last_preview_code = self.current_code
-                        
-                        # Copy to cache for later use
-                        cache_dir = os.path.join(os.getcwd(), ".preview_cache")
-                        os.makedirs(cache_dir, exist_ok=True)
-                        cached_file = os.path.join(cache_dir, f"preview_{scene_class}.mp4")
-                        shutil.copy2(output_file, cached_file)
-                    else:
-                        self.root.after(0, lambda: self.update_status("Preview file not found"))
-                        self.root.after(0, lambda: self.append_output("Error: Preview file not generated\n"))
-                else:
-                    self.root.after(0, lambda: self.update_status("Preview generation failed"))
-                    
-                # Cleanup (delayed to allow video loading)
-                def cleanup():
-                    if os.path.exists(temp_dir):
-                        try:
-                            shutil.rmtree(temp_dir)
-                        except:
-                            pass
-                            
-                self.root.after(5000, cleanup)
+                threading.Thread(target=monitor_process, daemon=True).start()
                 
-            except Exception as e:
-                self.root.after(0, lambda e=e: self.update_status(f"Preview error: {e}"))
-                self.root.after(0, lambda e=e: self.append_output(f"Preview error: {e}\n"))
-                
-            finally:
-                self.root.after(0, lambda: self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal"))
-                self.is_previewing = False
-                
-        threading.Thread(target=preview_thread, daemon=True).start()
+        except Exception as e:
+            self.update_status(f"Preview error: {e}")
+            self.append_output(f"Preview error: {e}\n")
+            self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+            self.is_previewing = False
         
     def render_animation(self):
-        """Render high-quality animation using virtual environment"""
+        """Render high-quality animation using terminal"""
         if self.is_rendering:
             return
             
@@ -7741,147 +7662,225 @@ class MyScene(Scene):
                 "Click the Environment Setup button to create one."
             )
             return
-                
+            
         self.is_rendering = True
         self.render_button.configure(text="⏳ Rendering...", state="disabled")
         self.update_status("Starting render...")
         self.progress_bar.set(0)
+        self.progress_label.configure(text="Initializing render...")
         
-        def render_thread():
-            try:
-                # Create temporary directory
-                temp_dir = tempfile.mkdtemp(prefix="manim_render_")
+        # Switch to terminal tab
+        if hasattr(self, 'output_tabs'):
+            self.output_tabs.set("Terminal")
+            
+        try:
+            # Create temporary directory
+            temp_dir = tempfile.mkdtemp(prefix="manim_render_")
+            
+            # Extract scene class name
+            scene_class = self.extract_scene_class_name(self.current_code)
+            
+            # Write code to file
+            scene_file = os.path.join(temp_dir, "scene.py")
+            with open(scene_file, "w", encoding="utf-8") as f:
+                f.write(self.current_code)
                 
-                # Extract scene class name
-                scene_class = self.extract_scene_class_name(self.current_code)
+            # Get render settings
+            quality_preset = QUALITY_PRESETS[self.settings["quality"]]
+            quality_flag = quality_preset["flag"]
+            format_ext = EXPORT_FORMATS[self.settings["format"]]
+            
+            # Use environment Python
+            python_exe = self.venv_manager.python_path
+            
+            # Get the number of cores to use
+            num_cores = self.get_render_cores()
                 
-                # Write code to file
-                scene_file = os.path.join(temp_dir, "scene.py")
-                with open(scene_file, "w", encoding="utf-8") as f:
-                    f.write(self.current_code)
+            # Build manim command
+            command = [
+                python_exe, "-m", "manim",
+                scene_file,
+                scene_class,
+                quality_flag,
+                f"--format={format_ext}",
+                f"--fps={self.settings['fps']}",
+                f"--renderer=cairo"  # Control cores with env vars instead
+            ]
+            
+            # Add audio if available
+            if self.audio_path and os.path.exists(self.audio_path):
+                command.extend(["--sound", self.audio_path])
+            
+            # Set environment variable for CPU control
+            env = {"OMP_NUM_THREADS": str(num_cores)}
+            
+            # Track progress by parsing terminal output
+            def parse_progress(line, set_progress=True):
+                try:
+                    if "Rendering frame" in line:
+                        # Extract frame number
+                        parts = line.split()
+                        for i, part in enumerate(parts):
+                            if part == "frame" and i + 1 < len(parts):
+                                frame_count = int(parts[i + 1])
+                                if set_progress:
+                                    self.progress_label.configure(text=f"Rendering frame {frame_count}...")
+                                return frame_count, None
+                    elif "Total" in line and "frames" in line:
+                        # Extract total frames
+                        match = re.search(r'(\d+)', line)
+                        if match:
+                            total_frames = int(match.group(1))
+                            return None, total_frames
+                except:
+                    pass
+                return None, None
+            
+            # On render complete callback
+            def on_render_complete(success, return_code):
+                # Find output file
+                output_file = self.find_output_file(temp_dir, scene_class, format_ext)
+                
+                # Reset UI state
+                self.render_button.configure(text="🚀 Render Animation", state="normal")
+                self.is_rendering = False
+                
+                if success and output_file and os.path.exists(output_file):
+                    self.progress_bar.set(1.0)
+                    self.progress_label.configure(text="Render completed!")
+                    self.update_status("Render completed successfully")
                     
-                # Get render settings
-                quality_preset = QUALITY_PRESETS[self.settings["quality"]]
-                quality_flag = quality_preset["flag"]
-                format_ext = EXPORT_FORMATS[self.settings["format"]]
+                    # Save rendered file
+                    self.save_rendered_file(output_file, format_ext)
+                else:
+                    self.progress_bar.set(0)
+                    self.progress_label.configure(text="Render failed")
+                    self.update_status("Render failed")
+                    self.append_output("Error: Output file not found or rendering failed\n")
                 
-                # Use environment Python
-                python_exe = self.venv_manager.python_path
+                # Cleanup temp directory
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as e:
+                    self.append_output(f"Warning: Could not clean up temp directory: {e}\n")
+            
+            # Run command in terminal
+            if hasattr(self, 'terminal'):
+                # Need custom parsing of output to track progress
+                frame_count = 0
+                total_frames = 0
+                original_run_command = self.terminal.run_command_redirected
                 
-                # Get the number of cores to use
-                num_cores = self.get_render_cores()
+                # Override terminal's run_command to track progress
+                def tracked_run_command(command, on_complete=None, env=None):
+                    nonlocal frame_count, total_frames
                     
-                # Build manim command
-                command = [
-                    python_exe, "-m", "manim",
-                    scene_file,
-                    scene_class,
-                    quality_flag,
-                    f"--format={format_ext}",
-                    f"--fps={self.settings['fps']}",
-                    f"--renderer=cairo"  # Keep renderer but remove threads parameter
-                ]
+                    # Original implementation but with progress tracking
+                    self.terminal.insert("end", f"Executing: {' '.join(command)}\n", "output")
+                    
+                    try:
+                        env_vars = os.environ.copy()
+                        if env:
+                            env_vars.update(env)
+                            
+                        process = subprocess.Popen(
+                            command,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            universal_newlines=True,
+                            env=env_vars
+                        )
+                        
+                        self.render_process = process
+                        
+                        # Start reading output in a separate thread with progress tracking
+                        def read_output_with_progress():
+                            nonlocal frame_count, total_frames
+                            
+                            for line in process.stdout:
+                                if line:
+                                    # Parse progress info
+                                    curr_frame, curr_total = parse_progress(line)
+                                    if curr_frame:
+                                        frame_count = curr_frame
+                                    if curr_total:
+                                        total_frames = curr_total
+                                        
+                                    # Update progress bar
+                                    if total_frames > 0 and frame_count > 0:
+                                        progress = min(0.95, frame_count / total_frames)
+                                        self.root.after(0, lambda p=progress: self.progress_bar.set(p))
+                                    
+                                    # Display output
+                                    self.terminal.insert("end", line, "output")
+                                    self.terminal.see("end")
+                                    
+                            process.wait()
+                            if on_complete:
+                                on_complete(process.returncode == 0, process.returncode)
+                                
+                            self.render_process = None
+                            
+                        threading.Thread(target=read_output_with_progress, daemon=True).start()
+                        
+                    except Exception as e:
+                        self.terminal.insert("end", f"Error: {str(e)}\n", "error")
+                        if on_complete:
+                            on_complete(False, -1)
                 
-                # Add audio if available
-                if self.audio_path and os.path.exists(self.audio_path):
-                    command.extend(["--sound", self.audio_path])
+                # Use our tracked version
+                self.terminal.run_command_redirected = tracked_run_command
                 
-                # Add threads parameter for multi-core rendering
-                command.append(f"--threads={num_cores}")
+                # Run the command
+                self.terminal.run_command_redirected(command, on_render_complete, env)
                 
-                # Hide console windows on Windows
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
-                
-                self.root.after(0, lambda: self.append_output(f"Rendering with: {' '.join(command)}\n"))
-                self.root.after(0, lambda: self.append_output(f"Using {num_cores} CPU cores for rendering\n"))
-                self.root.after(0, lambda: self.progress_label.configure(text="Initializing render..."))
-                
-                # Execute command
-                process = subprocess.Popen(
+                # Restore original method
+                self.terminal.run_command_redirected = original_run_command
+            else:
+                # Fallback to normal execution if terminal not available
+                self.render_process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    cwd=temp_dir,
-                    env=env,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags
+                    env=os.environ.update(env),
+                    universal_newlines=True
                 )
-                self.render_process = process
                 
-                # Track progress
-                frame_count = 0
-                total_frames = 0
-                
-                for line in process.stdout:
-                    self.root.after(0, lambda l=line: self.append_output(l))
+                # Start thread to monitor process with progress tracking
+                def monitor_process_with_progress():
+                    frame_count = 0
+                    total_frames = 0
                     
-                    # Extract progress information
-                    if "Rendering frame" in line:
-                        try:
-                            # Extract frame number
-                            parts = line.split()
-                            for i, part in enumerate(parts):
-                                if part == "frame" and i + 1 < len(parts):
-                                    frame_count = int(parts[i + 1])
-                                    self.root.after(0, lambda f=frame_count: self.progress_label.configure(text=f"Rendering frame {f}..."))
-                                    break
-                        except:
-                            pass
-                            
-                    # Extract total frames
-                    elif "Total" in line and "frames" in line:
-                        try:
-                            total_frames = int(re.search(r'(\d+)', line).group(1))
-                        except:
-                            pass
-                            
-                    # Update progress bar
-                    if frame_count > 0 and total_frames > 0:
-                        progress = min(0.9, frame_count / total_frames)
-                        self.root.after(0, lambda p=progress: self.progress_bar.set(p))
+                    for line in self.render_process.stdout:
+                        self.append_output(line)
                         
-                process.wait()
-                self.render_process = None
+                        # Parse progress info
+                        curr_frame, curr_total = parse_progress(line, False)
+                        if curr_frame:
+                            frame_count = curr_frame
+                            self.root.after(0, lambda f=frame_count: self.progress_label.configure(text=f"Rendering frame {f}..."))
+                        if curr_total:
+                            total_frames = curr_total
+                            
+                        # Update progress bar
+                        if total_frames > 0 and frame_count > 0:
+                            progress = min(0.95, frame_count / total_frames)
+                            self.root.after(0, lambda p=progress: self.progress_bar.set(p))
+                    
+                    self.render_process.wait()
+                    success = self.render_process.returncode == 0
+                    on_render_complete(success, self.render_process.returncode)
+                    self.render_process = None
                 
-                if process.returncode == 0:
-                    self.root.after(0, lambda: self.progress_bar.set(1.0))
-                    self.root.after(0, lambda: self.progress_label.configure(text="Render completed!"))
-                    self.root.after(0, lambda: self.update_status("Render completed successfully"))
-                    
-                    # Find output file
-                    output_file = self.find_output_file(temp_dir, scene_class, format_ext)
-                    
-                    if output_file:
-                        # Save rendered file
-                        self.root.after(0, lambda: self.save_rendered_file(output_file, format_ext))
-                    else:
-                        self.root.after(0, lambda: self.append_output("Error: Output file not found\n"))
-                else:
-                    self.root.after(0, lambda: self.update_status("Render failed"))
-                    self.root.after(0, lambda: self.progress_label.configure(text="Render failed"))
-                    
-                # Cleanup
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-                    
-            except Exception as e:
-                self.root.after(0, lambda e=e: self.update_status(f"Render error: {e}"))
-                self.root.after(0, lambda e=e: self.append_output(f"Render error: {e}\n"))
+                threading.Thread(target=monitor_process_with_progress, daemon=True).start()
                 
-            finally:
-                self.root.after(0, lambda: self.render_button.configure(text="🚀 Render Animation", state="normal"))
-                self.root.after(0, lambda: self.progress_bar.set(0))
-                self.is_rendering = False
-                
-        threading.Thread(target=render_thread, daemon=True).start()
+        except Exception as e:
+            self.update_status(f"Render error: {e}")
+            self.append_output(f"Render error: {e}\n")
+            self.render_button.configure(text="🚀 Render Animation", state="normal")
+            self.is_rendering = False
         
     def extract_scene_class_name(self, code):
         """Extract scene class name from code"""
@@ -8006,10 +8005,14 @@ class MyScene(Scene):
         self.output_text.see("end")
         
     def clear_output(self):
-        """Clear output console"""
+        """Clear output console and terminal"""
         self.output_text.configure(state="normal")
         self.output_text.delete("1.0", "end")
         self.output_text.configure(state="disabled")
+        
+        # Also clear terminal if it exists
+        if hasattr(self, 'terminal'):
+            self.terminal.clear()
         
     def start_background_tasks(self):
         """Start background tasks"""
@@ -8034,54 +8037,116 @@ class MyScene(Scene):
         self.root.after(1000, self.check_dependencies)
         
     def check_dependencies(self):
-        """Check if required dependencies are installed"""
+        """Check if required dependencies are installed using terminal"""
         def check_thread():
             required = ["manim", "numpy", "PIL", "cv2"]
             missing = []
             
-            # Use current virtual environment if available
-            if self.venv_manager.current_venv:
-                python_exe = self.venv_manager.python_path
-            else:
-                python_exe = sys.executable
+            # Switch to terminal tab if available
+            if hasattr(self, 'output_tabs'):
+                self.root.after(0, lambda: self.output_tabs.set("Terminal"))
                 
-            # Hide console windows on Windows
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-                
-            for package in required:
+            # Use terminal if available
+            if hasattr(self, 'terminal'):
+                # Create a script to check dependencies
+                check_script = """
+import sys
+
+# Check for required packages
+missing = []
+packages = sys.argv[1:]
+for package in packages:
+    try:
+        if package == 'PIL':
+            import PIL
+        elif package == 'cv2':
+            import cv2
+        else:
+            __import__(package)
+        print(f"[OK] {package} is installed")
+    except ImportError:
+        missing.append(package)
+        print(f"[FAIL] Missing package: {package}")
+
+if missing:
+    print(f"Missing packages: {', '.join(missing)}")
+    sys.exit(1)
+else:
+    print("All dependencies are installed!")
+    sys.exit(0)
+"""
+                script_path = None
                 try:
-                    # Check if package is installed
-                    import_cmd = "PIL" if package == "PIL" else package
-                    result = subprocess.run([
-                        python_exe, "-c", f"import {import_cmd}"
-                    ], capture_output=True, startupinfo=startupinfo, creationflags=creationflags)
-                    
-                    if result.returncode != 0:
-                        missing.append(package)
-                except:
-                    missing.append(package)
-                    
-            if missing:
-                # Map package names for installation
-                install_names = []
-                for pkg in missing:
-                    if pkg == "PIL":
-                        install_names.append("Pillow")
-                    elif pkg == "cv2":
-                        install_names.append("opencv-python")
-                    else:
-                        install_names.append(pkg)
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                        f.write(check_script)
+                        script_path = f.name
                         
-                self.root.after(0, lambda: self.show_dependency_dialog(missing, install_names))
+                    # Run using the selected Python environment
+                    python_exe = self.venv_manager.python_path if self.venv_manager.current_venv else sys.executable
+                    
+                    def on_check_complete(success, return_code):
+                        if not success:
+                            # Offer to install missing packages
+                            # We get missing packages from terminal output
+                            terminal_output = self.terminal.get("1.0", "end")
+                            missing_line = [line for line in terminal_output.splitlines() if "Missing packages:" in line]
+                            if missing_line:
+                                missing_str = missing_line[0].split("Missing packages:")[1].strip()
+                                missing = [pkg.strip() for pkg in missing_str.split(',')]
+                                
+                                # Map package names for installation
+                                install_names = []
+                                for pkg in missing:
+                                    if pkg == 'PIL':
+                                        install_names.append("Pillow")
+                                    elif pkg == 'cv2':
+                                        install_names.append("opencv-python")
+                                    else:
+                                        install_names.append(pkg)
+                                        
+                                # Ask to install
+                                self.root.after(0, lambda: self.show_dependency_dialog(missing, install_names))
+                    
+                    self.terminal.run_command_redirected(
+                        [python_exe, script_path] + required,
+                        on_complete=on_check_complete
+                    )
+                finally:
+                    # Clean up script later
+                    if script_path:
+                        self.root.after(5000, lambda: os.unlink(script_path) if os.path.exists(script_path) else None)
             else:
-                self.root.after(0, lambda: self.update_status("All dependencies ready"))
+                # Fallback to direct checking
+                # Use current virtual environment if available
+                python_exe = self.venv_manager.python_path if self.venv_manager.current_venv else sys.executable
+                    
+                for package in required:
+                    try:
+                        # Check if package is installed
+                        import_cmd = "PIL" if package == "PIL" else package
+                        result = subprocess.run([
+                            python_exe, "-c", f"import {import_cmd}"
+                        ], capture_output=True)
+                        
+                        if result.returncode != 0:
+                            missing.append(package)
+                    except:
+                        missing.append(package)
+                        
+                if missing:
+                    # Map package names for installation
+                    install_names = []
+                    for pkg in missing:
+                        if pkg == 'PIL':
+                            install_names.append("Pillow")
+                        elif pkg == 'cv2':
+                            install_names.append("opencv-python")
+                        else:
+                            install_names.append(pkg)
+                            
+                    self.after(0, lambda: self.show_dependency_dialog(missing, install_names))
+                else:
+                    self.root.after(0, lambda: self.update_status("All dependencies ready"))
                 
         threading.Thread(target=check_thread, daemon=True).start()
         
@@ -8096,7 +8161,7 @@ class MyScene(Scene):
             self.install_missing_dependencies(install_names)
             
     def install_missing_dependencies(self, package_names):
-        """Install missing dependencies"""
+        """Install missing dependencies using terminal"""
         if not self.venv_manager.current_venv:
             messagebox.showwarning(
                 "No Environment", 
@@ -8105,49 +8170,73 @@ class MyScene(Scene):
             self.manage_environment()
             return
             
-        def install_thread():
-            success_count = 0
+        # Switch to terminal tab if available
+        if hasattr(self, 'output_tabs'):
+            self.output_tabs.set("Terminal")
             
-            # Hide console windows on Windows
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-            
-            for package in package_names:
-                try:
-                    self.root.after(0, lambda p=package: self.append_output(f"Installing {p}...\n"))
-                    
-                    result = subprocess.run([
-                        self.venv_manager.pip_path, "install", package
-                    ], capture_output=True, text=True, startupinfo=startupinfo, creationflags=creationflags)
-                    
-                    if result.returncode == 0:
-                        self.root.after(0, lambda p=package: self.append_output(f"✓ Successfully installed {p}\n"))
-                        success_count += 1
-                    else:
-                        self.root.after(0, lambda p=package: self.append_output(f"✗ Failed to install {p}: {result.stderr}\n"))
-                        
-                except Exception as e:
-                    self.root.after(0, lambda p=package, e=e: self.append_output(f"✗ Error installing {p}: {e}\n"))
-                    
-            if success_count == len(package_names):
-                self.root.after(0, lambda: messagebox.showinfo(
-                    "Installation Complete",
-                    "All dependencies installed successfully!\nManimStudio is ready to use."
-                ))
-                self.root.after(0, lambda: self.update_status("All dependencies installed"))
-            else:
-                self.root.after(0, lambda: messagebox.showwarning(
-                    "Installation Incomplete",
-                    f"Installed {success_count} of {len(package_names)} packages.\nSome dependencies may still be missing."
-                ))
+        # Use terminal if available
+        if hasattr(self, 'terminal'):
+            # Install packages one by one
+            def install_package(index=0):
+                if index >= len(package_names):
+                    # All packages installed
+                    self.terminal.insert("end", "All packages installed successfully!\n", "output")
+                    return
                 
-        threading.Thread(target=install_thread, daemon=True).start()
+                package = package_names[index]
+                self.terminal.insert("end", f"Installing {package}...\n", "output")
+                
+                def on_install_complete(success, return_code):
+                    if success:
+                        self.terminal.insert("end", f"✓ Successfully installed {package}\n", "output")
+                    else:
+                        self.terminal.insert("end", f"✗ Failed to install {package} (exit code {return_code})\n", "error")
+                        
+                    # Install next package
+                    install_package(index + 1)
+                
+                self.terminal.run_command_redirected(
+                    [self.venv_manager.pip_path, "install", package],
+                    on_complete=on_install_complete
+                )
+            
+            # Start installing the first package
+            install_package()
+        else:
+            # Fallback to thread-based installation
+            def install_thread():
+                success_count = 0
+                
+                for package in package_names:
+                    try:
+                        self.append_output(f"Installing {package}...\n")
+                        
+                        result = subprocess.run([
+                            self.venv_manager.pip_path, "install", package
+                        ], capture_output=True, text=True)
+                        
+                        if result.returncode == 0:
+                            self.append_output(f"✓ Successfully installed {package}\n")
+                            success_count += 1
+                        else:
+                            self.append_output(f"✗ Failed to install {package}: {result.stderr}\n")
+                            
+                    except Exception as e:
+                        self.append_output(f"✗ Error installing {package}: {e}\n")
+                        
+                if success_count == len(package_names):
+                    messagebox.showinfo(
+                        "Installation Complete",
+                        "All dependencies installed successfully!\nManimStudio is ready to use."
+                    )
+                    self.update_status("All dependencies installed")
+                else:
+                    messagebox.showwarning(
+                        "Installation Incomplete",
+                        f"Installed {success_count} of {len(package_names)} packages.\nSome dependencies may still be missing."
+                    )
+                    
+            threading.Thread(target=install_thread, daemon=True).start()
         
     # Help functions
     def open_manim_docs(self):
@@ -8223,6 +8312,7 @@ mathematical animations using the Manim library.
 - Multi-threaded rendering and preview
 - Integrated asset manager for images and audio
 - Custom theme support with live preview
+- Integrated terminal for command execution
 
 🛠️ Built with:
 - Python & CustomTkinter for modern UI
@@ -8233,10 +8323,10 @@ mathematical animations using the Manim library.
 - PIL for image handling
 - Integrated virtual environment management
 
-👨‍💻 Author: {Euler}
-📧 Email: {euler.yu@gmail.com}
+👨‍💻 Author: {APP_AUTHOR}
+📧 Email: {APP_EMAIL}
 
-© 2025 {Euler}
+© 2025 {APP_AUTHOR}
 Licensed under MIT License"""
         
         desc_label = ctk.CTkLabel(
