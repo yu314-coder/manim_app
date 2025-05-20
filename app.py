@@ -7,6 +7,7 @@ import os
 import logging
 import json
 import subprocess
+from process_utils import popen_original, run_original
 import sys
 import time
 import uuid
@@ -449,7 +450,7 @@ class TkTerminal(tk.Text):
             env = os.environ.copy()
             
             # Execute command using subprocess
-            process = subprocess.Popen(
+            process = popen_original(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
@@ -484,7 +485,7 @@ class TkTerminal(tk.Text):
             if env:
                 env_vars.update(env)
                 
-            process = subprocess.Popen(
+            process = popen_original(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -1152,7 +1153,7 @@ All packages will be installed in an isolated environment that won't affect your
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
             # Execute pip install with CPU control
-            result = subprocess.run(
+            result = run_original(
                 [self.venv_manager.pip_path, "install", package],
                 capture_output=True,
                 text=True,
@@ -2433,7 +2434,7 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             startupinfo.wShowWindow = subprocess.SW_HIDE
             creationflags = subprocess.CREATE_NO_WINDOW
             
-        return subprocess.run(
+        return run_original(
             command,
             capture_output=True,
             text=True,
@@ -2600,8 +2601,8 @@ class VirtualEnvironmentManager:
         executable_dir = Path(os.path.dirname(sys.executable))
         bundled_dir = executable_dir / "bundled_venv"
         
-        # For onefile builds, check in temp directory
-        if not bundled_dir.exists() and getattr(sys, 'frozen', False):
+        # Also check temporary extraction paths used by onefile builds
+        if not bundled_dir.exists():
             self.logger.info("Checking for bundled environment in temp directory...")
             for path in sys.path:
                 if 'onefile_' in path and os.path.exists(path):
@@ -2849,7 +2850,7 @@ except ImportError:
                     
                     # Test each package
                     for pkg in essential_test:
-                        result = subprocess.run(
+                        result = run_original(
                             [python_exe, script_path, pkg],
                             capture_output=True,
                             text=True
@@ -2890,7 +2891,7 @@ if missing:
                         f.write(test_script)
                         script_path = f.name
                     
-                    result = subprocess.run(
+                    result = run_original(
                         [python_exe, script_path] + essential_test,
                         capture_output=True,
                         text=True
@@ -3181,7 +3182,7 @@ except Exception as e:
                 return True
             else:
                 # Fallback to direct subprocess
-                result = subprocess.run(
+                result = run_original(
                     [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
                     capture_output=True,
                     text=True
@@ -3293,7 +3294,7 @@ except Exception as e:
                     progress_callback(package, i / total_packages)
                 
                 try:
-                    result = subprocess.run(
+                    result = run_original(
                         [self.pip_path, "install", package],
                         capture_output=True,
                         text=True
@@ -3372,7 +3373,7 @@ except Exception as e:
                     progress_callback(package, i / total_packages)
                     
                 try:
-                    result = subprocess.run(
+                    result = run_original(
                         [self.pip_path, "install", package],
                         capture_output=True,
                         text=True
@@ -3490,7 +3491,7 @@ print("Manim test successful")
             # Fallback to direct testing
             for package in test_packages:
                 try:
-                    result = subprocess.run(
+                    result = run_original(
                         [self.python_path, "-c", f"import {package}; print(f'{package} version: {{getattr({package}, \"__version__\", \"unknown\")}}')"
                         ],
                         capture_output=True,
@@ -3527,7 +3528,7 @@ print("Manim test successful")
                         f.write(test_code)
                         script_path = f.name
                     
-                    result = subprocess.run(
+                    result = run_original(
                         [self.python_path, script_path],
                         capture_output=True,
                         text=True
@@ -3692,7 +3693,7 @@ except Exception as e:
             # Fallback to thread-based installation
             def install_thread():
                 try:
-                    result = subprocess.run(
+                    result = run_original(
                         [self.pip_path, "install", package_name],
                         capture_output=True,
                         text=True
@@ -3741,7 +3742,7 @@ except Exception as e:
             # Fallback to thread-based uninstallation
             def uninstall_thread():
                 try:
-                    result = subprocess.run(
+                    result = run_original(
                         [self.pip_path, "uninstall", "-y", package_name],
                         capture_output=True,
                         text=True
@@ -3783,7 +3784,7 @@ import json
 try:
     # Execute pip command
     pip_cmd = sys.argv[1]
-    result = subprocess.run(
+    result = run_original(
         [pip_cmd, "list", "--format=json"],
         capture_output=True,
         text=True
@@ -3854,7 +3855,7 @@ except Exception as e:
             # Fallback to thread-based listing
             def list_thread():
                 try:
-                    result = subprocess.run(
+                    result = run_original(
                         [self.pip_path, "list", "--format=json"],
                         capture_output=True,
                         text=True
@@ -3916,7 +3917,7 @@ except Exception as e:
             # Get Python version directly (faster than creating a terminal script)
             python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
             
-            result = subprocess.run(
+            result = run_original(
                 [python_exe, "--version"],
                 capture_output=True,
                 text=True
@@ -3927,7 +3928,7 @@ except Exception as e:
                 
             # Get package count directly (faster than using terminal)
             pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-            result = subprocess.run(
+            result = run_original(
                 [pip_exe, "list", "--format=json"],
                 capture_output=True,
                 text=True
@@ -5447,7 +5448,7 @@ class AssetCard(ctk.CTkFrame):
             # Try to get audio duration using ffprobe
             cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", 
                    "-of", "csv=p=0", self.asset_path]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = run_original(cmd, capture_output=True, text=True)
             if result.returncode == 0:
                 duration = float(result.stdout.strip())
                 duration_str = f"{int(duration//60)}:{int(duration%60):02d}"
@@ -7618,12 +7619,16 @@ class MyScene(Scene):
                 self.terminal.run_command_redirected(command, on_preview_complete, env)
             else:
                 # Fallback to normal execution if terminal not available
-                self.preview_process = subprocess.Popen(
+                env_vars = os.environ.copy()
+                if env:
+                    env_vars.update(env)
+
+                self.preview_process = popen_original(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    env=os.environ.update(env),
+                    env=env_vars,
                     universal_newlines=True
                 )
                 
@@ -7783,7 +7788,7 @@ class MyScene(Scene):
                         if env:
                             env_vars.update(env)
                             
-                        process = subprocess.Popen(
+                        process = popen_original(
                             command,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT,
@@ -7839,12 +7844,16 @@ class MyScene(Scene):
                 self.terminal.run_command_redirected = original_run_command
             else:
                 # Fallback to normal execution if terminal not available
-                self.render_process = subprocess.Popen(
+                env_vars = os.environ.copy()
+                if env:
+                    env_vars.update(env)
+
+                self.render_process = popen_original(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    env=os.environ.update(env),
+                    env=env_vars,
                     universal_newlines=True
                 )
                 
@@ -8124,7 +8133,7 @@ else:
                     try:
                         # Check if package is installed
                         import_cmd = "PIL" if package == "PIL" else package
-                        result = subprocess.run([
+                        result = run_original([
                             python_exe, "-c", f"import {import_cmd}"
                         ], capture_output=True)
                         
@@ -8211,7 +8220,7 @@ else:
                     try:
                         self.append_output(f"Installing {package}...\n")
                         
-                        result = subprocess.run([
+                        result = run_original([
                             self.venv_manager.pip_path, "install", package
                         ], capture_output=True, text=True)
                         
