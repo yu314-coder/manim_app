@@ -449,7 +449,12 @@ class TkTerminal(tk.Text):
             env = os.environ.copy()
             
             # Execute command using subprocess
-            process = subprocess.Popen(
+            try:
+                from process_utils import popen_original
+            except ImportError:
+                popen_original = subprocess.Popen
+
+            process = popen_original(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
@@ -484,7 +489,12 @@ class TkTerminal(tk.Text):
             if env:
                 env_vars.update(env)
                 
-            process = subprocess.Popen(
+            try:
+                from process_utils import popen_original
+            except ImportError:
+                popen_original = subprocess.Popen
+
+            process = popen_original(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -2433,7 +2443,12 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             startupinfo.wShowWindow = subprocess.SW_HIDE
             creationflags = subprocess.CREATE_NO_WINDOW
             
-        return subprocess.run(
+        try:
+            from process_utils import run_original
+        except ImportError:
+            run_original = subprocess.run
+
+        return run_original(
             command,
             capture_output=True,
             text=True,
@@ -2600,8 +2615,8 @@ class VirtualEnvironmentManager:
         executable_dir = Path(os.path.dirname(sys.executable))
         bundled_dir = executable_dir / "bundled_venv"
         
-        # For onefile builds, check in temp directory
-        if not bundled_dir.exists() and getattr(sys, 'frozen', False):
+        # Also check temporary extraction paths used by onefile builds
+        if not bundled_dir.exists():
             self.logger.info("Checking for bundled environment in temp directory...")
             for path in sys.path:
                 if 'onefile_' in path and os.path.exists(path):
@@ -2848,8 +2863,13 @@ except ImportError:
                         script_path = f.name
                     
                     # Test each package
+                    try:
+                        from process_utils import run_original
+                    except ImportError:
+                        run_original = subprocess.run
+
                     for pkg in essential_test:
-                        result = subprocess.run(
+                        result = run_original(
                             [python_exe, script_path, pkg],
                             capture_output=True,
                             text=True
@@ -2890,7 +2910,12 @@ if missing:
                         f.write(test_script)
                         script_path = f.name
                     
-                    result = subprocess.run(
+                    try:
+                        from process_utils import run_original
+                    except ImportError:
+                        run_original = subprocess.run
+
+                    result = run_original(
                         [python_exe, script_path] + essential_test,
                         capture_output=True,
                         text=True
