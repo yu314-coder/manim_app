@@ -17,43 +17,6 @@ import codecs
 import tqdm 
 # Global flag to use ASCII instead of Unicode symbols
 USE_ASCII_ONLY = True
-
-def create_nuitka_plugin_patch():
-    """Create a patch to fix Nuitka plugin path issues with Python 3.12"""
-    patch_content = '''
-# nuitka_plugin_patch.py
-import os
-import sys
-
-# Monkey patch os.path functions that handle None incorrectly
-original_abspath = os.path.abspath
-def safe_abspath(path):
-    if path is None:
-        print("WARNING: None path detected in abspath, using empty string instead")
-        path = ""
-    return original_abspath(path)
-
-os.path.abspath = safe_abspath
-
-# Also patch normpath
-original_normpath = os.path.normpath
-def safe_normpath(path):
-    if path is None:
-        print("WARNING: None path detected in normpath, using empty string instead")
-        path = ""
-    return original_normpath(path)
-
-os.path.normpath = safe_normpath
-'''
-    
-    with open("nuitka_plugin_patch.py", "w", encoding="utf-8") as f:
-        f.write(patch_content)
-    
-    if USE_ASCII_ONLY:
-        print("Created Nuitka plugin patch")
-    else:
-        print("📄 Created Nuitka plugin patch")
-
 def build_self_contained_version(jobs=None, priority="normal"):
     """Build self-contained version with NO CONSOLE EVER"""
     
@@ -105,9 +68,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
     # Create helper script for unified subprocess handling
     create_subprocess_helper()
     
-    # Create Nuitka plugin patch for Python 3.12 compatibility
-    create_nuitka_plugin_patch()
-    
     # Check system prerequisites
     if not check_system_prerequisites():
         if USE_ASCII_ONLY:
@@ -123,18 +83,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
     else:
         print(f"📊 Detected Nuitka version: {nuitka_version}")
     
-    # Check for Nuitka version compatibility
-    if nuitka_version.startswith("2.6"):
-        if USE_ASCII_ONLY:
-            print("Warning: Nuitka 2.6.x has plugin issues with Python 3.12, consider updating to 2.7+")
-        else:
-            print("⚠️ Warning: Nuitka 2.6.x has plugin issues with Python 3.12, consider updating to 2.7+")
-    
-    # Apply Nuitka plugin patch for Python 3.12
-    with open("temp_fix.py", "w", encoding="utf-8") as f:
-        f.write("import nuitka_plugin_patch\n")
-    subprocess.run([sys.executable, "temp_fix.py"], check=False)
-    
     # Basic command with universal options
     cmd = [
         sys.executable, "-m", "nuitka",
@@ -142,29 +90,12 @@ def build_self_contained_version(jobs=None, priority="normal"):
         "--onefile",  # Single executable file
     ]
     
-    # Add Python 3.12 compatibility fixes if needed
-    if sys.version_info >= (3, 12, 0):
-        if USE_ASCII_ONLY:
-            print("Detected Python 3.12 - applying compatibility fixes")
-        else:
-            print("🔧 Detected Python 3.12 - applying compatibility fixes")
-        
-        # Python 3.12 compatibility fixes for Nuitka
-        cmd.append("--noinclude-default-mode=error")  # Less strict inclusion
-        cmd.append("--plugin-no-detection")  # Disable automatic plugin detection
-        cmd.append("--include-module=nuitka_plugin_patch")  # Include our patch
-    
     # Enhanced console hiding - use both modern and legacy options for maximum compatibility
     cmd.append("--windows-console-mode=disable")  # Modern option
     cmd.append("--windows-disable-console")       # Legacy option for compatibility
     
-    # Add GUI toolkit for matplotlib - using the safer approach for plugins
-    cmd.append("--plugin-enable=tk-inter")  # Alternative format
-    cmd.append("--enable-plugin=tk-inter")  # Standard format
-    
-    # Explicitly disable problematic plugins
-    cmd.append("--plugin-disable=numpy")
-    cmd.append("--plugin-disable=matplotlib")
+    # Add GUI toolkit for matplotlib
+    cmd.append("--enable-plugin=tk-inter")
     
     # CRITICAL: Completely disable LTO to fix the zstandard error
     cmd.append("--lto=no")
@@ -175,12 +106,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
     cmd.append("--nofollow-import-to=setuptools")
     cmd.append("--nofollow-import-to=test.support")
     cmd.append("--nofollow-import-to=_distutils_hack")
-    
-    # NEW: Exclude Manim testing modules and pytest to avoid errors
-    cmd.append("--nofollow-import-to=manim.utils.testing")
-    cmd.append("--nofollow-import-to=pytest")
-    cmd.append("--nofollow-import-to=unittest")
-    cmd.append("--nofollow-import-to=test")
     
     # IMPORTANT: Use show-progress instead of no-progressbar
     cmd.append("--show-progress")
@@ -193,10 +118,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
         "--disable-ccache",                    # Disable ccache to avoid issues
         "--show-memory",                       # Show memory usage
     ])
-    
-    # Explicitly include tkinter modules
-    for module in ["tkinter", "tkinter.ttk", "tkinter.messagebox", "tkinter.filedialog", "tkinter.colorchooser"]:
-        cmd.append(f"--include-module={module}")
     
     # Check for importable packages and include only those that exist
     essential_packages = [
@@ -225,7 +146,7 @@ def build_self_contained_version(jobs=None, priority="normal"):
     essential_modules = [
         "json", "tempfile", "threading", "subprocess", 
         "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "nuitka_plugin_patch"
+        "process_utils"
     ]
     
     for module in essential_modules:
@@ -268,13 +189,11 @@ def build_self_contained_version(jobs=None, priority="normal"):
     print("Command:", " ".join(cmd))
     print("=" * 60)
     
-    # Create environment variables to force disable LTO in GCC and handle plugin paths
+    # Create environment variables to force disable LTO in GCC
     env = os.environ.copy()
     env["GCC_LTO"] = "0"
     env["NUITKA_DISABLE_LTO"] = "1"
     env["GCC_COMPILE_ARGS"] = "-fno-lto"
-    env["NUITKA_PLUGIN_PATH_HANDLING"] = "strict"
-    env["NUITKA_PLUGIN_DISABLE"] = "true"  # Extra safety to disable plugins
     
     # Set process priority if on Windows
     process_priority = 0  # Normal priority by default
@@ -357,7 +276,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
             print("❌ Build failed!")
         print(f"Return code: {return_code}")
         return None
-
 def create_subprocess_helper():
     """Create a unified helper module for subprocess handling"""
     helper_content = '''# process_utils.py - Unified helper for subprocess handling with NO CONSOLE
@@ -365,12 +283,26 @@ import subprocess
 import sys
 import os
 
+# Store original references to subprocess functions before they get patched
+# This ensures we always have direct access to the original functions
+if not hasattr(subprocess, '_original_stored'):
+    subprocess._original_run = subprocess.run
+    subprocess._original_popen = subprocess.Popen
+    subprocess._original_call = subprocess.call
+    subprocess._original_check_output = subprocess.check_output
+    subprocess._original_check_call = subprocess.check_call
+    subprocess._original_stored = True
+
 def run_hidden_process(command, **kwargs):
     """Run a process with hidden console window
     
     This is a unified helper function that properly handles console hiding
     across different platforms. Use this instead of direct subprocess calls.
     """
+    # Always use the original functions to prevent recursion
+    original_run = subprocess._original_run
+    
+    # Configure for Windows console hiding
     startupinfo = None
     creationflags = 0
     
@@ -381,20 +313,26 @@ def run_hidden_process(command, **kwargs):
         startupinfo.wShowWindow = subprocess.SW_HIDE
         
         # Add the CREATE_NO_WINDOW flag
+        if not hasattr(subprocess, "CREATE_NO_WINDOW"):
+            subprocess.CREATE_NO_WINDOW = 0x08000000
         creationflags = subprocess.CREATE_NO_WINDOW
         
-    # Add startupinfo and creationflags to kwargs if on Windows
-    if sys.platform == "win32":
+        # Add startupinfo and creationflags to kwargs
         kwargs['startupinfo'] = startupinfo
-        kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+        
+        # Merge with existing creationflags if any
+        if 'creationflags' in kwargs:
+            kwargs['creationflags'] |= creationflags
+        else:
+            kwargs['creationflags'] = creationflags
     
     # Handle capture_output conflict with stdout/stderr
-    if kwargs.get('capture_output'):
+    if kwargs.get('capture_output') and ('stdout' in kwargs or 'stderr' in kwargs):
         kwargs.pop('stdout', None)
         kwargs.pop('stderr', None)
     
-    # Run the process
-    return subprocess.run(command, **kwargs)
+    # Run the process using original run to avoid recursion
+    return original_run(command, **kwargs)
 
 def popen_hidden_process(command, **kwargs):
     """Get a Popen object with hidden console window
@@ -402,6 +340,10 @@ def popen_hidden_process(command, **kwargs):
     For longer-running processes when you need to interact with stdout/stderr
     during execution.
     """
+    # Always use the original functions to prevent recursion
+    original_popen = subprocess._original_popen
+    
+    # Configure for Windows console hiding
     startupinfo = None
     creationflags = 0
     
@@ -412,15 +354,84 @@ def popen_hidden_process(command, **kwargs):
         startupinfo.wShowWindow = subprocess.SW_HIDE
         
         # Add the CREATE_NO_WINDOW flag
+        if not hasattr(subprocess, "CREATE_NO_WINDOW"):
+            subprocess.CREATE_NO_WINDOW = 0x08000000
         creationflags = subprocess.CREATE_NO_WINDOW
         
-    # Add startupinfo and creationflags to kwargs if on Windows
-    if sys.platform == "win32":
+        # Add startupinfo and creationflags to kwargs
         kwargs['startupinfo'] = startupinfo
-        kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+        
+        # Merge with existing creationflags if any
+        if 'creationflags' in kwargs:
+            kwargs['creationflags'] |= creationflags
+        else:
+            kwargs['creationflags'] = creationflags
     
-    # Create the process
-    return subprocess.Popen(command, **kwargs)
+    # Handle stdout/stderr if not specified
+    if kwargs.get('stdout') is None:
+        kwargs['stdout'] = subprocess.PIPE
+    if kwargs.get('stderr') is None:
+        kwargs['stderr'] = subprocess.PIPE
+    
+    # Create the process using original Popen to avoid recursion
+    return original_popen(command, **kwargs)
+
+def call_hidden_process(*args, **kwargs):
+    """subprocess.call() with hidden console window"""
+    return run_hidden_process(*args, **kwargs).returncode
+
+def check_output_hidden_process(*args, **kwargs):
+    """subprocess.check_output() with hidden console window"""
+    if 'stdout' not in kwargs:
+        kwargs['stdout'] = subprocess.PIPE
+    if 'stderr' not in kwargs:
+        kwargs['stderr'] = subprocess.DEVNULL
+    
+    result = run_hidden_process(*args, **kwargs)
+    
+    if result.returncode != 0:
+        cmd = args[0] if args else kwargs.get('args')
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd, result.stdout, result.stderr)
+    
+    return result.stdout
+
+def check_call_hidden_process(*args, **kwargs):
+    """subprocess.check_call() with hidden console window"""
+    result = run_hidden_process(*args, **kwargs)
+    
+    if result.returncode != 0:
+        cmd = args[0] if args else kwargs.get('args')
+        raise subprocess.CalledProcessError(result.returncode, cmd)
+    
+    return 0
+
+# Safe system replacement
+def system_hidden_process(command):
+    """os.system() replacement with hidden console window"""
+    return run_hidden_process(command, shell=True).returncode
+
+# Add direct access to original functions
+run_original = subprocess._original_run
+popen_original = subprocess._original_popen
+call_original = subprocess._original_call
+check_output_original = subprocess._original_check_output
+check_call_original = subprocess._original_check_call
+
+# Export all functions
+__all__ = [
+    'run_hidden_process', 
+    'popen_hidden_process',
+    'call_hidden_process',
+    'check_output_hidden_process',
+    'check_call_hidden_process',
+    'system_hidden_process',
+    'run_original',
+    'popen_original',
+    'call_original',
+    'check_output_original',
+    'check_call_original'
+]
 '''
     
     # Write with explicit UTF-8 encoding to avoid character encoding issues
@@ -444,7 +455,7 @@ import site
 
 # Import the unified process helper early
 try:
-    from process_utils import run_hidden_process, popen_hidden_process
+    from process_utils import run_hidden_process, popen_hidden_process, run_original, popen_original
 except ImportError:
     # Fallback implementation if module is missing
     def run_hidden_process(command, **kwargs):
@@ -480,6 +491,9 @@ except ImportError:
             kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
         
         return subprocess.Popen(command, **kwargs)
+    
+    run_original = subprocess.run
+    popen_original = subprocess.Popen
 
 # Disable zstandard to avoid linking issues - do this as early as possible
 try:
@@ -560,20 +574,62 @@ def apply_fixes():
 def patch_subprocess():
     """Patch subprocess to use our hidden process helpers"""
     try:
-        # Import the specific helpers we need
-        try:
-            from process_utils import run_hidden_process, popen_hidden_process
-        except ImportError:
-            # Already defined fallbacks above
-            pass
+        # Check if already patched to prevent recursion
+        if hasattr(subprocess, '_manimstudio_patched'):
+            return True
             
         # Save originals
         original_run = subprocess.run
         original_popen = subprocess.Popen
         
-        # Replace with our hidden versions
-        subprocess.run = run_hidden_process
-        subprocess.Popen = popen_hidden_process
+        # Define wrappers that don't trigger recursion
+        def safe_run_wrapper(*args, **kwargs):
+            # Add window hiding for Windows
+            if sys.platform == "win32":
+                startupinfo = kwargs.get('startupinfo')
+                if not startupinfo:
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    kwargs['startupinfo'] = startupinfo
+                
+                # Add creation flags to hide console
+                if 'creationflags' not in kwargs:
+                    kwargs['creationflags'] = 0
+                kwargs['creationflags'] |= subprocess.CREATE_NO_WINDOW
+                
+            # Handle capture_output conflict
+            if kwargs.get('capture_output') and ('stdout' in kwargs or 'stderr' in kwargs):
+                kwargs.pop('stdout', None)
+                kwargs.pop('stderr', None)
+            
+            # Call the original directly
+            return original_run(*args, **kwargs)
+        
+        def safe_popen_wrapper(*args, **kwargs):
+            # Add window hiding for Windows
+            if sys.platform == "win32":
+                startupinfo = kwargs.get('startupinfo')
+                if not startupinfo:
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    kwargs['startupinfo'] = startupinfo
+                
+                # Add creation flags to hide console
+                if 'creationflags' not in kwargs:
+                    kwargs['creationflags'] = 0
+                kwargs['creationflags'] |= subprocess.CREATE_NO_WINDOW
+            
+            # Call the original directly
+            return original_popen(*args, **kwargs)
+        
+        # Replace with our wrappers
+        subprocess.run = safe_run_wrapper
+        subprocess.Popen = safe_popen_wrapper
+        
+        # Mark as patched to prevent infinite recursion
+        subprocess._manimstudio_patched = True
         
         return True
     except Exception as e:
@@ -594,154 +650,165 @@ def create_no_console_patch():
     """Create a more aggressive patch file to ensure NO subprocess calls show console windows"""
     patch_content = '''# ENHANCED_NO_CONSOLE_PATCH.py
 # This ensures all subprocess calls hide console windows
+# IMPROVED: Added protection against recursive patching
 
 import subprocess
 import sys
 import os
 import ctypes
 
-# Import unified process utilities if available
-try:
-    from process_utils import run_hidden_process, popen_hidden_process
-except ImportError:
-    # Will be defined below
-    pass
-
-# Define the Windows constants here to guarantee they're available
-if sys.platform == "win32":
-    # Define this constant if not available
-    if not hasattr(subprocess, "CREATE_NO_WINDOW"):
-        subprocess.CREATE_NO_WINDOW = 0x08000000
-    
-    # Other Windows constants
-    CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
-    DETACHED_PROCESS = 0x00000008
-    SW_HIDE = 0
-    STARTF_USESHOWWINDOW = 0x00000001
-
-# Load Windows API functions for more aggressive console hiding
-if sys.platform == "win32":
+# Check if already patched to prevent recursion
+if hasattr(subprocess, '_manimstudio_patched'):
+    print("Subprocess already patched, skipping additional patching")
+else:
+    # Import unified process utilities if available
     try:
-        # Get kernel32 functions for additional window hiding
-        try:
-            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-            user32 = ctypes.WinDLL('user32', use_last_error=True)
-            
-            # Windows API functions
-            GetConsoleWindow = kernel32.GetConsoleWindow
-            ShowWindow = user32.ShowWindow
-            
-            # Hide console immediately
-            hwnd = GetConsoleWindow()
-            if hwnd:
-                ShowWindow(hwnd, SW_HIDE)
-        except Exception:
-            pass
-    except Exception:
+        from process_utils import run_hidden_process, popen_hidden_process
+    except ImportError:
+        # Will be defined below
         pass
 
-# Define the unified process utilities if they weren't imported
-if not 'run_hidden_process' in globals():
-    def run_hidden_process(command, **kwargs):
-        """Run a process with hidden console window"""
-        startupinfo = None
-        creationflags = 0
+    # Define the Windows constants here to guarantee they're available
+    if sys.platform == "win32":
+        # Define this constant if not available
+        if not hasattr(subprocess, "CREATE_NO_WINDOW"):
+            subprocess.CREATE_NO_WINDOW = 0x08000000
         
-        if sys.platform == "win32":
-            # Set up startupinfo to hide window
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = SW_HIDE
+        # Other Windows constants
+        CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+        DETACHED_PROCESS = 0x00000008
+        SW_HIDE = 0
+        STARTF_USESHOWWINDOW = 0x00000001
+
+    # Load Windows API functions for more aggressive console hiding
+    if sys.platform == "win32":
+        try:
+            # Get kernel32 functions for additional window hiding
+            try:
+                kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+                user32 = ctypes.WinDLL('user32', use_last_error=True)
+                
+                # Windows API functions
+                GetConsoleWindow = kernel32.GetConsoleWindow
+                ShowWindow = user32.ShowWindow
+                
+                # Hide console immediately
+                hwnd = GetConsoleWindow()
+                if hwnd:
+                    ShowWindow(hwnd, SW_HIDE)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    # Store original functions BEFORE defining any wrappers
+    # to prevent recursive calls
+    _original_run = subprocess.run
+    _original_popen = subprocess.Popen
+    _original_call = subprocess.call
+    _original_check_output = subprocess.check_output
+    _original_check_call = subprocess.check_call
+
+    # Define the unified process utilities if they weren't imported
+    if 'run_hidden_process' not in globals():
+        def run_hidden_process(command, **kwargs):
+            """Run a process with hidden console window"""
+            startupinfo = None
+            creationflags = 0
             
-            # Set creation flags to hide console
-            creationflags = CREATE_NO_WINDOW | DETACHED_PROCESS
+            if sys.platform == "win32":
+                # Set up startupinfo to hide window
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = SW_HIDE
+                
+                # Set creation flags to hide console
+                creationflags = CREATE_NO_WINDOW | DETACHED_PROCESS
+                
+                # Add to kwargs
+                kwargs['startupinfo'] = startupinfo
+                kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+                
+                # Handle capture_output conflict
+                if kwargs.get('capture_output') and ('stdout' in kwargs or 'stderr' in kwargs):
+                    kwargs.pop('stdout', None)
+                    kwargs.pop('stderr', None)
             
-            # Add to kwargs
-            kwargs['startupinfo'] = startupinfo
-            kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+            # Run the process using original run - directly reference the saved original
+            return _original_run(command, **kwargs)
+
+        def popen_hidden_process(command, **kwargs):
+            """Create a Popen object with hidden console window"""
+            startupinfo = None
+            creationflags = 0
             
-            # Handle capture_output conflict
-            if kwargs.get('capture_output'):
-                kwargs.pop('stdout', None)
-                kwargs.pop('stderr', None)
+            if sys.platform == "win32":
+                # Set up startupinfo to hide window
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = SW_HIDE
+                
+                # Set creation flags to hide console
+                creationflags = CREATE_NO_WINDOW | DETACHED_PROCESS
+                
+                # Add to kwargs
+                kwargs['startupinfo'] = startupinfo
+                kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+                
+                # Handle stdout/stderr if not specified
+                if 'stdout' not in kwargs:
+                    kwargs['stdout'] = subprocess.PIPE
+                if 'stderr' not in kwargs:
+                    kwargs['stderr'] = subprocess.PIPE
+            
+            # Create the process using original Popen
+            return _original_popen(command, **kwargs)
+
+    # Helper functions for the other subprocess functions
+    def _no_console_call(*args, **kwargs):
+        """call wrapper with enhanced console hiding"""
+        return run_hidden_process(*args, **kwargs).returncode
+
+    def _no_console_check_output(*args, **kwargs):
+        """check_output wrapper with enhanced console hiding"""
+        kwargs['stdout'] = subprocess.PIPE
+        kwargs['stderr'] = subprocess.DEVNULL
+        result = run_hidden_process(*args, **kwargs)
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode, args[0], result.stdout, result.stderr)
+        return result.stdout
+
+    def _no_console_check_call(*args, **kwargs):
+        """check_call wrapper with enhanced console hiding"""
+        result = run_hidden_process(*args, **kwargs)
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, args[0])
+        return 0
+
+    # Monkey patch ALL subprocess functions
+    subprocess.run = run_hidden_process
+    subprocess.Popen = popen_hidden_process
+    subprocess.call = _no_console_call
+    subprocess.check_output = _no_console_check_output
+    subprocess.check_call = _no_console_check_call
+
+    # Patch Python's system function too for good measure
+    if hasattr(os, 'system'):
+        _original_system = os.system
         
-        # Run the process using original run
-        return subprocess._original_run(command, **kwargs)
-
-    def popen_hidden_process(command, **kwargs):
-        """Create a Popen object with hidden console window"""
-        startupinfo = None
-        creationflags = 0
+        def _no_console_system(command):
+            """system wrapper that hides console"""
+            return run_hidden_process(command, shell=True).returncode
         
-        if sys.platform == "win32":
-            # Set up startupinfo to hide window
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = SW_HIDE
-            
-            # Set creation flags to hide console
-            creationflags = CREATE_NO_WINDOW | DETACHED_PROCESS
-            
-            # Add to kwargs
-            kwargs['startupinfo'] = startupinfo
-            kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
-            
-            # Handle stdout/stderr if not specified
-            if 'stdout' not in kwargs:
-                kwargs['stdout'] = subprocess.PIPE
-            if 'stderr' not in kwargs:
-                kwargs['stderr'] = subprocess.PIPE
-        
-        # Create the process using original Popen
-        return subprocess._original_popen(command, **kwargs)
+        os.system = _no_console_system
 
-# Original subprocess functions
-subprocess._original_run = subprocess.run
-subprocess._original_popen = subprocess.Popen
-subprocess._original_call = subprocess.call
-subprocess._original_check_output = subprocess.check_output
-subprocess._original_check_call = subprocess.check_call
+    # Mark as patched to prevent recursive patching
+    subprocess._manimstudio_patched = True
+    subprocess._original_run = _original_run  # Store reference to original
+    subprocess._original_popen = _original_popen  # Store reference to original
 
-# Monkey patch ALL subprocess functions
-subprocess.Popen = popen_hidden_process
-subprocess.run = run_hidden_process
-
-# Patch other functions to use our run and Popen
-def _no_console_call(*args, **kwargs):
-    """call wrapper with enhanced console hiding"""
-    return run_hidden_process(*args, **kwargs).returncode
-
-def _no_console_check_output(*args, **kwargs):
-    """check_output wrapper with enhanced console hiding"""
-    kwargs['stdout'] = subprocess.PIPE
-    kwargs['stderr'] = subprocess.DEVNULL
-    result = run_hidden_process(*args, **kwargs)
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, args[0], result.stdout, result.stderr)
-    return result.stdout
-
-def _no_console_check_call(*args, **kwargs):
-    """check_call wrapper with enhanced console hiding"""
-    result = run_hidden_process(*args, **kwargs)
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(result.returncode, args[0])
-    return 0
-
-# Patch remaining subprocess functions
-subprocess.call = _no_console_call
-subprocess.check_output = _no_console_check_output
-subprocess.check_call = _no_console_check_call
-
-# Patch Python's system function too for good measure
-if hasattr(os, 'system'):
-    _original_system = os.system
-    
-    def _no_console_system(command):
-        """system wrapper that hides console"""
-        return run_hidden_process(command, shell=True).returncode
-    
-    os.system = _no_console_system
+    print("Subprocess patching complete - all console windows will be hidden")
 
 # Export the utility functions so they can be imported
 __all__ = ['run_hidden_process', 'popen_hidden_process']
