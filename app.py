@@ -2495,9 +2495,17 @@ class VirtualEnvironmentManager:
     def __init__(self, parent_app):
         self.parent_app = parent_app
         self.current_venv = None
-        self.venv_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs")
+        # Determine if running as executable or script
+        if getattr(sys, 'frozen', False):
+            # Running as executable - use executable directory
+            base_dir = os.path.dirname(os.path.abspath(sys.executable))
+            self.venv_dir = os.path.join(base_dir, "venvs")
+        else:
+            # Running as script - use home directory (original behavior)
+            base_dir = os.path.expanduser("~")
+            self.venv_dir = os.path.join(base_dir, ".manim_studio", "venvs")
+    
         os.makedirs(self.venv_dir, exist_ok=True)
-        
         # Set up dedicated logger
         self.logger = logging.getLogger("VenvManager")
         self.logger.setLevel(logging.DEBUG)
@@ -2533,7 +2541,16 @@ class VirtualEnvironmentManager:
             
     def _setup_debug_logging(self):
         """Set up debug logging to file for silent executable troubleshooting"""
-        debug_log_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "logs", "venv_debug.log")
+        # Determine the log directory
+        if getattr(sys, 'frozen', False):
+            # Running as executable
+            log_dir = os.path.join(os.path.dirname(sys.executable), "logs")
+        else:
+            # Running as script
+            log_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "logs")
+    
+        os.makedirs(log_dir, exist_ok=True)
+        debug_log_path = os.path.join(log_dir, "venv_debug.log")
         
         # Create a file handler that appends
         debug_handler = logging.FileHandler(
@@ -6064,8 +6081,15 @@ class ManimStudioApp:
             
     def load_settings(self):
         """Load settings from file"""
-        self.settings_file = os.path.join(os.path.expanduser("~"), ".manim_studio", "settings.json")
-        
+        if getattr(sys, 'frozen', False):
+            # Running as executable
+            settings_dir = os.path.join(os.path.dirname(sys.executable), "settings")
+        else:
+            # Running as script
+            settings_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+    
+        os.makedirs(settings_dir, exist_ok=True)
+        self.settings_file = os.path.join(settings_dir, "settings.json")
         # Default settings
         self.settings = {
             "quality": "720p",
