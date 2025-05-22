@@ -56,11 +56,18 @@ else:
 
 # Use the original Python interpreter for subprocesses when running from a
 # packaged executable. `sys.executable` points to the bundled application
-# in that case which would result in the application launching itself.
+# in that case which would result in the application launching itself. If
+# `_base_executable` isn't available or points to the bundled executable,
+# look for a `python` executable located next to the application.
 if getattr(sys, "frozen", False):
-    PYTHON_EXECUTABLE = getattr(sys, "_base_executable", None)
-    if not PYTHON_EXECUTABLE:
-        candidate = os.path.join(BASE_DIR, "python.exe" if os.name == "nt" else "python")
+    base_exe = getattr(sys, "_base_executable", None)
+    if base_exe and os.path.exists(base_exe) and base_exe != sys.executable:
+        PYTHON_EXECUTABLE = base_exe
+    else:
+        candidate = os.path.join(
+            os.path.dirname(sys.executable),
+            "python.exe" if os.name == "nt" else "python",
+        )
         PYTHON_EXECUTABLE = candidate if os.path.exists(candidate) else sys.executable
 else:
     PYTHON_EXECUTABLE = sys.executable
@@ -1178,14 +1185,6 @@ All packages will be installed in an isolated environment that won't affect your
         self.skip_button.configure(state="disabled")
         if hasattr(self, 'terminal_setup_button'):
             self.terminal_setup_button.configure(state="disabled")
-
-        # In packaged builds spawning a new interpreter would relaunch the
-        # application itself. Fall back to the regular setup routine which
-        # creates the environment in-process.
-        if getattr(sys, 'frozen', False):
-            selected_packages = [pkg for pkg, var in self.package_vars.items() if var.get()]
-            threading.Thread(target=self.run_setup, args=(selected_packages,), daemon=True).start()
-            return
 
         env_path = self.env_path_label.cget("text")
 
@@ -2535,10 +2534,12 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             env_path = os.path.join(self.location, self.env_name)
             os.makedirs(self.location, exist_ok=True)
             
-            # Create virtual environment
+            # Create virtual environment using the base interpreter to avoid
+            # spawning the packaged executable again
             self.log("Creating virtual environment...")
-            import venv
-            venv.create(env_path, with_pip=True)
+            result = self.run_command([PYTHON_EXECUTABLE, "-m", "venv", env_path])
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr)
             
             # Get Python and pip paths
             if sys.platform == "win32":
@@ -2897,7 +2898,16 @@ except Exception as e:
                     return True
                 else:
                     # Fallback to direct creation if terminal not available
-                    venv.create(default_venv_path, with_pip=True)
+                    result = subprocess.run(
+                        [PYTHON_EXECUTABLE, "-m", "venv", default_venv_path],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode != 0:
+                        self.logger.error(
+                            f"Failed to create venv: {result.stderr}"
+                        )
+                        return False
                     self._setup_environment_after_creation(default_venv_path)
                     return True
             finally:
@@ -3215,18 +3225,17 @@ if missing:
                 if log_callback:
                     log_callback("Removing existing environment...")
                 shutil.rmtree(venv_path)
-
+            
             # Switch to terminal tab if available
             if hasattr(self.parent_app, 'output_tabs'):
                 self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-
+            
             # Create virtual environment
             if log_callback:
                 log_callback("Creating new virtual environment...")
-
-            use_terminal = hasattr(self.parent_app, 'terminal') and not getattr(sys, 'frozen', False)
-
-            if use_terminal:
+            
+            # Use terminal if available
+            if hasattr(self.parent_app, 'terminal'):
                 # Create a script for venv creation
                 venv_script = f"""
 import venv
@@ -3281,7 +3290,7 @@ except Exception as e:
                         [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
-
+                    
                     return True
                 finally:
                     if script_path and os.path.exists(script_path):
@@ -3289,9 +3298,8 @@ except Exception as e:
                             os.unlink(script_path)
                         except:
                             pass
-
             else:
-                # Direct creation (used when packaged or terminal unavailable)
+                # Fallback to direct creation if terminal not available
                 import venv
                 venv.create(venv_path, with_pip=True)
                 
@@ -3827,13 +3835,15 @@ except Exception as e:
                         pass
         else:
             # Fallback to direct creation
-            try:
-                import venv
-                venv.create(venv_path, with_pip=True)
-                return True
-            except Exception as e:
-                self.logger.error(f"Error creating virtual environment: {e}")
+            result = subprocess.run(
+                [PYTHON_EXECUTABLE, "-m", "venv", venv_path],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                self.logger.error(f"Error creating virtual environment: {result.stderr}")
                 return False
+            return True
         
     def activate_venv(self, name):
         """Activate a virtual environment"""
