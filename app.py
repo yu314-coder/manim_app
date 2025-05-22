@@ -2049,7 +2049,7 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
         self.venv_manager = venv_manager
         
         self.title("Create New Environment")
-        self.geometry("500x550")
+        self.geometry("500x1000")
         self.transient(parent)
         self.grab_set()
         
@@ -2406,7 +2406,7 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         self.packages = packages
         
         self.title("Creating Environment")
-        self.geometry("500x400")
+        self.geometry("500x1000")
         self.transient(parent)
         self.grab_set()
         
