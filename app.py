@@ -7,6 +7,7 @@ import os
 import logging
 import json
 import subprocess
+import signal
 try:
     from process_utils import popen_original, run_original
 except Exception:
@@ -389,6 +390,8 @@ class TkTerminal(tk.Text):
         self.bind("<Up>", self.on_up)
         self.bind("<Down>", self.on_down)
         self.bind("<Key>", self.on_key)
+        self.bind("<Control-c>", self.on_ctrl_c)
+        self.bind("<Control-l>", self.on_ctrl_l)
         
     def show_prompt(self):
         """Show command prompt"""
@@ -447,6 +450,24 @@ class TkTerminal(tk.Text):
         """Handle key press"""
         if self.index("insert") < self.input_start:
             self.mark_set("insert", "end")
+
+    def on_ctrl_c(self, event):
+        """Send interrupt or copy selection"""
+        if self.tag_ranges("sel"):
+            self.event_generate("<<Copy>>")
+            return "break"
+        if self.process and self.process.poll() is None:
+            try:
+                self.process.send_signal(signal.SIGINT)
+            except Exception:
+                self.process.terminate()
+            return "break"
+        return None
+
+    def on_ctrl_l(self, event):
+        """Clear the terminal"""
+        self.clear()
+        return "break"
             
     def execute_command(self, command):
         """Execute command and show output"""
@@ -454,7 +475,7 @@ class TkTerminal(tk.Text):
             env = os.environ.copy()
             
             # Execute command using subprocess
-            process = subprocess.Popen(
+            process = popen_original(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
@@ -993,6 +1014,17 @@ All packages will be installed in an isolated environment that won't affect your
             hover_color="#117A65"
         )
         self.start_button.pack(side="left", padx=(0, 10))
+
+        self.terminal_setup_button = ctk.CTkButton(
+            button_frame,
+            text="🖥️ Terminal Setup",
+            command=self.start_terminal_setup,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        self.terminal_setup_button.pack(side="left", padx=(0, 10))
         
         self.skip_button = ctk.CTkButton(
             button_frame,
@@ -1037,6 +1069,8 @@ All packages will be installed in an isolated environment that won't affect your
         """Start the environment setup process"""
         self.start_button.configure(state="disabled")
         self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
         
         self.log_message("Starting ManimStudio environment setup...")
         self.update_progress(0.05, "Preparing...", "Initializing environment creation")
@@ -1051,7 +1085,44 @@ All packages will be installed in an isolated environment that won't affect your
             daemon=True
         )
         setup_thread.start()
-        
+
+    def start_terminal_setup(self):
+        """Run basic environment setup directly in the integrated terminal"""
+        self.start_button.configure(state="disabled")
+        self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
+
+        env_path = self.env_path_label.cget("text")
+
+        commands = [[sys.executable, "-m", "venv", env_path]]
+
+        if os.name == 'nt':
+            python_exe = os.path.join(env_path, "Scripts", "python.exe")
+        else:
+            python_exe = os.path.join(env_path, "bin", "python")
+
+        commands.append([python_exe, "-m", "pip", "install", "-r", "requirements.txt"])
+
+        def run_next(idx=0):
+            if idx >= len(commands):
+                self.log_message_threadsafe("✅ Terminal setup completed!")
+                self.venv_manager.activate_venv("manim_studio_default")
+                self.venv_manager.needs_setup = False
+                self.after(0, self.setup_complete_ui)
+                return
+
+            cmd = commands[idx]
+            if hasattr(self.parent_window, 'output_tabs'):
+                self.parent_window.output_tabs.set("Terminal")
+
+            self.parent_window.terminal.run_command_redirected(
+                cmd,
+                on_complete=lambda success, code, i=idx: run_next(i + 1)
+            )
+
+        threading.Thread(target=run_next, daemon=True).start()
+
     def run_setup(self, packages):
         """Run the actual setup process"""
         try:
@@ -6191,14 +6262,6 @@ class ManimStudioApp:
         if hasattr(self, 'main_area'):
             self.main_area.configure(fg_color=colors["background"])
             
-        if hasattr(self, 'output_text'):
-            self.output_text.configure(
-                bg=colors["surface"],
-                fg=colors["text"],
-                insertbackground=colors["text"],
-                selectbackground=colors["selection"]
-            )
-            
         # Apply to terminal if exists
         if hasattr(self, 'terminal'):
             self.terminal.configure(
@@ -6885,35 +6948,11 @@ class ManimStudioApp:
         output_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
         output_header.grid_columnconfigure(1, weight=1)
         
-        # Create tabs for output and terminal
+
+        # Create tabs for terminal
         self.output_tabs = ctk.CTkTabview(output_frame, fg_color=VSCODE_COLORS["surface"])
         self.output_tabs.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
-        
-        # Create Console tab
-        console_tab = self.output_tabs.add("Console")
-        console_tab.grid_rowconfigure(0, weight=1)
-        console_tab.grid_columnconfigure(0, weight=1)
-        
-        # Output text in Console tab
-        self.output_text = tk.Text(
-            console_tab,
-            font=("Consolas", 11),
-            bg=VSCODE_COLORS["background"],
-            fg=VSCODE_COLORS["text"],
-            insertbackground=VSCODE_COLORS["text"],
-            selectbackground=VSCODE_COLORS["selection"],
-            bd=0,
-            highlightthickness=0,
-            state="disabled",
-            wrap="word"
-        )
-        self.output_text.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
-        
-        # Scrollbar for output
-        output_scrollbar = ctk.CTkScrollbar(console_tab, command=self.output_text.yview)
-        output_scrollbar.grid(row=0, column=1, sticky="ns", padx=(0, 0), pady=0)
-        self.output_text.configure(yscrollcommand=output_scrollbar.set)
-        
+
         # Create Terminal tab
         terminal_tab = self.output_tabs.add("Terminal")
         terminal_tab.grid_rowconfigure(0, weight=1)
@@ -6952,7 +6991,7 @@ class ManimStudioApp:
         # Output title
         output_title = ctk.CTkLabel(
             output_header,
-            text="📋 Console & Terminal",
+            text="🖥️ Terminal",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
@@ -8027,19 +8066,13 @@ class MyScene(Scene):
         self.root.update_idletasks()
         
     def append_output(self, text):
-        """Append text to output console"""
-        self.output_text.configure(state="normal")
-        self.output_text.insert("end", text)
-        self.output_text.configure(state="disabled")
-        self.output_text.see("end")
+        """Append text to terminal"""
+        if hasattr(self, 'terminal'):
+            self.terminal.insert('end', text, 'output')
+            self.terminal.see('end')
         
     def clear_output(self):
-        """Clear output console and terminal"""
-        self.output_text.configure(state="normal")
-        self.output_text.delete("1.0", "end")
-        self.output_text.configure(state="disabled")
-        
-        # Also clear terminal if it exists
+        """Clear the integrated terminal"""
         if hasattr(self, 'terminal'):
             self.terminal.clear()
         
