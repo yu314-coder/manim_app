@@ -54,6 +54,25 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Use the original Python interpreter for subprocesses when running from a
+# packaged executable. `sys.executable` points to the bundled application in
+# that case which would result in the application launching itself. When the
+# base executable is missing or the same as the bundled app, look for a
+# side-by-side "python" binary.
+def _find_python_executable():
+    if getattr(sys, "frozen", False):
+        base = getattr(sys, "_base_executable", None)
+        if base and os.path.exists(base) and os.path.abspath(base) != os.path.abspath(sys.executable):
+            return base
+
+        exe_dir = os.path.dirname(sys.executable)
+        candidate = os.path.join(exe_dir, "python.exe" if os.name == "nt" else "python")
+        if os.path.exists(candidate):
+            return candidate
+    return sys.executable
+
+PYTHON_EXECUTABLE = _find_python_executable()
+
 # Global media directory alongside the application
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
 os.makedirs(MEDIA_DIR, exist_ok=True)
@@ -1169,8 +1188,16 @@ All packages will be installed in an isolated environment that won't affect your
             self.terminal_setup_button.configure(state="disabled")
 
         env_path = self.env_path_label.cget("text")
+        # When running from a packaged build, use the regular setup routine to
+        # avoid spawning the executable recursively.
+        if getattr(sys, 'frozen', False):
+            selected_packages = [pkg for pkg, var in self.package_vars.items() if var.get()]
+            threading.Thread(target=self.run_setup, args=(selected_packages,), daemon=True).start()
+            return
 
-        commands = [[sys.executable, "-m", "venv", env_path]]
+        # Use the real Python interpreter to avoid re-launching the packaged
+        # application when running from an executable
+        commands = [[PYTHON_EXECUTABLE, "-m", "venv", env_path]]
 
         if os.name == 'nt':
             python_exe = os.path.join(env_path, "Scripts", "python.exe")
@@ -2870,7 +2897,7 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
                     return True
@@ -3194,15 +3221,41 @@ if missing:
                 if log_callback:
                     log_callback("Removing existing environment...")
                 shutil.rmtree(venv_path)
-            
+
             # Switch to terminal tab if available
             if hasattr(self.parent_app, 'output_tabs'):
                 self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-            
+
             # Create virtual environment
             if log_callback:
                 log_callback("Creating new virtual environment...")
-            
+
+            # If running from a packaged build or no terminal, create directly
+            if getattr(sys, 'frozen', False) or not hasattr(self.parent_app, 'terminal'):
+                import venv
+                venv.create(venv_path, with_pip=True)
+
+                if os.name == 'nt':
+                    python_exe = os.path.join(venv_path, 'Scripts', 'python.exe')
+                    pip_exe = os.path.join(venv_path, 'Scripts', 'pip.exe')
+                else:
+                    python_exe = os.path.join(venv_path, 'bin', 'python')
+                    pip_exe = os.path.join(venv_path, 'bin', 'pip')
+
+                if not os.path.exists(python_exe):
+                    if log_callback:
+                        log_callback(f"ERROR: Python executable not found at {python_exe}")
+                    raise Exception('Python executable not found after environment creation')
+
+                self.python_path = python_exe
+                self.pip_path = pip_exe
+                self.current_venv = env_name
+
+                if log_callback:
+                    log_callback("Virtual environment created successfully")
+
+                return True
+
             # Use terminal if available
             if hasattr(self.parent_app, 'terminal'):
                 # Create a script for venv creation
@@ -3256,10 +3309,10 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
-                    
+
                     return True
                 finally:
                     if script_path and os.path.exists(script_path):
@@ -3267,33 +3320,6 @@ except Exception as e:
                             os.unlink(script_path)
                         except:
                             pass
-            else:
-                # Fallback to direct creation if terminal not available
-                import venv
-                venv.create(venv_path, with_pip=True)
-                
-                # Activate the environment
-                if os.name == 'nt':
-                    python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-                    pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
-                else:
-                    python_exe = os.path.join(venv_path, "bin", "python")
-                    pip_exe = os.path.join(venv_path, "bin", "pip")
-                    
-                # Verify creation
-                if not os.path.exists(python_exe):
-                    if log_callback:
-                        log_callback(f"ERROR: Python executable not found at {python_exe}")
-                    raise Exception("Python executable not found after environment creation")
-                    
-                self.python_path = python_exe
-                self.pip_path = pip_exe
-                self.current_venv = env_name
-                
-                if log_callback:
-                    log_callback("Virtual environment created successfully")
-                    
-                return True
                 
         except Exception as e:
             if log_callback:
@@ -3791,7 +3817,7 @@ except Exception as e:
                     return success
                 
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path],
+                    [PYTHON_EXECUTABLE, script_path],
                     on_complete=on_venv_created
                 )
                 
@@ -4017,7 +4043,7 @@ except Exception as e:
                 
                 # Pass the pip path as an argument to the script
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path, self.pip_path],
+                    [PYTHON_EXECUTABLE, script_path, self.pip_path],
                     on_complete=on_packages_listed
                 )
                 
