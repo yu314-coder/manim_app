@@ -6,11 +6,14 @@ import os
 # Store original references to subprocess functions before they get patched
 # This ensures we always have direct access to the original functions
 if not hasattr(subprocess, '_original_stored'):
-    subprocess._original_run = subprocess.run
-    subprocess._original_popen = subprocess.Popen
-    subprocess._original_call = subprocess.call
-    subprocess._original_check_output = subprocess.check_output
-    subprocess._original_check_call = subprocess.check_call
+    # If another module already stored the original functions (e.g. a patch
+    # that hides console windows), re-use those references. Otherwise store the
+    # current implementations which should still be the unpatched ones.
+    subprocess._original_run = getattr(subprocess, '_original_run', subprocess.run)
+    subprocess._original_popen = getattr(subprocess, '_original_popen', subprocess.Popen)
+    subprocess._original_call = getattr(subprocess, '_original_call', subprocess.call)
+    subprocess._original_check_output = getattr(subprocess, '_original_check_output', subprocess.check_output)
+    subprocess._original_check_call = getattr(subprocess, '_original_check_call', subprocess.check_call)
     subprocess._original_stored = True
 
 def run_hidden_process(command, **kwargs):
