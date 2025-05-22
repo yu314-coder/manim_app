@@ -993,6 +993,17 @@ All packages will be installed in an isolated environment that won't affect your
             hover_color="#117A65"
         )
         self.start_button.pack(side="left", padx=(0, 10))
+
+        self.terminal_setup_button = ctk.CTkButton(
+            button_frame,
+            text="🖥️ Terminal Setup",
+            command=self.start_terminal_setup,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        self.terminal_setup_button.pack(side="left", padx=(0, 10))
         
         self.skip_button = ctk.CTkButton(
             button_frame,
@@ -1037,6 +1048,8 @@ All packages will be installed in an isolated environment that won't affect your
         """Start the environment setup process"""
         self.start_button.configure(state="disabled")
         self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
         
         self.log_message("Starting ManimStudio environment setup...")
         self.update_progress(0.05, "Preparing...", "Initializing environment creation")
@@ -1051,7 +1064,44 @@ All packages will be installed in an isolated environment that won't affect your
             daemon=True
         )
         setup_thread.start()
-        
+
+    def start_terminal_setup(self):
+        """Run basic environment setup directly in the integrated terminal"""
+        self.start_button.configure(state="disabled")
+        self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
+
+        env_path = self.env_path_label.cget("text")
+
+        commands = [[sys.executable, "-m", "venv", env_path]]
+
+        if os.name == 'nt':
+            python_exe = os.path.join(env_path, "Scripts", "python.exe")
+        else:
+            python_exe = os.path.join(env_path, "bin", "python")
+
+        commands.append([python_exe, "-m", "pip", "install", "-r", "requirements.txt"])
+
+        def run_next(idx=0):
+            if idx >= len(commands):
+                self.log_message_threadsafe("✅ Terminal setup completed!")
+                self.venv_manager.activate_venv("manim_studio_default")
+                self.venv_manager.needs_setup = False
+                self.after(0, self.setup_complete_ui)
+                return
+
+            cmd = commands[idx]
+            if hasattr(self.parent_window, 'output_tabs'):
+                self.parent_window.output_tabs.set("Terminal")
+
+            self.parent_window.terminal.run_command_redirected(
+                cmd,
+                on_complete=lambda success, code, i=idx: run_next(i + 1)
+            )
+
+        threading.Thread(target=run_next, daemon=True).start()
+
     def run_setup(self, packages):
         """Run the actual setup process"""
         try:
@@ -2209,7 +2259,14 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
                 return
                 
         # Create progress dialog
-        progress_dialog = EnvCreationProgressDialog(self, name, location, python_exe, self.get_packages())
+        progress_dialog = EnvCreationProgressDialog(
+            self,
+            name,
+            location,
+            python_exe,
+            self.get_packages(),
+            self.venv_manager,
+        )
         self.wait_window(progress_dialog)
         
         # Close dialog
@@ -2247,15 +2304,16 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
 
 class EnvCreationProgressDialog(ctk.CTkToplevel):
     """Dialog showing environment creation progress"""
-    
-    def __init__(self, parent, env_name, location, python_exe, packages):
+
+    def __init__(self, parent, env_name, location, python_exe, packages, venv_manager):
         super().__init__(parent)
-        
+
         self.parent = parent
         self.env_name = env_name
         self.location = location
         self.python_exe = python_exe
         self.packages = packages
+        self.venv_manager = venv_manager
         
         self.title("Creating Environment")
         self.geometry("500x400")
@@ -2351,100 +2409,73 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         self.log(f"Python: {self.python_exe}")
         self.log(f"Packages: {', '.join(self.packages)}")
         self.log("")
-        
-        # Start creation in background thread
-        self.creation_thread = threading.Thread(target=self.create_environment, daemon=True)
-        self.creation_thread.start()
+
+        # Start creation asynchronously in the main thread using the terminal
+        self.create_environment()
         
     def create_environment(self):
-        """Create the environment"""
-        try:
-            # Update status
-            self.update_status("Creating virtual environment...", 0.1)
-            
-            # Create environment directory
-            env_path = os.path.join(self.location, self.env_name)
-            os.makedirs(self.location, exist_ok=True)
-            
-            # Create virtual environment
-            self.log("Creating virtual environment...")
-            import venv
-            venv.create(env_path, with_pip=True)
-            
-            # Get Python and pip paths
-            if sys.platform == "win32":
-                python_path = os.path.join(env_path, "Scripts", "python.exe")
-                pip_path = os.path.join(env_path, "Scripts", "pip.exe")
-            else:
-                python_path = os.path.join(env_path, "bin", "python")
-                pip_path = os.path.join(env_path, "bin", "pip")
-                
-            # Verify paths
-            if not os.path.exists(python_path) or not os.path.exists(pip_path):
-                self.log(f"ERROR: Python or pip executable not found in created environment")
-                self.log(f"Python path: {python_path}, exists: {os.path.exists(python_path)}")
-                self.log(f"Pip path: {pip_path}, exists: {os.path.exists(pip_path)}")
-                self.update_status("Creation failed!", 0)
-                self.finish(success=False)
+        """Create the environment using the integrated terminal"""
+
+        env_path = os.path.join(self.location, self.env_name)
+        os.makedirs(self.location, exist_ok=True)
+
+        commands = [[self.python_exe, "-m", "venv", env_path]]
+
+        if os.name == "nt":
+            python_path = os.path.join(env_path, "Scripts", "python.exe")
+            pip_path = os.path.join(env_path, "Scripts", "pip.exe")
+        else:
+            python_path = os.path.join(env_path, "bin", "python")
+            pip_path = os.path.join(env_path, "bin", "pip")
+
+        commands.append([python_path, "-m", "pip", "install", "--upgrade", "pip"])
+        for pkg in self.packages:
+            commands.append([pip_path, "install", pkg])
+
+        total_cmds = len(commands)
+
+        def run_next(idx=0):
+            if idx >= total_cmds:
+                self.update_status("Environment created successfully!", 1.0)
+                self.log("\n✅ Environment created successfully!")
+                self.venv_manager.activate_venv(self.env_name)
+                self.venv_manager.needs_setup = False
+                self.finish(True)
                 return
-                
-            # Upgrade pip
-            self.update_status("Upgrading pip...", 0.15)
-            self.log("Upgrading pip...")
-            
-            result = self.run_command([pip_path, "install", "--upgrade", "pip"])
-            if result.returncode != 0:
-                self.log(f"WARNING: Failed to upgrade pip: {result.stderr}")
+
+            cmd = commands[idx]
+
+            if idx == 0:
+                self.update_status("Creating virtual environment...", 0.1)
+                self.log("Creating virtual environment...")
+            elif idx == 1:
+                self.update_status("Upgrading pip...", 0.15)
+                self.log("Upgrading pip...")
             else:
-                self.log("Pip upgraded successfully")
-                
-            # Install packages
-            if self.packages:
-                self.update_status("Installing packages...", 0.2)
-                self.log("\nInstalling packages...")
-                
-                for i, package in enumerate(self.packages):
-                    progress = 0.2 + (i / len(self.packages) * 0.7)
-                    self.update_status(f"Installing {package}...", progress)
-                    
-                    self.log(f"Installing {package}...")
-                    result = self.run_command([pip_path, "install", package])
-                    
-                    if result.returncode == 0:
-                        self.log(f"✓ Successfully installed {package}")
-                    else:
-                        self.log(f"✗ Failed to install {package}: {result.stderr}")
-                        
-            # Finish
-            self.update_status("Environment created successfully!", 1.0)
-            self.log("\n✅ Environment created successfully!")
-            self.finish(success=True)
-            
-        except Exception as e:
-            self.log(f"ERROR: {str(e)}")
-            import traceback
-            self.log(traceback.format_exc())
-            self.update_status("Creation failed!", 0)
-            self.finish(success=False)
-            
-    def run_command(self, command):
-        """Run command with hidden console"""
-        startupinfo = None
-        creationflags = 0
-        
-        if sys.platform == "win32":
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            creationflags = subprocess.CREATE_NO_WINDOW
-            
-        return run_original(
-            command,
-            capture_output=True,
-            text=True,
-            startupinfo=startupinfo,
-            creationflags=creationflags
-        )
+                pkg_idx = idx - 2
+                progress = 0.2 + (pkg_idx / max(len(self.packages), 1) * 0.7)
+                pkg = self.packages[pkg_idx]
+                self.update_status(f"Installing {pkg}...", progress)
+                self.log(f"Installing {pkg}...")
+
+            self.venv_manager.parent_app.terminal.run_command_redirected(
+                cmd,
+                on_complete=lambda s, c, i=idx: after_command(s, c, i),
+            )
+
+        def after_command(success, code, idx):
+            if idx >= 2:
+                pkg = self.packages[idx - 2]
+                if success:
+                    self.log(f"✓ Successfully installed {pkg}")
+                else:
+                    self.log(f"✗ Failed to install {pkg} (exit code {code})")
+            elif not success:
+                self.log(f"Command failed with exit code {code}")
+
+            run_next(idx + 1)
+
+        run_next()
         
     def update_status(self, status, progress):
         """Update status and progress bar"""
