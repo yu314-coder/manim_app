@@ -1160,7 +1160,7 @@ All packages will be installed in an isolated environment that won't affect your
 
         env_path = self.env_path_label.cget("text")
 
-        commands = [[sys.executable, "-m", "venv", env_path]]
+        commands = [[self.venv_manager.base_python, "-m", "venv", env_path]]
 
         if os.name == 'nt':
             python_exe = os.path.join(env_path, "Scripts", "python.exe")
@@ -2100,7 +2100,7 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
             width=100
         ).pack(side="left")
         
-        self.python_var = ctk.StringVar(value=sys.executable)
+        self.python_var = ctk.StringVar(value=self.venv_manager.base_python)
         
         # Python interpreters dropdown
         interpreters = self.find_python_interpreters()
@@ -2262,7 +2262,7 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
         
     def find_python_interpreters(self):
         """Find available Python interpreters"""
-        interpreters = [sys.executable]
+        interpreters = [self.venv_manager.base_python]
         
         # Try to find other Python installations
         if sys.platform == "win32":
@@ -2633,6 +2633,9 @@ class VirtualEnvironmentManager:
     def __init__(self, parent_app):
         self.parent_app = parent_app
         self.current_venv = None
+        # Use the underlying Python interpreter when packaged
+        # Nuitka onefile builds expose it via _base_executable
+        self.base_python = getattr(sys, "_base_executable", sys.executable)
         # Determine if running as executable or script
         if getattr(sys, 'frozen', False):
             # Running as executable - use executable directory
@@ -2860,7 +2863,7 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [self.base_python, script_path],
                         on_complete=on_venv_created
                     )
                     return True
@@ -3246,7 +3249,7 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [self.base_python, script_path],
                         on_complete=on_venv_created
                     )
                     
@@ -3781,7 +3784,7 @@ except Exception as e:
                     return success
                 
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path],
+                    [self.base_python, script_path],
                     on_complete=on_venv_created
                 )
                 
@@ -4007,7 +4010,7 @@ except Exception as e:
                 
                 # Pass the pip path as an argument to the script
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path, self.pip_path],
+                    [self.base_python, script_path, self.pip_path],
                     on_complete=on_packages_listed
                 )
                 
