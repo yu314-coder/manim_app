@@ -358,8 +358,8 @@ class PackageInfo:
 # Terminal emulation in Tkinter
 class TkTerminal(tk.Text):
     """A Tkinter-based terminal emulator widget"""
-    
-    def __init__(self, parent, **kwargs):
+
+    def __init__(self, parent, parent_app=None, **kwargs):
         kwargs.setdefault('background', 'black')
         kwargs.setdefault('foreground', '#00ff00')
         kwargs.setdefault('insertbackground', 'white')
@@ -368,6 +368,11 @@ class TkTerminal(tk.Text):
         kwargs.setdefault('relief', 'flat')
         kwargs.setdefault('font', ('Consolas', 10))
         super().__init__(parent, **kwargs)
+
+        self.parent_app = parent_app
+        self.cwd = os.getcwd()
+        self.env = os.environ.copy()
+        self.active_venv = None
         
         self.process = None
         self.command_history = []
@@ -392,7 +397,9 @@ class TkTerminal(tk.Text):
         
     def show_prompt(self):
         """Show command prompt"""
-        self.insert("end", "$ ", "prompt")
+        prompt_dir = os.path.basename(self.cwd) or self.cwd
+        prefix = f"({self.active_venv}) " if self.active_venv else ""
+        self.insert("end", f"{prefix}{prompt_dir}$ ", "prompt")
         self.input_start = self.index("end-1c")
         self.see("end")
         
@@ -451,51 +458,80 @@ class TkTerminal(tk.Text):
     def execute_command(self, command):
         """Execute command and show output"""
         try:
-            env = os.environ.copy()
-            
-            # Execute command using subprocess
-            process = subprocess.Popen(
+            stripped = command.strip()
+            if stripped.startswith('cd'):
+                parts = stripped.split(maxsplit=1)
+                target = parts[1] if len(parts) > 1 else os.path.expanduser('~')
+                new_dir = os.path.abspath(os.path.join(self.cwd, os.path.expanduser(target))) if not os.path.isabs(target) else os.path.abspath(os.path.expanduser(target))
+                if os.path.isdir(new_dir):
+                    self.cwd = new_dir
+                else:
+                    self.insert('end', f"cd: no such directory: {target}\n", 'error')
+                self.show_prompt()
+                return
+            if stripped.startswith('activate') and self.parent_app:
+                parts = stripped.split(maxsplit=1)
+                if len(parts) > 1 and self.parent_app.venv_manager.activate_venv(parts[1]):
+                    self.active_venv = parts[1]
+                    bin_path = os.path.dirname(self.parent_app.venv_manager.python_path)
+                    self.env = os.environ.copy()
+                    self.env['PATH'] = bin_path + os.pathsep + self.env.get('PATH', '')
+                    self.insert('end', f"Activated {parts[1]}\n", 'output')
+                else:
+                    self.insert('end', 'Environment not found\n', 'error')
+                self.show_prompt()
+                return
+            if stripped == 'deactivate' and self.parent_app:
+                self.parent_app.venv_manager.deactivate_venv()
+                self.active_venv = None
+                self.env = os.environ.copy()
+                self.insert('end', 'Environment deactivated\n', 'output')
+                self.show_prompt()
+                return
+
+            process = popen_original(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                universal_newlines=True
+                universal_newlines=True,
+                cwd=self.cwd,
+                env=self.env
             )
-            
+
             stdout, stderr = process.communicate()
-            
-            # Display output
+
             if stdout:
                 self.insert("end", stdout, "output")
             if stderr:
                 self.insert("end", stderr, "error")
-                
-            # Return code
+
             if process.returncode != 0:
                 self.insert("end", f"Process exited with code {process.returncode}\n", "error")
-                
+
         except Exception as e:
             self.insert("end", f"Error: {str(e)}\n", "error")
-            
+
         self.show_prompt()
         
     def run_command_redirected(self, command, on_complete=None, env=None):
         """Run command and redirect output to the terminal"""
         self.insert("end", f"Executing: {' '.join(command)}\n", "output")
-        
+
         try:
-            env_vars = os.environ.copy()
+            env_vars = self.env.copy()
             if env:
                 env_vars.update(env)
-                
+
             process = popen_original(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 universal_newlines=True,
-                env=env_vars
+                env=env_vars,
+                cwd=self.cwd
             )
             
             self.process = process
@@ -993,6 +1029,17 @@ All packages will be installed in an isolated environment that won't affect your
             hover_color="#117A65"
         )
         self.start_button.pack(side="left", padx=(0, 10))
+
+        self.terminal_setup_button = ctk.CTkButton(
+            button_frame,
+            text="🖥️ Terminal Setup",
+            command=self.start_terminal_setup,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        self.terminal_setup_button.pack(side="left", padx=(0, 10))
         
         self.skip_button = ctk.CTkButton(
             button_frame,
@@ -1037,6 +1084,8 @@ All packages will be installed in an isolated environment that won't affect your
         """Start the environment setup process"""
         self.start_button.configure(state="disabled")
         self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
         
         self.log_message("Starting ManimStudio environment setup...")
         self.update_progress(0.05, "Preparing...", "Initializing environment creation")
@@ -1051,7 +1100,44 @@ All packages will be installed in an isolated environment that won't affect your
             daemon=True
         )
         setup_thread.start()
-        
+
+    def start_terminal_setup(self):
+        """Run basic environment setup directly in the integrated terminal"""
+        self.start_button.configure(state="disabled")
+        self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
+
+        env_path = self.env_path_label.cget("text")
+
+        commands = [[sys.executable, "-m", "venv", env_path]]
+
+        if os.name == 'nt':
+            python_exe = os.path.join(env_path, "Scripts", "python.exe")
+        else:
+            python_exe = os.path.join(env_path, "bin", "python")
+
+        commands.append([python_exe, "-m", "pip", "install", "-r", "requirements.txt"])
+
+        def run_next(idx=0):
+            if idx >= len(commands):
+                self.log_message_threadsafe("✅ Terminal setup completed!")
+                self.venv_manager.activate_venv("manim_studio_default")
+                self.venv_manager.needs_setup = False
+                self.after(0, self.setup_complete_ui)
+                return
+
+            cmd = commands[idx]
+            if hasattr(self.parent_window, 'output_tabs'):
+                self.parent_window.output_tabs.set("Terminal")
+
+            self.parent_window.terminal.run_command_redirected(
+                cmd,
+                on_complete=lambda success, code, i=idx: run_next(i + 1)
+            )
+
+        threading.Thread(target=run_next, daemon=True).start()
+
     def run_setup(self, packages):
         """Run the actual setup process"""
         try:
@@ -3684,6 +3770,13 @@ except Exception as e:
                 
             return True
         return False
+
+    def deactivate_venv(self):
+        """Deactivate the current virtual environment"""
+        self.current_venv = None
+        self.python_path = sys.executable
+        self.pip_path = shutil.which("pip") or "pip"
+        return True
         
     def install_package(self, package_name, callback=None):
         """Install a package using terminal"""
@@ -6922,6 +7015,7 @@ class ManimStudioApp:
         # Terminal in Terminal tab
         self.terminal = TkTerminal(
             terminal_tab,
+            parent_app=self,
             bg=VSCODE_COLORS["background"],
             fg=VSCODE_COLORS["text"],
             height=10
