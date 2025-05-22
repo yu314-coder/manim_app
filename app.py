@@ -29,6 +29,7 @@ import cv2
 import math
 import requests
 import xml.etree.ElementTree as ET
+import shlex
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 import asyncio
@@ -357,9 +358,9 @@ class PackageInfo:
             self.dependencies = []
 # Terminal emulation in Tkinter
 class TkTerminal(tk.Text):
-    """A Tkinter-based terminal emulator widget"""
-    
-    def __init__(self, parent, **kwargs):
+    """A Tkinter-based terminal emulator widget with basic shell features"""
+
+    def __init__(self, parent, app=None, **kwargs):
         kwargs.setdefault('background', 'black')
         kwargs.setdefault('foreground', '#00ff00')
         kwargs.setdefault('insertbackground', 'white')
@@ -368,8 +369,11 @@ class TkTerminal(tk.Text):
         kwargs.setdefault('relief', 'flat')
         kwargs.setdefault('font', ('Consolas', 10))
         super().__init__(parent, **kwargs)
-        
+
+        self.app = app
         self.process = None
+        self.cwd = os.getcwd()
+        self.env = os.environ.copy()
         self.command_history = []
         self.history_index = 0
         self.command_buffer = ""
@@ -382,17 +386,19 @@ class TkTerminal(tk.Text):
         
         # Initialize prompt
         self.show_prompt()
-        
+
         # Bind events
         self.bind("<Return>", self.on_enter)
         self.bind("<BackSpace>", self.on_backspace)
         self.bind("<Up>", self.on_up)
         self.bind("<Down>", self.on_down)
         self.bind("<Key>", self.on_key)
+        self.bind("<Tab>", self.on_tab)
         
     def show_prompt(self):
-        """Show command prompt"""
-        self.insert("end", "$ ", "prompt")
+        """Show command prompt with current directory"""
+        prompt = f"{os.path.basename(self.cwd) or self.cwd}$ "
+        self.insert("end", prompt, "prompt")
         self.input_start = self.index("end-1c")
         self.see("end")
         
@@ -447,20 +453,126 @@ class TkTerminal(tk.Text):
         """Handle key press"""
         if self.index("insert") < self.input_start:
             self.mark_set("insert", "end")
+
+    def on_tab(self, event):
+        """Simple tab completion for file and directory names"""
+        current = self.get(self.input_start, "insert")
+        parts = current.split()
+        if not parts:
+            return "break"
+
+        prefix = parts[-1]
+        expanded = os.path.expanduser(prefix)
+        if not os.path.isabs(expanded):
+            expanded = os.path.join(self.cwd, expanded)
+
+        matches = glob.glob(expanded + '*')
+        if len(matches) == 1:
+            match = matches[0]
+            completion = os.path.basename(match)
+            if os.path.isdir(match):
+                completion += os.sep
+            insert_text = completion[len(os.path.basename(prefix)) :]
+            self.insert('insert', insert_text)
+        elif len(matches) > 1:
+            self.insert('end', "\n" + "  ".join(os.path.basename(m) + (os.sep if os.path.isdir(m) else '') for m in matches) + "\n")
+            cmd = self.get(self.input_start, 'insert')
+            self.show_prompt()
+            self.insert('end', cmd)
+        return "break"
+
+    def handle_builtin(self, tokens):
+        """Handle simple built-in shell commands"""
+        if not tokens:
+            return False
+
+        cmd = tokens[0]
+        if cmd == 'cd':
+            target = tokens[1] if len(tokens) > 1 else os.path.expanduser('~')
+            new_dir = os.path.expanduser(target)
+            if not os.path.isabs(new_dir):
+                new_dir = os.path.join(self.cwd, new_dir)
+            new_dir = os.path.abspath(new_dir)
+            if os.path.isdir(new_dir):
+                self.cwd = new_dir
+            else:
+                self.insert('end', f"cd: no such directory: {target}\n", 'error')
+            self.show_prompt()
+            return True
+
+        if cmd == 'clear':
+            self.clear()
+            return True
+
+        if cmd == 'activate' and len(tokens) > 1:
+            if self.activate_env(tokens[1]):
+                self.insert('end', f"Activated {tokens[1]}\n", 'output')
+            else:
+                self.insert('end', "Invalid virtual environment\n", 'error')
+            self.show_prompt()
+            return True
+
+        if cmd == 'deactivate':
+            self.deactivate_env()
+            self.insert('end', "Environment deactivated\n", 'output')
+            self.show_prompt()
+            return True
+
+        return False
+
+    def activate_env(self, env_path):
+        """Activate a virtual environment for subsequent commands"""
+        env_path = os.path.expanduser(env_path)
+        if not os.path.isabs(env_path):
+            env_path = os.path.join(self.cwd, env_path)
+        env_path = os.path.abspath(env_path)
+
+        bin_dir = 'Scripts' if os.name == 'nt' else 'bin'
+        python_exe = os.path.join(env_path, bin_dir, 'python.exe' if os.name == 'nt' else 'python')
+        pip_exe = os.path.join(env_path, bin_dir, 'pip.exe' if os.name == 'nt' else 'pip')
+        if not os.path.exists(python_exe):
+            return False
+
+        self.env = os.environ.copy()
+        self.env['VIRTUAL_ENV'] = env_path
+        self.env['PATH'] = os.path.join(env_path, bin_dir) + os.pathsep + self.env.get('PATH', '')
+
+        if self.app and hasattr(self.app, 'venv_manager'):
+            name = os.path.basename(env_path)
+            self.app.venv_manager.current_venv = name
+            self.app.venv_manager.python_path = python_exe
+            self.app.venv_manager.pip_path = pip_exe
+        return True
+
+    def deactivate_env(self):
+        """Deactivate current virtual environment"""
+        self.env = os.environ.copy()
+        self.env.pop('VIRTUAL_ENV', None)
+        if self.app and hasattr(self.app, 'venv_manager'):
+            if hasattr(self.app.venv_manager, 'deactivate_venv'):
+                self.app.venv_manager.deactivate_venv()
+            else:
+                self.app.venv_manager.current_venv = None
+                self.app.venv_manager.python_path = sys.executable
+                self.app.venv_manager.pip_path = shutil.which('pip') or 'pip'
+        return True
             
     def execute_command(self, command):
         """Execute command and show output"""
         try:
-            env = os.environ.copy()
-            
-            # Execute command using subprocess
-            process = subprocess.Popen(
+            tokens = shlex.split(command)
+            if self.handle_builtin(tokens):
+                return
+
+            process = popen_original(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                universal_newlines=True
+                universal_newlines=True,
+                cwd=self.cwd,
+                env=self.env
             )
             
             stdout, stderr = process.communicate()
@@ -480,22 +592,23 @@ class TkTerminal(tk.Text):
             
         self.show_prompt()
         
-    def run_command_redirected(self, command, on_complete=None, env=None):
+    def run_command_redirected(self, command, on_complete=None, env=None, cwd=None):
         """Run command and redirect output to the terminal"""
         self.insert("end", f"Executing: {' '.join(command)}\n", "output")
         
         try:
-            env_vars = os.environ.copy()
+            env_vars = self.env.copy()
             if env:
                 env_vars.update(env)
-                
+
             process = popen_original(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 universal_newlines=True,
-                env=env_vars
+                env=env_vars,
+                cwd=cwd or self.cwd
             )
             
             self.process = process
@@ -993,6 +1106,17 @@ All packages will be installed in an isolated environment that won't affect your
             hover_color="#117A65"
         )
         self.start_button.pack(side="left", padx=(0, 10))
+
+        self.terminal_setup_button = ctk.CTkButton(
+            button_frame,
+            text="🖥️ Terminal Setup",
+            command=self.start_terminal_setup,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        self.terminal_setup_button.pack(side="left", padx=(0, 10))
         
         self.skip_button = ctk.CTkButton(
             button_frame,
@@ -1037,6 +1161,8 @@ All packages will be installed in an isolated environment that won't affect your
         """Start the environment setup process"""
         self.start_button.configure(state="disabled")
         self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
         
         self.log_message("Starting ManimStudio environment setup...")
         self.update_progress(0.05, "Preparing...", "Initializing environment creation")
@@ -1051,7 +1177,46 @@ All packages will be installed in an isolated environment that won't affect your
             daemon=True
         )
         setup_thread.start()
-        
+
+    def start_terminal_setup(self):
+        """Run basic environment setup directly in the integrated terminal"""
+        self.start_button.configure(state="disabled")
+        self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
+
+        env_path = self.env_path_label.cget("text")
+
+        commands = [[sys.executable, "-m", "venv", env_path]]
+
+        if os.name == 'nt':
+            python_exe = os.path.join(env_path, "Scripts", "python.exe")
+        else:
+            python_exe = os.path.join(env_path, "bin", "python")
+
+        commands.append([python_exe, "-m", "pip", "install", "-r", "requirements.txt"])
+
+        def run_next(idx=0):
+            if idx >= len(commands):
+                self.log_message_threadsafe("✅ Terminal setup completed!")
+                self.venv_manager.activate_venv("manim_studio_default")
+                if hasattr(self.parent_window, 'terminal'):
+                    self.parent_window.terminal.activate_env(env_path)
+                self.venv_manager.needs_setup = False
+                self.after(0, self.setup_complete_ui)
+                return
+
+            cmd = commands[idx]
+            if hasattr(self.parent_window, 'output_tabs'):
+                self.parent_window.output_tabs.set("Terminal")
+
+            self.parent_window.terminal.run_command_redirected(
+                cmd,
+                on_complete=lambda success, code, i=idx: run_next(i + 1)
+            )
+
+        threading.Thread(target=run_next, daemon=True).start()
+
     def run_setup(self, packages):
         """Run the actual setup process"""
         try:
@@ -3684,6 +3849,13 @@ except Exception as e:
                 
             return True
         return False
+
+    def deactivate_venv(self):
+        """Deactivate the current virtual environment"""
+        self.current_venv = None
+        self.python_path = sys.executable
+        self.pip_path = shutil.which('pip') or 'pip'
+        return True
         
     def install_package(self, package_name, callback=None):
         """Install a package using terminal"""
@@ -6922,6 +7094,7 @@ class ManimStudioApp:
         # Terminal in Terminal tab
         self.terminal = TkTerminal(
             terminal_tab,
+            app=self,
             bg=VSCODE_COLORS["background"],
             fg=VSCODE_COLORS["text"],
             height=10
