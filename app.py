@@ -54,6 +54,17 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Use the original Python interpreter for subprocesses when running from a
+# packaged executable. `sys.executable` points to the bundled application
+# in that case which would result in the application launching itself.
+if getattr(sys, "frozen", False):
+    PYTHON_EXECUTABLE = getattr(sys, "_base_executable", None)
+    if not PYTHON_EXECUTABLE:
+        candidate = os.path.join(BASE_DIR, "python.exe" if os.name == "nt" else "python")
+        PYTHON_EXECUTABLE = candidate if os.path.exists(candidate) else sys.executable
+else:
+    PYTHON_EXECUTABLE = sys.executable
+
 # Global media directory alongside the application
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
 os.makedirs(MEDIA_DIR, exist_ok=True)
@@ -1168,9 +1179,19 @@ All packages will be installed in an isolated environment that won't affect your
         if hasattr(self, 'terminal_setup_button'):
             self.terminal_setup_button.configure(state="disabled")
 
+        # In packaged builds spawning a new interpreter would relaunch the
+        # application itself. Fall back to the regular setup routine which
+        # creates the environment in-process.
+        if getattr(sys, 'frozen', False):
+            selected_packages = [pkg for pkg, var in self.package_vars.items() if var.get()]
+            threading.Thread(target=self.run_setup, args=(selected_packages,), daemon=True).start()
+            return
+
         env_path = self.env_path_label.cget("text")
 
-        commands = [[sys.executable, "-m", "venv", env_path]]
+        # Use the real Python interpreter to avoid re-launching the packaged
+        # application when running from an executable
+        commands = [[PYTHON_EXECUTABLE, "-m", "venv", env_path]]
 
         if os.name == 'nt':
             python_exe = os.path.join(env_path, "Scripts", "python.exe")
@@ -2870,7 +2891,7 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
                     return True
@@ -3194,17 +3215,18 @@ if missing:
                 if log_callback:
                     log_callback("Removing existing environment...")
                 shutil.rmtree(venv_path)
-            
+
             # Switch to terminal tab if available
             if hasattr(self.parent_app, 'output_tabs'):
                 self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-            
+
             # Create virtual environment
             if log_callback:
                 log_callback("Creating new virtual environment...")
-            
-            # Use terminal if available
-            if hasattr(self.parent_app, 'terminal'):
+
+            use_terminal = hasattr(self.parent_app, 'terminal') and not getattr(sys, 'frozen', False)
+
+            if use_terminal:
                 # Create a script for venv creation
                 venv_script = f"""
 import venv
@@ -3256,10 +3278,10 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
-                    
+
                     return True
                 finally:
                     if script_path and os.path.exists(script_path):
@@ -3267,8 +3289,9 @@ except Exception as e:
                             os.unlink(script_path)
                         except:
                             pass
+
             else:
-                # Fallback to direct creation if terminal not available
+                # Direct creation (used when packaged or terminal unavailable)
                 import venv
                 venv.create(venv_path, with_pip=True)
                 
@@ -3791,7 +3814,7 @@ except Exception as e:
                     return success
                 
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path],
+                    [PYTHON_EXECUTABLE, script_path],
                     on_complete=on_venv_created
                 )
                 
@@ -4017,7 +4040,7 @@ except Exception as e:
                 
                 # Pass the pip path as an argument to the script
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path, self.pip_path],
+                    [PYTHON_EXECUTABLE, script_path, self.pip_path],
                     on_complete=on_packages_listed
                 )
                 
