@@ -1,0 +1,13 @@
+manim[complete]>=0.17.3
+customtkinter>=5.2.0
+pillow>=10.0.0
+numpy>=1.24.3
+opencv-python>=4.8.0
+matplotlib>=3.7.2
+scipy>=1.11.1
+jedi>=0.18.2
+requests>=2.31.0
+aiohttp>=3.8.5
+sympy>=1.12
+networkx>=3.1
+pyinstaller>=5.10.1

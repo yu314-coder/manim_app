@@ -993,6 +993,17 @@ All packages will be installed in an isolated environment that won't affect your
             hover_color="#117A65"
         )
         self.start_button.pack(side="left", padx=(0, 10))
+
+        self.terminal_setup_button = ctk.CTkButton(
+            button_frame,
+            text="🖥️ Terminal Setup",
+            command=self.start_terminal_setup,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+        self.terminal_setup_button.pack(side="left", padx=(0, 10))
         
         self.skip_button = ctk.CTkButton(
             button_frame,
@@ -1037,6 +1048,8 @@ All packages will be installed in an isolated environment that won't affect your
         """Start the environment setup process"""
         self.start_button.configure(state="disabled")
         self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
         
         self.log_message("Starting ManimStudio environment setup...")
         self.update_progress(0.05, "Preparing...", "Initializing environment creation")
@@ -1051,7 +1064,44 @@ All packages will be installed in an isolated environment that won't affect your
             daemon=True
         )
         setup_thread.start()
-        
+
+    def start_terminal_setup(self):
+        """Run basic environment setup directly in the integrated terminal"""
+        self.start_button.configure(state="disabled")
+        self.skip_button.configure(state="disabled")
+        if hasattr(self, 'terminal_setup_button'):
+            self.terminal_setup_button.configure(state="disabled")
+
+        env_path = self.env_path_label.cget("text")
+
+        commands = [[sys.executable, "-m", "venv", env_path]]
+
+        if os.name == 'nt':
+            python_exe = os.path.join(env_path, "Scripts", "python.exe")
+        else:
+            python_exe = os.path.join(env_path, "bin", "python")
+
+        commands.append([python_exe, "-m", "pip", "install", "-r", "requirements.txt"])
+
+        def run_next(idx=0):
+            if idx >= len(commands):
+                self.log_message_threadsafe("✅ Terminal setup completed!")
+                self.venv_manager.activate_venv("manim_studio_default")
+                self.venv_manager.needs_setup = False
+                self.after(0, self.setup_complete_ui)
+                return
+
+            cmd = commands[idx]
+            if hasattr(self.parent_window, 'output_tabs'):
+                self.parent_window.output_tabs.set("Terminal")
+
+            self.parent_window.terminal.run_command_redirected(
+                cmd,
+                on_complete=lambda success, code, i=idx: run_next(i + 1)
+            )
+
+        threading.Thread(target=run_next, daemon=True).start()
+
     def run_setup(self, packages):
         """Run the actual setup process"""
         try:
