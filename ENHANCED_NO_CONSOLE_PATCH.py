@@ -157,6 +157,7 @@ else:
     subprocess._manimstudio_patched = True
     subprocess._original_run = _original_run  # Store reference to original
     subprocess._original_popen = _original_popen  # Store reference to original
+    subprocess._original_stored = True
 
     print("Subprocess patching complete - all console windows will be hidden")
 

@@ -5,7 +5,7 @@ import os
 
 # Store original references to subprocess functions before they get patched
 # This ensures we always have direct access to the original functions
-if not hasattr(subprocess, '_original_stored'):
+if not hasattr(subprocess, '_original_run'):
     subprocess._original_run = subprocess.run
     subprocess._original_popen = subprocess.Popen
     subprocess._original_call = subprocess.call
