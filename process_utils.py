@@ -3,17 +3,37 @@ import subprocess
 import sys
 import os
 
-# Store original references to subprocess functions before they get patched
-# This ensures we always have direct access to the original functions
-if not hasattr(subprocess, '_original_stored'):
-    # If another module already stored the original functions (e.g. a patch
-    # that hides console windows), re-use those references. Otherwise store the
-    # current implementations which should still be the unpatched ones.
-    subprocess._original_run = getattr(subprocess, '_original_run', subprocess.run)
-    subprocess._original_popen = getattr(subprocess, '_original_popen', subprocess.Popen)
-    subprocess._original_call = getattr(subprocess, '_original_call', subprocess.call)
-    subprocess._original_check_output = getattr(subprocess, '_original_check_output', subprocess.check_output)
-    subprocess._original_check_call = getattr(subprocess, '_original_check_call', subprocess.check_call)
+"""Utilities for running subprocess commands without showing console windows.
+
+This module centralises all subprocess handling used by the application.  A key
+goal is to avoid infinite recursion when different modules attempt to patch
+``subprocess``.  To achieve this we capture the original implementations exactly
+once and use our own module level references for all internal calls.  Even if
+``subprocess._original_*`` gets overwritten later we still hold the true
+originals, preventing recursion.
+"""
+
+# Capture references to the unpatched subprocess functions.  If another module
+# executed before us and already stored the originals we re-use those to ensure
+# consistency.
+if hasattr(subprocess, "_original_stored"):
+    ORIGINAL_RUN = subprocess._original_run
+    ORIGINAL_POPEN = subprocess._original_popen
+    ORIGINAL_CALL = subprocess._original_call
+    ORIGINAL_CHECK_OUTPUT = subprocess._original_check_output
+    ORIGINAL_CHECK_CALL = subprocess._original_check_call
+else:
+    ORIGINAL_RUN = subprocess.run
+    ORIGINAL_POPEN = subprocess.Popen
+    ORIGINAL_CALL = subprocess.call
+    ORIGINAL_CHECK_OUTPUT = subprocess.check_output
+    ORIGINAL_CHECK_CALL = subprocess.check_call
+
+    subprocess._original_run = ORIGINAL_RUN
+    subprocess._original_popen = ORIGINAL_POPEN
+    subprocess._original_call = ORIGINAL_CALL
+    subprocess._original_check_output = ORIGINAL_CHECK_OUTPUT
+    subprocess._original_check_call = ORIGINAL_CHECK_CALL
     subprocess._original_stored = True
 
 def run_hidden_process(command, **kwargs):
@@ -22,8 +42,9 @@ def run_hidden_process(command, **kwargs):
     This is a unified helper function that properly handles console hiding
     across different platforms. Use this instead of direct subprocess calls.
     """
-    # Always use the original functions to prevent recursion
-    original_run = subprocess._original_run
+    # Always use the original function captured at import time to prevent
+    # recursion even if subprocess gets patched later
+    original_run = ORIGINAL_RUN
     
     # Configure for Windows console hiding
     startupinfo = None
@@ -63,8 +84,9 @@ def popen_hidden_process(command, **kwargs):
     For longer-running processes when you need to interact with stdout/stderr
     during execution.
     """
-    # Always use the original functions to prevent recursion
-    original_popen = subprocess._original_popen
+    # Always use the original function captured at import time to prevent
+    # recursion even if subprocess gets patched later
+    original_popen = ORIGINAL_POPEN
     
     # Configure for Windows console hiding
     startupinfo = None
@@ -135,11 +157,11 @@ def system_hidden_process(command):
     return run_hidden_process(command, shell=True).returncode
 
 # Add direct access to original functions
-run_original = subprocess._original_run
-popen_original = subprocess._original_popen
-call_original = subprocess._original_call
-check_output_original = subprocess._original_check_output
-check_call_original = subprocess._original_check_call
+run_original = ORIGINAL_RUN
+popen_original = ORIGINAL_POPEN
+call_original = ORIGINAL_CALL
+check_output_original = ORIGINAL_CHECK_OUTPUT
+check_call_original = ORIGINAL_CHECK_CALL
 
 # Export all functions
 __all__ = [
