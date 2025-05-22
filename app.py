@@ -54,6 +54,26 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Use the original Python interpreter for subprocesses when running from a
+# packaged executable. `sys.executable` points to the bundled application in
+# that case which would result in the application launching itself. When
+# `_base_executable` isn't available or points back to the bundled executable,
+# attempt to locate a side-by-side Python interpreter.
+if getattr(sys, "frozen", False):
+    base_exe = getattr(sys, "_base_executable", None)
+    if not base_exe or os.path.abspath(base_exe) == os.path.abspath(sys.executable):
+        candidates = [
+            os.path.join(os.path.dirname(sys.executable), "python.exe"),
+            os.path.join(os.path.dirname(sys.executable), "python"),
+        ]
+        for cand in candidates:
+            if os.path.exists(cand):
+                base_exe = cand
+                break
+    PYTHON_EXECUTABLE = base_exe if base_exe else sys.executable
+else:
+    PYTHON_EXECUTABLE = sys.executable
+
 # Global media directory alongside the application
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
 os.makedirs(MEDIA_DIR, exist_ok=True)
@@ -1170,7 +1190,28 @@ All packages will be installed in an isolated environment that won't affect your
 
         env_path = self.env_path_label.cget("text")
 
-        commands = [[sys.executable, "-m", "venv", env_path]]
+        # Create a temporary script that builds the venv using venv.create().
+        # Running the script with PYTHON_EXECUTABLE avoids the packaged
+        # application from spawning itself repeatedly.
+        script_content = f"""
+import venv
+import sys
+
+try:
+    venv.create(r"{env_path}", with_pip=True)
+    print('SUCCESS: venv created')
+    sys.exit(0)
+except Exception as e:
+    print(f'ERROR: {str(e)}')
+    sys.exit(1)
+"""
+
+        script_path = None
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+            f.write(script_content)
+            script_path = f.name
+
+        commands = [[PYTHON_EXECUTABLE, script_path]]
 
         if os.name == 'nt':
             python_exe = os.path.join(env_path, "Scripts", "python.exe")
@@ -1187,6 +1228,11 @@ All packages will be installed in an isolated environment that won't affect your
                     self.parent_window.terminal.execute_command("activate manim_studio_default")
                 self.venv_manager.needs_setup = False
                 self.after(0, self.setup_complete_ui)
+                if script_path and os.path.exists(script_path):
+                    try:
+                        os.unlink(script_path)
+                    except Exception:
+                        pass
                 return
 
             cmd = commands[idx]
@@ -2870,7 +2916,7 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
                     return True
@@ -3256,7 +3302,7 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
                     
@@ -3791,7 +3837,7 @@ except Exception as e:
                     return success
                 
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path],
+                    [PYTHON_EXECUTABLE, script_path],
                     on_complete=on_venv_created
                 )
                 
@@ -4017,7 +4063,7 @@ except Exception as e:
                 
                 # Pass the pip path as an argument to the script
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path, self.pip_path],
+                    [PYTHON_EXECUTABLE, script_path, self.pip_path],
                     on_complete=on_packages_listed
                 )
                 
