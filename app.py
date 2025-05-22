@@ -54,6 +54,11 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Use the original Python interpreter for subprocesses when running from a
+# packaged executable. `sys.executable` points to the bundled application
+# in that case which would result in the application launching itself.
+PYTHON_EXECUTABLE = getattr(sys, "_base_executable", sys.executable)
+
 # Global media directory alongside the application
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
 os.makedirs(MEDIA_DIR, exist_ok=True)
@@ -1170,7 +1175,9 @@ All packages will be installed in an isolated environment that won't affect your
 
         env_path = self.env_path_label.cget("text")
 
-        commands = [[sys.executable, "-m", "venv", env_path]]
+        # Use the real Python interpreter to avoid re-launching the packaged
+        # application when running from an executable
+        commands = [[PYTHON_EXECUTABLE, "-m", "venv", env_path]]
 
         if os.name == 'nt':
             python_exe = os.path.join(env_path, "Scripts", "python.exe")
@@ -2516,8 +2523,12 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             
             # Create virtual environment
             self.log("Creating virtual environment...")
-            import venv
-            venv.create(env_path, with_pip=True)
+            result = self.run_command([self.python_exe, "-m", "venv", env_path])
+            if result.returncode != 0:
+                self.log(f"ERROR: Failed to create virtual environment: {result.stderr}")
+                self.update_status("Creation failed!", 0)
+                self.finish(success=False)
+                return
             
             # Get Python and pip paths
             if sys.platform == "win32":
@@ -2870,15 +2881,23 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
                     return True
                 else:
                     # Fallback to direct creation if terminal not available
-                    venv.create(default_venv_path, with_pip=True)
-                    self._setup_environment_after_creation(default_venv_path)
-                    return True
+                    result = run_original(
+                        [PYTHON_EXECUTABLE, "-m", "venv", default_venv_path],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode == 0:
+                        self._setup_environment_after_creation(default_venv_path)
+                        return True
+                    else:
+                        self.logger.error(f"Venv creation failed: {result.stderr}")
+                        return self.use_system_python_fallback()
             finally:
                 # Clean up script
                 if script_path and os.path.exists(script_path):
@@ -3256,7 +3275,7 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [PYTHON_EXECUTABLE, script_path],
                         on_complete=on_venv_created
                     )
                     
@@ -3269,8 +3288,15 @@ except Exception as e:
                             pass
             else:
                 # Fallback to direct creation if terminal not available
-                import venv
-                venv.create(venv_path, with_pip=True)
+                result = run_original(
+                    [PYTHON_EXECUTABLE, "-m", "venv", venv_path],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    if log_callback:
+                        log_callback(f"ERROR: {result.stderr}")
+                    raise Exception(f"Failed to create virtual environment: {result.stderr}")
                 
                 # Activate the environment
                 if os.name == 'nt':
@@ -3791,7 +3817,7 @@ except Exception as e:
                     return success
                 
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path],
+                    [PYTHON_EXECUTABLE, script_path],
                     on_complete=on_venv_created
                 )
                 
@@ -3805,9 +3831,16 @@ except Exception as e:
         else:
             # Fallback to direct creation
             try:
-                import venv
-                venv.create(venv_path, with_pip=True)
-                return True
+                result = run_original(
+                    [PYTHON_EXECUTABLE, "-m", "venv", venv_path],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    return True
+                else:
+                    self.logger.error(f"Error creating virtual environment: {result.stderr}")
+                    return False
             except Exception as e:
                 self.logger.error(f"Error creating virtual environment: {e}")
                 return False
@@ -4017,7 +4050,7 @@ except Exception as e:
                 
                 # Pass the pip path as an argument to the script
                 self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path, self.pip_path],
+                    [PYTHON_EXECUTABLE, script_path, self.pip_path],
                     on_complete=on_packages_listed
                 )
                 
