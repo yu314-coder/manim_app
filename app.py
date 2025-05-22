@@ -47,6 +47,16 @@ import tempfile
 import subprocess
 import tkinter as tk
 from tkinter import filedialog, messagebox
+
+# Determine base directory of the running script or executable
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Global media directory alongside the application
+MEDIA_DIR = os.path.join(BASE_DIR, "media")
+os.makedirs(MEDIA_DIR, exist_ok=True)
 # Try to import Jedi for IntelliSense
 try:
     import jedi
@@ -377,8 +387,8 @@ class TkTerminal(tk.Text):
         self.command_buffer = ""
         self.input_start = "1.0"
 
-        # Track working directory and environment
-        self.cwd = os.getcwd()
+        # Track working directory and environment - force to app directory
+        self.cwd = BASE_DIR
         self.env = os.environ.copy()
 
         # Configure tags
@@ -7715,6 +7725,7 @@ class MyScene(Scene):
                 "--format=mp4",
                 f"--fps={preview_quality['fps']}",
                 "--disable_caching",
+                f"--media_dir={MEDIA_DIR}",
                 f"--renderer=cairo"  # We'll handle cores with env vars
             ]
             
@@ -7737,7 +7748,7 @@ class MyScene(Scene):
                     self.last_preview_code = self.current_code
                     
                     # Copy to cache for later use
-                    cache_dir = os.path.join(os.getcwd(), ".preview_cache")
+                    cache_dir = os.path.join(BASE_DIR, ".preview_cache")
                     os.makedirs(cache_dir, exist_ok=True)
                     cached_file = os.path.join(cache_dir, f"preview_{scene_class}.mp4")
                     try:
@@ -7759,12 +7770,15 @@ class MyScene(Scene):
                 self.terminal.run_command_redirected(command, on_preview_complete, env)
             else:
                 # Fallback to normal execution if terminal not available
+                env_vars = os.environ.copy()
+                env_vars.update(env)
                 self.preview_process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    env=os.environ.update(env),
+                    env=env_vars,
+                    cwd=BASE_DIR,
                     universal_newlines=True
                 )
                 
@@ -7845,6 +7859,7 @@ class MyScene(Scene):
                 quality_flag,
                 f"--format={format_ext}",
                 f"--fps={self.settings['fps']}",
+                f"--media_dir={MEDIA_DIR}",
                 f"--renderer=cairo"  # Control cores with env vars instead
             ]
             
@@ -7980,12 +7995,15 @@ class MyScene(Scene):
                 self.terminal.run_command_redirected = original_run_command
             else:
                 # Fallback to normal execution if terminal not available
+                env_vars = os.environ.copy()
+                env_vars.update(env)
                 self.render_process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    env=os.environ.update(env),
+                    env=env_vars,
+                    cwd=BASE_DIR,
                     universal_newlines=True
                 )
                 
@@ -8035,8 +8053,8 @@ class MyScene(Scene):
         search_dirs = [
             os.path.join(temp_dir, "media", "videos", "scene"),
             os.path.join(temp_dir, "media", "videos", scene_class),
-            os.path.join(os.getcwd(), "media", "videos", "scene"),
-            os.path.join(os.getcwd(), "media", "videos", scene_class)
+            os.path.join(BASE_DIR, "media", "videos", "scene"),
+            os.path.join(BASE_DIR, "media", "videos", scene_class)
         ]
         
         # Add quality-specific directories
@@ -8931,6 +8949,9 @@ def main():
                             user32.ShowWindow(hwnd, SW_HIDE)
                     except Exception:
                         pass
+
+        # Ensure working directory is the application directory
+        os.chdir(BASE_DIR)
 
         # Early load of fixes module to handle runtime issues
         try:
