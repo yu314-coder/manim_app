@@ -7,8 +7,6 @@ import os
 import logging
 import json
 import subprocess
-import getpass
-import platform
 try:
     from process_utils import popen_original, run_original
 except Exception:
@@ -40,6 +38,8 @@ from urllib.parse import quote, unquote
 import venv
 # Add to imports
 import psutil
+import getpass
+import platform
 import signal
 import re
 import glob
@@ -374,8 +374,8 @@ class TkTerminal(tk.Text):
 
     def __init__(self, parent, app=None, **kwargs):
         kwargs.setdefault('background', 'black')
-        kwargs.setdefault('foreground', '#00ff00')
-        kwargs.setdefault('insertbackground', 'white')
+        kwargs.setdefault('foreground', '#cccccc')
+        kwargs.setdefault('insertbackground', '#cccccc')
         kwargs.setdefault('selectbackground', '#4d4d4d')
         kwargs.setdefault('highlightthickness', 0)
         kwargs.setdefault('relief', 'flat')
@@ -384,27 +384,28 @@ class TkTerminal(tk.Text):
 
         self.app = app
         self.process = None
-        self.command_history = []
-        self.history_index = 0
-        self.command_buffer = ""
-        self.input_start = "1.0"
+        history_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        os.makedirs(history_dir, exist_ok=True)
+        self.history_file = os.path.join(history_dir, "terminal_history.txt")
 
-        # Optional persistent history file
-        self.history_file = os.path.join(BASE_DIR, ".terminal_history")
+        self.command_history = []
         if os.path.exists(self.history_file):
             try:
                 with open(self.history_file, "r", encoding="utf-8") as f:
-                    self.command_history = [line.rstrip() for line in f if line.rstrip()]
-                    self.history_index = len(self.command_history)
+                    self.command_history = [line.strip() for line in f if line.strip()]
             except Exception:
                 pass
+
+        self.history_index = len(self.command_history)
+        self.command_buffer = ""
+        self.input_start = "1.0"
 
         # Track working directory and environment - force to app directory
         self.cwd = BASE_DIR
         self.env = os.environ.copy()
 
         # Configure tags
-        self.tag_configure("output", foreground="#aaaaaa")
+        self.tag_configure("output", foreground="#cccccc")
         self.tag_configure("error", foreground="#ff6666")
         self.tag_configure("prompt", foreground="#4da6ff")
         
@@ -422,14 +423,13 @@ class TkTerminal(tk.Text):
         self.bind("<Key>", self.on_key)
         
     def show_prompt(self):
-        """Show command prompt similar to bash or cmd"""
+        """Show command prompt"""
         if os.name == "nt":
             prompt = f"{self.cwd}> "
         else:
             user = getpass.getuser()
             host = platform.node().split(".")[0]
-            basename = os.path.basename(self.cwd) or "/"
-            prompt = f"{user}@{host} {basename}$ "
+            prompt = f"{user}@{host}:{self.cwd}$ "
 
         self.insert("end", prompt, "prompt")
         self.input_start = self.index("end-1c")
@@ -541,25 +541,25 @@ class TkTerminal(tk.Text):
             self.show_prompt()
             return
 
-        # Built-in: clear terminal (cls alias for Windows users)
+        # Built-in: clear terminal
         if cmd in ("clear", "cls"):
             self.clear()
             return
 
-        # Built-in: print working directory
+        # Built-in: show current directory
         if cmd == "pwd":
             self.insert("end", self.cwd + "\n", "output")
             self.show_prompt()
             return
 
-        # Built-in: list directory contents (ls/dir)
+        # Built-in: list directory contents
         if cmd in ("ls", "dir"):
             try:
                 entries = os.listdir(self.cwd)
                 entries.sort()
                 self.insert("end", "  ".join(entries) + "\n", "output")
             except Exception as e:
-                self.insert("end", f"Error: {e}\n", "error")
+                self.insert("end", f"ls error: {e}\n", "error")
             self.show_prompt()
             return
 
@@ -2637,32 +2637,53 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         
     def update_status(self, status, progress):
         """Update status and progress bar"""
-        self.after(0, lambda: self.status_label.configure(text=status))
-        self.after(0, lambda: self.progress_bar.set(progress))
-        self.after(0, lambda: self.details_label.configure(text=f"Progress: {int(progress * 100)}%"))
+        def _update():
+            if not self.winfo_exists():
+                return
+            if getattr(self, "status_label", None) and self.status_label.winfo_exists():
+                self.status_label.configure(text=status)
+            if getattr(self, "progress_bar", None) and self.progress_bar.winfo_exists():
+                self.progress_bar.set(progress)
+            if getattr(self, "details_label", None) and self.details_label.winfo_exists():
+                self.details_label.configure(text=f"Progress: {int(progress * 100)}%")
+
+        self.after(0, _update)
         
     def log(self, message):
         """Add message to log"""
-        self.after(0, lambda: self.log_text.insert("end", f"{message}\n"))
-        self.after(0, lambda: self.log_text.see("end"))
+        def _log():
+            if not self.winfo_exists():
+                return
+            if getattr(self, "log_text", None) and self.log_text.winfo_exists():
+                self.log_text.insert("end", f"{message}\n")
+                self.log_text.see("end")
+
+        self.after(0, _log)
         
     def finish(self, success):
         """Finish creation process"""
-        self.after(0, lambda: self.done_btn.configure(state="normal"))
-        self.after(0, lambda: self.cancel_btn.configure(state="disabled"))
-        
-        if success:
-            self.after(0, lambda: messagebox.showinfo(
-                "Environment Created",
-                f"Environment '{self.env_name}' created successfully!",
-                parent=self
-            ))
-        else:
-            self.after(0, lambda: messagebox.showerror(
-                "Creation Failed",
-                f"Failed to create environment '{self.env_name}'.\nCheck the log for details.",
-                parent=self
-            ))
+        def _finish():
+            if not self.winfo_exists():
+                return
+            if getattr(self, "done_btn", None) and self.done_btn.winfo_exists():
+                self.done_btn.configure(state="normal")
+            if getattr(self, "cancel_btn", None) and self.cancel_btn.winfo_exists():
+                self.cancel_btn.configure(state="disabled")
+
+            if success:
+                messagebox.showinfo(
+                    "Environment Created",
+                    f"Environment '{self.env_name}' created successfully!",
+                    parent=self,
+                )
+            else:
+                messagebox.showerror(
+                    "Creation Failed",
+                    f"Failed to create environment '{self.env_name}'.\nCheck the log for details.",
+                    parent=self,
+                )
+
+        self.after(0, _finish)
             
     def cancel_creation(self):
         """Cancel environment creation"""
