@@ -7,6 +7,9 @@ import os
 import logging
 import json
 import subprocess
+import getpass
+import platform
+import shlex
 try:
     from process_utils import popen_original, run_original
 except Exception:
@@ -382,8 +385,18 @@ class TkTerminal(tk.Text):
 
         self.app = app
         self.process = None
-        self.command_history = []
-        self.history_index = 0
+
+        history_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        os.makedirs(history_dir, exist_ok=True)
+        self.history_file = os.path.join(history_dir, "terminal_history.txt")
+
+        try:
+            with open(self.history_file, "r", encoding="utf-8") as f:
+                self.command_history = [line.rstrip("\n") for line in f]
+        except FileNotFoundError:
+            self.command_history = []
+
+        self.history_index = len(self.command_history)
         self.command_buffer = ""
         self.input_start = "1.0"
 
@@ -395,6 +408,8 @@ class TkTerminal(tk.Text):
         self.tag_configure("output", foreground="#aaaaaa")
         self.tag_configure("error", foreground="#ff6666")
         self.tag_configure("prompt", foreground="#4da6ff")
+        self.tag_configure("directory", foreground="#5fb3ff")
+        self.tag_configure("executable", foreground="#98c379")
         
         # Initialize prompt
         self.show_prompt()
@@ -410,8 +425,14 @@ class TkTerminal(tk.Text):
         self.bind("<Key>", self.on_key)
         
     def show_prompt(self):
-        """Show command prompt"""
-        prompt = f"{os.path.basename(self.cwd)}$ "
+        """Show command prompt."""
+        if os.name == "nt":
+            prompt = f"{self.cwd}> "
+        else:
+            user = getpass.getuser()
+            host = platform.node().split(".")[0]
+            prompt = f"{user}@{host}:{self.cwd}$ "
+
         self.insert("end", prompt, "prompt")
         self.input_start = self.index("end-1c")
         self.see("end")
@@ -425,6 +446,12 @@ class TkTerminal(tk.Text):
         if command.strip():
             self.command_history.append(command)
             self.history_index = len(self.command_history)
+            try:
+                with open(self.history_file, "a", encoding="utf-8") as f:
+                    f.write(command + "\n")
+            except Exception:
+                pass
+
             self.execute_command(command)
         else:
             self.show_prompt()
@@ -518,8 +545,68 @@ class TkTerminal(tk.Text):
             return
 
         # Built-in: clear terminal
-        if cmd == "clear":
+        if cmd in ("clear", "cls"):
             self.clear()
+            return
+
+        # Built-in: print working directory
+        if cmd == "pwd":
+            self.insert("end", self.cwd + "\n", "output")
+            self.show_prompt()
+            return
+
+        # Built-in: list directory contents (ls/dir)
+        if cmd.startswith("ls") or cmd.startswith("dir"):
+            parts = shlex.split(cmd)
+            show_all = "-a" in parts or "/a" in parts
+            long = "-l" in parts or "/l" in parts
+            # Determine target directory
+            target = self.cwd
+            for p in parts[1:]:
+                if not p.startswith("-") and not p.startswith("/"):
+                    target = os.path.join(self.cwd, p) if not os.path.isabs(p) else p
+
+            try:
+                entries = os.listdir(target)
+            except Exception as e:
+                self.insert("end", f"ls: {e}\n", "error")
+                self.show_prompt()
+                return
+
+            if not show_all:
+                entries = [e for e in entries if not e.startswith('.')]
+            entries.sort()
+
+            if long:
+                for e in entries:
+                    full = os.path.join(target, e)
+                    if os.path.isdir(full):
+                        tag = "directory"
+                        display = e + "/"
+                    else:
+                        tag = "executable" if os.access(full, os.X_OK) else "output"
+                        display = e
+                    size = os.path.getsize(full)
+                    mtime = datetime.fromtimestamp(os.path.getmtime(full)).strftime("%Y-%m-%d %H:%M")
+                    self.insert("end", f"{mtime} {size:>8} {display}\n", tag)
+            else:
+                cols = 4
+                col_width = 20
+                for i, e in enumerate(entries):
+                    full = os.path.join(target, e)
+                    if os.path.isdir(full):
+                        tag = "directory"
+                        name = e + "/"
+                    else:
+                        tag = "executable" if os.access(full, os.X_OK) else "output"
+                        name = e
+                    self.insert("end", name.ljust(col_width), tag)
+                    if (i + 1) % cols == 0:
+                        self.insert("end", "\n")
+                if len(entries) % cols != 0:
+                    self.insert("end", "\n")
+
+            self.show_prompt()
             return
 
         # Built-in: activate virtual environment
@@ -3181,145 +3268,62 @@ if missing:
             self.use_system_python_fallback()
             
     def create_default_environment(self, log_callback=None):
-        """Create the default ManimStudio environment using terminal"""
+        """Create the default ManimStudio environment.
+
+        Previously this method spawned a new process using ``sys.executable``
+        to run a helper script. When packaged as a single executable this
+        resulted in the application repeatedly launching itself. The
+        environment is now created directly in-process, matching the behaviour
+        of the "Add new environment" dialog.
+        """
+
         env_name = "manim_studio_default"
         venv_path = os.path.join(self.venv_dir, env_name)
-        
+
         if log_callback:
             log_callback(f"Creating virtual environment at: {venv_path}")
-            
+
         try:
-            # Remove existing environment if it exists
+            # Remove any existing environment
             if os.path.exists(venv_path):
                 if log_callback:
                     log_callback("Removing existing environment...")
                 shutil.rmtree(venv_path)
-            
-            # Switch to terminal tab if available
-            if hasattr(self.parent_app, 'output_tabs'):
-                self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-            
-            # Create virtual environment
+
             if log_callback:
                 log_callback("Creating new virtual environment...")
-            
-            # Use terminal if available
-            if hasattr(self.parent_app, 'terminal'):
-                # Create a script for venv creation
-                venv_script = f"""
-import venv
-import sys
-import os
 
-try:
-    venv.create(r"{venv_path}", with_pip=True)
-    print("SUCCESS: Virtual environment created at {venv_path}")
-    sys.exit(0)
-except Exception as e:
-    print(f"ERROR: {{str(e)}}")
-    sys.exit(1)
-"""
-                script_path = None
-                try:
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
-                        f.write(venv_script)
-                        script_path = f.name
-                    
-                    # Run script in terminal
-                    def on_venv_created(success, return_code):
-                        if success:
-                            if log_callback:
-                                log_callback("Virtual environment created successfully")
-                            
-                            # Set paths and continue
-                            if os.name == 'nt':
-                                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-                                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
-                            else:
-                                python_exe = os.path.join(venv_path, "bin", "python")
-                                pip_exe = os.path.join(venv_path, "bin", "pip")
-                                
-                            self.python_path = python_exe
-                            self.pip_path = pip_exe
-                            self.current_venv = env_name
-                            
-                            if log_callback:
-                                log_callback("Environment activated")
-                        else:
-                            if log_callback:
-                                log_callback(f"ERROR: Failed to create environment (exit code {return_code})")
-                            
-                            # Try fallback
-                            if log_callback:
-                                log_callback("Attempting fallback to system Python...")
-                            
-                            self.use_system_python_fallback()
-                    
-                    self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
-                        on_complete=on_venv_created
-                    )
-                    
-                    return True
-                finally:
-                    if script_path and os.path.exists(script_path):
-                        try:
-                            os.unlink(script_path)
-                        except:
-                            pass
+            # Create the environment using the built-in venv module
+            import venv
+            venv.create(venv_path, with_pip=True)
+
+            # Determine executable paths
+            if os.name == 'nt':
+                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
             else:
-                # Fallback to direct creation if terminal not available
-                import venv
-                venv.create(venv_path, with_pip=True)
-                
-                # Activate the environment
-                if os.name == 'nt':
-                    python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-                    pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
-                else:
-                    python_exe = os.path.join(venv_path, "bin", "python")
-                    pip_exe = os.path.join(venv_path, "bin", "pip")
-                    
-                # Verify creation
-                if not os.path.exists(python_exe):
-                    if log_callback:
-                        log_callback(f"ERROR: Python executable not found at {python_exe}")
-                    raise Exception("Python executable not found after environment creation")
-                    
-                self.python_path = python_exe
-                self.pip_path = pip_exe
-                self.current_venv = env_name
-                
-                if log_callback:
-                    log_callback("Virtual environment created successfully")
-                    
-                return True
-                
+                python_exe = os.path.join(venv_path, "bin", "python")
+                pip_exe = os.path.join(venv_path, "bin", "pip")
+
+            if not os.path.exists(python_exe) or not os.path.exists(pip_exe):
+                raise FileNotFoundError("Python or pip executable not found in created environment")
+
+            self.python_path = python_exe
+            self.pip_path = pip_exe
+            self.current_venv = env_name
+
+            if log_callback:
+                log_callback("Virtual environment created successfully")
+
+            return True
+
         except Exception as e:
             if log_callback:
                 log_callback(f"Error creating environment: {str(e)}")
             self.logger.error(f"Failed to create default environment: {e}")
-            
-            # NEW: Fallback to system Python if environment creation fails
-            if log_callback:
-                log_callback("Attempting fallback to system Python...")
-                
-            try:
-                # Try to import manim in system Python
-                import manim
-                self.current_venv = "system_python_fallback"
-                self.python_path = sys.executable
-                self.pip_path = "pip"
-                self.logger.info("Using system Python with manim as fallback")
-                
-                if log_callback:
-                    log_callback("Successfully using system Python as fallback")
-                    
-                return True
-            except ImportError:
-                if log_callback:
-                    log_callback("Failed to use system Python as fallback - manim not available")
-                return False
+
+            # Fallback to system Python if environment creation fails
+            return self.use_system_python_fallback()
     
     def upgrade_pip(self, log_callback=None):
         """Upgrade pip in the current environment using terminal"""
