@@ -36,6 +36,9 @@ import aiohttp
 import webbrowser
 from urllib.parse import quote, unquote
 import venv
+# Additional utilities for terminal display
+import getpass
+import platform
 # Add to imports
 import psutil
 import signal
@@ -368,16 +371,20 @@ class PackageInfo:
             self.dependencies = []
 # Terminal emulation in Tkinter
 class TkTerminal(tk.Text):
-    """A Tkinter-based terminal emulator widget with simple shell features"""
+    """A Tkinter-based terminal emulator widget with simple shell features."""
+
+    DEFAULT_BG = "black"
+    DEFAULT_FG = "#cccccc"
 
     def __init__(self, parent, app=None, **kwargs):
-        kwargs.setdefault('background', 'black')
-        kwargs.setdefault('foreground', '#00ff00')
-        kwargs.setdefault('insertbackground', 'white')
-        kwargs.setdefault('selectbackground', '#4d4d4d')
-        kwargs.setdefault('highlightthickness', 0)
-        kwargs.setdefault('relief', 'flat')
-        kwargs.setdefault('font', ('Consolas', 10))
+        # Provide sane defaults that mimic a real terminal
+        kwargs.setdefault("background", self.DEFAULT_BG)
+        kwargs.setdefault("foreground", self.DEFAULT_FG)
+        kwargs.setdefault("insertbackground", self.DEFAULT_FG)
+        kwargs.setdefault("selectbackground", "#555555")
+        kwargs.setdefault("highlightthickness", 0)
+        kwargs.setdefault("relief", "flat")
+        kwargs.setdefault("font", ("Consolas", 10))
         super().__init__(parent, **kwargs)
 
         self.app = app
@@ -391,10 +398,10 @@ class TkTerminal(tk.Text):
         self.cwd = BASE_DIR
         self.env = os.environ.copy()
 
-        # Configure tags
-        self.tag_configure("output", foreground="#aaaaaa")
-        self.tag_configure("error", foreground="#ff6666")
-        self.tag_configure("prompt", foreground="#4da6ff")
+        # Configure tags to resemble common terminals
+        self.tag_configure("output", foreground=self.DEFAULT_FG)
+        self.tag_configure("error", foreground="#ff5555")
+        self.tag_configure("prompt", foreground=self.DEFAULT_FG)
         
         # Initialize prompt
         self.show_prompt()
@@ -410,8 +417,13 @@ class TkTerminal(tk.Text):
         self.bind("<Key>", self.on_key)
         
     def show_prompt(self):
-        """Show command prompt"""
-        prompt = f"{os.path.basename(self.cwd)}$ "
+        """Display a command prompt similar to real shells."""
+        if os.name == "nt":
+            prompt = f"{self.cwd}> "
+        else:
+            user = getpass.getuser()
+            host = platform.node().split(".")[0]
+            prompt = f"{user}@{host}:{self.cwd}$ "
         self.insert("end", prompt, "prompt")
         self.input_start = self.index("end-1c")
         self.see("end")
@@ -2596,65 +2608,32 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         
     def update_status(self, status, progress):
         """Update status and progress bar"""
-        def do_update():
-            if not self.winfo_exists():
-                return
-
-            try:
-                if self.status_label.winfo_exists():
-                    self.status_label.configure(text=status)
-                if self.progress_bar.winfo_exists():
-                    self.progress_bar.set(progress)
-                if self.details_label.winfo_exists():
-                    self.details_label.configure(text=f"Progress: {int(progress * 100)}%")
-            except tk.TclError:
-                pass
-
-        self.after(0, do_update)
-
+        self.after(0, lambda: self.status_label.configure(text=status))
+        self.after(0, lambda: self.progress_bar.set(progress))
+        self.after(0, lambda: self.details_label.configure(text=f"Progress: {int(progress * 100)}%"))
+        
     def log(self, message):
         """Add message to log"""
-        def do_log():
-            if not self.winfo_exists():
-                return
-
-            try:
-                if self.log_text.winfo_exists():
-                    self.log_text.insert("end", f"{message}\n")
-                    self.log_text.see("end")
-            except tk.TclError:
-                pass
-
-        self.after(0, do_log)
+        self.after(0, lambda: self.log_text.insert("end", f"{message}\n"))
+        self.after(0, lambda: self.log_text.see("end"))
         
     def finish(self, success):
         """Finish creation process"""
-        def do_finish():
-            if not self.winfo_exists():
-                return
-
-            try:
-                if self.done_btn.winfo_exists():
-                    self.done_btn.configure(state="normal")
-                if self.cancel_btn.winfo_exists():
-                    self.cancel_btn.configure(state="disabled")
-
-                if success:
-                    messagebox.showinfo(
-                        "Environment Created",
-                        f"Environment '{self.env_name}' created successfully!",
-                        parent=self,
-                    )
-                else:
-                    messagebox.showerror(
-                        "Creation Failed",
-                        f"Failed to create environment '{self.env_name}'.\nCheck the log for details.",
-                        parent=self,
-                    )
-            except tk.TclError:
-                pass
-
-        self.after(0, do_finish)
+        self.after(0, lambda: self.done_btn.configure(state="normal"))
+        self.after(0, lambda: self.cancel_btn.configure(state="disabled"))
+        
+        if success:
+            self.after(0, lambda: messagebox.showinfo(
+                "Environment Created",
+                f"Environment '{self.env_name}' created successfully!",
+                parent=self
+            ))
+        else:
+            self.after(0, lambda: messagebox.showerror(
+                "Creation Failed",
+                f"Failed to create environment '{self.env_name}'.\nCheck the log for details.",
+                parent=self
+            ))
             
     def cancel_creation(self):
         """Cancel environment creation"""
@@ -6994,9 +6973,9 @@ class ManimStudioApp:
         self.terminal = TkTerminal(
             terminal_tab,
             app=self,
-            bg=VSCODE_COLORS["background"],
-            fg=VSCODE_COLORS["text"],
-            height=10
+            bg=TkTerminal.DEFAULT_BG,
+            fg=TkTerminal.DEFAULT_FG,
+            height=10,
         )
         self.terminal.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
         
