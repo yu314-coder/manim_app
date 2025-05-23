@@ -8,7 +8,7 @@ import site
 
 # Import the unified process helper early
 try:
-    from process_utils import run_hidden_process, popen_hidden_process
+    from process_utils import run_hidden_process, popen_hidden_process, run_original, popen_original
 except ImportError:
     # Fallback implementation if module is missing
     def run_hidden_process(command, **kwargs):
@@ -44,6 +44,9 @@ except ImportError:
             kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
         
         return subprocess.Popen(command, **kwargs)
+    
+    run_original = subprocess.run
+    popen_original = subprocess.Popen
 
 # Disable zstandard to avoid linking issues - do this as early as possible
 try:
