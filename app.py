@@ -6992,6 +6992,7 @@ class ManimStudioApp:
         self.audio_path = None
         self.image_paths = []
         self.last_preview_code = ""
+        self.preview_video_path = None
         
         # UI state
         self.is_rendering = False
@@ -7690,7 +7691,7 @@ class ManimStudioApp:
         # Preview controls
         preview_controls = ctk.CTkFrame(preview_header, fg_color="transparent")
         preview_controls.grid(row=0, column=1, sticky="e", padx=15, pady=10)
-        
+
         # Refresh button
         refresh_btn = ctk.CTkButton(
             preview_controls,
@@ -7703,6 +7704,19 @@ class ManimStudioApp:
             border_width=1
         )
         refresh_btn.pack(side="right", padx=2)
+
+        # Clear preview button
+        clear_btn = ctk.CTkButton(
+            preview_controls,
+            text="🗑️",
+            width=35,
+            height=35,
+            command=self.clear_preview_video,
+            fg_color="transparent",
+            hover_color=VSCODE_COLORS["surface_lighter"],
+            border_width=1
+        )
+        clear_btn.pack(side="right", padx=2)
         
         # Video player
         self.video_player = VideoPlayerWidget(preview_frame)
@@ -7956,6 +7970,22 @@ class ManimStudioApp:
         """Clear terminal output"""
         self.output_text.delete("1.0", "end")
         self.update_status("Output cleared")
+
+    def clear_preview_video(self, silent=False):
+        """Clear preview video from player and disk"""
+        try:
+            if self.preview_video_path and os.path.exists(self.preview_video_path):
+                os.remove(self.preview_video_path)
+                if not silent:
+                    self.append_terminal_output(f"Removed preview: {self.preview_video_path}\n")
+        except Exception as e:
+            if not silent:
+                self.append_terminal_output(f"Warning: Could not remove preview: {e}\n")
+        self.preview_video_path = None
+        if hasattr(self, "video_player"):
+            self.video_player.clear()
+        if not silent:
+            self.update_status("Preview cleared")
         
     # Editor Methods
     def undo(self):
@@ -8358,7 +8388,7 @@ class MyScene(Scene):
             self.current_code = ""
             self.current_file_path = None
             self.file_tab.configure(text="📄 Untitled")
-            self.video_player.clear()
+            self.clear_preview_video(silent=True)
             self.clear_output()
             self.load_default_code()
             
@@ -8446,9 +8476,9 @@ class MyScene(Scene):
         self.quick_preview_button.configure(text="⏳ Generating...", state="disabled")
         self.update_status("Generating preview...")
         
-        # Clear previous output and video
+        # Clear previous output and preview video
         self.clear_output()
-        self.video_player.clear()
+        self.clear_preview_video(silent=True)
         
         try:
             # Create temporary directory with unique name
@@ -8533,6 +8563,7 @@ class MyScene(Scene):
 
                             # Load video in player from cached location
                             if self.video_player.load_video(output_file):
+                                self.preview_video_path = output_file
                                 self.update_status("Preview generated successfully")
                                 self.last_preview_code = self.current_code
                             else:
