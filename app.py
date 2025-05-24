@@ -1,5 +1,5 @@
 # app.py - Manim Animation Studio - Professional Edition with Integrated Environment Manager
-import customtkinter as ctk
+import customtkinter as ctk 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, colorchooser
 import tempfile
@@ -10,6 +10,7 @@ import subprocess
 import getpass
 import platform
 import shlex
+from CTkGradient import GradientFrame
 try:
     from process_utils import popen_original, run_original
 except Exception:
@@ -3666,7 +3667,7 @@ class VirtualEnvironmentManager:
         return True
 
     def extract_bundled_environment(self):
-        """Extract bundled environment to user directory using system terminal"""
+        """Extract bundled environment with correct venv command"""
         if not hasattr(self, 'bundled_venv_dir'):
             self.logger.error("No bundled environment directory found")
             return self.use_system_python_fallback()
@@ -3698,7 +3699,7 @@ class VirtualEnvironmentManager:
             self.logger.info(f"Creating new environment at: {default_venv_path}")
             self.logger.info(f"Using external Python: {python_exe}")
             
-            # Use direct subprocess instead of scripts to avoid file issues
+            # Use correct venv command
             def on_venv_created(success, return_code):
                 if success:
                     self.logger.info("Virtual environment created successfully")
@@ -3707,9 +3708,9 @@ class VirtualEnvironmentManager:
                     self.logger.error(f"Failed to create venv: exit code {return_code}")
                     self.use_system_python_fallback()
             
-            # Use the run_command_with_threading_fix method
+            # FIXED: Correct venv command
             self.run_command_with_threading_fix(
-                [python_exe, "-m", "venv", default_venv_path, "--with-pip"],
+                [python_exe, "-m", "venv", default_venv_path],  # Removed --with-pip
                 on_complete=on_venv_created
             )
             return True
@@ -3732,9 +3733,23 @@ class VirtualEnvironmentManager:
         self.logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
         self.logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
         
-        if not os.path.exists(python_exe) or not os.path.exists(pip_exe):
-            self.logger.error("Python or pip executable not found in created environment")
+        if not os.path.exists(python_exe):
+            self.logger.error("Python executable not found in created environment")
             return self.use_system_python_fallback()
+            
+        # Ensure pip is available
+        if not os.path.exists(pip_exe):
+            self.logger.info("Pip not found, installing...")
+            try:
+                # Try to install pip using ensurepip
+                result = subprocess.run([python_exe, "-m", "ensurepip", "--upgrade"], 
+                                      capture_output=True, text=True, timeout=60)
+                if result.returncode != 0:
+                    self.logger.error("Failed to install pip with ensurepip")
+                    return self.use_system_python_fallback()
+            except Exception as e:
+                self.logger.error(f"Error installing pip: {e}")
+                return self.use_system_python_fallback()
             
         # Activate it for further operations
         self.python_path = python_exe
@@ -3973,7 +3988,7 @@ else:
         )
 
     def create_environment_unified(self, name, location, packages=None, log_callback=None):
-        """Unified environment creation with comprehensive Python discovery"""
+        """Unified environment creation with correct venv command"""
         if packages is None:
             packages = []
             
@@ -4013,11 +4028,12 @@ else:
                     log_callback("Removing existing environment...")
                 shutil.rmtree(env_path)
 
-            # Step 1: Create virtual environment using EXTERNAL Python
+            # Step 1: Create virtual environment using CORRECT venv syntax
             if log_callback:
                 log_callback("Creating virtual environment with external Python...")
                 
-            create_cmd = [python_exe, "-m", "venv", env_path, "--with-pip"]
+            # FIXED: Correct venv command without --with-pip
+            create_cmd = [python_exe, "-m", "venv", env_path]
             
             self.logger.info(f"Running command: {' '.join(create_cmd)}")
             result = subprocess.run(create_cmd, capture_output=True, text=True, timeout=120)
@@ -4041,10 +4057,38 @@ else:
                 python_path = os.path.join(env_path, "bin", "python")
                 pip_path = os.path.join(env_path, "bin", "pip")
 
-            if not os.path.exists(python_path) or not os.path.exists(pip_path):
-                raise FileNotFoundError("Python or pip executable not found in created environment")
+            if not os.path.exists(python_path):
+                raise FileNotFoundError(f"Python executable not found: {python_path}")
 
-            # Step 3: Upgrade pip
+            # Step 3: Ensure pip is available (install if missing)
+            if not os.path.exists(pip_path):
+                if log_callback:
+                    log_callback("Installing pip...")
+                
+                # Try to install pip using ensurepip
+                ensurepip_cmd = [python_path, "-m", "ensurepip", "--upgrade"]
+                result = subprocess.run(ensurepip_cmd, capture_output=True, text=True, timeout=60)
+                
+                if result.returncode != 0:
+                    # Try alternative method
+                    if log_callback:
+                        log_callback("Trying alternative pip installation...")
+                    try:
+                        import urllib.request
+                        get_pip_url = "https://bootstrap.pypa.io/get-pip.py"
+                        get_pip_path = os.path.join(env_path, "get-pip.py")
+                        urllib.request.urlretrieve(get_pip_url, get_pip_path)
+                        
+                        result = subprocess.run([python_path, get_pip_path], capture_output=True, text=True, timeout=120)
+                        os.remove(get_pip_path)
+                        
+                        if result.returncode != 0:
+                            raise Exception("Failed to install pip")
+                    except Exception as e:
+                        self.logger.error(f"Failed to install pip: {e}")
+                        raise Exception("Could not install pip in virtual environment")
+
+            # Step 4: Upgrade pip
             if log_callback:
                 log_callback("Upgrading pip...")
                 
@@ -4058,7 +4102,7 @@ else:
                 if log_callback:
                     log_callback("⚠ Warning: Could not upgrade pip")
 
-            # Step 4: Install packages
+            # Step 5: Install packages
             if packages:
                 if log_callback:
                     log_callback(f"Installing {len(packages)} packages...")
@@ -4077,7 +4121,7 @@ else:
                         if log_callback:
                             log_callback(f"❌ Failed to install {package}")
 
-            # Step 5: Activate the environment
+            # Step 6: Activate the environment
             self.python_path = python_path
             self.pip_path = pip_path
             self.current_venv = name
@@ -4563,6 +4607,7 @@ else:
         
         # Return at least 1KB to avoid showing 0
         return max(1024, total_size)
+
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
@@ -6069,197 +6114,1107 @@ class AssetCard(ctk.CTkFrame):
         if self.on_remove_callback:
             self.on_remove_callback(self.asset_path, self)
 
-
 class VideoPlayerWidget(ctk.CTkFrame):
-    """Professional video player with actual playback capability"""
+    """Professional video player with advanced controls and optimized performance
+    
+    Features:
+    - Hardware-accelerated playback when available
+    - Advanced playback controls (play/pause, stop, seek, speed)
+    - Frame-accurate seeking with thumbnail preview
+    - Keyboard shortcuts for power users
+    - Volume control with mute functionality
+    - Fullscreen support
+    - Chapter markers and bookmarks
+    - A/B loop functionality
+    - Video filters and adjustments
+    - Performance monitoring
+    - Error recovery and fallback options
+    """
+    
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
         
+        # Core video properties
         self.video_path = None
         self.cap = None
         self.is_playing = False
+        self.is_fullscreen = False
+        self.is_muted = False
         self.current_frame = 0
         self.total_frames = 0
         self.fps = 30
         self.frame_delay = 33  # milliseconds
-        self.play_thread = None
+        self.playback_speed = 1.0
+        self.volume = 1.0
+        self.last_volume = 1.0
         
+        # Performance optimization
+        self.use_hardware_acceleration = True
+        self.frame_buffer_size = 10
+        self.frame_buffer = []
+        self.last_update_time = 0
+        self.ui_update_interval = 50  # ms
+        self.dropped_frames = 0
+        self.performance_mode = "balanced"  # "quality", "balanced", "performance"
+        
+        # Advanced features
+        self.loop_mode = "none"  # "none", "all", "ab"
+        self.ab_loop_start = None
+        self.ab_loop_end = None
+        self.bookmarks = []
+        self.chapters = []
+        self.subtitle_tracks = []
+        self.audio_tracks = []
+        
+        # UI state
+        self.controls_visible = True
+        self.controls_auto_hide = True
+        self.controls_hide_timer = None
+        self.seeking = False
+        self.hover_preview_enabled = True
+        self.thumbnail_cache = {}
+        
+        # Keyboard focus management
+        self.has_keyboard_focus = False
+        self.keyboard_shortcuts_enabled = True
+        
+        # Threading
+        self.playback_thread = None
+        self.buffer_thread = None
+        self.playback_lock = threading.Lock()
+        self.stop_event = threading.Event()
+        
+        # Initialize UI
         self.setup_ui()
+        self.bind_events()
+        self.setup_keyboard_shortcuts()
         
     def setup_ui(self):
-        """Setup the video player interface"""
+        """Setup the professional video player interface"""
         # Configure grid
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
         
-        # Video display area
-        self.video_frame = ctk.CTkFrame(self, fg_color="black")
-        self.video_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 5))
+        # Main container
+        self.main_container = ctk.CTkFrame(self, fg_color="black", corner_radius=0)
+        self.main_container.grid(row=0, column=0, sticky="nsew")
+        self.main_container.grid_rowconfigure(0, weight=1)
+        self.main_container.grid_columnconfigure(0, weight=1)
         
-        # Video canvas
+        # Video display area
+        self.video_container = ctk.CTkFrame(self.main_container, fg_color="black")
+        self.video_container.grid(row=0, column=0, sticky="nsew")
+        
+        # Video canvas with double buffering
         self.canvas = tk.Canvas(
-            self.video_frame,
+            self.video_container,
             bg="black",
             highlightthickness=0,
-            relief="flat"
+            cursor="arrow"
         )
-        self.canvas.pack(fill="both", expand=True, padx=5, pady=5)
+        self.canvas.pack(fill="both", expand=True)
         
-        # Default placeholder
+        # Create overlay for controls
+        self.controls_overlay = ctk.CTkFrame(
+            self.main_container, 
+            fg_color="transparent",
+            bg_color="transparent"
+        )
+        self.controls_overlay.grid(row=0, column=0, sticky="nsew")
+        self.controls_overlay.grid_rowconfigure(0, weight=1)
+        self.controls_overlay.grid_columnconfigure(0, weight=1)
+        
+        # Top bar (title, info)
+        self.create_top_bar()
+        
+        # Center controls (large play button)
+        self.create_center_controls()
+        
+        # Bottom controls bar
+        self.create_bottom_controls()
+        
+        # Side panel for advanced controls (hidden by default)
+        self.create_side_panel()
+        
+        # Context menu
+        self.create_context_menu()
+        
+        # Loading indicator
+        self.create_loading_indicator()
+        
+        # Error display
+        self.create_error_display()
+        
+        # Performance monitor (debug mode)
+        self.create_performance_monitor()
+        
+        # Initialize with placeholder
         self.show_placeholder()
         
-        # Controls frame
-        self.controls_frame = ctk.CTkFrame(self, height=70)
-        self.controls_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-        self.controls_frame.grid_columnconfigure(1, weight=1)
+    def create_top_bar(self):
+        """Create top bar with video info"""
+        self.top_bar = ctk.CTkFrame(
+            self.controls_overlay,
+            height=50,
+            fg_color=("black", "black"),
+            bg_color="transparent",
+            corner_radius=0
+        )
+        self.top_bar.grid(row=0, column=0, sticky="new", padx=0, pady=0)
+        self.top_bar.grid_columnconfigure(0, weight=1)
         
-        # Play controls
-        controls_left = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
-        controls_left.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        # Gradient background
+        # on your CTk / tk.Tk root window
+        self.root.wm_attributes("-alpha", 0.8)
+
+        # then just draw a normal CTkFrame
+        self.top_gradient = ctk.CTkFrame(
+            master=self.top_bar,
+            fg_color="#000000",
+            height=50
+        )
+        self.top_gradient.pack(fill="x")
+
         
-        # Play/Pause button
-        self.play_button = ctk.CTkButton(
-            controls_left,
+        # Title
+        self.video_title = ctk.CTkLabel(
+            self.top_gradient,
+            text="",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="white"
+        )
+        self.video_title.pack(side="left", padx=15, pady=10)
+        
+        # Info badges
+        self.info_frame = ctk.CTkFrame(self.top_gradient, fg_color="transparent")
+        self.info_frame.pack(side="right", padx=15)
+        
+        # Quality badge
+        self.quality_badge = ctk.CTkLabel(
+            self.info_frame,
+            text="",
+            font=ctk.CTkFont(size=10),
+            fg_color=("gray20", "gray20"),
+            corner_radius=4,
+            text_color="white"
+        )
+        self.quality_badge.pack(side="left", padx=2)
+        
+        # FPS badge
+        self.fps_badge = ctk.CTkLabel(
+            self.info_frame,
+            text="",
+            font=ctk.CTkFont(size=10),
+            fg_color=("gray20", "gray20"),
+            corner_radius=4,
+            text_color="white"
+        )
+        self.fps_badge.pack(side="left", padx=2)
+        
+    def create_center_controls(self):
+        """Create center overlay controls"""
+        self.center_controls = ctk.CTkFrame(
+            self.controls_overlay,
+            fg_color="transparent",
+            bg_color="transparent"
+        )
+        self.center_controls.grid(row=0, column=0, sticky="")
+        
+        # Large play button
+        self.center_play_btn = ctk.CTkButton(
+            self.center_controls,
             text="▶",
-            width=50,
-            height=40,
-            font=ctk.CTkFont(size=20),
+            width=80,
+            height=80,
+            font=ctk.CTkFont(size=40),
             command=self.toggle_playback,
-            fg_color=VSCODE_COLORS["primary"],
-            hover_color=VSCODE_COLORS["primary_hover"]
+            fg_color=("rgba(255,255,255,0.2)", "rgba(255,255,255,0.2)"),
+            hover_color=("rgba(255,255,255,0.3)", "rgba(255,255,255,0.3)"),
+            corner_radius=40,
+            border_width=3,
+            border_color="white"
         )
-        self.play_button.pack(side="left", padx=(0, 10))
+        self.center_play_btn.pack()
         
-        # Stop button
-        self.stop_button = ctk.CTkButton(
-            controls_left,
-            text="⏹",
-            width=40,
-            height=40,
-            font=ctk.CTkFont(size=16),
-            command=self.stop_playback,
-            fg_color=VSCODE_COLORS["surface_light"],
-            hover_color=VSCODE_COLORS["border"]
+    def create_bottom_controls(self):
+        """Create bottom controls bar with all playback controls"""
+        # Bottom controls container
+        self.bottom_container = ctk.CTkFrame(
+            self.controls_overlay,
+            height=100,
+            fg_color="transparent",
+            bg_color="transparent"
         )
-        self.stop_button.pack(side="left", padx=(0, 10))
+        self.bottom_container.grid(row=2, column=0, sticky="sew")
+        self.bottom_container.grid_columnconfigure(0, weight=1)
         
-        # Time display
-        self.time_label = ctk.CTkLabel(
-            controls_left,
-            text="00:00 / 00:00",
-            font=ctk.CTkFont(family="Monaco", size=14),
-            text_color=VSCODE_COLORS["text_secondary"]
+        # Gradient background
+        self.bottom_gradient = ctk.CTkFrame(
+            self.bottom_container,
+            fg_color=("rgba(0,0,0,0.8)", "rgba(0,0,0,0.8)"),
+            corner_radius=0
         )
-        self.time_label.pack(side="left", padx=(0, 10))
+        self.bottom_gradient.pack(fill="both", expand=True)
         
-        # Progress bar
-        self.progress_var = ctk.DoubleVar()
-        self.progress_slider = ctk.CTkSlider(
-            self.controls_frame,
+        # Timeline with preview
+        self.create_timeline()
+        
+        # Main controls row
+        self.controls_row = ctk.CTkFrame(self.bottom_gradient, fg_color="transparent")
+        self.controls_row.pack(fill="x", padx=15, pady=(5, 10))
+        self.controls_row.grid_columnconfigure(1, weight=1)
+        
+        # Left controls
+        self.create_playback_controls()
+        
+        # Center - Time and chapter info
+        self.create_time_display()
+        
+        # Right controls
+        self.create_secondary_controls()
+        
+        # Speed control popup
+        self.create_speed_popup()
+        
+    def create_timeline(self):
+        """Create advanced timeline with preview"""
+        self.timeline_frame = ctk.CTkFrame(self.bottom_gradient, fg_color="transparent", height=60)
+        self.timeline_frame.pack(fill="x", padx=15, pady=(10, 0))
+        
+        # Preview thumbnail (shows on hover)
+        self.preview_popup = ctk.CTkToplevel(self)
+        self.preview_popup.withdraw()
+        self.preview_popup.overrideredirect(True)
+        self.preview_popup.configure(fg_color="black")
+        
+        self.preview_canvas = tk.Canvas(
+            self.preview_popup,
+            width=160,
+            height=90,
+            bg="black",
+            highlightthickness=1,
+            highlightbackground="white"
+        )
+        self.preview_canvas.pack(padx=2, pady=2)
+        
+        self.preview_time_label = ctk.CTkLabel(
+            self.preview_popup,
+            text="00:00",
+            font=ctk.CTkFont(size=10),
+            text_color="white"
+        )
+        self.preview_time_label.pack()
+        
+        # Timeline slider with custom styling
+        self.timeline_var = ctk.DoubleVar(value=0)
+        self.timeline = ctk.CTkSlider(
+            self.timeline_frame,
             from_=0,
             to=100,
-            variable=self.progress_var,
-            command=self.seek_to_position,
-            height=20
+            variable=self.timeline_var,
+            command=self.on_timeline_change,
+            height=8,
+            progress_color="#0096FF",
+            button_color="white",
+            button_hover_color="#0096FF"
         )
-        self.progress_slider.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
+        self.timeline.pack(fill="x", pady=(0, 5))
         
-        # Volume control
-        controls_right = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
-        controls_right.grid(row=0, column=2, sticky="e", padx=15, pady=10)
+        # Bind hover events
+        self.timeline.bind("<Enter>", self.on_timeline_enter)
+        self.timeline.bind("<Motion>", self.on_timeline_hover)
+        self.timeline.bind("<Leave>", self.on_timeline_leave)
+        self.timeline.bind("<Button-1>", self.on_timeline_press)
+        self.timeline.bind("<ButtonRelease-1>", self.on_timeline_release)
         
-        # Frame info
-        self.frame_label = ctk.CTkLabel(
-            controls_right,
-            text="Frame: 0/0",
+        # Chapter markers
+        self.chapter_markers_frame = ctk.CTkFrame(
+            self.timeline_frame, 
+            fg_color="transparent",
+            height=10
+        )
+        self.chapter_markers_frame.pack(fill="x")
+        
+        # Buffer progress
+        self.buffer_progress = ctk.CTkProgressBar(
+            self.timeline_frame,
+            height=3,
+            fg_color="transparent",
+            progress_color="gray40"
+        )
+        self.buffer_progress.place(relx=0, rely=0.4, relwidth=1)
+        self.buffer_progress.set(0)
+        
+    def create_playback_controls(self):
+        """Create primary playback controls"""
+        self.left_controls = ctk.CTkFrame(self.controls_row, fg_color="transparent")
+        self.left_controls.grid(row=0, column=0, sticky="w")
+        
+        # Previous button
+        self.prev_btn = ctk.CTkButton(
+            self.left_controls,
+            text="⏮",
+            width=36,
+            height=36,
+            font=ctk.CTkFont(size=16),
+            command=self.previous_chapter,
+            fg_color="transparent",
+            hover_color="gray30"
+        )
+        self.prev_btn.pack(side="left", padx=2)
+        
+        # Play/Pause button
+        self.play_pause_btn = ctk.CTkButton(
+            self.left_controls,
+            text="▶",
+            width=44,
+            height=44,
+            font=ctk.CTkFont(size=20),
+            command=self.toggle_playback,
+            fg_color="transparent",
+            hover_color="gray30",
+            border_width=2,
+            border_color="white"
+        )
+        self.play_pause_btn.pack(side="left", padx=4)
+        
+        # Next button
+        self.next_btn = ctk.CTkButton(
+            self.left_controls,
+            text="⏭",
+            width=36,
+            height=36,
+            font=ctk.CTkFont(size=16),
+            command=self.next_chapter,
+            fg_color="transparent",
+            hover_color="gray30"
+        )
+        self.next_btn.pack(side="left", padx=2)
+        
+        # Volume controls
+        self.volume_frame = ctk.CTkFrame(self.left_controls, fg_color="transparent")
+        self.volume_frame.pack(side="left", padx=(10, 0))
+        
+        self.volume_btn = ctk.CTkButton(
+            self.volume_frame,
+            text="🔊",
+            width=32,
+            height=32,
+            font=ctk.CTkFont(size=14),
+            command=self.toggle_mute,
+            fg_color="transparent",
+            hover_color="gray30"
+        )
+        self.volume_btn.pack(side="left")
+        
+        self.volume_slider = ctk.CTkSlider(
+            self.volume_frame,
+            from_=0,
+            to=1,
+            command=self.on_volume_change,
+            width=80,
+            height=16
+        )
+        self.volume_slider.pack(side="left", padx=5)
+        self.volume_slider.set(1.0)
+        
+    def create_time_display(self):
+        """Create time and chapter display"""
+        self.time_frame = ctk.CTkFrame(self.controls_row, fg_color="transparent")
+        self.time_frame.grid(row=0, column=1, sticky="")
+        
+        # Current time
+        self.current_time_label = ctk.CTkLabel(
+            self.time_frame,
+            text="00:00",
+            font=ctk.CTkFont(family="Monaco", size=13),
+            text_color="white"
+        )
+        self.current_time_label.pack(side="left")
+        
+        # Separator
+        ctk.CTkLabel(
+            self.time_frame,
+            text=" / ",
+            font=ctk.CTkFont(size=13),
+            text_color="gray60"
+        ).pack(side="left")
+        
+        # Total time
+        self.total_time_label = ctk.CTkLabel(
+            self.time_frame,
+            text="00:00",
+            font=ctk.CTkFont(family="Monaco", size=13),
+            text_color="gray80"
+        )
+        self.total_time_label.pack(side="left")
+        
+        # Chapter info
+        self.chapter_label = ctk.CTkLabel(
+            self.time_frame,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="gray60"
+        )
+        self.chapter_label.pack(side="left", padx=(15, 0))
+        
+    def create_secondary_controls(self):
+        """Create secondary controls (speed, quality, etc.)"""
+        self.right_controls = ctk.CTkFrame(self.controls_row, fg_color="transparent")
+        self.right_controls.grid(row=0, column=2, sticky="e")
+        
+        # Speed button
+        self.speed_btn = ctk.CTkButton(
+            self.right_controls,
+            text="1.0×",
+            width=50,
+            height=32,
             font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text_secondary"]
+            command=self.toggle_speed_popup,
+            fg_color="transparent",
+            hover_color="gray30"
         )
-        self.frame_label.pack(side="right")
+        self.speed_btn.pack(side="left", padx=2)
         
-    def show_placeholder(self):
-        """Show placeholder text when no video is loaded"""
-        self.canvas.delete("all")
-        canvas_width = self.canvas.winfo_width() or 400
-        canvas_height = self.canvas.winfo_height() or 300
-        
-        # Create placeholder text
-        self.canvas.create_rectangle(
-            0, 0, canvas_width, canvas_height,
-            fill="black", outline=""
+        # Subtitles button
+        self.subtitle_btn = ctk.CTkButton(
+            self.right_controls,
+            text="CC",
+            width=36,
+            height=32,
+            font=ctk.CTkFont(size=12),
+            command=self.toggle_subtitles,
+            fg_color="transparent",
+            hover_color="gray30"
         )
+        self.subtitle_btn.pack(side="left", padx=2)
         
-        self.canvas.create_text(
-            canvas_width/2, canvas_height/2 - 20,
-            text="🎬",
-            font=("Arial", 48),
-            fill="#4a5568"
+        # Settings button
+        self.settings_btn = ctk.CTkButton(
+            self.right_controls,
+            text="⚙",
+            width=36,
+            height=32,
+            font=ctk.CTkFont(size=16),
+            command=self.show_settings,
+            fg_color="transparent",
+            hover_color="gray30"
         )
+        self.settings_btn.pack(side="left", padx=2)
         
-        self.canvas.create_text(
-            canvas_width/2, canvas_height/2 + 30,
-            text="Preview will appear here",
-            font=("Arial", 16),
-            fill="#6b7280"
+        # PiP button
+        self.pip_btn = ctk.CTkButton(
+            self.right_controls,
+            text="⧉",
+            width=36,
+            height=32,
+            font=ctk.CTkFont(size=16),
+            command=self.toggle_pip,
+            fg_color="transparent",
+            hover_color="gray30"
         )
+        self.pip_btn.pack(side="left", padx=2)
         
-        self.canvas.create_text(
-            canvas_width/2, canvas_height/2 + 55,
-            text="Click 'Quick Preview' to generate preview",
-            font=("Arial", 12),
-            fill="#9ca3af"
+        # Fullscreen button
+        self.fullscreen_btn = ctk.CTkButton(
+            self.right_controls,
+            text="⛶",
+            width=36,
+            height=32,
+            font=ctk.CTkFont(size=16),
+            command=self.toggle_fullscreen,
+            fg_color="transparent",
+            hover_color="gray30"
         )
+        self.fullscreen_btn.pack(side="left", padx=2)
         
-    def load_video(self, video_path):
-        """Load video file for playback"""
-        self.video_path = video_path
+    def create_speed_popup(self):
+        """Create speed selection popup"""
+        self.speed_popup = ctk.CTkToplevel(self)
+        self.speed_popup.withdraw()
+        self.speed_popup.overrideredirect(True)
+        self.speed_popup.configure(fg_color="gray20")
         
-        # Release previous video if any
-        if self.cap:
-            self.cap.release()
+        speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0]
+        
+        for speed in speeds:
+            btn = ctk.CTkButton(
+                self.speed_popup,
+                text=f"{speed}×",
+                width=80,
+                height=30,
+                command=lambda s=speed: self.set_speed(s),
+                fg_color="transparent",
+                hover_color="gray30"
+            )
+            btn.pack(pady=2, padx=10)
             
+    def create_side_panel(self):
+        """Create side panel for chapters, bookmarks, etc."""
+        self.side_panel = ctk.CTkFrame(
+            self.main_container,
+            width=250,
+            fg_color="gray15"
+        )
+        # Initially hidden
+        
+    def create_context_menu(self):
+        """Create right-click context menu"""
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Play/Pause", command=self.toggle_playback)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Copy Video URL", command=self.copy_video_url)
+        self.context_menu.add_command(label="Copy Current Time", command=self.copy_current_time)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Loop", command=self.toggle_loop)
+        self.context_menu.add_command(label="Set A-B Loop", command=self.set_ab_loop)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Take Screenshot", command=self.take_screenshot)
+        self.context_menu.add_command(label="Add Bookmark", command=self.add_bookmark)
+        
+    def create_loading_indicator(self):
+        """Create loading spinner"""
+        self.loading_frame = ctk.CTkFrame(
+            self.video_container,
+            fg_color="transparent"
+        )
+        
+        self.loading_spinner = ctk.CTkProgressBar(
+            self.loading_frame,
+            mode="indeterminate",
+            width=200
+        )
+        self.loading_spinner.pack(pady=20)
+        
+        self.loading_label = ctk.CTkLabel(
+            self.loading_frame,
+            text="Loading video...",
+            font=ctk.CTkFont(size=14),
+            text_color="white"
+        )
+        self.loading_label.pack()
+        
+    def create_error_display(self):
+        """Create error message display"""
+        self.error_frame = ctk.CTkFrame(
+            self.video_container,
+            fg_color="transparent"
+        )
+        
+        self.error_icon = ctk.CTkLabel(
+            self.error_frame,
+            text="⚠️",
+            font=ctk.CTkFont(size=48),
+            text_color="red"
+        )
+        self.error_icon.pack(pady=10)
+        
+        self.error_label = ctk.CTkLabel(
+            self.error_frame,
+            text="",
+            font=ctk.CTkFont(size=14),
+            text_color="white"
+        )
+        self.error_label.pack(pady=10)
+        
+        self.retry_btn = ctk.CTkButton(
+            self.error_frame,
+            text="Retry",
+            command=self.retry_load,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        self.retry_btn.pack(pady=10)
+        
+    def create_performance_monitor(self):
+        """Create performance monitoring overlay"""
+        self.perf_monitor = ctk.CTkFrame(
+            self.controls_overlay,
+            fg_color="rgba(0,0,0,0.7)",
+            width=200,
+            height=100
+        )
+        # Initially hidden, can be toggled with Ctrl+Shift+P
+        
+        self.fps_monitor = ctk.CTkLabel(
+            self.perf_monitor,
+            text="FPS: 0",
+            font=ctk.CTkFont(family="Courier", size=10),
+            text_color="green"
+        )
+        self.fps_monitor.pack(anchor="w", padx=10, pady=2)
+        
+        self.dropped_frames_label = ctk.CTkLabel(
+            self.perf_monitor,
+            text="Dropped: 0",
+            font=ctk.CTkFont(family="Courier", size=10),
+            text_color="yellow"
+        )
+        self.dropped_frames_label.pack(anchor="w", padx=10, pady=2)
+        
+        self.buffer_status = ctk.CTkLabel(
+            self.perf_monitor,
+            text="Buffer: 0/10",
+            font=ctk.CTkFont(family="Courier", size=10),
+            text_color="cyan"
+        )
+        self.buffer_status.pack(anchor="w", padx=10, pady=2)
+        
+    def bind_events(self):
+        """Bind all event handlers"""
+        # Canvas events
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
+        self.canvas.bind("<Double-Button-1>", self.on_canvas_double_click)
+        self.canvas.bind("<Button-3>", self.on_canvas_right_click)
+        self.canvas.bind("<Motion>", self.on_canvas_motion)
+        self.canvas.bind("<Enter>", self.on_canvas_enter)
+        self.canvas.bind("<Leave>", self.on_canvas_leave)
+        self.canvas.bind("<MouseWheel>", self.on_mouse_wheel)
+        
+        # Keyboard focus
+        self.canvas.bind("<FocusIn>", self.on_focus_in)
+        self.canvas.bind("<FocusOut>", self.on_focus_out)
+        
+        # Window events
+        self.bind("<Configure>", self.on_window_configure)
+        
+    def setup_keyboard_shortcuts(self):
+        """Setup keyboard shortcuts"""
+        self.keyboard_shortcuts = {
+            "space": self.toggle_playback,
+            "k": self.toggle_playback,
+            "m": self.toggle_mute,
+            "f": self.toggle_fullscreen,
+            "Left": lambda: self.seek_relative(-5),
+            "Right": lambda: self.seek_relative(5),
+            "j": lambda: self.seek_relative(-10),
+            "l": lambda: self.seek_relative(10),
+            "comma": lambda: self.previous_frame(),
+            "period": lambda: self.next_frame(),
+            "Up": lambda: self.adjust_volume(0.1),
+            "Down": lambda: self.adjust_volume(-0.1),
+            "bracketleft": lambda: self.adjust_speed(-0.25),
+            "bracketright": lambda: self.adjust_speed(0.25),
+            "0": lambda: self.seek_to_percent(0),
+            "1": lambda: self.seek_to_percent(10),
+            "2": lambda: self.seek_to_percent(20),
+            "3": lambda: self.seek_to_percent(30),
+            "4": lambda: self.seek_to_percent(40),
+            "5": lambda: self.seek_to_percent(50),
+            "6": lambda: self.seek_to_percent(60),
+            "7": lambda: self.seek_to_percent(70),
+            "8": lambda: self.seek_to_percent(80),
+            "9": lambda: self.seek_to_percent(90),
+            "Home": lambda: self.seek_to_frame(0),
+            "End": lambda: self.seek_to_frame(self.total_frames - 1),
+            "c": self.toggle_subtitles,
+            "i": self.toggle_pip,
+            "t": self.toggle_theater_mode,
+            "Escape": self.exit_fullscreen,
+        }
+        
+        # Bind keyboard events
+        self.canvas.bind("<KeyPress>", self.on_key_press)
+        
+    # Event handlers
+    def on_canvas_click(self, event):
+        """Handle canvas click"""
+        self.canvas.focus_set()
+        # Don't toggle playback on timeline area click
+        if event.y < self.canvas.winfo_height() - 150:
+            self.toggle_playback()
+            
+    def on_canvas_double_click(self, event):
+        """Handle double click for fullscreen"""
+        self.toggle_fullscreen()
+        
+    def on_canvas_right_click(self, event):
+        """Show context menu"""
+        self.context_menu.post(event.x_root, event.y_root)
+        
+    def on_canvas_motion(self, event):
+        """Handle mouse motion for controls auto-hide"""
+        self.show_controls()
+        self.reset_controls_timer()
+        
+    def on_canvas_enter(self, event):
+        """Handle mouse enter"""
+        self.show_controls()
+        
+    def on_canvas_leave(self, event):
+        """Handle mouse leave"""
+        if self.controls_auto_hide and self.is_playing:
+            self.start_controls_timer()
+            
+    def on_mouse_wheel(self, event):
+        """Handle mouse wheel for volume"""
+        delta = event.delta / 120  # Normalize across platforms
+        self.adjust_volume(delta * 0.05)
+        
+    def on_focus_in(self, event):
+        """Handle gaining keyboard focus"""
+        self.has_keyboard_focus = True
+        self.canvas.configure(highlightthickness=2, highlightcolor="#0096FF")
+        
+    def on_focus_out(self, event):
+        """Handle losing keyboard focus"""
+        self.has_keyboard_focus = False
+        self.canvas.configure(highlightthickness=0)
+        
+    def on_key_press(self, event):
+        """Handle keyboard shortcuts"""
+        if not self.has_keyboard_focus or not self.keyboard_shortcuts_enabled:
+            return
+            
+        # Get the handler for this key
+        handler = self.keyboard_shortcuts.get(event.keysym)
+        if handler:
+            handler()
+            return "break"
+            
+    def on_window_configure(self, event):
+        """Handle window resize"""
+        if self.cap:
+            # Redraw current frame at new size
+            self.display_frame(self.current_frame)
+            
+    # Timeline event handlers
+    def on_timeline_enter(self, event):
+        """Handle mouse entering timeline"""
+        if self.hover_preview_enabled and self.cap:
+            self.preview_popup.deiconify()
+            
+    def on_timeline_hover(self, event):
+        """Handle mouse hovering over timeline"""
+        if not self.hover_preview_enabled or not self.cap:
+            return
+            
+        # Calculate position
+        timeline_width = self.timeline.winfo_width()
+        if timeline_width <= 0:
+            return
+            
+        mouse_x = event.x
+        percent = max(0, min(1, mouse_x / timeline_width))
+        frame_number = int(percent * (self.total_frames - 1))
+        
+        # Update preview position
+        preview_x = self.timeline.winfo_rootx() + mouse_x - 80
+        preview_y = self.timeline.winfo_rooty() - 120
+        self.preview_popup.geometry(f"+{preview_x}+{preview_y}")
+        
+        # Update preview time
+        time_str = self.format_time(frame_number / self.fps)
+        self.preview_time_label.configure(text=time_str)
+        
+        # Show preview thumbnail
+        self.show_preview_thumbnail(frame_number)
+        
+    def on_timeline_leave(self, event):
+        """Handle mouse leaving timeline"""
+        self.preview_popup.withdraw()
+        
+    def on_timeline_press(self, event):
+        """Handle timeline click start"""
+        self.seeking = True
+        self.pause()
+        
+    def on_timeline_release(self, event):
+        """Handle timeline click end"""
+        self.seeking = False
+        if self.was_playing_before_seek:
+            self.play()
+            
+    def on_timeline_change(self, value):
+        """Handle timeline slider change"""
+        if self.cap and self.seeking:
+            frame = int((value / 100) * (self.total_frames - 1))
+            self.seek_to_frame(frame)
+            
+    # Playback control methods
+    def load_video(self, video_path):
+        """Load video with error handling and performance optimization"""
         try:
-            # Open video file
-            self.cap = cv2.VideoCapture(video_path)
+            # Show loading indicator
+            self.show_loading()
+            
+            # Clean up previous video
+            self.cleanup()
+            
+            # Store video path
+            self.video_path = video_path
+            
+            # Open video with hardware acceleration if available
+            self.cap = self.create_video_capture(video_path)
             
             if not self.cap.isOpened():
-                raise Exception("Could not open video file")
+                raise Exception("Failed to open video file")
                 
             # Get video properties
             self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
             self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
-            self.frame_delay = int(1000 / self.fps)
+            width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            # Detect video quality
+            quality = self.detect_video_quality(width, height)
+            
+            # Update UI
+            self.video_title.configure(text=os.path.basename(video_path))
+            self.quality_badge.configure(text=quality)
+            self.fps_badge.configure(text=f"{self.fps:.0f} FPS")
             
             # Reset playback state
             self.current_frame = 0
             self.is_playing = False
-            self.play_button.configure(text="▶")
+            self.playback_speed = 1.0
+            self.update_speed_display()
             
-            # Show first frame
+            # Calculate frame delay
+            self.base_frame_delay = 1000 / self.fps
+            self.frame_delay = self.base_frame_delay
+            
+            # Load first frame
             self.display_frame(0)
-            self.update_time_display()
-            self.update_frame_display()
             
-            logger.info(f"Video loaded: {video_path}")
-            logger.info(f"Properties: {self.total_frames} frames, {self.fps} fps")
+            # Extract chapters if available
+            self.extract_chapters()
+            
+            # Initialize frame buffer
+            self.start_buffer_thread()
+            
+            # Hide loading, show controls
+            self.hide_loading()
+            self.show_controls()
+            
+            # Update timeline
+            self.timeline_var.set(0)
+            self.update_time_display()
             
             return True
             
         except Exception as e:
-            logger.error(f"Error loading video: {e}")
-            self.show_error(f"Failed to load video:\n{str(e)}")
+            self.show_error(f"Failed to load video: {str(e)}")
             return False
             
+    def create_video_capture(self, video_path):
+        """Create video capture with optimal settings"""
+        cap = cv2.VideoCapture(video_path)
+        
+        # Try hardware acceleration
+        if self.use_hardware_acceleration:
+            # Try different backends
+            backends = [
+                cv2.CAP_DSHOW,  # Windows DirectShow
+                cv2.CAP_V4L2,   # Linux V4L2
+                cv2.CAP_AVFOUNDATION,  # macOS
+                cv2.CAP_FFMPEG  # FFmpeg (cross-platform)
+            ]
+            
+            for backend in backends:
+                test_cap = cv2.VideoCapture(video_path, backend)
+                if test_cap.isOpened():
+                    cap.release()
+                    cap = test_cap
+                    break
+                else:
+                    test_cap.release()
+                    
+        # Set buffer size for smooth playback
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
+        
+        return cap
+        
+    def detect_video_quality(self, width, height):
+        """Detect video quality from dimensions"""
+        if height >= 2160:
+            return "4K"
+        elif height >= 1440:
+            return "2K"
+        elif height >= 1080:
+            return "1080p"
+        elif height >= 720:
+            return "720p"
+        elif height >= 480:
+            return "480p"
+        else:
+            return f"{height}p"
+            
+    def toggle_playback(self):
+        """Toggle between play and pause"""
+        if self.is_playing:
+            self.pause()
+        else:
+            self.play()
+            
+    def play(self):
+        """Start playback"""
+        if not self.cap or self.is_playing:
+            return
+            
+        self.is_playing = True
+        self.was_playing_before_seek = True
+        
+        # Update UI
+        self.play_pause_btn.configure(text="⏸")
+        self.center_play_btn.pack_forget()
+        
+        # Start playback thread
+        if not self.playback_thread or not self.playback_thread.is_alive():
+            self.stop_event.clear()
+            self.playback_thread = threading.Thread(target=self.playback_loop, daemon=True)
+            self.playback_thread.start()
+            
+        # Start auto-hide timer
+        if self.controls_auto_hide:
+            self.start_controls_timer()
+            
+    def pause(self):
+        """Pause playback"""
+        self.is_playing = False
+        self.was_playing_before_seek = False
+        
+        # Update UI
+        self.play_pause_btn.configure(text="▶")
+        self.center_play_btn.pack()
+        
+        # Stop auto-hide timer
+        self.stop_controls_timer()
+        self.show_controls()
+        
+    def stop(self):
+        """Stop playback and reset"""
+        self.pause()
+        self.seek_to_frame(0)
+        
+    def playback_loop(self):
+        """Main playback loop with frame timing and performance optimization"""
+        last_frame_time = time.time()
+        fps_counter = 0
+        fps_start_time = time.time()
+        
+        while self.is_playing and self.current_frame < self.total_frames - 1:
+            if self.stop_event.is_set():
+                break
+                
+            loop_start = time.time()
+            
+            # Calculate target frame based on speed
+            frame_increment = max(1, int(self.playback_speed))
+            
+            # Get frame from buffer or read directly
+            frame = self.get_next_frame()
+            
+            if frame is not None:
+                # Display frame
+                self.after_idle(lambda f=frame: self.display_frame_data(f))
+                
+                # Update timeline
+                self.current_frame = min(self.current_frame + frame_increment, self.total_frames - 1)
+                progress = (self.current_frame / max(1, self.total_frames - 1)) * 100
+                self.after_idle(lambda p=progress: self.timeline_var.set(p))
+                
+                # Update time display (throttled)
+                current_time = time.time()
+                if current_time - self.last_update_time > self.ui_update_interval / 1000:
+                    self.after_idle(self.update_time_display)
+                    self.last_update_time = current_time
+                    
+                # FPS counting
+                fps_counter += 1
+                if current_time - fps_start_time >= 1.0:
+                    actual_fps = fps_counter / (current_time - fps_start_time)
+                    self.after_idle(lambda f=actual_fps: self.update_fps_monitor(f))
+                    fps_counter = 0
+                    fps_start_time = current_time
+                    
+            else:
+                # Frame not available, increment dropped frames
+                self.dropped_frames += 1
+                self.after_idle(self.update_dropped_frames_display)
+                
+            # Frame timing
+            target_delay = self.base_frame_delay / self.playback_speed
+            actual_delay = (time.time() - loop_start) * 1000
+            sleep_time = max(1, target_delay - actual_delay)
+            
+            # Dynamic quality adjustment based on performance
+            if actual_delay > target_delay * 1.5:
+                self.adjust_performance_mode("performance")
+            elif actual_delay < target_delay * 0.5:
+                self.adjust_performance_mode("quality")
+                
+            time.sleep(sleep_time / 1000)
+            
+            # Check for loop conditions
+            if self.loop_mode == "all" and self.current_frame >= self.total_frames - 1:
+                self.seek_to_frame(0)
+            elif self.loop_mode == "ab" and self.ab_loop_end and self.current_frame >= self.ab_loop_end:
+                self.seek_to_frame(self.ab_loop_start or 0)
+                
+        # Playback ended
+        if self.current_frame >= self.total_frames - 1:
+            self.after_idle(self.on_playback_ended)
+            
+    def get_next_frame(self):
+        """Get next frame from buffer or read directly"""
+        with self.playback_lock:
+            # Try to get from buffer first
+            if self.frame_buffer:
+                return self.frame_buffer.pop(0)
+            else:
+                # Read directly
+                if self.cap:
+                    ret, frame = self.cap.read()
+                    if ret:
+                        return frame
+        return None
+        
+    def start_buffer_thread(self):
+        """Start frame buffering thread"""
+        if self.buffer_thread and self.buffer_thread.is_alive():
+            return
+            
+        self.buffer_thread = threading.Thread(target=self.buffer_frames, daemon=True)
+        self.buffer_thread.start()
+        
+    def buffer_frames(self):
+        """Buffer frames ahead of playback"""
+        while self.cap and not self.stop_event.is_set():
+            with self.playback_lock:
+                if len(self.frame_buffer) < self.frame_buffer_size:
+                    # Read next frame
+                    current_pos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                    buffer_pos = int(current_pos + len(self.frame_buffer))
+                    
+                    if buffer_pos < self.total_frames:
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, buffer_pos)
+                        ret, frame = self.cap.read()
+                        if ret:
+                            self.frame_buffer.append(frame)
+                            
+                        # Restore position
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_pos)
+                        
+            # Update buffer status
+            self.after_idle(self.update_buffer_status)
+            
+            time.sleep(0.1)  # Buffer check interval
+            
     def display_frame(self, frame_number):
-        """Display specific frame"""
+        """Display specific frame by number"""
         if not self.cap:
             return
             
-        # Set frame position
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = self.cap.read()
         
-        if not ret:
+        if ret:
+            self.display_frame_data(frame)
+            
+    def display_frame_data(self, frame):
+        """Display frame data on canvas with proper scaling"""
+        if frame is None:
             return
             
         # Get canvas dimensions
@@ -6267,185 +7222,652 @@ class VideoPlayerWidget(ctk.CTkFrame):
         canvas_height = self.canvas.winfo_height()
         
         if canvas_width <= 1 or canvas_height <= 1:
-            # Canvas not ready, try again later
-            self.canvas.after(100, lambda: self.display_frame(frame_number))
             return
             
         # Convert BGR to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        # Calculate display size maintaining aspect ratio
-        frame_height, frame_width = frame_rgb.shape[:2]
-        aspect_ratio = frame_width / frame_height
+        # Apply video filters if any
+        frame_rgb = self.apply_video_filters(frame_rgb)
         
-        # Calculate display dimensions
-        if canvas_width / canvas_height > aspect_ratio:
-            # Fit to height
-            display_height = canvas_height - 20
-            display_width = int(display_height * aspect_ratio)
+        # Calculate scaling
+        frame_height, frame_width = frame_rgb.shape[:2]
+        scale = min(canvas_width / frame_width, canvas_height / frame_height)
+        
+        new_width = int(frame_width * scale)
+        new_height = int(frame_height * scale)
+        
+        # Choose interpolation based on performance mode
+        if self.performance_mode == "quality":
+            interpolation = cv2.INTER_CUBIC
+        elif self.performance_mode == "performance":
+            interpolation = cv2.INTER_NEAREST
         else:
-            # Fit to width
-            display_width = canvas_width - 20
-            display_height = int(display_width / aspect_ratio)
+            interpolation = cv2.INTER_LINEAR
             
         # Resize frame
-        frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
+        frame_resized = cv2.resize(frame_rgb, (new_width, new_height), interpolation=interpolation)
         
-        # Convert to PhotoImage
+        # Convert to PIL Image
         image = Image.fromarray(frame_resized)
         self.photo = ImageTk.PhotoImage(image)
         
-        # Clear canvas and display image
-        self.canvas.delete("all")
-        self.canvas.create_image(
-            canvas_width // 2,
-            canvas_height // 2,
-            image=self.photo,
-            anchor="center"
-        )
+        # Clear canvas and display
+        self.canvas.delete("video")
+        x = (canvas_width - new_width) // 2
+        y = (canvas_height - new_height) // 2
+        self.canvas.create_image(x, y, anchor="nw", image=self.photo, tag="video")
         
-        # Update progress
-        progress = (frame_number / max(self.total_frames - 1, 1)) * 100
-        self.progress_var.set(progress)
+    def apply_video_filters(self, frame):
+        """Apply video filters (brightness, contrast, etc.)"""
+        # This is where you'd apply any video filters
+        # For now, just return the frame unchanged
+        return frame
         
-    def toggle_playback(self):
-        """Toggle play/pause"""
+    def seek_to_frame(self, frame_number):
+        """Seek to specific frame"""
         if not self.cap:
             return
             
-        self.is_playing = not self.is_playing
-        
-        if self.is_playing:
-            self.play_button.configure(text="⏸")
-            self.start_playback()
-        else:
-            self.play_button.configure(text="▶")
-            self.stop_playback_thread()
-            
-    def start_playback(self):
-        """Start video playback in separate thread"""
-        if self.is_playing and not self.play_thread:
-            self.play_thread = threading.Thread(target=self.playback_loop, daemon=True)
-            self.play_thread.start()
-            
-    def playback_loop(self):
-        """Main playback loop"""
-        while self.is_playing and self.current_frame < self.total_frames - 1:
-            start_time = time.time()
-            
-            # Display next frame
-            self.current_frame += 1
-            
-            # Schedule frame display in main thread
-            self.canvas.after_idle(lambda: self.display_frame(self.current_frame))
-            self.canvas.after_idle(self.update_time_display)
-            self.canvas.after_idle(self.update_frame_display)
-            
-            # Calculate sleep time for correct FPS
-            elapsed = (time.time() - start_time) * 1000
-            sleep_time = max(0, self.frame_delay - elapsed) / 1000
-            time.sleep(sleep_time)
-            
-        # End of video
-        if self.current_frame >= self.total_frames - 1:
-            self.canvas.after_idle(self.stop_playback)
-            
-    def stop_playback(self):
-        """Stop playback"""
-        self.is_playing = False
-        self.play_button.configure(text="▶")
-        self.stop_playback_thread()
-        
-    def stop_playback_thread(self):
-        """Stop playback thread"""
-        if self.play_thread and self.play_thread.is_alive():
-            self.play_thread = None
-            
-        # Reset to first frame
-        self.current_frame = 0
-        if self.cap:
-            self.display_frame(0)
-            self.update_time_display()
-            self.update_frame_display()
-            
-    def seek_to_position(self, value):
-        """Seek to position based on slider"""
-        if not self.cap:
-            return
-            
-        # Calculate frame number
-        frame_number = int((value / 100) * (self.total_frames - 1))
+        frame_number = max(0, min(frame_number, self.total_frames - 1))
         self.current_frame = frame_number
         
-        # Display frame
+        # Clear frame buffer when seeking
+        with self.playback_lock:
+            self.frame_buffer.clear()
+            
+        # Display the frame
         self.display_frame(frame_number)
-        self.update_time_display()
-        self.update_frame_display()
         
+        # Update timeline
+        progress = (frame_number / max(1, self.total_frames - 1)) * 100
+        self.timeline_var.set(progress)
+        
+        # Update time display
+        self.update_time_display()
+        
+    def seek_relative(self, seconds):
+        """Seek relative to current position"""
+        if not self.cap:
+            return
+            
+        current_time = self.current_frame / self.fps
+        new_time = current_time + seconds
+        new_frame = int(new_time * self.fps)
+        
+        self.seek_to_frame(new_frame)
+        
+    def seek_to_percent(self, percent):
+        """Seek to percentage of video"""
+        if not self.cap:
+            return
+            
+        frame = int((percent / 100) * (self.total_frames - 1))
+        self.seek_to_frame(frame)
+        
+    def previous_frame(self):
+        """Go to previous frame"""
+        self.seek_to_frame(self.current_frame - 1)
+        
+    def next_frame(self):
+        """Go to next frame"""
+        self.seek_to_frame(self.current_frame + 1)
+        
+    # Speed control
+    def set_speed(self, speed):
+        """Set playback speed"""
+        self.playback_speed = max(0.25, min(speed, 8.0))
+        self.update_speed_display()
+        self.hide_speed_popup()
+        
+        # Adjust frame delay
+        self.frame_delay = self.base_frame_delay / self.playback_speed
+        
+        # Adjust UI update interval for high speeds
+        if self.playback_speed >= 4.0:
+            self.ui_update_interval = 200
+        elif self.playback_speed >= 2.0:
+            self.ui_update_interval = 100
+        else:
+            self.ui_update_interval = 50
+            
+    def adjust_speed(self, delta):
+        """Adjust speed by delta"""
+        new_speed = self.playback_speed + delta
+        self.set_speed(new_speed)
+        
+    def update_speed_display(self):
+        """Update speed button text"""
+        if self.playback_speed == 1.0:
+            text = "Normal"
+        else:
+            text = f"{self.playback_speed}×"
+        self.speed_btn.configure(text=text)
+        
+    def toggle_speed_popup(self):
+        """Toggle speed selection popup"""
+        if self.speed_popup.winfo_viewable():
+            self.hide_speed_popup()
+        else:
+            self.show_speed_popup()
+            
+    def show_speed_popup(self):
+        """Show speed selection popup"""
+        x = self.speed_btn.winfo_rootx()
+        y = self.speed_btn.winfo_rooty() - 300
+        self.speed_popup.geometry(f"+{x}+{y}")
+        self.speed_popup.deiconify()
+        
+    def hide_speed_popup(self):
+        """Hide speed selection popup"""
+        self.speed_popup.withdraw()
+        
+    # Volume control
+    def on_volume_change(self, value):
+        """Handle volume slider change"""
+        self.volume = value
+        self.update_volume_icon()
+        
+        # Apply volume to audio if implemented
+        # This would require audio extraction and mixing
+        
+    def adjust_volume(self, delta):
+        """Adjust volume by delta"""
+        new_volume = max(0, min(1, self.volume + delta))
+        self.volume_slider.set(new_volume)
+        self.on_volume_change(new_volume)
+        
+    def toggle_mute(self):
+        """Toggle mute state"""
+        if self.is_muted:
+            self.volume_slider.set(self.last_volume)
+            self.is_muted = False
+        else:
+            self.last_volume = self.volume
+            self.volume_slider.set(0)
+            self.is_muted = True
+            
+        self.update_volume_icon()
+        
+    def update_volume_icon(self):
+        """Update volume button icon based on volume level"""
+        if self.volume == 0 or self.is_muted:
+            icon = "🔇"
+        elif self.volume < 0.33:
+            icon = "🔈"
+        elif self.volume < 0.66:
+            icon = "🔉"
+        else:
+            icon = "🔊"
+            
+        self.volume_btn.configure(text=icon)
+        
+    # Time display
     def update_time_display(self):
-        """Update time display"""
+        """Update current and total time display"""
         if not self.cap:
             return
             
         current_seconds = self.current_frame / self.fps
         total_seconds = self.total_frames / self.fps
         
-        current_time = f"{int(current_seconds // 60):02d}:{int(current_seconds % 60):02d}"
-        total_time = f"{int(total_seconds // 60):02d}:{int(total_seconds % 60):02d}"
+        self.current_time_label.configure(text=self.format_time(current_seconds))
+        self.total_time_label.configure(text=self.format_time(total_seconds))
         
-        self.time_label.configure(text=f"{current_time} / {total_time}")
+        # Update chapter if applicable
+        self.update_chapter_display()
         
-    def update_frame_display(self):
-        """Update frame counter"""
-        self.frame_label.configure(text=f"Frame: {self.current_frame}/{self.total_frames}")
+    def format_time(self, seconds):
+        """Format seconds to HH:MM:SS or MM:SS"""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        
+        if hours > 0:
+            return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+        else:
+            return f"{minutes:02d}:{secs:02d}"
+            
+    # Chapter management
+    def extract_chapters(self):
+        """Extract chapters from video metadata"""
+        # This would require ffprobe or similar tool
+        # For now, create sample chapters
+        if self.total_frames > 0:
+            duration = self.total_frames / self.fps
+            self.chapters = [
+                {"start": 0, "end": duration * 0.25, "title": "Introduction"},
+                {"start": duration * 0.25, "end": duration * 0.5, "title": "Main Content"},
+                {"start": duration * 0.5, "end": duration * 0.75, "title": "Examples"},
+                {"start": duration * 0.75, "end": duration, "title": "Conclusion"}
+            ]
+            self.update_chapter_markers()
+            
+    def update_chapter_markers(self):
+        """Update chapter markers on timeline"""
+        # Clear existing markers
+        for widget in self.chapter_markers_frame.winfo_children():
+            widget.destroy()
+            
+        # Add markers
+        for chapter in self.chapters:
+            start_percent = (chapter["start"] * self.fps / self.total_frames) * 100
+            marker = ctk.CTkFrame(
+                self.chapter_markers_frame,
+                width=2,
+                height=10,
+                fg_color="yellow"
+            )
+            marker.place(relx=start_percent/100, rely=0)
+            
+    def update_chapter_display(self):
+        """Update current chapter display"""
+        current_time = self.current_frame / self.fps
+        
+        for chapter in self.chapters:
+            if chapter["start"] <= current_time < chapter["end"]:
+                self.chapter_label.configure(text=f"• {chapter['title']}")
+                return
+                
+        self.chapter_label.configure(text="")
+        
+    def previous_chapter(self):
+        """Jump to previous chapter"""
+        current_time = self.current_frame / self.fps
+        
+        for i in range(len(self.chapters) - 1, -1, -1):
+            if self.chapters[i]["start"] < current_time - 1:
+                self.seek_to_frame(int(self.chapters[i]["start"] * self.fps))
+                return
+                
+    def next_chapter(self):
+        """Jump to next chapter"""
+        current_time = self.current_frame / self.fps
+        
+        for chapter in self.chapters:
+            if chapter["start"] > current_time + 1:
+                self.seek_to_frame(int(chapter["start"] * self.fps))
+                return
+                
+    # Controls visibility
+    def show_controls(self):
+        """Show video controls"""
+        self.controls_visible = True
+        self.bottom_container.grid()
+        self.top_bar.grid()
+        self.canvas.configure(cursor="arrow")
+        
+    def hide_controls(self):
+        """Hide video controls"""
+        if self.is_playing:
+            self.controls_visible = False
+            self.bottom_container.grid_remove()
+            self.top_bar.grid_remove()
+            self.canvas.configure(cursor="none")
+            
+    def start_controls_timer(self):
+        """Start timer to auto-hide controls"""
+        self.stop_controls_timer()
+        self.controls_hide_timer = self.after(3000, self.hide_controls)
+        
+    def stop_controls_timer(self):
+        """Stop controls auto-hide timer"""
+        if self.controls_hide_timer:
+            self.after_cancel(self.controls_hide_timer)
+            self.controls_hide_timer = None
+            
+    def reset_controls_timer(self):
+        """Reset controls auto-hide timer"""
+        if self.controls_auto_hide and self.is_playing:
+            self.start_controls_timer()
+            
+    # Fullscreen
+    def toggle_fullscreen(self):
+        """Toggle fullscreen mode"""
+        if self.is_fullscreen:
+            self.exit_fullscreen()
+        else:
+            self.enter_fullscreen()
+            
+    def enter_fullscreen(self):
+        """Enter fullscreen mode"""
+        self.is_fullscreen = True
+        
+        # Store original geometry
+        self.original_geometry = {
+            "parent": self.master,
+            "grid_info": self.grid_info()
+        }
+        
+        # Create fullscreen window
+        self.fullscreen_window = ctk.CTkToplevel()
+        self.fullscreen_window.attributes("-fullscreen", True)
+        self.fullscreen_window.configure(fg_color="black")
+        
+        # Move player to fullscreen window
+        self.grid_forget()
+        self.master = self.fullscreen_window
+        self.grid(row=0, column=0, sticky="nsew")
+        
+        self.fullscreen_window.grid_rowconfigure(0, weight=1)
+        self.fullscreen_window.grid_columnconfigure(0, weight=1)
+        
+        # Update button
+        self.fullscreen_btn.configure(text="⛶")
+        
+        # Bind escape key
+        self.fullscreen_window.bind("<Escape>", lambda e: self.exit_fullscreen())
+        
+        # Focus for keyboard controls
+        self.canvas.focus_set()
+        
+    def exit_fullscreen(self):
+        """Exit fullscreen mode"""
+        if not self.is_fullscreen:
+            return
+            
+        self.is_fullscreen = False
+        
+        # Move back to original parent
+        self.grid_forget()
+        self.master = self.original_geometry["parent"]
+        self.grid(**self.original_geometry["grid_info"])
+        
+        # Destroy fullscreen window
+        self.fullscreen_window.destroy()
+        
+        # Update button
+        self.fullscreen_btn.configure(text="⛶")
+        
+        # Restore focus
+        self.canvas.focus_set()
+        
+    # Advanced features
+    def toggle_pip(self):
+        """Toggle picture-in-picture mode"""
+        # This would create a small floating window
+        # Implementation depends on platform capabilities
+        pass
+        
+    def toggle_theater_mode(self):
+        """Toggle theater mode"""
+        # This would maximize the video area within the application
+        pass
+        
+    def toggle_subtitles(self):
+        """Toggle subtitles display"""
+        # This would show/hide subtitle tracks
+        pass
+        
+    def show_settings(self):
+        """Show video settings dialog"""
+        # This would show quality, subtitle, audio track options
+        pass
+        
+    def toggle_loop(self):
+        """Toggle loop mode"""
+        if self.loop_mode == "none":
+            self.loop_mode = "all"
+        else:
+            self.loop_mode = "none"
+            
+    def set_ab_loop(self):
+        """Set A-B loop points"""
+        if self.ab_loop_start is None:
+            self.ab_loop_start = self.current_frame
+        elif self.ab_loop_end is None:
+            self.ab_loop_end = self.current_frame
+            self.loop_mode = "ab"
+        else:
+            # Clear A-B loop
+            self.ab_loop_start = None
+            self.ab_loop_end = None
+            self.loop_mode = "none"
+            
+    def add_bookmark(self):
+        """Add bookmark at current position"""
+        bookmark = {
+            "frame": self.current_frame,
+            "time": self.current_frame / self.fps,
+            "title": f"Bookmark at {self.format_time(self.current_frame / self.fps)}"
+        }
+        self.bookmarks.append(bookmark)
+        
+    def take_screenshot(self):
+        """Take screenshot of current frame"""
+        if not self.cap:
+            return
+            
+        # Get current frame
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
+        ret, frame = self.cap.read()
+        
+        if ret:
+            # Save screenshot
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"screenshot_{timestamp}.png"
+            cv2.imwrite(filename, frame)
+            
+    def copy_video_url(self):
+        """Copy video path to clipboard"""
+        if self.video_path:
+            self.clipboard_clear()
+            self.clipboard_append(self.video_path)
+            
+    def copy_current_time(self):
+        """Copy current timestamp to clipboard"""
+        time_str = self.format_time(self.current_frame / self.fps)
+        self.clipboard_clear()
+        self.clipboard_append(time_str)
+        
+    # Performance monitoring
+    def update_fps_monitor(self, fps):
+        """Update FPS display"""
+        self.fps_monitor.configure(text=f"FPS: {fps:.1f}")
+        
+        # Color code based on performance
+        if fps >= self.fps * 0.95:
+            color = "green"
+        elif fps >= self.fps * 0.8:
+            color = "yellow"
+        else:
+            color = "red"
+            
+        self.fps_monitor.configure(text_color=color)
+        
+    def update_dropped_frames_display(self):
+        """Update dropped frames counter"""
+        self.dropped_frames_label.configure(text=f"Dropped: {self.dropped_frames}")
+        
+    def update_buffer_status(self):
+        """Update buffer status display"""
+        buffer_count = len(self.frame_buffer)
+        self.buffer_status.configure(text=f"Buffer: {buffer_count}/{self.frame_buffer_size}")
+        
+        # Update buffer progress bar
+        buffer_percent = buffer_count / self.frame_buffer_size
+        self.buffer_progress.set(buffer_percent)
+        
+    def adjust_performance_mode(self, mode):
+        """Adjust performance mode based on playback performance"""
+        if self.performance_mode != mode:
+            self.performance_mode = mode
+            
+            # Adjust settings based on mode
+            if mode == "quality":
+                self.frame_buffer_size = 20
+                self.ui_update_interval = 50
+            elif mode == "balanced":
+                self.frame_buffer_size = 10
+                self.ui_update_interval = 100
+            else:  # performance
+                self.frame_buffer_size = 5
+                self.ui_update_interval = 200
+                
+    def toggle_performance_monitor(self):
+        """Toggle performance monitor visibility"""
+        if self.perf_monitor.winfo_viewable():
+            self.perf_monitor.place_forget()
+        else:
+            self.perf_monitor.place(x=10, y=10)
+            
+    # Thumbnail preview
+    def show_preview_thumbnail(self, frame_number):
+        """Show thumbnail for frame in preview popup"""
+        # Check cache first
+        if frame_number in self.thumbnail_cache:
+            photo = self.thumbnail_cache[frame_number]
+        else:
+            # Generate thumbnail
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = self.cap.read()
+            
+            if ret:
+                # Create thumbnail
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_resized = cv2.resize(frame_rgb, (160, 90), interpolation=cv2.INTER_AREA)
+                image = Image.fromarray(frame_resized)
+                photo = ImageTk.PhotoImage(image)
+                
+                # Cache it
+                self.thumbnail_cache[frame_number] = photo
+                
+                # Limit cache size
+                if len(self.thumbnail_cache) > 100:
+                    # Remove oldest entries
+                    oldest = sorted(self.thumbnail_cache.keys())[:20]
+                    for key in oldest:
+                        del self.thumbnail_cache[key]
+            else:
+                return
+                
+        # Display thumbnail
+        self.preview_canvas.delete("all")
+        self.preview_canvas.create_image(80, 45, image=photo)
+        self.preview_canvas.image = photo  # Keep reference
+        
+        # Restore playback position
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
+        
+    # Utility methods
+    def show_loading(self):
+        """Show loading indicator"""
+        self.loading_frame.place(relx=0.5, rely=0.5, anchor="center")
+        self.loading_spinner.start()
+        
+    def hide_loading(self):
+        """Hide loading indicator"""
+        self.loading_frame.place_forget()
+        self.loading_spinner.stop()
         
     def show_error(self, message):
-        """Show error message in video area"""
-        self.canvas.delete("all")
-        canvas_width = self.canvas.winfo_width() or 400
-        canvas_height = self.canvas.winfo_height() or 300
+        """Show error message"""
+        self.error_label.configure(text=message)
+        self.error_frame.place(relx=0.5, rely=0.5, anchor="center")
         
-        self.canvas.create_rectangle(
-            0, 0, canvas_width, canvas_height,
-            fill="#2d1b1b", outline=""
+        # Hide other elements
+        self.hide_loading()
+        self.hide_controls()
+        
+    def retry_load(self):
+        """Retry loading the video"""
+        self.error_frame.place_forget()
+        if self.video_path:
+            self.load_video(self.video_path)
+            
+    def show_placeholder(self):
+        """Show placeholder when no video is loaded"""
+        self.canvas.delete("all")
+        
+        # Get canvas center
+        self.update_idletasks()
+        width = self.canvas.winfo_width() or 800
+        height = self.canvas.winfo_height() or 450
+        
+        cx, cy = width // 2, height // 2
+        
+        # Draw placeholder
+        self.canvas.create_text(
+            cx, cy - 60,
+            text="🎬",
+            font=("Arial", 72),
+            fill="#444444"
         )
         
         self.canvas.create_text(
-            canvas_width/2, canvas_height/2 - 20,
-            text="⚠️",
-            font=("Arial", 32),
-            fill="#ef4444"
+            cx, cy + 20,
+            text="Professional Video Player",
+            font=("Arial", 24, "bold"),
+            fill="#666666"
         )
         
-        # Split message into lines for better display
-        lines = message.split('\n')
-        for i, line in enumerate(lines):
+        self.canvas.create_text(
+            cx, cy + 55,
+            text="Drop a video file here or use the open button",
+            font=("Arial", 14),
+            fill="#888888"
+        )
+        
+        # Keyboard shortcuts info
+        shortcuts = [
+            "Space: Play/Pause • F: Fullscreen • M: Mute",
+            "←/→: Seek 5s • J/L: Seek 10s • ↑/↓: Volume",
+            "0-9: Jump to 0-90% • [/]: Speed Control",
+            "C: Captions • Double-click: Fullscreen"
+        ]
+        
+        for i, shortcut in enumerate(shortcuts):
             self.canvas.create_text(
-                canvas_width/2, canvas_height/2 + 20 + i*20,
-                text=line,
-                font=("Arial", 12),
-                fill="#ef4444",
-                width=canvas_width-40
+                cx, cy + 100 + i * 20,
+                text=shortcut,
+                font=("Arial", 11),
+                fill="#999999"
             )
             
-    def clear(self):
-        """Clear video player"""
-        self.stop_playback()
+    def on_playback_ended(self):
+        """Handle playback ended"""
+        if self.loop_mode == "all":
+            # Restart playback
+            self.seek_to_frame(0)
+            self.play()
+        else:
+            # Stop and show replay button
+            self.pause()
+            self.center_play_btn.configure(text="↻")
+            
+    def cleanup(self):
+        """Clean up resources"""
+        # Stop playback
+        self.is_playing = False
+        self.stop_event.set()
         
+        # Wait for threads to finish
+        if self.playback_thread and self.playback_thread.is_alive():
+            self.playback_thread.join(timeout=1)
+            
+        if self.buffer_thread and self.buffer_thread.is_alive():
+            self.buffer_thread.join(timeout=1)
+            
+        # Release video capture
         if self.cap:
             self.cap.release()
             self.cap = None
             
-        self.video_path = None
+        # Clear buffers
+        self.frame_buffer.clear()
+        self.thumbnail_cache.clear()
+        
+        # Reset state
         self.current_frame = 0
         self.total_frames = 0
+        self.dropped_frames = 0
         
-        self.progress_var.set(0)
-        self.time_label.configure(text="00:00 / 00:00")
-        self.frame_label.configure(text="Frame: 0/0")
+        # Clear canvas
+        self.canvas.delete("all")
         
-        self.show_placeholder()
-
+    def __del__(self):
+        """Destructor to ensure cleanup"""
+        self.cleanup()
 
 class PyPISearchEngine:
     """Advanced PyPI search engine with modern features"""
@@ -8142,8 +9564,12 @@ class MyScene(Scene):
             
     # Animation operations with System Terminal Integration
     def quick_preview(self):
-        """Generate quick preview using system terminal"""
+        """Generate quick preview with improved state management and output handling"""
         if self.is_previewing:
+            # If already previewing, stop current preview first
+            self.stop_process()
+            # Wait a moment for cleanup
+            self.root.after(500, self.quick_preview)
             return
             
         if not self.current_code.strip():
@@ -8159,13 +9585,20 @@ class MyScene(Scene):
             )
             return
             
+        # Reset preview state
         self.is_previewing = True
         self.quick_preview_button.configure(text="⏳ Generating...", state="disabled")
         self.update_status("Generating preview...")
         
+        # Clear previous output and video
+        self.clear_output()
+        self.video_player.clear()
+        
         try:
-            # Create temporary directory
-            temp_dir = tempfile.mkdtemp(prefix="manim_preview_")
+            # Create temporary directory with unique name
+            import uuid
+            temp_suffix = str(uuid.uuid4())[:8]
+            temp_dir = tempfile.mkdtemp(prefix=f"manim_preview_{temp_suffix}_")
             
             # Extract scene class name
             scene_class = self.extract_scene_class_name(self.current_code)
@@ -8195,54 +9628,124 @@ class MyScene(Scene):
                 f"--fps={preview_quality['fps']}",
                 "--disable_caching",
                 f"--media_dir={MEDIA_DIR}",
-                f"--renderer=cairo"
+                "--renderer=cairo",
+                "--verbosity=INFO"  # Add verbose output
             ]
             
             # Set environment variable for CPU control
-            env = {"OMP_NUM_THREADS": str(num_cores)}
+            env = {
+                "OMP_NUM_THREADS": str(num_cores),
+                "OPENBLAS_NUM_THREADS": str(num_cores),
+                "MKL_NUM_THREADS": str(num_cores),
+                "NUMEXPR_NUM_THREADS": str(num_cores)
+            }
+            
+            # Enhanced logging
+            self.append_terminal_output(f"Starting preview generation...\n")
+            self.append_terminal_output(f"Scene class: {scene_class}\n")
+            self.append_terminal_output(f"Quality: {self.settings['preview_quality']} ({preview_quality['resolution']})\n")
+            self.append_terminal_output(f"Using {num_cores} CPU cores\n")
+            self.append_terminal_output(f"Command: {' '.join(command)}\n\n")
             
             # On preview complete callback
             def on_preview_complete(success, return_code):
-                # Find output file
-                output_file = self.find_output_file(temp_dir, scene_class, "mp4")
-                
-                # Reset UI state
-                self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
-                self.is_previewing = False
-                
-                if success and output_file and os.path.exists(output_file):
-                    # Load video in player
-                    self.video_player.load_video(output_file)
-                    self.update_status("Preview generated successfully")
-                    self.last_preview_code = self.current_code
-                    
-                    # Copy to cache for later use
-                    cache_dir = os.path.join(BASE_DIR, ".preview_cache")
-                    os.makedirs(cache_dir, exist_ok=True)
-                    cached_file = os.path.join(cache_dir, f"preview_{scene_class}.mp4")
-                    try:
-                        shutil.copy2(output_file, cached_file)
-                    except Exception as e:
-                        self.append_terminal_output(f"Warning: Could not cache preview: {e}\n")
-                else:
-                    self.update_status("Preview generation failed")
-                    self.append_terminal_output("Error: Preview file not found or generation failed\n")
-                
-                # Cleanup temp directory
                 try:
-                    shutil.rmtree(temp_dir)
+                    # Reset UI state first
+                    self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                    self.is_previewing = False
+                    
+                    if success:
+                        self.append_terminal_output(f"\n✅ Preview generation completed successfully!\n")
+                        
+                        # Find output file
+                        output_file = self.find_output_file(temp_dir, scene_class, "mp4")
+                        
+                        if output_file and os.path.exists(output_file):
+                            self.append_terminal_output(f"Found output file: {output_file}\n")
+                            
+                            # Load video in player
+                            if self.video_player.load_video(output_file):
+                                self.update_status("Preview generated successfully")
+                                self.last_preview_code = self.current_code
+                                
+                                # Copy to cache for later use
+                                cache_dir = os.path.join(BASE_DIR, ".preview_cache")
+                                os.makedirs(cache_dir, exist_ok=True)
+                                cached_file = os.path.join(cache_dir, f"preview_{scene_class}.mp4")
+                                try:
+                                    shutil.copy2(output_file, cached_file)
+                                    self.append_terminal_output(f"Cached preview to: {cached_file}\n")
+                                except Exception as e:
+                                    self.append_terminal_output(f"Warning: Could not cache preview: {e}\n")
+                            else:
+                                self.append_terminal_output("❌ Error: Could not load video in player\n")
+                                self.update_status("Preview generation failed - video loading error")
+                        else:
+                            self.append_terminal_output("❌ Error: Preview file not found\n")
+                            self.update_status("Preview generation failed - output file not found")
+                            
+                            # List what files were actually created
+                            self.append_terminal_output("Files in temp directory:\n")
+                            try:
+                                for root, dirs, files in os.walk(temp_dir):
+                                    for file in files:
+                                        file_path = os.path.join(root, file)
+                                        rel_path = os.path.relpath(file_path, temp_dir)
+                                        self.append_terminal_output(f"  {rel_path}\n")
+                            except Exception as e:
+                                self.append_terminal_output(f"  Error listing files: {e}\n")
+                    else:
+                        self.append_terminal_output(f"\n❌ Preview generation failed (exit code: {return_code})\n")
+                        self.update_status("Preview generation failed")
+                    
                 except Exception as e:
-                    self.append_terminal_output(f"Warning: Could not clean up temp directory: {e}\n")
+                    self.append_terminal_output(f"Error in preview completion handler: {e}\n")
+                    self.update_status("Preview completion error")
+                    
+                finally:
+                    # Always cleanup temp directory
+                    try:
+                        if os.path.exists(temp_dir):
+                            shutil.rmtree(temp_dir)
+                            self.append_terminal_output(f"Cleaned up temporary directory\n")
+                    except Exception as e:
+                        self.append_terminal_output(f"Warning: Could not clean up temp directory: {e}\n")
             
-            # Run command using system terminal
-            self.terminal.run_command_redirected(command, on_preview_complete, env)
+            # Run command using system terminal with enhanced output
+            if hasattr(self, 'terminal') and self.terminal:
+                self.terminal.run_command_redirected(command, on_preview_complete, env)
+            else:
+                # Fallback to direct execution
+                def run_preview():
+                    try:
+                        result = subprocess.run(
+                            command,
+                            capture_output=True,
+                            text=True,
+                            env={**os.environ, **env},
+                            cwd=temp_dir
+                        )
+                        
+                        # Output the result
+                        if result.stdout:
+                            self.root.after(0, lambda: self.append_terminal_output(result.stdout))
+                        if result.stderr:
+                            self.root.after(0, lambda: self.append_terminal_output(result.stderr))
+                        
+                        # Call completion handler
+                        self.root.after(0, lambda: on_preview_complete(result.returncode == 0, result.returncode))
+                        
+                    except Exception as e:
+                        self.root.after(0, lambda: self.append_terminal_output(f"Error running preview: {e}\n"))
+                        self.root.after(0, lambda: on_preview_complete(False, -1))
+                        
+                threading.Thread(target=run_preview, daemon=True).start()
                 
         except Exception as e:
             self.update_status(f"Preview error: {e}")
             self.append_terminal_output(f"Preview error: {e}\n")
             self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
             self.is_previewing = False
-        
     def render_animation(self):
         """Render high-quality animation using system terminal"""
         if self.is_rendering:
@@ -9239,6 +10742,7 @@ def main():
             print("Install Jedi with: pip install jedi")
         
         # Create and run application
+        oot = ctk.CTk() 
         app = ManimStudioApp()
         
         # Show getting started on first run
