@@ -6519,15 +6519,22 @@ class VideoPlayerWidget(ctk.CTkFrame):
         """Toggle playback with visual feedback"""
         if not self.cap:
             return
-            
-        self.is_playing = not self.is_playing
-        
+
         if self.is_playing:
-            self.play_button.configure(text="⏸")
-            self.start_playback()
-        else:
+            # Pause
+            self.is_playing = False
             self.play_button.configure(text="▶")
             self.stop_playback_thread()
+        else:
+            # Restart from beginning if at the end
+            if self.current_frame >= self.total_frames - 1:
+                self.current_frame = 0
+                self.display_frame(0)
+                self.update_time_display()
+                self.update_frame_display()
+            self.is_playing = True
+            self.play_button.configure(text="⏸")
+            self.start_playback()
             
     def start_playback(self):
         """Start optimized playback"""
@@ -6657,9 +6664,15 @@ class VideoPlayerWidget(ctk.CTkFrame):
         
     def stop_playback_thread(self):
         """Stop playback thread"""
-        if self.play_thread and self.play_thread.is_alive():
+        if self.play_thread:
+            if self.play_thread.is_alive():
+                # Thread will exit once is_playing is False
+                try:
+                    self.play_thread.join(timeout=0.1)
+                except Exception:
+                    pass
             self.play_thread = None
-            
+
         self.current_frame = 0
         if self.cap:
             self.display_frame(0)
@@ -8557,6 +8570,18 @@ class MyScene(Scene):
                             try:
                                 shutil.copy2(output_file, cached_file)
                                 self.append_terminal_output(f"Cached preview to: {cached_file}\n")
+                                # Remove original render output to keep media directory clean
+                                try:
+                                    os.remove(output_file)
+                                    parent_dir = os.path.dirname(output_file)
+                                    # Remove empty parent directories under MEDIA_DIR
+                                    while parent_dir.startswith(MEDIA_DIR) and not os.listdir(parent_dir):
+                                        os.rmdir(parent_dir)
+                                        parent_dir = os.path.dirname(parent_dir)
+                                except Exception as e_remove:
+                                    self.append_terminal_output(
+                                        f"Warning: Could not remove temp output file: {e_remove}\n"
+                                    )
                                 output_file = cached_file
                             except Exception as e:
                                 self.append_terminal_output(f"Warning: Could not cache preview: {e}\n")
