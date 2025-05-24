@@ -3357,10 +3357,16 @@ class VirtualEnvironmentManager:
         if hasattr(self.parent_app, 'output_tabs'):
             self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
         
-        # Create new venv using the system terminal
+        # Create new venv using EXTERNAL Python
         try:
-            import venv
+            # Find external Python
+            python_exe = self.find_system_python()
+            if not python_exe:
+                self.logger.error("No external Python found for environment creation")
+                return self.use_system_python_fallback()
+                
             self.logger.info(f"Creating new environment at: {default_venv_path}")
+            self.logger.info(f"Using external Python: {python_exe}")
             
             # Create a script to create the venv
             script_content = f"""
@@ -3382,7 +3388,7 @@ except Exception as e:
                     f.write(script_content)
                     script_path = f.name
                 
-                # Run script via system terminal
+                # Run script via system terminal using EXTERNAL Python
                 if hasattr(self.parent_app, 'terminal'):
                     def on_venv_created(success, return_code):
                         if success:
@@ -3393,12 +3399,13 @@ except Exception as e:
                             self.use_system_python_fallback()
                     
                     self.parent_app.terminal.run_command_redirected(
-                        [sys.executable, script_path],
+                        [python_exe, script_path],  # Use EXTERNAL Python
                         on_complete=on_venv_created
                     )
                     return True
                 else:
                     # Fallback to direct creation if terminal not available
+                    import venv
                     venv.create(default_venv_path, with_pip=True)
                     self._setup_environment_after_creation(default_venv_path)
                     return True
@@ -3724,7 +3731,7 @@ if missing:
         )
 
     def create_environment_unified(self, name, location, packages=None, log_callback=None):
-        """Unified environment creation method used by both default and custom creation"""
+        """Unified environment creation method - NEVER uses the executable as Python"""
         if packages is None:
             packages = []
             
@@ -3735,32 +3742,63 @@ if missing:
             log_callback(f"Location: {env_path}")
 
         try:
+            # CRITICAL: Find EXTERNAL system Python interpreter
+            if log_callback:
+                log_callback("Searching for external Python installation...")
+                
+            python_exe = self.find_system_python()
+            if not python_exe:
+                error_msg = "❌ CRITICAL: No external Python installation found!\n\n"
+                error_msg += "ManimStudio requires a system Python installation to create virtual environments.\n"
+                error_msg += "Please install Python from https://python.org and try again.\n\n"
+                error_msg += "The packaged executable cannot be used as a Python interpreter."
+                raise Exception(error_msg)
+                
+            # CRITICAL: Validate the Python path
+            if not self.validate_python_executable(python_exe):
+                error_msg = f"❌ CRITICAL: Invalid Python interpreter: {python_exe}\n\n"
+                error_msg += "This Python installation cannot be used safely.\n"
+                error_msg += "Please ensure you have a proper Python installation from https://python.org"
+                raise Exception(error_msg)
+                
+            if log_callback:
+                log_callback(f"✅ Using EXTERNAL Python: {python_exe}")
+                
+            # Log critical information
+            self.logger.info("=" * 60)
+            self.logger.info("CREATING VIRTUAL ENVIRONMENT")
+            self.logger.info(f"Environment name: {name}")
+            self.logger.info(f"Environment path: {env_path}")
+            self.logger.info(f"Using EXTERNAL Python: {python_exe}")
+            self.logger.info(f"Our executable: {sys.executable}")
+            self.logger.info(f"Is frozen: {self.is_frozen}")
+            self.logger.info("=" * 60)
+
             # Remove any existing environment
             if os.path.exists(env_path):
                 if log_callback:
                     log_callback("Removing existing environment...")
                 shutil.rmtree(env_path)
 
-            # Find system Python interpreter
-            python_exe = self.find_system_python()
-            if not python_exe:
-                raise Exception("Could not find system Python interpreter")
-                
+            # Step 1: Create virtual environment using EXTERNAL Python
             if log_callback:
-                log_callback(f"Using Python interpreter: {python_exe}")
-
-            # Step 1: Create virtual environment
-            if log_callback:
-                log_callback("Creating virtual environment...")
+                log_callback("Creating virtual environment with external Python...")
                 
             create_cmd = [python_exe, "-m", "venv", env_path, "--with-pip"]
             
+            self.logger.info(f"Running command: {' '.join(create_cmd)}")
             result = run_original(create_cmd, capture_output=True, text=True, timeout=120)
+            
             if result.returncode != 0:
-                raise Exception(f"Failed to create venv: {result.stderr}")
+                error_details = f"Command: {' '.join(create_cmd)}\n"
+                error_details += f"Return code: {result.returncode}\n"
+                error_details += f"Stdout: {result.stdout}\n"
+                error_details += f"Stderr: {result.stderr}"
+                self.logger.error(f"Venv creation failed:\n{error_details}")
+                raise Exception(f"Failed to create virtual environment:\n{result.stderr}")
                 
             if log_callback:
-                log_callback("✓ Virtual environment created successfully")
+                log_callback("✅ Virtual environment created with external Python!")
 
             # Step 2: Set up paths
             if os.name == 'nt':
@@ -3782,7 +3820,7 @@ if missing:
             
             if result.returncode == 0:
                 if log_callback:
-                    log_callback("✓ Pip upgraded successfully")
+                    log_callback("✅ Pip upgraded successfully")
             else:
                 if log_callback:
                     log_callback("⚠ Warning: Could not upgrade pip")
@@ -3801,10 +3839,10 @@ if missing:
                     
                     if result.returncode == 0:
                         if log_callback:
-                            log_callback(f"✓ Successfully installed {package}")
+                            log_callback(f"✅ Successfully installed {package}")
                     else:
                         if log_callback:
-                            log_callback(f"✗ Failed to install {package}")
+                            log_callback(f"❌ Failed to install {package}")
 
             # Step 5: Activate the environment
             self.python_path = python_path
@@ -3813,146 +3851,323 @@ if missing:
             self.needs_setup = False
 
             if log_callback:
-                log_callback("✓ Environment setup completed successfully!")
+                log_callback("✅ Environment setup completed successfully!")
 
             return True
 
         except Exception as e:
             error_msg = f"Environment creation failed: {str(e)}"
             if log_callback:
-                log_callback(f"✗ {error_msg}")
+                log_callback(f"❌ {error_msg}")
             self.logger.error(error_msg)
             return False
 
     def find_system_python(self):
-        """Find the system Python interpreter (not the packaged executable)"""
+        """Find EXTERNAL system Python interpreter (NEVER use the packaged executable)"""
+        
+        # CRITICAL: Log what we're doing
+        self.logger.info("=" * 60)
+        self.logger.info("SEARCHING FOR EXTERNAL SYSTEM PYTHON")
+        self.logger.info(f"Current sys.executable: {sys.executable}")
+        self.logger.info(f"Is frozen executable: {self.is_frozen}")
+        self.logger.info("=" * 60)
+        
         python_candidates = []
         
-        # CRITICAL: Never use sys.executable when frozen (it's the .exe file!)
-        if self.is_frozen:
-            self.logger.info("Running as executable - searching for system Python")
-        else:
-            # Only use sys.executable when running as script
+        # NEVER EVER use sys.executable when frozen - it's our .exe file!
+        if not self.is_frozen:
+            # Only consider sys.executable when running as script
+            self.logger.info("Running as script - adding sys.executable as candidate")
             python_candidates.append(sys.executable)
+        else:
+            self.logger.info("Running as EXECUTABLE - will NOT use sys.executable")
+            self.logger.info("Searching for EXTERNAL Python installations only...")
         
         if sys.platform == "win32":
-            # Windows: Check common Python installation locations
-            possible_paths = [
-                # Python Launcher (best option)
-                "py.exe",
-                "python.exe",
-                "python3.exe",
-                # Common installation paths
+            self.logger.info("Searching Windows Python installations...")
+            
+            # 1. Python Launcher (py.exe) - BEST option for Windows
+            self.logger.info("Checking Python Launcher (py.exe)...")
+            try:
+                # Find py.exe in system PATH
+                py_path = shutil.which("py")
+                if py_path:
+                    self.logger.info(f"Found py.exe at: {py_path}")
+                    # Make sure it's not in our executable directory
+                    exe_dir = os.path.dirname(sys.executable)
+                    if not py_path.startswith(exe_dir):
+                        result = run_original(["py", "--version"], capture_output=True, text=True, timeout=10)
+                        if result.returncode == 0:
+                            self.logger.info(f"✅ Python Launcher works: {result.stdout.strip()}")
+                            python_candidates.append("py")
+                        else:
+                            self.logger.info("❌ Python Launcher failed version check")
+                    else:
+                        self.logger.info("❌ Skipping py.exe - found in executable directory")
+                else:
+                    self.logger.info("❌ Python Launcher not found in PATH")
+            except Exception as e:
+                self.logger.info(f"❌ Error checking Python Launcher: {e}")
+            
+            # 2. Standard python commands in PATH
+            self.logger.info("Checking python commands in PATH...")
+            for cmd in ["python", "python3", "python.exe"]:
+                try:
+                    cmd_path = shutil.which(cmd)
+                    if cmd_path:
+                        self.logger.info(f"Found {cmd} at: {cmd_path}")
+                        # CRITICAL: Make sure it's not our executable or in our directory
+                        exe_dir = os.path.dirname(sys.executable)
+                        exe_name = os.path.basename(sys.executable).lower()
+                        
+                        # Skip if it's our executable
+                        if cmd_path == sys.executable:
+                            self.logger.info(f"❌ Skipping {cmd} - it's our own executable!")
+                            continue
+                        
+                        # Skip if it's in our executable directory
+                        if cmd_path.startswith(exe_dir):
+                            self.logger.info(f"❌ Skipping {cmd} - found in executable directory")
+                            continue
+                            
+                        # Skip if filename contains 'manim'
+                        if 'manim' in cmd_path.lower():
+                            self.logger.info(f"❌ Skipping {cmd} - contains 'manim' in path")
+                            continue
+                        
+                        # Test if it works
+                        result = run_original([cmd, "--version"], capture_output=True, text=True, timeout=10)
+                        if result.returncode == 0:
+                            self.logger.info(f"✅ {cmd} works: {result.stdout.strip()}")
+                            python_candidates.append(cmd)
+                        else:
+                            self.logger.info(f"❌ {cmd} failed version check")
+                    else:
+                        self.logger.info(f"❌ {cmd} not found in PATH")
+                except Exception as e:
+                    self.logger.info(f"❌ Error checking {cmd}: {e}")
+            
+            # 3. Search common Windows Python installation directories
+            self.logger.info("Searching common Python installation directories...")
+            search_patterns = [
+                # Standard Python.org installations
                 r"C:\Python*\python.exe",
                 r"C:\Program Files\Python*\python.exe", 
                 r"C:\Program Files (x86)\Python*\python.exe",
-                # User installations
+                # User installations (Python.org installer with "Just for me")
                 os.path.join(os.path.expanduser("~"), "AppData", "Local", "Programs", "Python", "Python*", "python.exe"),
                 # Microsoft Store Python
-                os.path.join(os.path.expanduser("~"), "AppData", "Local", "Microsoft", "WindowsApps", "python*.exe")
+                os.path.join(os.path.expanduser("~"), "AppData", "Local", "Microsoft", "WindowsApps", "python*.exe"),
+                # Anaconda/Miniconda common locations
+                r"C:\Anaconda*\python.exe",
+                r"C:\Miniconda*\python.exe",
+                os.path.join(os.path.expanduser("~"), "Anaconda*", "python.exe"),
+                os.path.join(os.path.expanduser("~"), "Miniconda*", "python.exe"),
             ]
             
-            # Try Python Launcher first (best option on Windows)
-            try:
-                result = run_original(["py", "--version"], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    self.logger.info("Found Python Launcher (py)")
-                    python_candidates.append("py")
-            except:
-                pass
-                
-            # Try python command from PATH
-            try:
-                # Make sure we're not getting our own executable
-                python_path = shutil.which("python")
-                if python_path and not python_path.endswith('.exe') or 'manim' not in python_path.lower():
-                    result = run_original(["python", "--version"], capture_output=True, text=True, timeout=10)
-                    if result.returncode == 0:
-                        self.logger.info(f"Found python in PATH: {python_path}")
-                        python_candidates.append("python")
-            except:
-                pass
-                
-            # Search for Python installations
             import glob
-            for pattern in possible_paths:
-                if '*' in pattern:
+            exe_dir = os.path.dirname(sys.executable)
+            
+            for pattern in search_patterns:
+                self.logger.info(f"Searching pattern: {pattern}")
+                try:
                     matches = glob.glob(pattern)
                     for match in matches:
-                        # Skip if it's our own executable
-                        if 'manim' not in match.lower() and match not in python_candidates:
-                            python_candidates.append(match)
-                else:
-                    # Check if command exists and is not our executable
-                    which_result = shutil.which(pattern)
-                    if which_result and 'manim' not in which_result.lower():
-                        python_candidates.append(pattern)
+                        self.logger.info(f"Found potential Python: {match}")
+                        
+                        # CRITICAL: Skip if it's in our executable directory
+                        if match.startswith(exe_dir):
+                            self.logger.info(f"❌ Skipping {match} - in executable directory")
+                            continue
+                            
+                        # Skip if filename contains 'manim'
+                        if 'manim' in match.lower():
+                            self.logger.info(f"❌ Skipping {match} - contains 'manim'")
+                            continue
+                            
+                        # Skip if already added
+                        if match in python_candidates:
+                            self.logger.info(f"❌ Skipping {match} - already in candidates")
+                            continue
+                            
+                        python_candidates.append(match)
+                        self.logger.info(f"✅ Added candidate: {match}")
+                except Exception as e:
+                    self.logger.info(f"❌ Error with pattern {pattern}: {e}")
                             
         else:
-            # Unix-like systems
+            # Unix-like systems (Linux, macOS)
+            self.logger.info("Searching Unix Python installations...")
             possible_commands = ["python3", "python", "python3.11", "python3.10", "python3.9", "python3.8"]
             
+            exe_dir = os.path.dirname(sys.executable)
+            
             for cmd in possible_commands:
-                which_result = shutil.which(cmd)
-                if which_result:
-                    try:
+                try:
+                    cmd_path = shutil.which(cmd)
+                    if cmd_path:
+                        self.logger.info(f"Found {cmd} at: {cmd_path}")
+                        
+                        # CRITICAL: Skip if it's our executable or in our directory
+                        if cmd_path == sys.executable:
+                            self.logger.info(f"❌ Skipping {cmd} - it's our executable!")
+                            continue
+                            
+                        if cmd_path.startswith(exe_dir):
+                            self.logger.info(f"❌ Skipping {cmd} - in executable directory")
+                            continue
+                            
+                        # Test if it works
                         result = run_original([cmd, "--version"], capture_output=True, text=True, timeout=10)
                         if result.returncode == 0:
-                            self.logger.info(f"Found Python: {cmd} at {which_result}")
+                            self.logger.info(f"✅ {cmd} works: {result.stdout.strip()}")
                             python_candidates.append(cmd)
-                    except:
-                        continue
+                        else:
+                            self.logger.info(f"❌ {cmd} failed version check")
+                    else:
+                        self.logger.info(f"❌ {cmd} not found in PATH")
+                except Exception as e:
+                    self.logger.info(f"❌ Error checking {cmd}: {e}")
         
-        # Test candidates and return the first working one
-        for candidate in python_candidates:
+        # Test each candidate thoroughly
+        self.logger.info("=" * 60)
+        self.logger.info("TESTING PYTHON CANDIDATES")
+        self.logger.info("=" * 60)
+        
+        for i, candidate in enumerate(python_candidates):
+            self.logger.info(f"Testing candidate {i+1}/{len(python_candidates)}: {candidate}")
+            
             try:
-                self.logger.info(f"Testing Python candidate: {candidate}")
-                
-                # Skip if it looks like our own executable
-                if isinstance(candidate, str) and ('manim' in candidate.lower() or candidate.endswith('.exe')):
-                    if self.is_frozen:
-                        self.logger.info(f"Skipping {candidate} - appears to be our executable")
+                # CRITICAL: Double-check it's not our executable
+                if isinstance(candidate, str):
+                    # Get absolute path for comparison
+                    if os.path.isabs(candidate):
+                        candidate_abs = candidate
+                    else:
+                        candidate_abs = shutil.which(candidate) or candidate
+                        
+                    exe_abs = os.path.abspath(sys.executable)
+                    
+                    if candidate_abs == exe_abs:
+                        self.logger.error(f"❌ CRITICAL: Candidate {candidate} is our own executable!")
+                        continue
+                        
+                    # Check if it's in our directory
+                    exe_dir = os.path.dirname(exe_abs)
+                    if candidate_abs.startswith(exe_dir):
+                        self.logger.error(f"❌ CRITICAL: Candidate {candidate} is in our executable directory!")
                         continue
                 
-                # Test if it can create venv
-                result = run_original([candidate, "-m", "venv", "--help"], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    self.logger.info(f"✓ Found working Python interpreter: {candidate}")
-                    return candidate
+                # Test 1: Basic version check
+                self.logger.info(f"  Test 1: Version check...")
+                result = run_original([candidate, "--version"], capture_output=True, text=True, timeout=10)
+                if result.returncode != 0:
+                    self.logger.info(f"  ❌ Version check failed: {result.stderr}")
+                    continue
                 else:
-                    self.logger.info(f"✗ {candidate} cannot create venv")
-            except Exception as e:
-                self.logger.info(f"✗ {candidate} failed test: {e}")
-                continue
+                    self.logger.info(f"  ✅ Version: {result.stdout.strip()}")
                 
-        self.logger.error("No working Python interpreter found!")
+                # Test 2: Can it create virtual environments?
+                self.logger.info(f"  Test 2: venv module check...")
+                result = run_original([candidate, "-m", "venv", "--help"], capture_output=True, text=True, timeout=10)
+                if result.returncode != 0:
+                    self.logger.info(f"  ❌ venv module not available")
+                    continue
+                else:
+                    self.logger.info(f"  ✅ venv module available")
+                
+                # Test 3: Can it install packages?
+                self.logger.info(f"  Test 3: pip module check...")
+                result = run_original([candidate, "-m", "pip", "--version"], capture_output=True, text=True, timeout=10)
+                if result.returncode != 0:
+                    self.logger.info(f"  ❌ pip module not available")
+                    continue
+                else:
+                    self.logger.info(f"  ✅ pip available: {result.stdout.strip()}")
+                
+                # All tests passed!
+                self.logger.info(f"🎉 SUCCESS: Found working external Python: {candidate}")
+                self.logger.info("=" * 60)
+                return candidate
+                
+            except Exception as e:
+                self.logger.info(f"  ❌ Error testing {candidate}: {e}")
+                continue
+        
+        # No working Python found
+        self.logger.error("=" * 60)
+        self.logger.error("💥 CRITICAL ERROR: NO EXTERNAL PYTHON FOUND!")
+        self.logger.error("This means:")
+        self.logger.error("1. No system Python installation was detected")
+        self.logger.error("2. ManimStudio cannot create virtual environments")
+        self.logger.error("3. User needs to install Python from python.org")
+        self.logger.error("=" * 60)
+        
         return None
 
     def validate_python_executable(self, python_path):
-        """Validate that python_path is not our own executable"""
+        """Validate that python_path is EXTERNAL and not our executable"""
         if not python_path:
+            self.logger.error("Python path is None or empty")
             return False
             
-        # Get absolute paths for comparison
         try:
-            python_abs = os.path.abspath(python_path)
+            # Get absolute paths for comparison
+            if os.path.isabs(python_path):
+                python_abs = os.path.abspath(python_path)
+            else:
+                # Resolve command to full path
+                resolved_path = shutil.which(python_path)
+                if not resolved_path:
+                    self.logger.error(f"Cannot resolve Python path: {python_path}")
+                    return False
+                python_abs = os.path.abspath(resolved_path)
+                
             exe_abs = os.path.abspath(sys.executable)
+            exe_dir = os.path.dirname(exe_abs)
+            exe_name = os.path.basename(exe_abs).lower()
             
-            # Never allow using our own executable as Python
+            self.logger.info(f"Validating Python: {python_abs}")
+            self.logger.info(f"Our executable: {exe_abs}")
+            self.logger.info(f"Our directory: {exe_dir}")
+            
+            # CRITICAL CHECK 1: Never allow using our own executable
             if python_abs == exe_abs:
-                self.logger.error(f"CRITICAL: Attempted to use own executable as Python: {python_abs}")
+                self.logger.error(f"💥 REJECTED: Python path is our own executable!")
+                self.logger.error(f"   Python: {python_abs}")
+                self.logger.error(f"   Our exe: {exe_abs}")
                 return False
                 
-            # Check if it's in the same directory and has similar name
-            if (os.path.dirname(python_abs) == os.path.dirname(exe_abs) and 
-                'manim' in os.path.basename(python_abs).lower()):
-                self.logger.error(f"CRITICAL: Python path looks like our executable: {python_abs}")
+            # CRITICAL CHECK 2: Never allow anything in our executable directory
+            if python_abs.startswith(exe_dir):
+                self.logger.error(f"💥 REJECTED: Python is in our executable directory!")
+                self.logger.error(f"   Python: {python_abs}")
+                self.logger.error(f"   Our dir: {exe_dir}")
                 return False
                 
+            # CRITICAL CHECK 3: Never allow anything with 'manim' in the path when frozen
+            if self.is_frozen and 'manim' in python_abs.lower():
+                self.logger.error(f"💥 REJECTED: Python path contains 'manim' while running as executable!")
+                self.logger.error(f"   Python: {python_abs}")
+                return False
+                
+            # CRITICAL CHECK 4: Must be a real file
+            if not os.path.isfile(python_abs):
+                self.logger.error(f"💥 REJECTED: Python path is not a file!")
+                self.logger.error(f"   Python: {python_abs}")
+                return False
+                
+            # CRITICAL CHECK 5: Must be executable
+            if not os.access(python_abs, os.X_OK):
+                self.logger.error(f"💥 REJECTED: Python file is not executable!")
+                self.logger.error(f"   Python: {python_abs}")
+                return False
+            
+            self.logger.info(f"✅ VALIDATED: Python path is external and safe to use")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error validating Python executable: {e}")
+            self.logger.error(f"💥 ERROR validating Python executable: {e}")
             return False
 
     def upgrade_pip(self, log_callback=None):
@@ -4094,7 +4309,7 @@ if missing:
                     log_callback(f"Installing {package}...")
                 
                 if progress_callback:
-                    progress_callback(package, i / total_packages)
+                    progress_callback(package, i / len(ESSENTIAL_PACKAGES))
                 
                 try:
                     result = subprocess.run(
@@ -4392,59 +4607,7 @@ print("Manim test successful")
         if name.startswith(("system_", "current_")):
             return False
             
-        venv_path = os.path.join(self.venv_dir, name)
-        
-        # Switch to terminal tab if available
-        if hasattr(self.parent_app, 'output_tabs'):
-            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-        
-        # Use system terminal if available
-        if hasattr(self.parent_app, 'terminal'):
-            # Create a script for venv creation
-            script_content = f"""
-import venv
-import sys
-import os
-
-try:
-    venv.create(r"{venv_path}", with_pip=True)
-    print("SUCCESS: Virtual environment created at {venv_path}")
-    sys.exit(0)
-except Exception as e:
-    print(f"ERROR: {{str(e)}}")
-    sys.exit(1)
-"""
-            script_path = None
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
-                    f.write(script_content)
-                    script_path = f.name
-                
-                # Run script in system terminal
-                def on_venv_created(success, return_code):
-                    return success
-                
-                self.parent_app.terminal.run_command_redirected(
-                    [sys.executable, script_path],
-                    on_complete=on_venv_created
-                )
-                
-                return True
-            finally:
-                if script_path and os.path.exists(script_path):
-                    try:
-                        os.unlink(script_path)
-                    except:
-                        pass
-        else:
-            # Fallback to direct creation
-            try:
-                import venv
-                venv.create(venv_path, with_pip=True)
-                return True
-            except Exception as e:
-                self.logger.error(f"Error creating virtual environment: {e}")
-                return False
+        return self.create_environment_unified(name, self.venv_dir)
         
     def activate_venv(self, name):
         """Activate a virtual environment"""
@@ -4710,6 +4873,7 @@ except Exception as e:
         
         # Return at least 1KB to avoid showing 0
         return max(1024, total_size)
+
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
