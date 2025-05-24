@@ -6227,22 +6227,28 @@ class VideoPlayerWidget(ctk.CTkFrame):
         )
         self.speed_indicator.pack()
         
-        # Center controls - Speed
-        center_controls = ctk.CTkFrame(self.controls_frame, fg_color=VSCODE_COLORS["surface_light"], corner_radius=8)
-        center_controls.grid(row=0, column=1, sticky="", padx=15, pady=10)
-        
+         # Center controls - Speed
+        center_controls = ctk.CTkFrame(
+            self.controls_frame,
+            fg_color=VSCODE_COLORS["surface_light"],
+            corner_radius=8,
+        )
+        center_controls.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
+        center_controls.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        center_controls.grid_rowconfigure(1, weight=1)
+
         # Speed section header
         speed_header = ctk.CTkLabel(
             center_controls,
             text="⚡ Playback Speed",
             font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=VSCODE_COLORS["text"]
+            text_color=VSCODE_COLORS["text"],
         )
-        speed_header.pack(pady=(8, 5))
-        
+        speed_header.grid(row=0, column=0, columnspan=4, pady=(8, 5))
+
         # Speed controls container
         speed_controls = ctk.CTkFrame(center_controls, fg_color="transparent")
-        speed_controls.pack(padx=10, pady=(0, 8))
+        speed_controls.grid(row=1, column=0, columnspan=4, padx=10, pady=(0, 8))
         
         # Speed preset buttons with modern design
         speed_presets = [
@@ -6268,14 +6274,15 @@ class VideoPlayerWidget(ctk.CTkFrame):
                 hover_color=color,
                 border_width=2,
                 border_color=color,
-                corner_radius=15
+                corner_radius=15,
             )
-            btn.grid(row=0, column=i, padx=2, pady=2)
+            row, col = divmod(i, 4)
+            btn.grid(row=row, column=col, padx=2, pady=2, sticky="ew")
             self.speed_buttons[speed] = btn
         
         # Custom speed slider
         slider_frame = ctk.CTkFrame(center_controls, fg_color="transparent")
-        slider_frame.pack(pady=(5, 8))
+        slider_frame.grid(row=2, column=0, columnspan=4, pady=(5, 8))
         
         ctk.CTkLabel(
             slider_frame,
@@ -8508,24 +8515,26 @@ class MyScene(Scene):
                         
                         # Find output file
                         output_file = self.find_output_file(temp_dir, scene_class, "mp4")
-                        
+
                         if output_file and os.path.exists(output_file):
                             self.append_terminal_output(f"Found output file: {output_file}\n")
-                            
-                            # Load video in player
+
+                            # Copy to cache and use cached file for playback
+                            cache_dir = os.path.join(BASE_DIR, ".preview_cache")
+                            os.makedirs(cache_dir, exist_ok=True)
+                            cached_file = os.path.join(cache_dir, f"preview_{scene_class}.mp4")
+
+                            try:
+                                shutil.copy2(output_file, cached_file)
+                                self.append_terminal_output(f"Cached preview to: {cached_file}\n")
+                                output_file = cached_file
+                            except Exception as e:
+                                self.append_terminal_output(f"Warning: Could not cache preview: {e}\n")
+
+                            # Load video in player from cached location
                             if self.video_player.load_video(output_file):
                                 self.update_status("Preview generated successfully")
                                 self.last_preview_code = self.current_code
-                                
-                                # Copy to cache for later use
-                                cache_dir = os.path.join(BASE_DIR, ".preview_cache")
-                                os.makedirs(cache_dir, exist_ok=True)
-                                cached_file = os.path.join(cache_dir, f"preview_{scene_class}.mp4")
-                                try:
-                                    shutil.copy2(output_file, cached_file)
-                                    self.append_terminal_output(f"Cached preview to: {cached_file}\n")
-                                except Exception as e:
-                                    self.append_terminal_output(f"Warning: Could not cache preview: {e}\n")
                             else:
                                 self.append_terminal_output("❌ Error: Could not load video in player\n")
                                 self.update_status("Preview generation failed - video loading error")
