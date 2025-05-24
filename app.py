@@ -6139,15 +6139,15 @@ class VideoPlayerWidget(ctk.CTkFrame):
         self.setup_ui()
         
     def setup_ui(self):
-        """Setup the video player interface with modern layout"""
+        """Setup the video player interface with a simpler layout"""
         # Configure grid
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
-        
+
         # Video display area
         self.video_frame = ctk.CTkFrame(self, fg_color="black", corner_radius=8)
         self.video_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 5))
-        
+
         # Video canvas
         self.canvas = tk.Canvas(
             self.video_frame,
@@ -6155,201 +6155,114 @@ class VideoPlayerWidget(ctk.CTkFrame):
             highlightthickness=1,
             highlightcolor=VSCODE_COLORS["primary"],
             highlightbackground=VSCODE_COLORS["border"],
-            relief="flat"
+            relief="flat",
         )
         self.canvas.pack(fill="both", expand=True, padx=8, pady=8)
-        
+
         # Make canvas focusable
         self.canvas.configure(takefocus=True)
         self.canvas.bind("<Button-1>", self.on_canvas_click)
         self.canvas.bind("<FocusIn>", self.on_focus_in)
         self.canvas.bind("<FocusOut>", self.on_focus_out)
         self.canvas.bind("<KeyPress>", self.on_key_press)
-        
+
         # Default placeholder
         self.show_placeholder()
-        
-        # Modern controls frame with gradient-like appearance
-        self.controls_frame = ctk.CTkFrame(self, height=90, corner_radius=8)
+
+        # Simplified controls frame
+        self.controls_frame = ctk.CTkFrame(self, height=80, corner_radius=8)
         self.controls_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-        self.controls_frame.grid_columnconfigure(2, weight=1)
-        
-        # Left controls - Playback
-        left_controls = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
-        left_controls.grid(row=0, column=0, sticky="w", padx=15, pady=10)
-        
-        # Play/Pause button with modern styling
+        self.controls_frame.grid_columnconfigure(3, weight=1)
+
+        # Playback controls
         self.play_button = ctk.CTkButton(
-            left_controls,
+            self.controls_frame,
             text="▶",
-            width=55,
-            height=45,
-            font=ctk.CTkFont(size=24),
+            width=40,
             command=self.toggle_playback,
             fg_color=VSCODE_COLORS["primary"],
             hover_color=VSCODE_COLORS["primary_hover"],
-            corner_radius=25
+            corner_radius=20,
         )
-        self.play_button.pack(side="left", padx=(0, 8))
-        
-        # Stop button
+        self.play_button.grid(row=0, column=0, padx=(10, 5), pady=10)
+
         self.stop_button = ctk.CTkButton(
-            left_controls,
+            self.controls_frame,
             text="⏹",
-            width=45,
-            height=45,
-            font=ctk.CTkFont(size=18),
+            width=40,
             command=self.stop_playback,
             fg_color=VSCODE_COLORS["surface_light"],
             hover_color=VSCODE_COLORS["border"],
-            corner_radius=22
+            corner_radius=20,
         )
-        self.stop_button.pack(side="left", padx=(0, 15))
-        
-        # Time display with better formatting
-        time_frame = ctk.CTkFrame(left_controls, fg_color="transparent")
-        time_frame.pack(side="left", padx=(0, 15))
-        
-        self.time_label = ctk.CTkLabel(
-            time_frame,
-            text="00:00 / 00:00",
-            font=ctk.CTkFont(family="Monaco", size=16, weight="bold"),
-            text_color=VSCODE_COLORS["text"]
-        )
-        self.time_label.pack()
-        
-        # Speed indicator
-        self.speed_indicator = ctk.CTkLabel(
-            time_frame,
-            text="1.0×",
-            font=ctk.CTkFont(size=11),
-            text_color=VSCODE_COLORS["primary"]
-        )
-        self.speed_indicator.pack()
-        
-         # Center controls - Speed
-        center_controls = ctk.CTkFrame(
-            self.controls_frame,
-            fg_color=VSCODE_COLORS["surface_light"],
-            corner_radius=8,
-        )
-        center_controls.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
-        center_controls.grid_columnconfigure((0, 1, 2, 3), weight=1)
-        center_controls.grid_rowconfigure(1, weight=1)
+        self.stop_button.grid(row=0, column=1, padx=(0, 10), pady=10)
 
-        # Speed section header
-        speed_header = ctk.CTkLabel(
-            center_controls,
-            text="⚡ Playback Speed",
-            font=ctk.CTkFont(size=12, weight="bold"),
+        # Time display
+        self.time_label = ctk.CTkLabel(
+            self.controls_frame,
+            text="00:00 / 00:00",
+            font=ctk.CTkFont(size=14, weight="bold"),
             text_color=VSCODE_COLORS["text"],
         )
-        speed_header.grid(row=0, column=0, columnspan=4, pady=(8, 5))
+        self.time_label.grid(row=0, column=2, sticky="w")
 
-        # Speed controls container
-        speed_controls = ctk.CTkFrame(center_controls, fg_color="transparent")
-        speed_controls.grid(row=1, column=0, columnspan=4, padx=10, pady=(0, 8))
-        
-        # Speed preset buttons with modern design
-        speed_presets = [
-            ("0.25×", 0.25, "#ff6b6b"),
-            ("0.5×", 0.5, "#ffa500"), 
-            ("1×", 1.0, "#4ecdc4"),
-            ("1.5×", 1.5, "#45b7d1"),
-            ("2×", 2.0, "#96ceb4"),
-            ("4×", 4.0, "#feca57"),
-            ("8×", 8.0, "#ff9ff3")
-        ]
-        
-        self.speed_buttons = {}
-        for i, (text, speed, color) in enumerate(speed_presets):
-            btn = ctk.CTkButton(
-                speed_controls,
-                text=text,
-                width=45,
-                height=30,
-                font=ctk.CTkFont(size=11, weight="bold"),
-                command=lambda s=speed: self.set_speed(s),
-                fg_color=color if speed == 1.0 else "transparent",
-                hover_color=color,
-                border_width=2,
-                border_color=color,
-                corner_radius=15,
-            )
-            row, col = divmod(i, 4)
-            btn.grid(row=row, column=col, padx=2, pady=2, sticky="ew")
-            self.speed_buttons[speed] = btn
-        
-        # Custom speed slider
-        slider_frame = ctk.CTkFrame(center_controls, fg_color="transparent")
-        slider_frame.grid(row=2, column=0, columnspan=4, pady=(5, 8))
-        
-        ctk.CTkLabel(
-            slider_frame,
-            text="Custom:",
-            font=ctk.CTkFont(size=10),
-            text_color=VSCODE_COLORS["text_secondary"]
-        ).pack(side="left", padx=(5, 5))
-        
+        # Speed slider with indicator
+        self.speed_indicator = ctk.CTkLabel(
+            self.controls_frame,
+            text="1.0×",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["primary"],
+        )
+        self.speed_indicator.grid(row=0, column=3, sticky="e", padx=(0, 5))
+
         self.speed_slider = ctk.CTkSlider(
-            slider_frame,
+            self.controls_frame,
             from_=0.25,
             to=self.max_speed,
-            number_of_steps=31,  # 0.25 increments
+            number_of_steps=31,
             command=self.on_speed_slider_change,
             width=120,
-            height=16
+            height=16,
         )
-        self.speed_slider.pack(side="left", padx=5)
+        self.speed_slider.grid(row=1, column=0, columnspan=4, sticky="ew", padx=10)
         self.speed_slider.set(1.0)
-        
-        # Progress bar (right side)
-        progress_frame = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
-        progress_frame.grid(row=0, column=2, sticky="ew", padx=15, pady=10)
-        progress_frame.grid_columnconfigure(0, weight=1)
-        
-        # Progress label
-        ctk.CTkLabel(
-            progress_frame,
-            text="Progress",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=VSCODE_COLORS["text_secondary"]
-        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
-        
-        # Progress bar with modern styling
+
+        # Progress bar
         self.progress_var = ctk.DoubleVar()
         self.progress_slider = ctk.CTkSlider(
-            progress_frame,
+            self.controls_frame,
             from_=0,
             to=100,
             variable=self.progress_var,
             command=self.seek_to_position,
-            height=24,
-            progress_color=VSCODE_COLORS["primary"]
+            height=20,
+            progress_color=VSCODE_COLORS["primary"],
         )
-        self.progress_slider.grid(row=1, column=0, sticky="ew", pady=(0, 5))
-        
-        # Frame info
-        info_frame = ctk.CTkFrame(progress_frame, fg_color="transparent")
-        info_frame.grid(row=2, column=0, sticky="ew")
+        self.progress_slider.grid(row=2, column=0, columnspan=4, sticky="ew", padx=10, pady=(5, 0))
+
+        # Frame info and focus indicator
+        info_frame = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
+        info_frame.grid(row=3, column=0, columnspan=4, sticky="ew", padx=10, pady=(0, 5))
         info_frame.grid_columnconfigure(1, weight=1)
-        
+
         self.frame_label = ctk.CTkLabel(
             info_frame,
             text="Frame: 0/0",
             font=ctk.CTkFont(size=10),
-            text_color=VSCODE_COLORS["text_secondary"]
+            text_color=VSCODE_COLORS["text_secondary"],
         )
         self.frame_label.grid(row=0, column=0, sticky="w")
-        
-        # Focus indicator
+
         self.focus_indicator = ctk.CTkLabel(
             info_frame,
             text="",
             font=ctk.CTkFont(size=9),
-            text_color=VSCODE_COLORS["primary"]
+            text_color=VSCODE_COLORS["primary"],
         )
         self.focus_indicator.grid(row=0, column=1, sticky="e")
+
+        # No preset speed buttons in simplified layout
+        self.speed_buttons = {}
         
     def on_canvas_click(self, event):
         """Handle canvas click to give it focus"""
@@ -8557,6 +8470,18 @@ class MyScene(Scene):
                             try:
                                 shutil.copy2(output_file, cached_file)
                                 self.append_terminal_output(f"Cached preview to: {cached_file}\n")
+                                # Remove original render output to keep media directory clean
+                                try:
+                                    os.remove(output_file)
+                                    parent_dir = os.path.dirname(output_file)
+                                    # Remove empty parent directories under MEDIA_DIR
+                                    while parent_dir.startswith(MEDIA_DIR) and not os.listdir(parent_dir):
+                                        os.rmdir(parent_dir)
+                                        parent_dir = os.path.dirname(parent_dir)
+                                except Exception as e_remove:
+                                    self.append_terminal_output(
+                                        f"Warning: Could not remove temp output file: {e_remove}\n"
+                                    )
                                 output_file = cached_file
                             except Exception as e:
                                 self.append_terminal_output(f"Warning: Could not cache preview: {e}\n")
