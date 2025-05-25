@@ -3201,6 +3201,14 @@ class VirtualEnvironmentManager:
         self.logger.info(f"Is frozen: {self.is_frozen}")
         self.logger.info(f"Virtual environments directory: {self.venv_dir}")
         
+        # CRITICAL SAFETY CHECK: Log our executable info
+        if self.is_frozen:
+            our_exe = os.path.abspath(sys.executable)
+            our_dir = os.path.dirname(our_exe)
+            self.logger.info(f"Our executable: {our_exe}")
+            self.logger.info(f"Our directory: {our_dir}")
+            self.logger.info("Will NEVER use our own executable as Python interpreter")
+        
         # Initialize Python discovery
         self.discover_all_python_installations()
         
@@ -3307,17 +3315,41 @@ class VirtualEnvironmentManager:
         else:
             python_names.extend([f"python3.{i}" for i in range(8, 13)])
         
+        # Get our executable info for filtering
+        our_exe_dir = None
+        our_exe_name = None
+        if self.is_frozen:
+            our_exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            our_exe_name = os.path.basename(sys.executable).lower()
+        
         for directory in path_dirs:
             if not directory or not os.path.isdir(directory):
                 continue
                 
-            # Skip our own executable directory
-            if self.is_frozen and directory == os.path.dirname(sys.executable):
-                continue
-                
+            # ENHANCED: Skip our own executable directory completely
+            if self.is_frozen:
+                abs_dir = os.path.abspath(directory)
+                if abs_dir == our_exe_dir:
+                    self.logger.debug(f"Skipping our executable directory: {abs_dir}")
+                    continue
+                    
             for python_name in python_names:
                 python_path = os.path.join(directory, python_name)
                 if os.path.isfile(python_path) and os.access(python_path, os.X_OK):
+                    # ENHANCED: Additional safety checks
+                    if self.is_frozen:
+                        abs_python = os.path.abspath(python_path)
+                        
+                        # Never add our own executable
+                        if abs_python == os.path.abspath(sys.executable):
+                            self.logger.debug(f"Skipping our own executable: {abs_python}")
+                            continue
+                            
+                        # Skip anything that looks like our app
+                        if our_exe_name and our_exe_name in os.path.basename(abs_python).lower():
+                            self.logger.debug(f"Skipping similar executable: {abs_python}")
+                            continue
+                    
                     pythons.append(python_path)
                     self.logger.info(f"PATH found: {python_path}")
         
@@ -3466,54 +3498,62 @@ class VirtualEnvironmentManager:
         if not python_path or not os.path.isfile(python_path):
             return False
         
-        # Skip our own executable
-        if self.is_frozen and python_path == sys.executable:
-            return False
-        
-        # Skip if in our directory
+        # CRITICAL: Never use our own executable as Python interpreter
         if self.is_frozen:
-            exe_dir = os.path.dirname(sys.executable)
-            if python_path.startswith(exe_dir):
+            # Get our executable path and directory
+            our_exe = os.path.abspath(sys.executable)
+            our_dir = os.path.dirname(our_exe)
+            candidate_path = os.path.abspath(python_path)
+            
+            # Skip if it's exactly our executable
+            if candidate_path == our_exe:
+                self.logger.warning(f"Skipping our own executable: {candidate_path}")
+                return False
+                
+            # Skip if it's in our directory and looks like our exe
+            if candidate_path.startswith(our_dir) and "manimstudio" in os.path.basename(candidate_path).lower():
+                self.logger.warning(f"Skipping potential self-reference: {candidate_path}")
+                return False
+                
+            # Skip if filename suggests it's not a real Python interpreter
+            filename = os.path.basename(candidate_path).lower()
+            forbidden_names = ["manimstudio", "manim_studio", "app", "main"]
+            if any(name in filename for name in forbidden_names):
+                self.logger.warning(f"Skipping non-Python executable: {candidate_path}")
                 return False
         
         try:
-            # Test basic functionality
+            # Test basic functionality with explicit version check
             result = subprocess.run(
-                [python_path, "-c", "import sys; print(sys.version)"],
+                [python_path, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}'); import venv, pip"],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
             
             if result.returncode != 0:
+                self.logger.warning(f"Python validation failed for {python_path}: {result.stderr}")
                 return False
             
-            # Test venv module
-            result = subprocess.run(
-                [python_path, "-m", "venv", "--help"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            if result.returncode != 0:
+            # Verify it's actually Python by checking version output
+            try:
+                version_line = result.stdout.strip().split('\n')[0]
+                major, minor = map(int, version_line.split('.'))
+                if major < 3 or (major == 3 and minor < 8):
+                    self.logger.warning(f"Python version too old: {major}.{minor}")
+                    return False
+            except (ValueError, IndexError):
+                self.logger.warning(f"Invalid Python version output: {result.stdout}")
                 return False
+                
+            return True
             
-            # Test pip module
-            result = subprocess.run(
-                [python_path, "-m", "pip", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            return result.returncode == 0
-            
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"Validation error for {python_path}: {e}")
             return False
 
     def find_system_python(self):
-        """Find the best available Python installation"""
+        """Find the best available Python installation, never using ourselves"""
         # Refresh cache if it's old (older than 1 hour)
         if time.time() - self.python_cache.get('scan_time', 0) > 3600:
             self.discover_all_python_installations()
@@ -3524,30 +3564,60 @@ class VirtualEnvironmentManager:
             self.logger.error("No Python installations found!")
             return None
         
-        # Prefer non-frozen, recent versions
+        # CRITICAL: Filter out any potential self-references
+        if self.is_frozen:
+            our_exe = os.path.abspath(sys.executable)
+            our_dir = os.path.dirname(our_exe)
+            
+            # Filter out dangerous paths
+            safe_installations = []
+            for python_path in installations:
+                abs_path = os.path.abspath(python_path)
+                filename = os.path.basename(abs_path).lower()
+                
+                # Skip our own executable
+                if abs_path == our_exe:
+                    self.logger.warning(f"Filtered out our own executable: {abs_path}")
+                    continue
+                    
+                # Skip anything in our directory
+                if abs_path.startswith(our_dir):
+                    self.logger.warning(f"Filtered out executable in our directory: {abs_path}")
+                    continue
+                    
+                # Skip anything that looks like our app
+                if any(name in filename for name in ["manimstudio", "manim_studio", "app", "main"]):
+                    self.logger.warning(f"Filtered out potential app executable: {abs_path}")
+                    continue
+                    
+                safe_installations.append(python_path)
+            
+            installations = safe_installations
+        
+        if not installations:
+            self.logger.error("No safe Python installations found after filtering!")
+            return None
+        
+        # Score and return the best Python
         def score_python(python_path):
             score = 0
             
-            # Prefer system Python over conda/virtual envs
-            if '/conda' not in python_path.lower() and '/anaconda' not in python_path.lower():
-                score += 10
-            
-            # Prefer standard locations
+            # Prefer standard Python installations
             if sys.platform == "win32":
                 if 'Program Files' in python_path:
-                    score += 5
+                    score += 10
                 elif python_path.startswith('C:\\Python'):
                     score += 8
             else:
                 if python_path.startswith('/usr/bin/'):
-                    score += 8
+                    score += 10
                 elif python_path.startswith('/usr/local/bin/'):
-                    score += 5
+                    score += 8
             
-            # Try to get version
+            # Prefer higher Python versions
             try:
                 result = subprocess.run(
-                    [python_path, "-c", "import sys; print('.'.join(map(str, sys.version_info[:2])))"],
+                    [python_path, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
                     capture_output=True,
                     text=True,
                     timeout=5
@@ -3566,11 +3636,31 @@ class VirtualEnvironmentManager:
         best_python = installations[0]
         
         self.logger.info(f"Selected best Python: {best_python}")
+        
+        # Final safety check
+        if self.is_frozen and os.path.abspath(best_python) == os.path.abspath(sys.executable):
+            self.logger.error("CRITICAL: Almost selected our own executable as Python!")
+            return None
+            
         return best_python
             
     def detect_existing_environment(self):
         """Detect existing suitable environment or use bundled one"""
         self.logger.info("Detecting existing environments...")
+        
+        # CRITICAL: Never consider our own executable as a Python environment
+        if self.is_frozen:
+            our_exe = os.path.abspath(sys.executable)
+            self.logger.info(f"Running as frozen executable: {our_exe}")
+            self.logger.info("Will only use external Python interpreters")
+            
+            # Double-check that sys.executable is not a Python interpreter
+            try:
+                result = subprocess.run([our_exe, "--version"], capture_output=True, text=True, timeout=5)
+                if "python" in result.stdout.lower():
+                    self.logger.error("CRITICAL: Our executable claims to be Python - this should not happen!")
+            except:
+                pass  # Good, our executable is not Python
         
         # Check for default environment
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
@@ -4007,9 +4097,23 @@ else:
                 error_msg = "❌ CRITICAL: No Python installation found!\n\n"
                 error_msg += "Please install Python from https://python.org and restart the application."
                 raise Exception(error_msg)
+            
+            # CRITICAL SAFETY CHECK: Ensure we never use ourselves
+            if self.is_frozen:
+                our_exe = os.path.abspath(sys.executable)
+                selected_exe = os.path.abspath(python_exe)
                 
+                if selected_exe == our_exe:
+                    error_msg = "❌ CRITICAL ERROR: Application tried to use itself as Python interpreter!\n\n"
+                    error_msg += f"Our executable: {our_exe}\n"
+                    error_msg += f"Selected Python: {selected_exe}\n\n"
+                    error_msg += "Please install a proper Python interpreter from https://python.org"
+                    raise Exception(error_msg)
+                    
             if log_callback:
-                log_callback(f"✅ Using Python: {python_exe}")
+                log_callback(f"✅ Using EXTERNAL Python: {python_exe}")
+                log_callback(f"✅ Our executable: {sys.executable}")
+                log_callback(f"✅ Verified they are different!")
                 
             # Log critical information
             self.logger.info("=" * 60)
@@ -4606,7 +4710,6 @@ else:
         
         # Return at least 1KB to avoid showing 0
         return max(1024, total_size)
-
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
