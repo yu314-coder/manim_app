@@ -3155,8 +3155,8 @@ class VirtualEnvironmentManager:
         self.parent_app = parent_app
         self.current_venv = None
         
-        # CRITICAL: Detect if we're running as executable
-        self.is_frozen = getattr(sys, 'frozen', False)
+        # CRITICAL: Enhanced frozen detection
+        self.is_frozen = self._detect_if_frozen()
         
         # Determine venv directory
         if self.is_frozen:
@@ -3198,7 +3198,7 @@ class VirtualEnvironmentManager:
         # Log critical information
         self.logger.info("VirtualEnvironmentManager initialized")
         self.logger.info(f"Python executable: {sys.executable}")
-        self.logger.info(f"Is frozen: {self.is_frozen}")
+        self.logger.info(f"Is frozen (corrected): {self.is_frozen}")
         self.logger.info(f"Virtual environments directory: {self.venv_dir}")
         
         # CRITICAL SAFETY CHECK: Log our executable info
@@ -3220,6 +3220,33 @@ class VirtualEnvironmentManager:
         else:
             self.needs_setup = False
             self.logger.info(f"Using existing environment: {self.current_venv}")
+
+    def _detect_if_frozen(self):
+        """Enhanced detection of frozen executable"""
+        # Standard PyInstaller detection
+        if getattr(sys, 'frozen', False):
+            return True
+        
+        # Additional checks for our specific case
+        exe_path = os.path.abspath(sys.executable)
+        exe_name = os.path.basename(exe_path).lower()
+        
+        # Check if executable name suggests it's our app
+        app_names = ["manimstudio", "manim_studio", "app", "main"]
+        if any(name in exe_name for name in app_names):
+            return True
+        
+        # Check if executable is in a 'dist' directory (common for PyInstaller)
+        if "dist" in exe_path.lower():
+            return True
+        
+        # Check if we can't import basic Python modules (sign of being an exe)
+        try:
+            import ast
+            import tokenize
+            return False  # We can import, probably real Python
+        except ImportError:
+            return True  # Can't import basic modules, probably frozen
             
     def _setup_debug_logging(self):
         """Set up debug logging to file for silent executable troubleshooting"""
@@ -3249,9 +3276,64 @@ class VirtualEnvironmentManager:
         # Log system information
         self.logger.info(f"System: {sys.platform}")
         self.logger.info(f"Python: {sys.executable} {sys.version}")
-        self.logger.info(f"Frozen executable: {self.is_frozen}")
+        self.logger.info(f"Frozen executable (corrected): {self.is_frozen}")
         
         return debug_log_path
+
+    def _get_comprehensive_python_names(self):
+        """Get comprehensive list of Python executable names to search for"""
+        python_names = []
+        
+        if sys.platform == "win32":
+            # Windows Python executable names
+            base_names = [
+                "python.exe",
+                "python3.exe",
+                "pythonw.exe",  # Windows GUI version
+                "python3w.exe"
+            ]
+            
+            # Add version-specific names for Python 3.8 through 3.13
+            for major in [3]:
+                for minor in range(8, 14):  # 3.8 to 3.13
+                    base_names.extend([
+                        f"python{major}.{minor}.exe",
+                        f"python{major}{minor}.exe",  # Some installations use this format
+                        f"pythonw{major}.{minor}.exe",
+                    ])
+            
+            # Exclude Python launchers (these are just redirectors)
+            excluded_names = ["py.exe", "pyw.exe", "pylauncher.exe"]
+            
+            python_names = [name for name in base_names if name not in excluded_names]
+            
+        else:
+            # Unix/Linux/macOS Python executable names
+            base_names = [
+                "python",
+                "python3"
+            ]
+            
+            # Add version-specific names for Python 3.8 through 3.13
+            for major in [3]:
+                for minor in range(8, 14):  # 3.8 to 3.13
+                    base_names.extend([
+                        f"python{major}.{minor}",
+                        f"python{major}{minor}",  # Some systems use this
+                    ])
+            
+            # Add some common alternative names
+            base_names.extend([
+                "python3-config",  # Sometimes symlinked
+                "python-config"
+            ])
+            
+            python_names = base_names
+        
+        # Log the names we're searching for
+        self.logger.debug(f"Searching for Python executables: {python_names}")
+        
+        return python_names
 
     def discover_all_python_installations(self):
         """Comprehensive Python discovery across the entire system"""
@@ -3305,22 +3387,19 @@ class VirtualEnvironmentManager:
         return unique_pythons
 
     def _search_system_path(self):
-        """Search for Python in system PATH"""
+        """Search for Python in system PATH with comprehensive name detection"""
         pythons = []
         path_dirs = os.environ.get("PATH", "").split(os.pathsep)
         
-        python_names = ["python", "python3", "python.exe"]
-        if sys.platform == "win32":
-            python_names.extend(["py", "py.exe"])
-        else:
-            python_names.extend([f"python3.{i}" for i in range(8, 13)])
+        # Get comprehensive list of Python executable names
+        python_names = self._get_comprehensive_python_names()
         
         # Get our executable info for filtering
         our_exe_dir = None
-        our_exe_name = None
+        our_exe_path = None
         if self.is_frozen:
-            our_exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-            our_exe_name = os.path.basename(sys.executable).lower()
+            our_exe_path = os.path.abspath(sys.executable)
+            our_exe_dir = os.path.dirname(our_exe_path)
         
         for directory in path_dirs:
             if not directory or not os.path.isdir(directory):
@@ -3333,6 +3412,15 @@ class VirtualEnvironmentManager:
                     self.logger.debug(f"Skipping our executable directory: {abs_dir}")
                     continue
                     
+            # Skip Windows system directories that only contain launchers
+            if sys.platform == "win32":
+                dir_lower = directory.lower()
+                system_dirs = ["windows", "system32", "syswow64"]
+                # Allow WindowsApps but check contents carefully
+                if any(skip_dir in dir_lower for skip_dir in system_dirs):
+                    self.logger.debug(f"Skipping Windows system directory: {directory}")
+                    continue
+                    
             for python_name in python_names:
                 python_path = os.path.join(directory, python_name)
                 if os.path.isfile(python_path) and os.access(python_path, os.X_OK):
@@ -3341,19 +3429,40 @@ class VirtualEnvironmentManager:
                         abs_python = os.path.abspath(python_path)
                         
                         # Never add our own executable
-                        if abs_python == os.path.abspath(sys.executable):
+                        if abs_python == our_exe_path:
                             self.logger.debug(f"Skipping our own executable: {abs_python}")
                             continue
                             
                         # Skip anything that looks like our app
-                        if our_exe_name and our_exe_name in os.path.basename(abs_python).lower():
+                        if "manimstudio" in os.path.basename(abs_python).lower():
                             self.logger.debug(f"Skipping similar executable: {abs_python}")
+                            continue
+                    
+                    # Special handling for WindowsApps - check if it's a real Python
+                    if sys.platform == "win32" and "windowsapps" in directory.lower():
+                        if not self._is_real_python_in_windowsapps(python_path):
+                            self.logger.debug(f"Skipping WindowsApps redirect: {python_path}")
                             continue
                     
                     pythons.append(python_path)
                     self.logger.info(f"PATH found: {python_path}")
         
         return pythons
+
+    def _is_real_python_in_windowsapps(self, python_path):
+        """Check if a Python in WindowsApps is real or just a redirect"""
+        try:
+            # Try to get version - real Python will respond
+            result = subprocess.run(
+                [python_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            # If it returns version info, it's likely real Python
+            return result.returncode == 0 and "python" in result.stdout.lower()
+        except:
+            return False
 
     def _search_windows_registry(self):
         """Search Windows Registry for Python installations"""
@@ -3365,11 +3474,14 @@ class VirtualEnvironmentManager:
         try:
             import winreg
             
-            # Registry keys to search
+            # Registry keys to search - comprehensive list
             registry_keys = [
                 (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Python\PythonCore"),
                 (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Python\PythonCore"),
                 (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Python\PythonCore"),
+                # Additional registry locations
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Python"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Python"),
             ]
             
             for hkey, subkey in registry_keys:
@@ -3379,15 +3491,40 @@ class VirtualEnvironmentManager:
                         while True:
                             try:
                                 version = winreg.EnumKey(key, i)
-                                install_path_key = f"{subkey}\\{version}\\InstallPath"
                                 
-                                with winreg.OpenKey(hkey, install_path_key) as install_key:
-                                    install_path = winreg.QueryValue(install_key, "")
-                                    python_exe = os.path.join(install_path, "python.exe")
-                                    
-                                    if os.path.isfile(python_exe):
-                                        pythons.append(python_exe)
-                                        self.logger.info(f"Registry found: {python_exe}")
+                                # Skip old Python versions (< 3.10)
+                                try:
+                                    version_parts = version.split('.')
+                                    if len(version_parts) >= 2:
+                                        major = int(version_parts[0])
+                                        minor = int(version_parts[1])
+                                        if major < 3 or (major == 3 and minor < 10):
+                                            self.logger.debug(f"Skipping old Python version from registry: {version}")
+                                            i += 1
+                                            continue
+                                except (ValueError, IndexError):
+                                    pass  # Continue with unknown version format
+                                
+                                # Try different path structures
+                                path_subkeys = [
+                                    f"{subkey}\\{version}\\InstallPath",
+                                    f"{subkey}\\{version}\\InstallPath\\",
+                                ]
+                                
+                                for path_subkey in path_subkeys:
+                                    try:
+                                        with winreg.OpenKey(hkey, path_subkey) as install_key:
+                                            install_path = winreg.QueryValue(install_key, "")
+                                            if install_path:
+                                                # Check for multiple Python executable names
+                                                for python_name in ["python.exe", "pythonw.exe"]:
+                                                    python_exe = os.path.join(install_path, python_name)
+                                                    if os.path.isfile(python_exe):
+                                                        pythons.append(python_exe)
+                                                        self.logger.info(f"Registry found: {python_exe}")
+                                                break
+                                    except OSError:
+                                        continue
                                 
                                 i += 1
                             except OSError:
@@ -3402,32 +3539,75 @@ class VirtualEnvironmentManager:
         return pythons
 
     def _search_common_directories(self):
-        """Search common installation directories"""
+        """Search common installation directories with comprehensive patterns"""
         pythons = []
         
         if sys.platform == "win32":
-            # Windows common paths
+            # Windows common paths - comprehensive search
             search_patterns = [
+                # Standard Python.org installations
                 r"C:\Python*\python.exe",
+                r"C:\Python*\pythonw.exe",
                 r"C:\Program Files\Python*\python.exe",
+                r"C:\Program Files\Python*\pythonw.exe",
                 r"C:\Program Files (x86)\Python*\python.exe",
+                r"C:\Program Files (x86)\Python*\pythonw.exe",
+                
+                # User installations
                 os.path.join(os.path.expanduser("~"), "AppData", "Local", "Programs", "Python", "Python*", "python.exe"),
-                os.path.join(os.path.expanduser("~"), "AppData", "Local", "Microsoft", "WindowsApps", "python*.exe"),
+                os.path.join(os.path.expanduser("~"), "AppData", "Local", "Programs", "Python", "Python*", "pythonw.exe"),
+                
+                # Conda/Anaconda installations
                 r"C:\Anaconda*\python.exe",
-                r"C:\Miniconda*\python.exe",
+                r"C:\Anaconda*\pythonw.exe",
+                r"C:\Miniconda*\python.exe", 
+                r"C:\Miniconda*\pythonw.exe",
                 os.path.join(os.path.expanduser("~"), "Anaconda*", "python.exe"),
+                os.path.join(os.path.expanduser("~"), "Anaconda*", "pythonw.exe"),
                 os.path.join(os.path.expanduser("~"), "Miniconda*", "python.exe"),
+                os.path.join(os.path.expanduser("~"), "Miniconda*", "pythonw.exe"),
                 os.path.join(os.path.expanduser("~"), "AppData", "Local", "Continuum", "anaconda*", "python.exe"),
+                os.path.join(os.path.expanduser("~"), "AppData", "Local", "Continuum", "anaconda*", "pythonw.exe"),
+                
+                # Other common locations
+                r"C:\tools\python*\python.exe",
+                r"C:\dev\python*\python.exe",
+                os.path.join(os.path.expanduser("~"), "scoop", "apps", "python*", "current", "python.exe"),
+                os.path.join(os.path.expanduser("~"), ".local", "bin", "python*.exe"),
             ]
         else:
-            # Unix-like systems
+            # Unix-like systems - comprehensive search
             search_patterns = [
+                # Standard system installations
                 "/usr/bin/python*",
                 "/usr/local/bin/python*",
-                "/opt/python*/bin/python",
-                "/home/*/anaconda*/bin/python",
-                "/home/*/miniconda*/bin/python",
-                os.path.join(os.path.expanduser("~"), ".pyenv", "versions", "*", "bin", "python"),
+                "/opt/python*/bin/python*",
+                "/usr/pkg/bin/python*",  # NetBSD
+                "/usr/local/pkg/bin/python*",
+                
+                # User installations
+                os.path.join(os.path.expanduser("~"), ".local", "bin", "python*"),
+                os.path.join(os.path.expanduser("~"), "bin", "python*"),
+                
+                # Conda/package manager installations  
+                "/home/*/anaconda*/bin/python*",
+                "/home/*/miniconda*/bin/python*",
+                "/opt/anaconda*/bin/python*",
+                "/opt/miniconda*/bin/python*",
+                
+                # pyenv installations
+                os.path.join(os.path.expanduser("~"), ".pyenv", "versions", "*", "bin", "python*"),
+                os.path.join(os.path.expanduser("~"), ".pyenv", "shims", "python*"),
+                
+                # Homebrew (macOS)
+                "/opt/homebrew/bin/python*",
+                "/usr/local/Cellar/python*/*/bin/python*",
+                "/opt/homebrew/Cellar/python*/*/bin/python*",
+                
+                # Alternative installation paths
+                "/snap/bin/python*",  # Snap packages
+                "/var/lib/snapd/snap/bin/python*",
+                "/usr/lib/python*/bin/python*",
             ]
         
         import glob
@@ -3440,6 +3620,14 @@ class VirtualEnvironmentManager:
                         # Skip if it's our own executable
                         if self.is_frozen and match == sys.executable:
                             continue
+                            
+                        # Filter out unwanted executables
+                        match_name = os.path.basename(match).lower()
+                        
+                        # Skip config scripts and other utilities
+                        if any(suffix in match_name for suffix in ["-config", "-build", "-embed"]):
+                            continue
+                            
                         pythons.append(match)
                         self.logger.info(f"Directory search found: {match}")
             except Exception as e:
@@ -3448,35 +3636,44 @@ class VirtualEnvironmentManager:
         return pythons
 
     def _search_package_managers(self):
-        """Search package manager installations"""
+        """Search package manager installations comprehensively"""
         pythons = []
         
-        # Check for conda
+        # Check for conda environments
         try:
-            conda_info = subprocess.run(
-                ["conda", "info", "--envs"], 
-                capture_output=True, 
-                text=True, 
-                timeout=10
-            )
-            if conda_info.returncode == 0:
-                for line in conda_info.stdout.split('\n'):
-                    if line.strip() and not line.startswith('#'):
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            env_path = parts[-1]
-                            if sys.platform == "win32":
-                                python_exe = os.path.join(env_path, "python.exe")
-                            else:
-                                python_exe = os.path.join(env_path, "bin", "python")
-                            
-                            if os.path.isfile(python_exe):
-                                pythons.append(python_exe)
-                                self.logger.info(f"Conda found: {python_exe}")
-        except Exception:
-            pass
+            conda_commands = ["conda", "mamba", "micromamba"]
+            for conda_cmd in conda_commands:
+                try:
+                    conda_info = subprocess.run(
+                        [conda_cmd, "info", "--envs"], 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=15
+                    )
+                    if conda_info.returncode == 0:
+                        for line in conda_info.stdout.split('\n'):
+                            if line.strip() and not line.startswith('#'):
+                                parts = line.split()
+                                if len(parts) >= 2:
+                                    env_path = parts[-1]
+                                    if sys.platform == "win32":
+                                        for py_name in ["python.exe", "pythonw.exe"]:
+                                            python_exe = os.path.join(env_path, py_name)
+                                            if os.path.isfile(python_exe):
+                                                pythons.append(python_exe)
+                                                self.logger.info(f"{conda_cmd} found: {python_exe}")
+                                    else:
+                                        python_exe = os.path.join(env_path, "bin", "python")
+                                        if os.path.isfile(python_exe):
+                                            pythons.append(python_exe)
+                                            self.logger.info(f"{conda_cmd} found: {python_exe}")
+                    break  # Use first available conda command
+                except FileNotFoundError:
+                    continue
+        except Exception as e:
+            self.logger.debug(f"Error checking conda: {e}")
         
-        # Check for pyenv
+        # Check for pyenv (Unix-like systems)
         if sys.platform != "win32":
             try:
                 pyenv_root = os.environ.get("PYENV_ROOT", os.path.join(os.path.expanduser("~"), ".pyenv"))
@@ -3484,17 +3681,56 @@ class VirtualEnvironmentManager:
                 
                 if os.path.isdir(versions_dir):
                     for version in os.listdir(versions_dir):
-                        python_exe = os.path.join(versions_dir, version, "bin", "python")
+                        version_path = os.path.join(versions_dir, version)
+                        if os.path.isdir(version_path):
+                            for py_name in ["python", "python3"]:
+                                python_exe = os.path.join(version_path, "bin", py_name)
+                                if os.path.isfile(python_exe):
+                                    pythons.append(python_exe)
+                                    self.logger.info(f"Pyenv found: {python_exe}")
+            except Exception as e:
+                self.logger.debug(f"Error checking pyenv: {e}")
+        
+        # Check for pipx installations
+        try:
+            pipx_home = os.environ.get("PIPX_HOME", os.path.join(os.path.expanduser("~"), ".local", "share", "pipx"))
+            if os.path.isdir(pipx_home):
+                venvs_dir = os.path.join(pipx_home, "venvs")
+                if os.path.isdir(venvs_dir):
+                    for venv_name in os.listdir(venvs_dir):
+                        venv_path = os.path.join(venvs_dir, venv_name)
+                        if os.path.isdir(venv_path):
+                            if sys.platform == "win32":
+                                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                            else:
+                                python_exe = os.path.join(venv_path, "bin", "python")
+                            if os.path.isfile(python_exe):
+                                pythons.append(python_exe)
+                                self.logger.info(f"Pipx found: {python_exe}")
+        except Exception as e:
+            self.logger.debug(f"Error checking pipx: {e}")
+            
+        # Check for poetry environments  
+        try:
+            poetry_cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "pypoetry", "virtualenvs")
+            if os.path.isdir(poetry_cache_dir):
+                for venv_name in os.listdir(poetry_cache_dir):
+                    venv_path = os.path.join(poetry_cache_dir, venv_name)
+                    if os.path.isdir(venv_path):
+                        if sys.platform == "win32":
+                            python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                        else:
+                            python_exe = os.path.join(venv_path, "bin", "python")
                         if os.path.isfile(python_exe):
                             pythons.append(python_exe)
-                            self.logger.info(f"Pyenv found: {python_exe}")
-            except Exception:
-                pass
+                            self.logger.info(f"Poetry found: {python_exe}")
+        except Exception as e:
+            self.logger.debug(f"Error checking poetry: {e}")
         
         return pythons
 
     def validate_python_installation(self, python_path):
-        """Thoroughly validate a Python installation"""
+        """Thoroughly validate a Python installation with version checking"""
         if not python_path or not os.path.isfile(python_path):
             return False
         
@@ -3510,9 +3746,9 @@ class VirtualEnvironmentManager:
                 self.logger.warning(f"Skipping our own executable: {candidate_path}")
                 return False
                 
-            # Skip if it's in our directory and looks like our exe
-            if candidate_path.startswith(our_dir) and "manimstudio" in os.path.basename(candidate_path).lower():
-                self.logger.warning(f"Skipping potential self-reference: {candidate_path}")
+            # Skip if it's in our directory
+            if candidate_path.startswith(our_dir):
+                self.logger.warning(f"Skipping executable in our directory: {candidate_path}")
                 return False
                 
             # Skip if filename suggests it's not a real Python interpreter
@@ -3522,30 +3758,76 @@ class VirtualEnvironmentManager:
                 self.logger.warning(f"Skipping non-Python executable: {candidate_path}")
                 return False
         
+        # Skip Python launchers on Windows
+        if sys.platform == "win32":
+            filename = os.path.basename(python_path).lower()
+            if filename in ["py.exe", "pyw.exe", "pylauncher.exe"]:
+                self.logger.warning(f"Skipping Python launcher: {python_path}")
+                return False
+        
+        # Skip config and utility scripts
+        filename = os.path.basename(python_path).lower()
+        if any(suffix in filename for suffix in ["-config", "-build", "-embed", ".bat", ".cmd", ".sh"]):
+            self.logger.warning(f"Skipping utility script: {python_path}")
+            return False
+        
         try:
-            # Test basic functionality with explicit version check
+            # Enhanced test with version requirements
             result = subprocess.run(
-                [python_path, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}'); import venv, pip"],
+                [python_path, "-c", """
+import sys
+major, minor = sys.version_info.major, sys.version_info.minor
+print(f'{major}.{minor}')
+if major < 3 or (major == 3 and minor < 10):
+    print('VERSION_TOO_OLD')
+    exit(1)
+try:
+    import venv
+    print('VENV_OK')
+except ImportError:
+    print('NO_VENV')
+    exit(1)
+try:
+    import pip
+    print('PIP_OK')
+except ImportError:
+    print('NO_PIP')
+    exit(1)
+print('ALL_OK')
+"""],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=15
             )
             
             if result.returncode != 0:
                 self.logger.warning(f"Python validation failed for {python_path}: {result.stderr}")
                 return False
             
-            # Verify it's actually Python by checking version output
-            try:
-                version_line = result.stdout.strip().split('\n')[0]
-                major, minor = map(int, version_line.split('.'))
-                if major < 3 or (major == 3 and minor < 8):
-                    self.logger.warning(f"Python version too old: {major}.{minor}")
-                    return False
-            except (ValueError, IndexError):
-                self.logger.warning(f"Invalid Python version output: {result.stdout}")
+            # Check output for requirements
+            output = result.stdout.strip()
+            if "VERSION_TOO_OLD" in output:
+                self.logger.warning(f"Python version too old: {python_path}")
                 return False
-                
+            
+            if "NO_VENV" in output:
+                self.logger.warning(f"Python missing venv module: {python_path}")
+                return False
+            
+            if "NO_PIP" in output:
+                self.logger.warning(f"Python missing pip module: {python_path}")
+                return False
+            
+            if "ALL_OK" not in output:
+                self.logger.warning(f"Python validation incomplete: {python_path}")
+                return False
+            
+            # Extract version for logging
+            lines = output.split('\n')
+            if lines:
+                version = lines[0]
+                self.logger.info(f"Validated Python {version}: {python_path}")
+            
             return True
             
         except Exception as e:
@@ -3553,7 +3835,7 @@ class VirtualEnvironmentManager:
             return False
 
     def find_system_python(self):
-        """Find the best available Python installation, never using ourselves"""
+        """Find the best available Python installation (>= 3.10), never using ourselves"""
         # Refresh cache if it's old (older than 1 hour)
         if time.time() - self.python_cache.get('scan_time', 0) > 3600:
             self.discover_all_python_installations()
@@ -3589,6 +3871,11 @@ class VirtualEnvironmentManager:
                 if any(name in filename for name in ["manimstudio", "manim_studio", "app", "main"]):
                     self.logger.warning(f"Filtered out potential app executable: {abs_path}")
                     continue
+                
+                # Skip Python launchers
+                if filename in ["py.exe", "pyw.exe", "pylauncher.exe"]:
+                    self.logger.warning(f"Filtered out Python launcher: {abs_path}")
+                    continue
                     
                 safe_installations.append(python_path)
             
@@ -3602,19 +3889,32 @@ class VirtualEnvironmentManager:
         def score_python(python_path):
             score = 0
             
-            # Prefer standard Python installations
+            # Prefer standard Python installations over conda/virtual envs
+            path_lower = python_path.lower()
+            if 'conda' not in path_lower and 'anaconda' not in path_lower:
+                score += 10
+            
+            # Prefer standard installation locations
             if sys.platform == "win32":
                 if 'Program Files' in python_path:
-                    score += 10
+                    score += 15
                 elif python_path.startswith('C:\\Python'):
-                    score += 8
+                    score += 12
+                elif 'AppData\\Local\\Programs\\Python' in python_path:
+                    score += 10
             else:
                 if python_path.startswith('/usr/bin/'):
-                    score += 10
+                    score += 15
                 elif python_path.startswith('/usr/local/bin/'):
-                    score += 8
+                    score += 12
             
-            # Prefer higher Python versions
+            # Prefer python.exe over pythonw.exe
+            if python_path.endswith('python.exe') or python_path.endswith('python'):
+                score += 5
+            elif python_path.endswith('python3.exe') or python_path.endswith('python3'):
+                score += 3
+            
+            # Get Python version and prefer newer versions
             try:
                 result = subprocess.run(
                     [python_path, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
@@ -3624,10 +3924,12 @@ class VirtualEnvironmentManager:
                 )
                 if result.returncode == 0:
                     version = float(result.stdout.strip())
-                    if version >= 3.8:
-                        score += int((version - 3.8) * 10)
+                    if version >= 3.10:
+                        score += int((version - 3.10) * 100)  # Strongly prefer newer versions
+                    else:
+                        score -= 100  # Heavily penalize old versions
             except:
-                pass
+                score -= 50  # Penalize if we can't get version
             
             return score
         
@@ -4710,6 +5012,7 @@ else:
         
         # Return at least 1KB to avoid showing 0
         return max(1024, total_size)
+
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
