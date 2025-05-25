@@ -3746,9 +3746,13 @@ class VirtualEnvironmentManager:
                 self.logger.warning(f"Skipping our own executable: {candidate_path}")
                 return False
                 
-            # Skip if it's in our directory
-            if candidate_path.startswith(our_dir):
-                self.logger.warning(f"Skipping executable in our directory: {candidate_path}")
+            # FIXED: Only skip if it's directly in our directory, not in subdirectories
+            # Allow virtual environments in the venvs subdirectory
+            candidate_dir = os.path.dirname(candidate_path)
+            
+            # Skip if it's in our directory but NOT in the venvs subdirectory
+            if candidate_dir == our_dir:
+                self.logger.warning(f"Skipping executable in our root directory: {candidate_path}")
                 return False
                 
             # Skip if filename suggests it's not a real Python interpreter
@@ -3833,7 +3837,6 @@ print('ALL_OK')
         except Exception as e:
             self.logger.warning(f"Validation error for {python_path}: {e}")
             return False
-
     def find_system_python(self):
         """Find the best available Python installation (>= 3.10), never using ourselves"""
         # Refresh cache if it's old (older than 1 hour)
