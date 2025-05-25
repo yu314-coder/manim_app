@@ -180,7 +180,8 @@ QUALITY_PRESETS = {
     "720p": {"resolution": "1280x720", "fps": "30", "flag": "-qm"},
     "1080p": {"resolution": "1920x1080", "fps": "60", "flag": "-qh"},
     "4K": {"resolution": "3840x2160", "fps": "60", "flag": "-qk"},
-    "8K": {"resolution": "7680x4320", "fps": "60", "flag": "-qp"}
+    "8K": {"resolution": "7680x4320", "fps": "60", "flag": "-qp"},
+    "Custom": {"resolution": "1920x1080", "fps": "30", "flag": "-qh"}  # Default values for custom
 }
 
 PREVIEW_QUALITIES = {
@@ -3778,10 +3779,10 @@ class VirtualEnvironmentManager:
         try:
             # Enhanced test with version requirements
             result = subprocess.run(
-                [python_path, "-c", """
+            [python_path, "-c", """
 import sys
 major, minor = sys.version_info.major, sys.version_info.minor
-print(f'{major}.{minor}')
+print('{}.{}'.format(major, minor))  # ✅ Compatible with all Python versions
 if major < 3 or (major == 3 and minor < 10):
     print('VERSION_TOO_OLD')
     exit(1)
@@ -7451,6 +7452,7 @@ class ManimStudioApp:
     
         os.makedirs(settings_dir, exist_ok=True)
         self.settings_file = os.path.join(settings_dir, "settings.json")
+        
         # Default settings
         self.settings = {
             "quality": "720p",
@@ -7465,7 +7467,10 @@ class ManimStudioApp:
             "auto_completion_delay": 500,
             "custom_theme": None,
             "cpu_usage": "Medium",
-            "cpu_custom_cores": 2
+            "cpu_custom_cores": 2,
+            "custom_width": 1920,
+            "custom_height": 1080,
+            "custom_fps": 30
         }
         
         # Load from file if exists
@@ -7488,6 +7493,12 @@ class ManimStudioApp:
             
             # Update current venv in settings
             self.settings["current_venv"] = self.venv_manager.current_venv
+            
+            # Save custom resolution settings
+            if hasattr(self, 'custom_width_var'):
+                self.settings["custom_width"] = self.custom_width_var.get()
+                self.settings["custom_height"] = self.custom_height_var.get()
+                self.settings["custom_fps"] = self.custom_fps_var.get()
             
             # Save custom theme if it exists
             if "Custom" in THEME_SCHEMES:
@@ -7527,6 +7538,11 @@ class ManimStudioApp:
         self.font_size_var = ctk.IntVar(value=self.settings["font_size"])
         self.intellisense_var = ctk.BooleanVar(value=self.settings["intellisense_enabled"])
         self.current_theme = self.settings["theme"]
+        
+        # Custom resolution variables
+        self.custom_width_var = ctk.IntVar(value=self.settings["custom_width"])
+        self.custom_height_var = ctk.IntVar(value=self.settings["custom_height"])
+        self.custom_fps_var = ctk.IntVar(value=self.settings["custom_fps"])
         
         # CPU information
         self.cpu_count = psutil.cpu_count(logical=True)
@@ -7798,13 +7814,103 @@ class ManimStudioApp:
         self.quality_combo.pack(fill="x", pady=(5, 0))
         
         # Quality info
+        current_quality = self.settings["quality"]
+        if current_quality == "Custom":
+            resolution_text = f"{self.custom_width_var.get()}x{self.custom_height_var.get()}"
+        else:
+            resolution_text = QUALITY_PRESETS[current_quality]["resolution"]
+            
         self.quality_info = ctk.CTkLabel(
             quality_frame,
-            text=f"Resolution: {QUALITY_PRESETS[self.settings['quality']]['resolution']}",
+            text=f"Resolution: {resolution_text}",
             font=ctk.CTkFont(size=11),
             text_color=VSCODE_COLORS["text_secondary"]
         )
         self.quality_info.pack(anchor="w", pady=(3, 0))
+        
+        # Custom resolution frame
+        self.custom_resolution_frame = ctk.CTkFrame(quality_frame, fg_color="transparent")
+        self.custom_resolution_frame.pack(fill="x", pady=(10, 0))
+        
+        # Custom resolution inputs
+        custom_header = ctk.CTkLabel(
+            self.custom_resolution_frame,
+            text="Custom Resolution:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        )
+        custom_header.pack(anchor="w", pady=(0, 5))
+        
+        # Resolution input frame
+        resolution_input_frame = ctk.CTkFrame(self.custom_resolution_frame, fg_color="transparent")
+        resolution_input_frame.pack(fill="x")
+        resolution_input_frame.grid_columnconfigure((0, 2), weight=1)
+        
+        # Width input
+        ctk.CTkLabel(
+            resolution_input_frame, 
+            text="Width:", 
+            width=50
+        ).grid(row=0, column=0, sticky="w", pady=2)
+        
+        self.custom_width_entry = ctk.CTkEntry(
+            resolution_input_frame,
+            textvariable=self.custom_width_var,
+            width=80,
+            height=28
+        )
+        self.custom_width_entry.grid(row=0, column=1, sticky="w", padx=(5, 10), pady=2)
+        
+        # Height input
+        ctk.CTkLabel(
+            resolution_input_frame, 
+            text="Height:", 
+            width=50
+        ).grid(row=0, column=2, sticky="w", pady=2)
+        
+        self.custom_height_entry = ctk.CTkEntry(
+            resolution_input_frame,
+            textvariable=self.custom_height_var,
+            width=80,
+            height=28
+        )
+        self.custom_height_entry.grid(row=0, column=3, sticky="w", padx=(5, 0), pady=2)
+        
+        # Custom FPS input
+        fps_input_frame = ctk.CTkFrame(self.custom_resolution_frame, fg_color="transparent")
+        fps_input_frame.pack(fill="x", pady=(5, 0))
+        
+        ctk.CTkLabel(
+            fps_input_frame, 
+            text="FPS:", 
+            width=50
+        ).pack(side="left")
+        
+        self.custom_fps_entry = ctk.CTkEntry(
+            fps_input_frame,
+            textvariable=self.custom_fps_var,
+            width=80,
+            height=28
+        )
+        self.custom_fps_entry.pack(side="left", padx=(5, 0))
+        
+        # Custom resolution validation label
+        self.custom_validation_label = ctk.CTkLabel(
+            self.custom_resolution_frame,
+            text="",
+            font=ctk.CTkFont(size=10),
+            text_color=VSCODE_COLORS["error"]
+        )
+        self.custom_validation_label.pack(anchor="w", pady=(2, 0))
+        
+        # Bind validation events
+        self.custom_width_entry.bind('<KeyRelease>', self.validate_custom_resolution)
+        self.custom_height_entry.bind('<KeyRelease>', self.validate_custom_resolution)
+        self.custom_fps_entry.bind('<KeyRelease>', self.validate_custom_resolution)
+        
+        # Initially hide custom resolution frame if not custom
+        if self.quality_var.get() != "Custom":
+            self.custom_resolution_frame.pack_forget()
         
         # Format setting
         format_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
@@ -7948,6 +8054,83 @@ class ManimStudioApp:
             text_color=VSCODE_COLORS["text_secondary"]
         )
         self.progress_label.pack(pady=(0, 15))
+        
+    def validate_custom_resolution(self, event=None):
+        """Validate custom resolution inputs"""
+        try:
+            width = self.custom_width_var.get()
+            height = self.custom_height_var.get()
+            fps = self.custom_fps_var.get()
+            
+            # Validation rules
+            errors = []
+            
+            if width < 100 or width > 7680:
+                errors.append("Width must be between 100 and 7680")
+            if height < 100 or height > 4320:
+                errors.append("Height must be between 100 and 4320")
+            if fps < 1 or fps > 120:
+                errors.append("FPS must be between 1 and 120")
+            
+            # Check if width and height are even numbers (required for video encoding)
+            if width % 2 != 0:
+                errors.append("Width must be even")
+            if height % 2 != 0:
+                errors.append("Height must be even")
+            
+            if errors:
+                self.custom_validation_label.configure(
+                    text=" • ".join(errors),
+                    text_color=VSCODE_COLORS["error"]
+                )
+                return False
+            else:
+                self.custom_validation_label.configure(
+                    text="✓ Valid resolution",
+                    text_color=VSCODE_COLORS["success"]
+                )
+                
+                # Update quality info
+                self.quality_info.configure(text=f"Resolution: {width}x{height} @ {fps}fps")
+                return True
+                
+        except Exception as e:
+            self.custom_validation_label.configure(
+                text="Invalid input",
+                text_color=VSCODE_COLORS["error"]
+            )
+            return False
+    
+    def get_current_resolution_settings(self):
+        """Get current resolution settings based on quality selection"""
+        quality = self.quality_var.get()
+        
+        if quality == "Custom":
+            # Validate custom resolution first
+            if not self.validate_custom_resolution():
+                raise ValueError("Invalid custom resolution settings")
+                
+            width = self.custom_width_var.get()
+            height = self.custom_height_var.get()
+            fps = self.custom_fps_var.get()
+            
+            return {
+                "resolution": f"{width}x{height}",
+                "width": width,
+                "height": height,
+                "fps": str(fps),
+                "flag": "-qh"  # Use high quality flag for custom
+            }
+        else:
+            preset = QUALITY_PRESETS[quality]
+            width, height = preset["resolution"].split("x")
+            return {
+                "resolution": preset["resolution"],
+                "width": int(width),
+                "height": int(height),
+                "fps": preset["fps"],
+                "flag": preset["flag"]
+            }
         
     def create_preview_section(self):
         """Create preview settings section"""
@@ -8688,8 +8871,17 @@ class MyScene(Scene):
     def on_quality_change(self, value):
         """Handle quality change"""
         self.settings["quality"] = value
-        quality_info = QUALITY_PRESETS[value]
-        self.quality_info.configure(text=f"Resolution: {quality_info['resolution']}")
+        
+        if value == "Custom":
+            # Show custom resolution frame
+            self.custom_resolution_frame.pack(fill="x", pady=(10, 0))
+            self.validate_custom_resolution()
+        else:
+            # Hide custom resolution frame and show preset info
+            self.custom_resolution_frame.pack_forget()
+            quality_info = QUALITY_PRESETS[value]
+            self.quality_info.configure(text=f"Resolution: {quality_info['resolution']}")
+            
         self.save_settings()
         
     def on_format_change(self, value):
@@ -9009,8 +9201,23 @@ class MyScene(Scene):
             with open(scene_file, "w", encoding="utf-8") as f:
                 f.write(self.current_code)
                 
-            # Get preview settings
-            preview_quality = PREVIEW_QUALITIES[self.settings["preview_quality"]]
+            # Get preview settings - use custom resolution if selected
+            if self.quality_var.get() == "Custom":
+                try:
+                    resolution_settings = self.get_current_resolution_settings()
+                    preview_quality = {
+                        "resolution": resolution_settings["resolution"],
+                        "fps": resolution_settings["fps"],
+                        "flag": "-ql"  # Use low quality flag for preview
+                    }
+                except ValueError as e:
+                    messagebox.showerror("Invalid Resolution", str(e))
+                    self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                    self.is_previewing = False
+                    return
+            else:
+                preview_quality = PREVIEW_QUALITIES[self.settings["preview_quality"]]
+            
             quality_flag = preview_quality["flag"]
             
             # Use environment Python
@@ -9033,6 +9240,13 @@ class MyScene(Scene):
                 "--verbosity=INFO"  # Add verbose output
             ]
             
+            # Add custom resolution if using custom quality
+            if self.quality_var.get() == "Custom":
+                width, height = preview_quality["resolution"].split("x")
+                command.extend([
+                    f"--resolution={width},{height}"
+                ])
+            
             # Set environment variable for CPU control
             env = {
                 "OMP_NUM_THREADS": str(num_cores),
@@ -9044,7 +9258,7 @@ class MyScene(Scene):
             # Enhanced logging
             self.append_terminal_output(f"Starting preview generation...\n")
             self.append_terminal_output(f"Scene class: {scene_class}\n")
-            self.append_terminal_output(f"Quality: {self.settings['preview_quality']} ({preview_quality['resolution']})\n")
+            self.append_terminal_output(f"Quality: {preview_quality['resolution']} @ {preview_quality['fps']}fps\n")
             self.append_terminal_output(f"Using {num_cores} CPU cores\n")
             self.append_terminal_output(f"Command: {' '.join(command)}\n\n")
             
@@ -9162,6 +9376,7 @@ class MyScene(Scene):
             self.append_terminal_output(f"Preview error: {e}\n")
             self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
             self.is_previewing = False
+
     def render_animation(self):
         """Render high-quality animation using system terminal"""
         if self.is_rendering:
@@ -9178,6 +9393,13 @@ class MyScene(Scene):
                 "No Python environment is active. Please set up an environment first.\n\n"
                 "Click the Environment Setup button to create one."
             )
+            return
+        
+        # Validate custom resolution if selected
+        try:
+            resolution_settings = self.get_current_resolution_settings()
+        except ValueError as e:
+            messagebox.showerror("Invalid Resolution", str(e))
             return
             
         self.is_rendering = True
@@ -9199,9 +9421,9 @@ class MyScene(Scene):
                 f.write(self.current_code)
                 
             # Get render settings
-            quality_preset = QUALITY_PRESETS[self.settings["quality"]]
-            quality_flag = quality_preset["flag"]
+            quality_flag = resolution_settings["flag"]
             format_ext = EXPORT_FORMATS[self.settings["format"]]
+            fps = resolution_settings["fps"]
             
             # Use environment Python
             python_exe = self.venv_manager.python_path
@@ -9216,10 +9438,16 @@ class MyScene(Scene):
                 scene_class,
                 quality_flag,
                 f"--format={format_ext}",
-                f"--fps={self.settings['fps']}",
+                f"--fps={fps}",
                 f"--media_dir={MEDIA_DIR}",
                 f"--renderer=cairo"
             ]
+            
+            # Add custom resolution if using custom quality
+            if self.quality_var.get() == "Custom":
+                command.extend([
+                    f"--resolution={resolution_settings['width']},{resolution_settings['height']}"
+                ])
             
             # Add audio if available
             if self.audio_path and os.path.exists(self.audio_path):
@@ -9227,6 +9455,11 @@ class MyScene(Scene):
             
             # Set environment variable for CPU control
             env = {"OMP_NUM_THREADS": str(num_cores)}
+            
+            # Enhanced logging
+            self.append_terminal_output(f"Starting render...\n")
+            self.append_terminal_output(f"Resolution: {resolution_settings['resolution']} @ {fps}fps\n")
+            self.append_terminal_output(f"Using {num_cores} CPU cores\n")
             
             # On render complete callback
             def on_render_complete(success, return_code):
@@ -9275,8 +9508,6 @@ class MyScene(Scene):
         """Find rendered output file"""
         # Common output directories
         search_dirs = [
-            os.path.join(temp_dir, "media", "videos", "scene"),
-            os.path.join(temp_dir, "media", "videos", scene_class),
             os.path.join(BASE_DIR, "media", "videos", "scene"),
             os.path.join(BASE_DIR, "media", "videos", scene_class)
         ]
@@ -9634,6 +9865,7 @@ mathematical animations using the Manim library.
 - Multi-threaded rendering and preview
 - Integrated asset manager for images and audio
 - Custom theme support with live preview
+- Custom resolution support for any video size
 
 🛠️ Built with:
 - Python & CustomTkinter for modern UI
@@ -9689,6 +9921,7 @@ Licensed under MIT License"""
         except Exception as e:
             logger.error(f"Application error: {e}")
             messagebox.showerror("Error", f"Application error: {e}")
+
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
     
