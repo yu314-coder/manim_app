@@ -3837,6 +3837,7 @@ print('ALL_OK')
         except Exception as e:
             self.logger.warning(f"Validation error for {python_path}: {e}")
             return False
+
     def find_system_python(self):
         """Find the best available Python installation (>= 3.10), never using ourselves"""
         # Refresh cache if it's old (older than 1 hour)
@@ -4382,7 +4383,7 @@ else:
         )
 
     def create_environment_unified(self, name, location, packages=None, log_callback=None):
-        """Unified environment creation with correct venv command"""
+        """Unified environment creation with correct venv command and path handling"""
         if packages is None:
             packages = []
             
@@ -4436,22 +4437,48 @@ else:
                     log_callback("Removing existing environment...")
                 shutil.rmtree(env_path)
 
+            # Ensure parent directory exists
+            os.makedirs(os.path.dirname(env_path), exist_ok=True)
+
             # Step 1: Create virtual environment using CORRECT venv syntax
             if log_callback:
                 log_callback("Creating virtual environment with external Python...")
                 
-            # FIXED: Correct venv command without --with-pip
+            # FIXED: Use proper command with quoted paths to handle spaces
             create_cmd = [python_exe, "-m", "venv", env_path]
             
             self.logger.info(f"Running command: {' '.join(create_cmd)}")
-            result = subprocess.run(create_cmd, capture_output=True, text=True, timeout=120)
+            
+            # Use subprocess.run directly with proper settings for paths with spaces
+            startupinfo = None
+            creationflags = 0
+            
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+            
+            result = subprocess.run(
+                create_cmd, 
+                capture_output=True, 
+                text=True, 
+                timeout=120,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
+                cwd=os.path.dirname(env_path)  # Set working directory to parent
+            )
             
             if result.returncode != 0:
                 error_details = f"Command: {' '.join(create_cmd)}\n"
                 error_details += f"Return code: {result.returncode}\n"
                 error_details += f"Stdout: {result.stdout}\n"
-                error_details += f"Stderr: {result.stderr}"
+                error_details += f"Stderr: {result.stderr}\n"
+                error_details += f"Working directory: {os.path.dirname(env_path)}"
                 self.logger.error(f"Venv creation failed:\n{error_details}")
+                if log_callback:
+                    log_callback(f"❌ Venv creation failed with exit code {result.returncode}")
+                    log_callback(f"Error: {result.stderr}")
                 raise Exception(f"Failed to create virtual environment:\n{result.stderr}")
                 
             if log_callback:
@@ -4475,10 +4502,16 @@ else:
                 
                 # Try to install pip using ensurepip
                 ensurepip_cmd = [python_path, "-m", "ensurepip", "--upgrade"]
-                result = subprocess.run(ensurepip_cmd, capture_output=True, text=True, timeout=60)
+                result = subprocess.run(
+                    ensurepip_cmd, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=60,
+                    startupinfo=startupinfo,
+                    creationflags=creationflags
+                )
                 
                 if result.returncode != 0:
-                    # Try alternative method
                     if log_callback:
                         log_callback("Trying alternative pip installation...")
                     try:
@@ -4487,7 +4520,14 @@ else:
                         get_pip_path = os.path.join(env_path, "get-pip.py")
                         urllib.request.urlretrieve(get_pip_url, get_pip_path)
                         
-                        result = subprocess.run([python_path, get_pip_path], capture_output=True, text=True, timeout=120)
+                        result = subprocess.run(
+                            [python_path, get_pip_path], 
+                            capture_output=True, 
+                            text=True, 
+                            timeout=120,
+                            startupinfo=startupinfo,
+                            creationflags=creationflags
+                        )
                         os.remove(get_pip_path)
                         
                         if result.returncode != 0:
@@ -4501,7 +4541,14 @@ else:
                 log_callback("Upgrading pip...")
                 
             upgrade_cmd = [python_path, "-m", "pip", "install", "--upgrade", "pip"]
-            result = subprocess.run(upgrade_cmd, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(
+                upgrade_cmd, 
+                capture_output=True, 
+                text=True, 
+                timeout=60,
+                startupinfo=startupinfo,
+                creationflags=creationflags
+            )
             
             if result.returncode == 0:
                 if log_callback:
@@ -4520,14 +4567,21 @@ else:
                         log_callback(f"Installing {package} ({i+1}/{len(packages)})...")
                         
                     install_cmd = [pip_path, "install", package]
-                    result = subprocess.run(install_cmd, capture_output=True, text=True, timeout=300)
+                    result = subprocess.run(
+                        install_cmd, 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=300,
+                        startupinfo=startupinfo,
+                        creationflags=creationflags
+                    )
                     
                     if result.returncode == 0:
                         if log_callback:
                             log_callback(f"✅ Successfully installed {package}")
                     else:
                         if log_callback:
-                            log_callback(f"❌ Failed to install {package}")
+                            log_callback(f"❌ Failed to install {package}: {result.stderr}")
 
             # Step 6: Activate the environment
             self.python_path = python_path
@@ -4548,9 +4602,19 @@ else:
             return False
 
     def run_command_with_threading_fix(self, command, on_complete=None, env=None):
-        """Run command with proper thread-safe GUI updates"""
+        """Run command with proper thread-safe GUI updates and handle paths with spaces"""
         def run_in_thread():
             try:
+                # Log the command being executed
+                if isinstance(command, list):
+                    cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in command)
+                else:
+                    cmd_str = command
+                
+                if hasattr(self.parent_app, 'append_terminal_output'):
+                    self.parent_app.root.after(0, 
+                        lambda: self.parent_app.append_terminal_output(f"Executing: {cmd_str}\n"))
+                
                 # Use the terminal manager if available
                 if hasattr(self.parent_app, 'terminal'):
                     self.parent_app.terminal.run_command_redirected(
@@ -4559,13 +4623,38 @@ else:
                         env=env
                     )
                 else:
-                    # Fallback to direct execution
-                    result = subprocess.run(
-                        command,
-                        capture_output=True,
-                        text=True,
-                        env=env or os.environ.copy()
-                    )
+                    # Fallback to direct execution with proper environment
+                    env_vars = os.environ.copy()
+                    if env:
+                        env_vars.update(env)
+                    
+                    # Ensure paths with spaces are handled correctly
+                    if isinstance(command, list):
+                        # Use subprocess with list (recommended for paths with spaces)
+                        result = subprocess.run(
+                            command,
+                            capture_output=True,
+                            text=True,
+                            env=env_vars,
+                            shell=False  # Don't use shell to avoid space issues
+                        )
+                    else:
+                        # Use shell for string commands
+                        result = subprocess.run(
+                            command,
+                            capture_output=True,
+                            text=True,
+                            env=env_vars,
+                            shell=True
+                        )
+                    
+                    # Output results
+                    if result.stdout and hasattr(self.parent_app, 'append_terminal_output'):
+                        self.parent_app.root.after(0, 
+                            lambda: self.parent_app.append_terminal_output(result.stdout))
+                    if result.stderr and hasattr(self.parent_app, 'append_terminal_output'):
+                        self.parent_app.root.after(0, 
+                            lambda: self.parent_app.append_terminal_output(result.stderr))
                     
                     # Schedule callback on main thread
                     if on_complete:
@@ -4575,7 +4664,11 @@ else:
                         )
                         
             except Exception as e:
-                self.logger.error(f"Command execution error: {e}")
+                error_msg = f"Command execution error: {e}\n"
+                self.logger.error(error_msg)
+                if hasattr(self.parent_app, 'append_terminal_output'):
+                    self.parent_app.root.after(0, 
+                        lambda: self.parent_app.append_terminal_output(error_msg))
                 if on_complete:
                     self.parent_app.root.after(
                         0, 
