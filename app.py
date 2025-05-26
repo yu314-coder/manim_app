@@ -3150,26 +3150,22 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         pass
 
 class VirtualEnvironmentManager:
-    """Enhanced virtual environment manager with comprehensive Python discovery and system terminal integration"""
+    """Enhanced virtual environment manager with Nuitka onefile compatibility and comprehensive Python discovery"""
     
     def __init__(self, parent_app):
         self.parent_app = parent_app
         self.current_venv = None
         
+        # FIXED: Always use home directory for venvs (safer for all deployment types)
+        base_dir = os.path.expanduser("~")
+        self.venv_dir = os.path.join(base_dir, ".manim_studio", "venvs")
+        os.makedirs(self.venv_dir, exist_ok=True)
+        
         # CRITICAL: Enhanced frozen detection
         self.is_frozen = self._detect_if_frozen()
         
-        # Determine venv directory
-        if self.is_frozen:
-            # Running as executable - use executable directory
-            base_dir = os.path.dirname(os.path.abspath(sys.executable))
-            self.venv_dir = os.path.join(base_dir, "venvs")
-        else:
-            # Running as script - use home directory (original behavior)
-            base_dir = os.path.expanduser("~")
-            self.venv_dir = os.path.join(base_dir, ".manim_studio", "venvs")
-    
-        os.makedirs(self.venv_dir, exist_ok=True)
+        # Apply Nuitka onefile fixes first
+        self.fix_nuitka_onefile_issues()
         
         # Set up dedicated logger
         self.logger = logging.getLogger("VenvManager")
@@ -3222,6 +3218,68 @@ class VirtualEnvironmentManager:
             self.needs_setup = False
             self.logger.info(f"Using existing environment: {self.current_venv}")
 
+    def fix_nuitka_onefile_issues(self):
+        """Apply fixes specific to Nuitka onefile builds"""
+        
+        # Detect if we're in a Nuitka onefile build
+        is_nuitka_onefile = (
+            hasattr(sys, 'frozen') and 
+            ('onefile' in str(sys.executable) or 'temp' in str(sys.executable))
+        )
+        
+        if is_nuitka_onefile:
+            self.logger.info("Detected Nuitka onefile build - applying compatibility fixes")
+            
+            # Set environment variables to prevent subprocess issues
+            os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+            os.environ['PYTHONUNBUFFERED'] = '1'
+            
+            # Ensure we use system temp directory for operations
+            self.temp_dir = tempfile.gettempdir()
+        else:
+            self.temp_dir = tempfile.gettempdir()
+        
+        return True
+
+    def run_hidden_subprocess_nuitka_safe(self, command, **kwargs):
+        """Run subprocess safely for Nuitka onefile builds"""
+        
+        # Configure for Windows console hiding
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            
+            # Critical flags for Nuitka onefile
+            creationflags = (
+                subprocess.CREATE_NO_WINDOW |
+                subprocess.DETACHED_PROCESS |
+                subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+            
+            kwargs['startupinfo'] = startupinfo
+            kwargs['creationflags'] = creationflags
+        
+        # Set working directory to user temp, not executable temp
+        if 'cwd' not in kwargs:
+            kwargs['cwd'] = self.temp_dir
+        
+        # Ensure proper timeout
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = 300  # 5 minutes default
+        
+        try:
+            return subprocess.run(command, **kwargs)
+        except subprocess.TimeoutExpired:
+            self.logger.error(f"Command timed out: {command}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Subprocess error: {e}")
+            raise
+
     def _detect_if_frozen(self):
         """Enhanced detection of frozen executable"""
         # Standard PyInstaller detection
@@ -3241,6 +3299,10 @@ class VirtualEnvironmentManager:
         if "dist" in exe_path.lower():
             return True
         
+        # Check for Nuitka onefile indicators
+        if "onefile" in exe_path or "temp" in exe_path:
+            return True
+        
         # Check if we can't import basic Python modules (sign of being an exe)
         try:
             import ast
@@ -3251,14 +3313,8 @@ class VirtualEnvironmentManager:
             
     def _setup_debug_logging(self):
         """Set up debug logging to file for silent executable troubleshooting"""
-        # Determine the log directory
-        if self.is_frozen:
-            # Running as executable
-            log_dir = os.path.join(os.path.dirname(sys.executable), "logs")
-        else:
-            # Running as script
-            log_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "logs")
-    
+        # Always use home directory for logs
+        log_dir = os.path.join(os.path.expanduser("~"), ".manim_studio", "logs")
         os.makedirs(log_dir, exist_ok=True)
         debug_log_path = os.path.join(log_dir, "venv_debug.log")
         
@@ -3692,42 +3748,6 @@ class VirtualEnvironmentManager:
             except Exception as e:
                 self.logger.debug(f"Error checking pyenv: {e}")
         
-        # Check for pipx installations
-        try:
-            pipx_home = os.environ.get("PIPX_HOME", os.path.join(os.path.expanduser("~"), ".local", "share", "pipx"))
-            if os.path.isdir(pipx_home):
-                venvs_dir = os.path.join(pipx_home, "venvs")
-                if os.path.isdir(venvs_dir):
-                    for venv_name in os.listdir(venvs_dir):
-                        venv_path = os.path.join(venvs_dir, venv_name)
-                        if os.path.isdir(venv_path):
-                            if sys.platform == "win32":
-                                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-                            else:
-                                python_exe = os.path.join(venv_path, "bin", "python")
-                            if os.path.isfile(python_exe):
-                                pythons.append(python_exe)
-                                self.logger.info(f"Pipx found: {python_exe}")
-        except Exception as e:
-            self.logger.debug(f"Error checking pipx: {e}")
-            
-        # Check for poetry environments  
-        try:
-            poetry_cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "pypoetry", "virtualenvs")
-            if os.path.isdir(poetry_cache_dir):
-                for venv_name in os.listdir(poetry_cache_dir):
-                    venv_path = os.path.join(poetry_cache_dir, venv_name)
-                    if os.path.isdir(venv_path):
-                        if sys.platform == "win32":
-                            python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-                        else:
-                            python_exe = os.path.join(venv_path, "bin", "python")
-                        if os.path.isfile(python_exe):
-                            pythons.append(python_exe)
-                            self.logger.info(f"Poetry found: {python_exe}")
-        except Exception as e:
-            self.logger.debug(f"Error checking poetry: {e}")
-        
         return pythons
 
     def validate_python_installation(self, python_path):
@@ -3745,15 +3765,6 @@ class VirtualEnvironmentManager:
             # Skip if it's exactly our executable
             if candidate_path == our_exe:
                 self.logger.warning(f"Skipping our own executable: {candidate_path}")
-                return False
-                
-            # FIXED: Only skip if it's directly in our directory, not in subdirectories
-            # Allow virtual environments in the venvs subdirectory
-            candidate_dir = os.path.dirname(candidate_path)
-            
-            # Skip if it's in our directory but NOT in the venvs subdirectory
-            if candidate_dir == our_dir:
-                self.logger.warning(f"Skipping executable in our root directory: {candidate_path}")
                 return False
                 
             # Skip if filename suggests it's not a real Python interpreter
@@ -3778,11 +3789,11 @@ class VirtualEnvironmentManager:
         
         try:
             # Enhanced test with version requirements
-            result = subprocess.run(
-            [python_path, "-c", """
+            result = self.run_hidden_subprocess_nuitka_safe(
+                [python_path, "-c", """
 import sys
 major, minor = sys.version_info.major, sys.version_info.minor
-print('{}.{}'.format(major, minor))  # ✅ Compatible with all Python versions
+print('{}.{}'.format(major, minor))
 if major < 3 or (major == 3 and minor < 10):
     print('VERSION_TOO_OLD')
     exit(1)
@@ -3867,11 +3878,6 @@ print('ALL_OK')
                     self.logger.warning(f"Filtered out our own executable: {abs_path}")
                     continue
                     
-                # Skip anything in our directory
-                if abs_path.startswith(our_dir):
-                    self.logger.warning(f"Filtered out executable in our directory: {abs_path}")
-                    continue
-                    
                 # Skip anything that looks like our app
                 if any(name in filename for name in ["manimstudio", "manim_studio", "app", "main"]):
                     self.logger.warning(f"Filtered out potential app executable: {abs_path}")
@@ -3921,7 +3927,7 @@ print('ALL_OK')
             
             # Get Python version and prefer newer versions
             try:
-                result = subprocess.run(
+                result = self.run_hidden_subprocess_nuitka_safe(
                     [python_path, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
                     capture_output=True,
                     text=True,
@@ -3950,7 +3956,7 @@ print('ALL_OK')
             return None
             
         return best_python
-            
+
     def detect_existing_environment(self):
         """Detect existing suitable environment or use bundled one"""
         self.logger.info("Detecting existing environments...")
@@ -3963,7 +3969,12 @@ print('ALL_OK')
             
             # Double-check that sys.executable is not a Python interpreter
             try:
-                result = subprocess.run([our_exe, "--version"], capture_output=True, text=True, timeout=5)
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [our_exe, "--version"], 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=5
+                )
                 if "python" in result.stdout.lower():
                     self.logger.error("CRITICAL: Our executable claims to be Python - this should not happen!")
             except:
@@ -4011,7 +4022,7 @@ print('ALL_OK')
             return False  # Still need setup, but we have bundled environment
             
         return False
-        
+
     def check_bundled_environment(self):
         """Check if a bundled environment is available"""
         self.logger.info("Checking for bundled environment...")
@@ -4080,10 +4091,6 @@ print('ALL_OK')
             except Exception as e:
                 self.logger.error(f"Error removing existing environment: {e}")
         
-        # Switch to terminal tab if available
-        if hasattr(self.parent_app, 'output_tabs'):
-            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-        
         # Create new venv using EXTERNAL Python
         try:
             # Find external Python
@@ -4095,7 +4102,7 @@ print('ALL_OK')
             self.logger.info(f"Creating new environment at: {default_venv_path}")
             self.logger.info(f"Using external Python: {python_exe}")
             
-            # Use correct venv command
+            # Use correct venv command with safe subprocess handling
             def on_venv_created(success, return_code):
                 if success:
                     self.logger.info("Virtual environment created successfully")
@@ -4104,9 +4111,9 @@ print('ALL_OK')
                     self.logger.error(f"Failed to create venv: exit code {return_code}")
                     self.use_system_python_fallback()
             
-            # FIXED: Correct venv command
+            # FIXED: Correct venv command with safe threading
             self.run_command_with_threading_fix(
-                [python_exe, "-m", "venv", default_venv_path],  # Removed --with-pip
+                [python_exe, "-m", "venv", default_venv_path],
                 on_complete=on_venv_created
             )
             return True
@@ -4138,8 +4145,12 @@ print('ALL_OK')
             self.logger.info("Pip not found, installing...")
             try:
                 # Try to install pip using ensurepip
-                result = subprocess.run([python_exe, "-m", "ensurepip", "--upgrade"], 
-                                      capture_output=True, text=True, timeout=60)
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [python_exe, "-m", "ensurepip", "--upgrade"],
+                    capture_output=True, 
+                    text=True, 
+                    timeout=60
+                )
                 if result.returncode != 0:
                     self.logger.error("Failed to install pip with ensurepip")
                     return self.use_system_python_fallback()
@@ -4177,7 +4188,7 @@ print('ALL_OK')
         else:
             self.logger.error("Environment verification failed after setup")
             return self.use_system_python_fallback()
-        
+
     def use_system_python_fallback(self):
         """Use system Python as fallback when environment setup fails"""
         self.logger.info("Using system Python as fallback")
@@ -4259,7 +4270,7 @@ else:
 """
             
             # Execute directly without temporary file
-            result = subprocess.run(
+            result = self.run_hidden_subprocess_nuitka_safe(
                 [python_exe, "-c", test_code],
                 capture_output=True,
                 text=True,
@@ -4360,11 +4371,32 @@ else:
         self.logger.info("Showing environment setup dialog")
         try:
             # Try to import the dialog (assuming it's in the same module)
-            dialog = EnvironmentSetupDialog(self.parent_app.root, self)
+            from tkinter import messagebox
             
-            # Wait for dialog to close
-            self.parent_app.root.wait_window(dialog)
-            self.logger.info("Environment setup dialog closed")
+            # Show simple fallback dialog
+            if messagebox.askyesno(
+                "Environment Setup Required",
+                "ManimStudio needs to set up a Python environment.\n\n"
+                "This will install manim and other required packages.\n\n"
+                "Continue with automatic setup?"
+            ):
+                # Try to create default environment
+                success = self.create_default_environment()
+                if success:
+                    messagebox.showinfo(
+                        "Setup Complete",
+                        "Environment setup completed successfully!"
+                    )
+                else:
+                    messagebox.showerror(
+                        "Setup Failed", 
+                        "Environment setup failed. Using system Python as fallback."
+                    )
+                    self.use_system_python_fallback()
+            else:
+                # User cancelled - use system Python fallback
+                self.use_system_python_fallback()
+                
         except Exception as e:
             self.logger.error(f"Error showing environment setup dialog: {e}")
             import traceback
@@ -4450,24 +4482,13 @@ else:
             
             self.logger.info(f"Running command: {' '.join(create_cmd)}")
             
-            # Use subprocess.run directly with proper settings for paths with spaces
-            startupinfo = None
-            creationflags = 0
-            
-            if sys.platform == "win32":
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-            
-            result = subprocess.run(
+            # Use safe subprocess handling for Nuitka onefile
+            result = self.run_hidden_subprocess_nuitka_safe(
                 create_cmd, 
                 capture_output=True, 
                 text=True, 
                 timeout=120,
-                startupinfo=startupinfo,
-                creationflags=creationflags,
-                cwd=os.path.dirname(env_path)  # Set working directory to parent
+                cwd=self.temp_dir  # Use safe temp directory
             )
             
             if result.returncode != 0:
@@ -4475,7 +4496,7 @@ else:
                 error_details += f"Return code: {result.returncode}\n"
                 error_details += f"Stdout: {result.stdout}\n"
                 error_details += f"Stderr: {result.stderr}\n"
-                error_details += f"Working directory: {os.path.dirname(env_path)}"
+                error_details += f"Working directory: {self.temp_dir}"
                 self.logger.error(f"Venv creation failed:\n{error_details}")
                 if log_callback:
                     log_callback(f"❌ Venv creation failed with exit code {result.returncode}")
@@ -4503,13 +4524,12 @@ else:
                 
                 # Try to install pip using ensurepip
                 ensurepip_cmd = [python_path, "-m", "ensurepip", "--upgrade"]
-                result = subprocess.run(
+                result = self.run_hidden_subprocess_nuitka_safe(
                     ensurepip_cmd, 
                     capture_output=True, 
                     text=True, 
                     timeout=60,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags
+                    cwd=self.temp_dir
                 )
                 
                 if result.returncode != 0:
@@ -4518,16 +4538,15 @@ else:
                     try:
                         import urllib.request
                         get_pip_url = "https://bootstrap.pypa.io/get-pip.py"
-                        get_pip_path = os.path.join(env_path, "get-pip.py")
+                        get_pip_path = os.path.join(self.temp_dir, "get-pip.py")
                         urllib.request.urlretrieve(get_pip_url, get_pip_path)
                         
-                        result = subprocess.run(
+                        result = self.run_hidden_subprocess_nuitka_safe(
                             [python_path, get_pip_path], 
                             capture_output=True, 
                             text=True, 
                             timeout=120,
-                            startupinfo=startupinfo,
-                            creationflags=creationflags
+                            cwd=self.temp_dir
                         )
                         os.remove(get_pip_path)
                         
@@ -4542,13 +4561,12 @@ else:
                 log_callback("Upgrading pip...")
                 
             upgrade_cmd = [python_path, "-m", "pip", "install", "--upgrade", "pip"]
-            result = subprocess.run(
+            result = self.run_hidden_subprocess_nuitka_safe(
                 upgrade_cmd, 
                 capture_output=True, 
                 text=True, 
                 timeout=60,
-                startupinfo=startupinfo,
-                creationflags=creationflags
+                cwd=self.temp_dir
             )
             
             if result.returncode == 0:
@@ -4568,13 +4586,12 @@ else:
                         log_callback(f"Installing {package} ({i+1}/{len(packages)})...")
                         
                     install_cmd = [pip_path, "install", package]
-                    result = subprocess.run(
+                    result = self.run_hidden_subprocess_nuitka_safe(
                         install_cmd, 
                         capture_output=True, 
                         text=True, 
                         timeout=300,
-                        startupinfo=startupinfo,
-                        creationflags=creationflags
+                        cwd=self.temp_dir
                     )
                     
                     if result.returncode == 0:
@@ -4613,6 +4630,7 @@ else:
                     cmd_str = command
                 
                 if hasattr(self.parent_app, 'append_terminal_output'):
+                    # FIXED: Use parent_app.root.after instead of self.after
                     self.parent_app.root.after(0, 
                         lambda: self.parent_app.append_terminal_output(f"Executing: {cmd_str}\n"))
                 
@@ -4624,30 +4642,19 @@ else:
                         env=env
                     )
                 else:
-                    # Fallback to direct execution with proper environment
+                    # Fallback to direct execution with safe subprocess handling
                     env_vars = os.environ.copy()
                     if env:
                         env_vars.update(env)
                     
-                    # Ensure paths with spaces are handled correctly
-                    if isinstance(command, list):
-                        # Use subprocess with list (recommended for paths with spaces)
-                        result = subprocess.run(
-                            command,
-                            capture_output=True,
-                            text=True,
-                            env=env_vars,
-                            shell=False  # Don't use shell to avoid space issues
-                        )
-                    else:
-                        # Use shell for string commands
-                        result = subprocess.run(
-                            command,
-                            capture_output=True,
-                            text=True,
-                            env=env_vars,
-                            shell=True
-                        )
+                    # Use our safe subprocess method
+                    result = self.run_hidden_subprocess_nuitka_safe(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        env=env_vars,
+                        cwd=self.temp_dir
+                    )
                     
                     # Output results
                     if result.stdout and hasattr(self.parent_app, 'append_terminal_output'):
@@ -4679,6 +4686,7 @@ else:
         # Run in background thread
         threading.Thread(target=run_in_thread, daemon=True).start()
 
+    # Additional methods for compatibility (keeping existing interface)
     def upgrade_pip(self, log_callback=None):
         """Upgrade pip in the current environment using system terminal"""
         if not self.current_venv:
@@ -4688,10 +4696,6 @@ else:
             if log_callback:
                 log_callback("Upgrading pip...")
             
-            # Switch to terminal tab if available
-            if hasattr(self.parent_app, 'output_tabs'):
-                self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-                
             # Use thread-safe command execution
             def on_pip_upgraded(success, return_code):
                 if success:
@@ -4711,113 +4715,6 @@ else:
             if log_callback:
                 log_callback(f"Error upgrading pip: {str(e)}")
             return False
-
-    def install_essential_packages(self, log_callback=None, progress_callback=None):
-        """Install essential packages using system terminal"""
-        if not self.current_venv:
-            self.logger.error("No virtual environment active")
-            if log_callback:
-                log_callback("ERROR: No virtual environment active")
-            return False
-        
-        # Switch to terminal tab if available
-        if hasattr(self.parent_app, 'output_tabs'):
-            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-        
-        # Install packages sequentially
-        failed_packages = []
-        total_packages = len(ESSENTIAL_PACKAGES)
-        
-        if log_callback:
-            log_callback(f"Starting installation of {total_packages} essential packages")
-            
-        def install_next_package(index=0):
-            if index >= total_packages:
-                # All packages processed
-                if failed_packages:
-                    if log_callback:
-                        log_callback(f"Some packages failed to install: {', '.join(failed_packages)}")
-                    return False
-                else:
-                    if log_callback:
-                        log_callback("All essential packages installed successfully")
-                    return True
-            
-            package = ESSENTIAL_PACKAGES[index]
-            
-            if log_callback:
-                log_callback(f"Installing {package} ({index+1}/{total_packages})...")
-                
-            if progress_callback:
-                progress_callback(package, index / total_packages)
-            
-            def on_package_installed(success, return_code):
-                if success:
-                    if log_callback:
-                        log_callback(f"[SUCCESS] Successfully installed {package}")
-                else:
-                    if log_callback:
-                        log_callback(f"[FAIL] Failed to install {package} (exit code {return_code})")
-                    failed_packages.append(package)
-                
-                # Install next package
-                install_next_package(index + 1)
-            
-            self.run_command_with_threading_fix(
-                [self.pip_path, "install", package],
-                on_complete=on_package_installed
-            )
-        
-        # Start installation
-        install_next_package()
-        return True
-
-    def install_optional_packages(self, log_callback=None, progress_callback=None):
-        """Install optional packages using system terminal"""
-        if not self.current_venv:
-            return False
-        
-        # Switch to terminal tab if available
-        if hasattr(self.parent_app, 'output_tabs'):
-            self.parent_app.root.after(0, lambda: self.parent_app.output_tabs.set("Terminal"))
-        
-        # Install first 5 optional packages
-        optional_subset = OPTIONAL_PACKAGES[:5]
-        
-        if log_callback:
-            log_callback("Installing optional packages...")
-        
-        def install_next_optional(index=0):
-            if index >= len(optional_subset):
-                return
-            
-            package = optional_subset[index]
-            
-            if log_callback:
-                log_callback(f"Installing optional {package}...")
-                
-            if progress_callback:
-                progress_callback(package, index / len(optional_subset))
-            
-            def on_package_installed(success, return_code):
-                if success:
-                    if log_callback:
-                        log_callback(f"Installed optional {package}")
-                else:
-                    if log_callback:
-                        log_callback(f"Could not install optional {package}")
-                
-                # Install next package
-                install_next_optional(index + 1)
-            
-            self.run_command_with_threading_fix(
-                [self.pip_path, "install", package],
-                on_complete=on_package_installed
-            )
-        
-        # Start installation
-        install_next_optional()
-        return True
 
     def verify_installation(self, log_callback=None):
         """Verify that the installation is working correctly using direct subprocess"""
@@ -4849,7 +4746,7 @@ else:
 """
         
         try:
-            result = subprocess.run(
+            result = self.run_hidden_subprocess_nuitka_safe(
                 [self.python_path, "-c", test_code],
                 capture_output=True,
                 text=True,
@@ -4895,13 +4792,6 @@ else:
         else:
             return (os.path.exists(os.path.join(venv_path, "bin", "python")) and
                     os.path.exists(os.path.join(venv_path, "bin", "pip")))
-        
-    def create_venv(self, name, python_exe="python"):
-        """Create a new virtual environment using system terminal"""
-        if name.startswith(("system_", "current_")):
-            return False
-            
-        return self.create_environment_unified(name, self.venv_dir)
         
     def activate_venv(self, name):
         """Activate a virtual environment"""
@@ -4981,7 +4871,7 @@ else:
         def list_thread():
             try:
                 # Execute pip list directly
-                result = subprocess.run(
+                result = self.run_hidden_subprocess_nuitka_safe(
                     [self.pip_path, "list", "--format=json"],
                     capture_output=True,
                     text=True,
@@ -5050,10 +4940,11 @@ else:
             # Get Python version directly (faster than creating a terminal script)
             python_exe = os.path.join(venv_path, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "python")
             
-            result = subprocess.run(
+            result = self.run_hidden_subprocess_nuitka_safe(
                 [python_exe, "--version"],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=10
             )
             
             if result.returncode == 0:
@@ -5061,10 +4952,11 @@ else:
                 
             # Get package count directly (faster than using terminal)
             pip_exe = os.path.join(venv_path, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_path, "bin", "pip")
-            result = subprocess.run(
+            result = self.run_hidden_subprocess_nuitka_safe(
                 [pip_exe, "list", "--format=json"],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=30
             )
             
             if result.returncode == 0:
@@ -5109,7 +5001,6 @@ else:
         
         # Return at least 1KB to avoid showing 0
         return max(1024, total_size)
-
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
