@@ -3966,19 +3966,13 @@ print('ALL_OK')
             our_exe = os.path.abspath(sys.executable)
             self.logger.info(f"Running as frozen executable: {our_exe}")
             self.logger.info("Will only use external Python interpreters")
-            
-            # Double-check that sys.executable is not a Python interpreter
-            try:
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    [our_exe, "--version"], 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=5
-                )
-                if "python" in result.stdout.lower():
-                    self.logger.error("CRITICAL: Our executable claims to be Python - this should not happen!")
-            except:
-                pass  # Good, our executable is not Python
+
+            # Older versions attempted to run our own executable with
+            # ``--version`` to confirm it was not a real Python interpreter.
+            # This caused additional instances of the application to spawn
+            # and appear briefly to the user.  The check is unnecessary
+            # because we already know the path points back to our bundled
+            # executable, so simply skip launching it.
         
         # Check for default environment
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
@@ -6351,7 +6345,7 @@ class AssetCard(ctk.CTkFrame):
         super().__init__(parent, **kwargs)
         
         self.asset_path = asset_path
-        self.asset_type = asset_type  # 'image' or 'audio'
+        self.asset_type = asset_type  # 'image', 'audio', or 'font'
         self.on_use_callback = on_use_callback
         self.on_remove_callback = on_remove_callback
         
@@ -6368,8 +6362,10 @@ class AssetCard(ctk.CTkFrame):
         
         if self.asset_type == "image":
             self.create_image_preview(preview_frame)
-        else:
+        elif self.asset_type == "audio":
             self.create_audio_preview(preview_frame)
+        else:
+            self.create_font_preview(preview_frame)
             
         # Asset info
         info_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -6486,6 +6482,15 @@ class AssetCard(ctk.CTkFrame):
                 duration_label.pack()
         except:
             pass
+
+    def create_font_preview(self, parent):
+        """Create font preview"""
+        icon_label = ctk.CTkLabel(
+            parent,
+            text="🔤",
+            font=ctk.CTkFont(size=24),
+        )
+        icon_label.pack(expand=True)
             
     def format_file_size(self, size_bytes):
         """Format file size in human readable format"""
@@ -7408,6 +7413,7 @@ class ManimStudioApp:
         self.video_data = None
         self.audio_path = None
         self.image_paths = []
+        self.font_paths = []
         self.last_preview_code = ""
         self.preview_video_path = None
         
@@ -8125,7 +8131,7 @@ class ManimStudioApp:
         # Assets info
         self.assets_info = ctk.CTkLabel(
             self.assets_frame,
-            text="Click + to add images or audio files",
+            text="Click + to add images, audio, or fonts",
             font=ctk.CTkFont(size=12),
             text_color=VSCODE_COLORS["text_secondary"]
         )
@@ -8866,6 +8872,7 @@ class MyScene(Scene):
         menu = tk.Menu(self.root, tearoff=0)
         menu.add_command(label="📷 Add Images", command=self.add_images)
         menu.add_command(label="🎵 Add Audio", command=self.add_audio)
+        menu.add_command(label="🔤 Add Font", command=self.add_font)
         
         # Get button position
         x = self.root.winfo_rootx() + 200
@@ -8902,6 +8909,19 @@ class MyScene(Scene):
             self.audio_path = file_path
             self.update_assets_display()
             self.append_terminal_output(f"Added audio: {os.path.basename(file_path)}\n")
+
+    def add_font(self):
+        """Add font asset"""
+        file_path = filedialog.askopenfilename(
+            title="Select Font File",
+            filetypes=[("Font files", "*.ttf *.otf")]
+        )
+
+        if file_path:
+            if file_path not in self.font_paths:
+                self.font_paths.append(file_path)
+            self.update_assets_display()
+            self.append_terminal_output(f"Added font: {os.path.basename(file_path)}\n")
             
     def update_assets_display(self):
         """Update assets display with visual cards"""
@@ -8922,7 +8942,7 @@ class MyScene(Scene):
             )
             card.pack(fill="x", pady=5)
             self.asset_cards.append(card)
-            
+
         # Add audio asset
         if self.audio_path:
             card = AssetCard(
@@ -8935,18 +8955,33 @@ class MyScene(Scene):
             )
             card.pack(fill="x", pady=5)
             self.asset_cards.append(card)
+
+        # Add font assets
+        for font_path in self.font_paths:
+            card = AssetCard(
+                self.assets_scroll,
+                font_path,
+                "font",
+                self.use_asset,
+                self.remove_asset,
+                fg_color=VSCODE_COLORS["surface_lighter"]
+            )
+            card.pack(fill="x", pady=5)
+            self.asset_cards.append(card)
             
         # Update info label
-        total_assets = len(self.image_paths) + (1 if self.audio_path else 0)
+        total_assets = len(self.image_paths) + len(self.font_paths) + (1 if self.audio_path else 0)
         if total_assets > 0:
             info_parts = []
             if self.image_paths:
                 info_parts.append(f"{len(self.image_paths)} image(s)")
             if self.audio_path:
                 info_parts.append("1 audio file")
+            if self.font_paths:
+                info_parts.append(f"{len(self.font_paths)} font(s)")
             self.assets_info.configure(text=", ".join(info_parts))
         else:
-            self.assets_info.configure(text="Click + to add images or audio files")
+            self.assets_info.configure(text="Click + to add images, audio, or fonts")
             
     def use_asset(self, asset_path, asset_type):
         """Use an asset in the code"""
@@ -8955,9 +8990,13 @@ class MyScene(Scene):
             code_snippet += f"image = ImageMobject(r\"{asset_path}\")\n"
             code_snippet += "image.scale(2)  # Adjust size as needed\n"
             code_snippet += "self.add(image)\n"
-        else:  # audio
+        elif asset_type == "audio":
             code_snippet = f"\n# Using audio: {os.path.basename(asset_path)}\n"
             code_snippet += f"self.add_sound(\"{asset_path}\")\n"
+        else:  # font
+            code_snippet = f"\n# Using font: {os.path.basename(asset_path)}\n"
+            code_snippet += f"text = Text(\"Your Text\", font=r\"{asset_path}\")\n"
+            code_snippet += "self.add(text)\n"
             
         # Insert at current cursor position
         current_pos = self.code_editor.index("insert")
@@ -8972,6 +9011,8 @@ class MyScene(Scene):
             self.image_paths.remove(asset_path)
         elif asset_path == self.audio_path:
             self.audio_path = None
+        elif asset_path in self.font_paths:
+            self.font_paths.remove(asset_path)
             
         # Update display
         self.update_assets_display()
