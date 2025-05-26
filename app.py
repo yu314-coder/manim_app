@@ -4,6 +4,14 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, colorchooser
 import tempfile
 import os
+
+# Hide the console window immediately on Windows to prevent flash
+if os.name == "nt":
+    try:
+        import ctypes
+        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+    except Exception:
+        pass
 import logging
 import json
 import subprocess
@@ -3966,19 +3974,13 @@ print('ALL_OK')
             our_exe = os.path.abspath(sys.executable)
             self.logger.info(f"Running as frozen executable: {our_exe}")
             self.logger.info("Will only use external Python interpreters")
-            
-            # Double-check that sys.executable is not a Python interpreter
-            try:
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    [our_exe, "--version"], 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=5
-                )
-                if "python" in result.stdout.lower():
-                    self.logger.error("CRITICAL: Our executable claims to be Python - this should not happen!")
-            except:
-                pass  # Good, our executable is not Python
+
+            # Older versions attempted to run our own executable with
+            # ``--version`` to confirm it was not a real Python interpreter.
+            # This caused additional instances of the application to spawn
+            # and appear briefly to the user.  The check is unnecessary
+            # because we already know the path points back to our bundled
+            # executable, so simply skip launching it.
         
         # Check for default environment
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
