@@ -3510,7 +3510,7 @@ class VirtualEnvironmentManager:
         """Check if a Python in WindowsApps is real or just a redirect"""
         try:
             # Try to get version - real Python will respond
-            result = subprocess.run(
+            result = self.run_hidden_subprocess_nuitka_safe(
                 [python_path, "--version"],
                 capture_output=True,
                 text=True,
@@ -3701,10 +3701,10 @@ class VirtualEnvironmentManager:
             conda_commands = ["conda", "mamba", "micromamba"]
             for conda_cmd in conda_commands:
                 try:
-                    conda_info = subprocess.run(
-                        [conda_cmd, "info", "--envs"], 
-                        capture_output=True, 
-                        text=True, 
+                    conda_info = self.run_hidden_subprocess_nuitka_safe(
+                        [conda_cmd, "info", "--envs"],
+                        capture_output=True,
+                        text=True,
                         timeout=15
                     )
                     if conda_info.returncode == 0:
@@ -3966,19 +3966,13 @@ print('ALL_OK')
             our_exe = os.path.abspath(sys.executable)
             self.logger.info(f"Running as frozen executable: {our_exe}")
             self.logger.info("Will only use external Python interpreters")
-            
-            # Double-check that sys.executable is not a Python interpreter
-            try:
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    [our_exe, "--version"], 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=5
-                )
-                if "python" in result.stdout.lower():
-                    self.logger.error("CRITICAL: Our executable claims to be Python - this should not happen!")
-            except:
-                pass  # Good, our executable is not Python
+
+            # Older versions attempted to run our own executable with
+            # ``--version`` to confirm it was not a real Python interpreter.
+            # This caused additional instances of the application to spawn
+            # and appear briefly to the user.  The check is unnecessary
+            # because we already know the path points back to our bundled
+            # executable, so simply skip launching it.
         
         # Check for default environment
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
@@ -6472,7 +6466,9 @@ class AssetCard(ctk.CTkFrame):
             # Try to get audio duration using ffprobe
             cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", 
                    "-of", "csv=p=0", self.asset_path]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = self.run_hidden_subprocess_nuitka_safe(
+                cmd, capture_output=True, text=True
+            )
             if result.returncode == 0:
                 duration = float(result.stdout.strip())
                 duration_str = f"{int(duration//60)}:{int(duration%60):02d}"
@@ -9239,7 +9235,7 @@ class MyScene(Scene):
                 # Fallback to direct execution
                 def run_preview():
                     try:
-                        result = subprocess.run(
+                        result = self.run_hidden_subprocess_nuitka_safe(
                             command,
                             capture_output=True,
                             text=True,
@@ -9608,9 +9604,10 @@ else:
                     try:
                         # Check if package is installed
                         import_cmd = "PIL" if package == "PIL" else package
-                        result = subprocess.run([
-                            python_exe, "-c", f"import {import_cmd}"
-                        ], capture_output=True)
+                        result = self.run_hidden_subprocess_nuitka_safe(
+                            [python_exe, "-c", f"import {import_cmd}"],
+                            capture_output=True
+                        )
                         
                         if result.returncode != 0:
                             missing.append(package)
