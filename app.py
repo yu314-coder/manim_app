@@ -3276,6 +3276,10 @@ class VirtualEnvironmentManager:
         except subprocess.TimeoutExpired:
             self.logger.error(f"Command timed out: {command}")
             raise
+        except FileNotFoundError:
+            # Log missing commands only at debug level to avoid confusing errors
+            self.logger.debug(f"Command not found: {command}")
+            raise
         except Exception as e:
             self.logger.error(f"Subprocess error: {e}")
             raise
