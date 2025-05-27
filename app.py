@@ -49,7 +49,8 @@ import threading
 import tempfile
 import subprocess
 import tkinter as tk
-import queue 
+import queue
+import atexit
 from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
@@ -3978,6 +3979,10 @@ print('ALL_OK')
             # because we already know the path points back to our bundled
             # executable, so simply skip launching it.
         
+        # Check for local environment alongside the application
+        if self.check_local_directory_venv():
+            return True
+
         # Check for default environment
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
         if os.path.exists(default_venv_path):
@@ -4818,6 +4823,36 @@ else:
         self.python_path = sys.executable
         self.pip_path = "pip"
         return True
+
+    def activate_venv_path(self, venv_path):
+        """Activate a virtual environment located at an arbitrary path"""
+        if not self.is_valid_venv(venv_path):
+            return False
+
+        if os.name == 'nt':
+            self.python_path = os.path.join(venv_path, "Scripts", "python.exe")
+            self.pip_path = os.path.join(venv_path, "Scripts", "pip.exe")
+        else:
+            self.python_path = os.path.join(venv_path, "bin", "python")
+            self.pip_path = os.path.join(venv_path, "bin", "pip")
+
+        self.current_venv = f"external_{os.path.basename(venv_path)}"
+        return True
+
+    def check_local_directory_venv(self):
+        """Check for a virtual environment in the application directory"""
+        candidates = ["venv", "env"]
+        for name in candidates:
+            venv_path = os.path.join(BASE_DIR, name)
+            if os.path.isdir(venv_path) and self.is_valid_venv(venv_path):
+                self.logger.info(f"Found local environment: {venv_path}")
+                if self.verify_environment_packages(venv_path):
+                    self.logger.info("Local environment verified")
+                    self.activate_venv_path(venv_path)
+                    return True
+                else:
+                    self.logger.warning("Local environment missing required packages")
+        return False
         
     def install_package(self, package_name, callback=None):
         """Install a package using system terminal"""
@@ -10265,6 +10300,32 @@ def main():
         # Create application directory
         app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
         os.makedirs(app_dir, exist_ok=True)
+
+        # Prevent multiple instances
+        lock_file = os.path.join(app_dir, "app.lock")
+        try:
+            if os.path.exists(lock_file):
+                with open(lock_file, "r") as f:
+                    pid = int(f.read().strip() or 0)
+                if pid and psutil.pid_exists(pid):
+                    print("ManimStudio is already running.")
+                    return
+                else:
+                    os.remove(lock_file)
+
+            fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w") as f:
+                f.write(str(os.getpid()))
+
+            def _cleanup_lock():
+                try:
+                    os.remove(lock_file)
+                except FileNotFoundError:
+                    pass
+
+            atexit.register(_cleanup_lock)
+        except Exception:
+            pass
         
         # Set up logging
         log_file = os.path.join(app_dir, "manim_studio.log")
