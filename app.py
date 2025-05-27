@@ -394,7 +394,7 @@ class TkTerminal(tk.Text):
         self.command_running = False
 
         # History management
-        history_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        history_dir = os.path.join(BASE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)
         self.history_file = os.path.join(history_dir, "terminal_history.txt")
 
@@ -1067,7 +1067,7 @@ class SystemTerminalManager:
         self.process_thread = None
         
         # Load command history
-        history_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        history_dir = os.path.join(BASE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)
         self.history_file = os.path.join(history_dir, "terminal_history.txt")
         self.load_history()
@@ -1396,7 +1396,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             width=120
         ).grid(row=1, column=0, sticky="w", pady=3)
         
-        env_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs", "manim_studio_default")
+        env_path = os.path.join(BASE_DIR, "venvs", "manim_studio_default")
         self.env_path_label = ctk.CTkLabel(
             env_details_frame,
             text=env_path
@@ -2644,8 +2644,8 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
             width=100
         ).pack(side="left")
         
-        # Default location
-        default_location = os.path.join(os.path.expanduser("~"), ".manim_studio", "venvs")
+        # Default location next to the executable
+        default_location = os.path.join(BASE_DIR, "venvs")
         self.location_var = ctk.StringVar(value=default_location)
         
         location_entry = ctk.CTkEntry(
@@ -3156,9 +3156,9 @@ class VirtualEnvironmentManager:
         self.parent_app = parent_app
         self.current_venv = None
         
-        # FIXED: Always use home directory for venvs (safer for all deployment types)
-        base_dir = os.path.expanduser("~")
-        self.venv_dir = os.path.join(base_dir, ".manim_studio", "venvs")
+        # Use application directory so environments live alongside the executable
+        base_dir = BASE_DIR
+        self.venv_dir = os.path.join(base_dir, "venvs")
         os.makedirs(self.venv_dir, exist_ok=True)
         
         # CRITICAL: Enhanced frozen detection
