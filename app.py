@@ -55,7 +55,11 @@ from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
-    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+    # When bundled with Nuitka onefile, sys.executable points to a
+    # temporary extraction directory. ``sys.argv[0]`` refers to the
+    # actual executable that was launched, so use that to resolve the
+    # base directory so data lives next to the launcher.
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -4031,7 +4035,10 @@ print('ALL_OK')
         self.logger.info("Checking for bundled environment...")
         
         # First check relative to executable
-        executable_dir = Path(os.path.dirname(sys.executable))
+        # ``sys.executable`` may point to a temporary extraction directory in
+        # Nuitka onefile builds. ``sys.argv[0]`` gives the path to the actual
+        # launcher, so resolve from there.
+        executable_dir = Path(os.path.dirname(os.path.abspath(sys.argv[0])))
         bundled_dir = executable_dir / "bundled_venv"
         
         # Also check temporary extraction paths used by onefile builds
