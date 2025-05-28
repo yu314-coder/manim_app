@@ -54,17 +54,33 @@ import atexit
 from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
-if getattr(sys, 'frozen', False):
-    # When bundled as a onefile executable, ``sys.argv[0]`` may point to a
-    # temporary extraction directory.  If that's the case, fall back to
-    # ``sys.executable`` so the environment lives next to the real launcher.
-    launcher_path = os.path.abspath(sys.argv[0])
-    tmp_path = os.path.abspath(tempfile.gettempdir())
-    if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
-        launcher_path = os.path.abspath(sys.executable)
-    BASE_DIR = os.path.dirname(launcher_path)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def _resolve_base_dir():
+    """Return the directory where the executable/script resides.
+
+    When packaged as a onefile executable, ``sys.executable`` points to a
+    temporary extraction directory.  In that case we want to use the original
+    launcher path from ``sys.argv[0]`` (or Nuitka's environment variable) so
+    that the virtual environment is created next to the real executable.
+    """
+
+    if getattr(sys, "frozen", False):
+        exe_path = os.path.abspath(sys.executable)
+        tmp_path = os.path.abspath(tempfile.gettempdir())
+
+        if exe_path.startswith(tmp_path):
+            launcher = os.path.abspath(sys.argv[0])
+            if launcher.startswith(tmp_path) or not os.path.exists(launcher):
+                launcher = os.environ.get("NUITKA_ONEFILE_PARENT", None)
+                if launcher and os.path.exists(launcher):
+                    return os.path.dirname(os.path.abspath(launcher))
+                return os.path.dirname(exe_path)
+            return os.path.dirname(launcher)
+        return os.path.dirname(exe_path)
+
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = _resolve_base_dir()
 
 # Global media directory alongside the application
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
@@ -3280,6 +3296,10 @@ class VirtualEnvironmentManager:
             kwargs['timeout'] = 300  # 5 minutes default
         
         try:
+            env = kwargs.pop('env', os.environ.copy())
+            env.pop('PYTHONHOME', None)
+            env.pop('PYTHONPATH', None)
+            kwargs['env'] = env
             return subprocess.run(command, **kwargs)
         except subprocess.TimeoutExpired:
             self.logger.error(f"Command timed out: {command}")
@@ -4037,13 +4057,18 @@ print('ALL_OK')
         """Check if a bundled environment is available"""
         self.logger.info("Checking for bundled environment...")
         
-        # First check relative to the launcher. ``sys.argv[0]`` usually points
-        # to the launched executable, but in onefile mode it may live in the
-        # system temp directory. If so, fall back to ``sys.executable``.
-        launcher_path = os.path.abspath(sys.argv[0])
+        # Determine where the executable resides. In onefile builds
+        # ``sys.executable`` points to a temporary directory, so prefer
+        # the original launcher from ``sys.argv[0]`` when needed.
+        exe_path = os.path.abspath(sys.executable)
         tmp_path = os.path.abspath(tempfile.gettempdir())
-        if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
-            launcher_path = os.path.abspath(sys.executable)
+        if exe_path.startswith(tmp_path):
+            launcher_path = os.path.abspath(sys.argv[0])
+            if launcher_path.startswith(tmp_path):
+                launcher_path = os.environ.get("NUITKA_ONEFILE_PARENT", exe_path)
+        else:
+            launcher_path = exe_path
+
         executable_dir = Path(os.path.dirname(launcher_path))
         bundled_dir = executable_dir / "bundled_venv"
         
@@ -8414,11 +8439,17 @@ class ManimStudioApp:
             fg_color=VSCODE_COLORS["background"],
             text_color=VSCODE_COLORS["text"]
         )
-        self.output_text.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.output_text.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 5))
+
+        # Progress bar for long-running commands
+        self.terminal_progress = ctk.CTkProgressBar(output_frame)
+        self.terminal_progress.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self.terminal_progress.set(0)
+        self.terminal_progress.grid_remove()
         
         # Command input frame
         input_frame = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["surface_light"], height=50)
-        input_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
+        input_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 10))
         input_frame.grid_columnconfigure(0, weight=1)
         
         # Command input
@@ -8602,6 +8633,18 @@ class ManimStudioApp:
         """Append text to terminal output"""
         self.output_text.insert("end", text)
         self.output_text.see("end")
+
+    def start_terminal_progress(self):
+        """Show progress bar for terminal commands"""
+        if hasattr(self, "terminal_progress"):
+            self.terminal_progress.set(0)
+            self.terminal_progress.grid()
+
+    def stop_terminal_progress(self):
+        """Hide terminal progress bar"""
+        if hasattr(self, "terminal_progress"):
+            self.terminal_progress.set(1.0)
+            self.root.after(500, self.terminal_progress.grid_remove)
 
     def clear_output(self):
         """Clear terminal output"""
@@ -9703,22 +9746,29 @@ else:
             self.manage_environment()
             return
             
+        total = len(package_names)
+        self.start_terminal_progress()
+
         # Install packages using system terminal
         def install_package(index=0):
-            if index >= len(package_names):
-                # All packages installed
+            if index >= total:
+                self.stop_terminal_progress()
                 self.append_terminal_output("All packages installed successfully!\n")
                 return
-            
+
             package = package_names[index]
             self.append_terminal_output(f"Installing {package}...\n")
-            
+            if hasattr(self, "terminal_progress"):
+                self.terminal_progress.set(index / total)
+
             def on_install_complete(success, return_code):
                 if success:
                     self.append_terminal_output(f"✓ Successfully installed {package}\n")
                 else:
                     self.append_terminal_output(f"✗ Failed to install {package} (exit code {return_code})\n")
-                    
+
+                if hasattr(self, "terminal_progress"):
+                    self.terminal_progress.set((index + 1) / total)
                 # Install next package
                 install_package(index + 1)
             
