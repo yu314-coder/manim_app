@@ -55,11 +55,19 @@ from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
-    # When bundled with Nuitka onefile, sys.executable points to a
-    # temporary extraction directory. ``sys.argv[0]`` refers to the
-    # actual executable that was launched, so use that to resolve the
-    # base directory so data lives next to the launcher.
-    BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    arg0_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    # Nuitka onefile can set ``sys.argv[0]`` to the temporary extraction
+    # directory. Prefer the real executable directory when the two differ
+    # or when the argv path resides inside the system temp folder.
+    if (
+        arg0_dir and os.path.exists(arg0_dir) and
+        'onefile_' not in arg0_dir and
+        not arg0_dir.startswith(tempfile.gettempdir())
+    ):
+        BASE_DIR = arg0_dir
+    else:
+        BASE_DIR = exe_dir
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -4034,11 +4042,20 @@ print('ALL_OK')
         """Check if a bundled environment is available"""
         self.logger.info("Checking for bundled environment...")
         
-        # First check relative to executable
-        # ``sys.executable`` may point to a temporary extraction directory in
-        # Nuitka onefile builds. ``sys.argv[0]`` gives the path to the actual
-        # launcher, so resolve from there.
-        executable_dir = Path(os.path.dirname(os.path.abspath(sys.argv[0])))
+        # First check relative to the real launcher location
+        exe_dir = Path(os.path.dirname(os.path.abspath(sys.executable)))
+        arg0_dir = Path(os.path.dirname(os.path.abspath(sys.argv[0])))
+
+        # Nuitka may set ``sys.argv[0]`` to the temporary extraction path.
+        if (
+            arg0_dir.exists() and
+            'onefile_' not in str(arg0_dir) and
+            not str(arg0_dir).startswith(tempfile.gettempdir())
+        ):
+            executable_dir = arg0_dir
+        else:
+            executable_dir = exe_dir
+
         bundled_dir = executable_dir / "bundled_venv"
         
         # Also check temporary extraction paths used by onefile builds
