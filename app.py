@@ -55,7 +55,14 @@ from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
-    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+    # When bundled as a onefile executable, ``sys.argv[0]`` may point to a
+    # temporary extraction directory.  If that's the case, fall back to
+    # ``sys.executable`` so the environment lives next to the real launcher.
+    launcher_path = os.path.abspath(sys.argv[0])
+    tmp_path = os.path.abspath(tempfile.gettempdir())
+    if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
+        launcher_path = os.path.abspath(sys.executable)
+    BASE_DIR = os.path.dirname(launcher_path)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -4030,8 +4037,14 @@ print('ALL_OK')
         """Check if a bundled environment is available"""
         self.logger.info("Checking for bundled environment...")
         
-        # First check relative to executable
-        executable_dir = Path(os.path.dirname(sys.executable))
+        # First check relative to the launcher. ``sys.argv[0]`` usually points
+        # to the launched executable, but in onefile mode it may live in the
+        # system temp directory. If so, fall back to ``sys.executable``.
+        launcher_path = os.path.abspath(sys.argv[0])
+        tmp_path = os.path.abspath(tempfile.gettempdir())
+        if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
+            launcher_path = os.path.abspath(sys.executable)
+        executable_dir = Path(os.path.dirname(launcher_path))
         bundled_dir = executable_dir / "bundled_venv"
         
         # Also check temporary extraction paths used by onefile builds
