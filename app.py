@@ -54,17 +54,30 @@ import atexit
 from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
-if getattr(sys, 'frozen', False):
-    # When bundled as a onefile executable, ``sys.argv[0]`` may point to a
-    # temporary extraction directory.  If that's the case, fall back to
-    # ``sys.executable`` so the environment lives next to the real launcher.
-    launcher_path = os.path.abspath(sys.argv[0])
-    tmp_path = os.path.abspath(tempfile.gettempdir())
-    if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
-        launcher_path = os.path.abspath(sys.executable)
-    BASE_DIR = os.path.dirname(launcher_path)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def _resolve_base_dir():
+    """Return the directory where the executable/script resides.
+
+    When packaged as a onefile executable, ``sys.executable`` points to a
+    temporary extraction directory.  In that case we want to use the original
+    launcher path from ``sys.argv[0]`` (or Nuitka's environment variable) so
+    that the virtual environment is created next to the real executable.
+    """
+
+    if getattr(sys, "frozen", False):
+        exe_path = os.path.abspath(sys.executable)
+        tmp_path = os.path.abspath(tempfile.gettempdir())
+
+        if exe_path.startswith(tmp_path):
+            launcher = os.path.abspath(sys.argv[0])
+            if launcher.startswith(tmp_path):
+                launcher = os.environ.get("NUITKA_ONEFILE_PARENT", exe_path)
+            return os.path.dirname(launcher)
+        return os.path.dirname(exe_path)
+
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = _resolve_base_dir()
 
 # Global media directory alongside the application
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
@@ -1191,6 +1204,8 @@ class SystemTerminalManager:
                 # Execute with output capture
                 def run_command():
                     try:
+                        if hasattr(self.parent_app, 'start_terminal_progress'):
+                            self.parent_app.root.after(0, self.parent_app.start_terminal_progress)
                         # Use system's shell to execute command
                         if platform.system().lower() == "windows":
                             shell_cmd = ["cmd", "/c", command]
@@ -1220,8 +1235,11 @@ class SystemTerminalManager:
                         
                         if on_complete:
                             success = process.returncode == 0
-                            self.parent_app.root.after(0, 
+                            self.parent_app.root.after(0,
                                 lambda: on_complete(success, process.returncode))
+                        if hasattr(self.parent_app, 'stop_terminal_progress'):
+                            self.parent_app.root.after(0,
+                                lambda: self.parent_app.stop_terminal_progress(success))
                             
                     except Exception as e:
                         error_msg = f"Error executing command: {str(e)}\n"
@@ -1229,8 +1247,11 @@ class SystemTerminalManager:
                             self.parent_app.root.after(0, 
                                 lambda: self.parent_app.append_terminal_output(error_msg))
                         if on_complete:
-                            self.parent_app.root.after(0, 
+                            self.parent_app.root.after(0,
                                 lambda: on_complete(False, -1))
+                        if hasattr(self.parent_app, 'stop_terminal_progress'):
+                            self.parent_app.root.after(0,
+                                lambda: self.parent_app.stop_terminal_progress(False))
                 
                 # Run in background thread
                 thread = threading.Thread(target=run_command, daemon=True)
@@ -2143,6 +2164,19 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
             fg_color=VSCODE_COLORS["error"]
         )
         self.uninstall_btn.pack(side="left")
+
+        # Progress bar for package operations
+        self.pkg_progress = ctk.CTkProgressBar(self.package_frame)
+        self.pkg_progress.pack(fill="x", padx=15, pady=(0, 10))
+        self.pkg_progress.set(0)
+        self.pkg_progress_label = ctk.CTkLabel(
+            self.package_frame,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.pkg_progress_label.pack(anchor="w", padx=15)
+        self._pkg_progress_running = False
         
         # Package list
         pkg_list_frame = ctk.CTkFrame(self.package_frame, fg_color="transparent")
@@ -2472,11 +2506,13 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         # Disable controls during installation
         self.install_btn.configure(text="Installing...", state="disabled")
         self.pkg_entry.configure(state="disabled")
+        self._start_pkg_progress(f"Installing {package_name}...")
         
         # Install package
         def on_install_complete(success, stdout, stderr):
             self.install_btn.configure(text="Install", state="normal")
             self.pkg_entry.configure(state="normal")
+            self._stop_pkg_progress("Installation complete" if success else "Installation failed")
             
             if success:
                 messagebox.showinfo(
@@ -2495,6 +2531,30 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         
         # Start installation
         self.venv_manager.install_package(package_name, on_install_complete)
+
+    def _start_pkg_progress(self, message):
+        """Start indeterminate progress bar for package operations"""
+        if self._pkg_progress_running:
+            return
+        self._pkg_progress_running = True
+        self.pkg_progress_label.configure(text=message)
+        self.pkg_progress.set(0)
+
+        def step():
+            if not self._pkg_progress_running:
+                return
+            value = self.pkg_progress._value if hasattr(self.pkg_progress, "_value") else 0
+            value = (value + 0.02) % 1.0
+            self.pkg_progress.set(value)
+            self.after(50, step)
+
+        step()
+
+    def _stop_pkg_progress(self, message=""):
+        """Stop progress bar"""
+        self._pkg_progress_running = False
+        self.pkg_progress.set(1.0)
+        self.pkg_progress_label.configure(text=message)
         
     def uninstall_package(self):
         """Uninstall a package from the selected environment"""
@@ -2537,10 +2597,12 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
             
         # Disable controls during uninstallation
         self.uninstall_btn.configure(text="Uninstalling...", state="disabled")
+        self._start_pkg_progress(f"Uninstalling {package_name}...")
         
         # Uninstall package
         def on_uninstall_complete(success, stdout, stderr):
             self.uninstall_btn.configure(text="Uninstall", state="normal")
+            self._stop_pkg_progress("Uninstallation complete" if success else "Uninstallation failed")
             
             if success:
                 messagebox.showinfo(
@@ -4037,13 +4099,18 @@ print('ALL_OK')
         """Check if a bundled environment is available"""
         self.logger.info("Checking for bundled environment...")
         
-        # First check relative to the launcher. ``sys.argv[0]`` usually points
-        # to the launched executable, but in onefile mode it may live in the
-        # system temp directory. If so, fall back to ``sys.executable``.
-        launcher_path = os.path.abspath(sys.argv[0])
+        # Determine where the executable resides. In onefile builds
+        # ``sys.executable`` points to a temporary directory, so prefer
+        # the original launcher from ``sys.argv[0]`` when needed.
+        exe_path = os.path.abspath(sys.executable)
         tmp_path = os.path.abspath(tempfile.gettempdir())
-        if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
-            launcher_path = os.path.abspath(sys.executable)
+        if exe_path.startswith(tmp_path):
+            launcher_path = os.path.abspath(sys.argv[0])
+            if launcher_path.startswith(tmp_path):
+                launcher_path = os.environ.get("NUITKA_ONEFILE_PARENT", exe_path)
+        else:
+            launcher_path = exe_path
+
         executable_dir = Path(os.path.dirname(launcher_path))
         bundled_dir = executable_dir / "bundled_venv"
         
@@ -8415,10 +8482,16 @@ class ManimStudioApp:
             text_color=VSCODE_COLORS["text"]
         )
         self.output_text.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
-        
+
+        # Progress bar for commands
+        self.terminal_progress = ctk.CTkProgressBar(output_frame)
+        self.terminal_progress.grid(row=2, column=0, sticky="ew", padx=10)
+        self.terminal_progress.set(0)
+        self._terminal_progress_running = False
+
         # Command input frame
         input_frame = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["surface_light"], height=50)
-        input_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
+        input_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 10))
         input_frame.grid_columnconfigure(0, weight=1)
         
         # Command input
@@ -8595,7 +8668,7 @@ class ManimStudioApp:
                 self.append_terminal_output(f"Command completed (exit code: {return_code})\n\n")
             else:
                 self.append_terminal_output(f"Command failed (exit code: {return_code})\n\n")
-        
+
         self.terminal.execute_command(command, capture_output=True, on_complete=on_complete)
 
     def append_terminal_output(self, text):
@@ -9549,6 +9622,28 @@ class MyScene(Scene):
         """Update status bar"""
         self.status_label.configure(text=message)
         self.root.update_idletasks()
+
+    def start_terminal_progress(self):
+        """Begin terminal command progress animation"""
+        if self._terminal_progress_running:
+            return
+        self._terminal_progress_running = True
+        self.terminal_progress.set(0)
+
+        def step():
+            if not self._terminal_progress_running:
+                return
+            value = self.terminal_progress._value if hasattr(self.terminal_progress, "_value") else 0
+            value = (value + 0.02) % 1.0
+            self.terminal_progress.set(value)
+            self.root.after(50, step)
+
+        step()
+
+    def stop_terminal_progress(self, success=True):
+        """Stop terminal command progress"""
+        self._terminal_progress_running = False
+        self.terminal_progress.set(1.0 if success else 0)
         
     def start_background_tasks(self):
         """Start background tasks"""
