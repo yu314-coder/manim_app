@@ -55,19 +55,14 @@ from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
-    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    arg0_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-    # Nuitka onefile can set ``sys.argv[0]`` to the temporary extraction
-    # directory. Prefer the real executable directory when the two differ
-    # or when the argv path resides inside the system temp folder.
-    if (
-        arg0_dir and os.path.exists(arg0_dir) and
-        'onefile_' not in arg0_dir and
-        not arg0_dir.startswith(tempfile.gettempdir())
-    ):
-        BASE_DIR = arg0_dir
-    else:
-        BASE_DIR = exe_dir
+    # When bundled as a onefile executable, ``sys.argv[0]`` may point to a
+    # temporary extraction directory.  If that's the case, fall back to
+    # ``sys.executable`` so the environment lives next to the real launcher.
+    launcher_path = os.path.abspath(sys.argv[0])
+    tmp_path = os.path.abspath(tempfile.gettempdir())
+    if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
+        launcher_path = os.path.abspath(sys.executable)
+    BASE_DIR = os.path.dirname(launcher_path)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -4042,20 +4037,14 @@ print('ALL_OK')
         """Check if a bundled environment is available"""
         self.logger.info("Checking for bundled environment...")
         
-        # First check relative to the real launcher location
-        exe_dir = Path(os.path.dirname(os.path.abspath(sys.executable)))
-        arg0_dir = Path(os.path.dirname(os.path.abspath(sys.argv[0])))
-
-        # Nuitka may set ``sys.argv[0]`` to the temporary extraction path.
-        if (
-            arg0_dir.exists() and
-            'onefile_' not in str(arg0_dir) and
-            not str(arg0_dir).startswith(tempfile.gettempdir())
-        ):
-            executable_dir = arg0_dir
-        else:
-            executable_dir = exe_dir
-
+        # First check relative to the launcher. ``sys.argv[0]`` usually points
+        # to the launched executable, but in onefile mode it may live in the
+        # system temp directory. If so, fall back to ``sys.executable``.
+        launcher_path = os.path.abspath(sys.argv[0])
+        tmp_path = os.path.abspath(tempfile.gettempdir())
+        if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
+            launcher_path = os.path.abspath(sys.executable)
+        executable_dir = Path(os.path.dirname(launcher_path))
         bundled_dir = executable_dir / "bundled_venv"
         
         # Also check temporary extraction paths used by onefile builds
