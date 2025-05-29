@@ -517,6 +517,7 @@ class AdvancedTkTerminal(tk.Text):
         self.bind('<Button-1>', self.on_click)
         self.bind('<Return>', self.on_return)
         self.bind('<Key>', self.on_key)
+        self.bind('<Tab>', self.handle_tab_completion)
         
         # Start background tasks
         self.start_background_tasks()
@@ -9107,7 +9108,7 @@ class ManimStudioApp:
                 height=15  # Reasonable height
             )
             self.terminal.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-            
+
             # Apply theme to terminal if supported
             if hasattr(self.terminal, 'set_color_scheme'):
                 self.terminal.set_color_scheme({
