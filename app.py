@@ -4310,13 +4310,13 @@ for pkg in packages:
             import PIL
         else:
             __import__(pkg)
-        print(f'[OK] {pkg}')
+        print('[OK]', pkg)
     except ImportError:
         missing.append(pkg)
-        print(f'[FAIL] {pkg}')
+        print('[FAIL]', pkg)
 
 if missing:
-    print(f'MISSING:{",".join(missing)}')
+    print('MISSING:' + ','.join(missing))
     sys.exit(1)
 else:
     print('ALL_OK')
