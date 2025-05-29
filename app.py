@@ -408,7 +408,8 @@ class TkTerminal(tk.Text):
         kwargs.setdefault('selectbackground', '#264F78')  # VSCode selection color
         kwargs.setdefault('highlightthickness', 0)
         kwargs.setdefault('relief', 'flat')
-        kwargs.setdefault('font', ('Cascadia Code', 11))  # Modern terminal font
+        # Use a widely available monospaced font
+        kwargs.setdefault('font', ('DejaVu Sans Mono', 11))
         kwargs.setdefault('padx', 10)
         kwargs.setdefault('pady', 8)
         super().__init__(parent, **kwargs)
@@ -615,10 +616,13 @@ Working directory: {self.cwd}
         try:
             # Show executing indicator
             self.insert("end", f"Executing: {cmd}\n", "command")
-            
+
+            # Parse command safely to handle paths with spaces
+            args = shlex.split(cmd, posix=(os.name != 'nt'))
+
             process = popen_original(
-                cmd,
-                shell=True,
+                args,
+                shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -4300,28 +4304,28 @@ print('ALL_OK')
             essential_packages = REQUIRED_PACKAGES
 
             # Create a single test command
-            test_code = f"""
-import sys
-missing = []
-packages = {essential_packages!r}
-for pkg in packages:
-    try:
-        if pkg == 'PIL':
-            import PIL
-        else:
-            __import__(pkg)
-        print(f'[OK] {pkg}')
-    except ImportError:
-        missing.append(pkg)
-        print(f'[FAIL] {pkg}')
-
-if missing:
-    print(f'MISSING:{",".join(missing)}')
-    sys.exit(1)
-else:
-    print('ALL_OK')
-    sys.exit(0)
-"""
+            test_code = (
+                "import sys\n"
+                "missing = []\n"
+                f"packages = {essential_packages!r}\n"
+                "for pkg in packages:\n"
+                "    try:\n"
+                "        if pkg == 'PIL':\n"
+                "            import PIL\n"
+                "        else:\n"
+                "            __import__(pkg)\n"
+                "        print(f'[OK] {pkg}')\n"
+                "    except ImportError:\n"
+                "        missing.append(pkg)\n"
+                "        print(f'[FAIL] {pkg}')\n"
+                "\n"
+                "if missing:\n"
+                "    print('MISSING:' + ','.join(missing))\n"
+                "    sys.exit(1)\n"
+                "else:\n"
+                "    print('ALL_OK')\n"
+                "    sys.exit(0)\n"
+            )
             
             # Execute directly without temporary file
             result = self.run_hidden_subprocess_nuitka_safe(
