@@ -408,7 +408,8 @@ class TkTerminal(tk.Text):
         kwargs.setdefault('selectbackground', '#264F78')  # VSCode selection color
         kwargs.setdefault('highlightthickness', 0)
         kwargs.setdefault('relief', 'flat')
-        kwargs.setdefault('font', ('Cascadia Code', 11))  # Modern terminal font
+        # Use a widely available monospaced font
+        kwargs.setdefault('font', ('DejaVu Sans Mono', 11))
         kwargs.setdefault('padx', 10)
         kwargs.setdefault('pady', 8)
         super().__init__(parent, **kwargs)
@@ -615,10 +616,13 @@ Working directory: {self.cwd}
         try:
             # Show executing indicator
             self.insert("end", f"Executing: {cmd}\n", "command")
-            
+
+            # Parse command safely to handle paths with spaces
+            args = shlex.split(cmd, posix=(os.name != 'nt'))
+
             process = popen_original(
-                cmd,
-                shell=True,
+                args,
+                shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
