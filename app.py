@@ -54,17 +54,30 @@ import atexit
 from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
-if getattr(sys, 'frozen', False):
-    # When bundled as a onefile executable, ``sys.argv[0]`` may point to a
-    # temporary extraction directory.  If that's the case, fall back to
-    # ``sys.executable`` so the environment lives next to the real launcher.
-    launcher_path = os.path.abspath(sys.argv[0])
-    tmp_path = os.path.abspath(tempfile.gettempdir())
-    if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
-        launcher_path = os.path.abspath(sys.executable)
-    BASE_DIR = os.path.dirname(launcher_path)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def _resolve_base_dir():
+    """Return the directory where the executable/script resides.
+
+    When packaged as a onefile executable, ``sys.executable`` points to a
+    temporary extraction directory.  In that case we want to use the original
+    launcher path from ``sys.argv[0]`` (or Nuitka's environment variable) so
+    that the virtual environment is created next to the real executable.
+    """
+
+    if getattr(sys, "frozen", False):
+        exe_path = os.path.abspath(sys.executable)
+        tmp_path = os.path.abspath(tempfile.gettempdir())
+
+        if exe_path.startswith(tmp_path):
+            launcher = os.path.abspath(sys.argv[0])
+            if launcher.startswith(tmp_path):
+                launcher = os.environ.get("NUITKA_ONEFILE_PARENT", exe_path)
+            return os.path.dirname(launcher)
+        return os.path.dirname(exe_path)
+
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = _resolve_base_dir()
 
 # Global media directory alongside the application
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
@@ -1088,11 +1101,16 @@ class SystemTerminalManager:
         system = platform.system().lower()
         
         if system == "windows":
-            # Windows - prefer PowerShell, fallback to cmd
-            if shutil.which("powershell"):
+            # Windows - try WSL first for full Unix capabilities
+            if shutil.which("wsl"):
+                self.terminal_cmd = ["wsl"]
+                self.shell_type = "wsl"
+            elif shutil.which("powershell"):
+                # Fallback to PowerShell
                 self.terminal_cmd = ["powershell", "-NoExit", "-Command"]
                 self.shell_type = "powershell"
             else:
+                # Basic cmd.exe
                 self.terminal_cmd = ["cmd", "/k"]
                 self.shell_type = "cmd"
         elif system == "darwin":
@@ -1141,7 +1159,11 @@ class SystemTerminalManager:
             system = platform.system().lower()
             
             if system == "windows":
-                if self.shell_type == "powershell":
+                if self.shell_type == "wsl":
+                    subprocess.Popen([
+                        "wsl", "--cd", self.cwd
+                    ], env=self.env)
+                elif self.shell_type == "powershell":
                     subprocess.Popen(
                         ["powershell", "-NoExit", "-Command", f"cd '{self.cwd}'"],
                         cwd=self.cwd,
@@ -1192,8 +1214,12 @@ class SystemTerminalManager:
                 def run_command():
                     try:
                         # Use system's shell to execute command
-                        if platform.system().lower() == "windows":
-                            shell_cmd = ["cmd", "/c", command]
+                        system = platform.system().lower()
+                        if system == "windows":
+                            if self.shell_type == "wsl":
+                                shell_cmd = ["wsl", "bash", "-lc", command]
+                            else:
+                                shell_cmd = ["cmd", "/c", command]
                         else:
                             shell_cmd = ["bash", "-c", command]
                         
@@ -1252,9 +1278,13 @@ class SystemTerminalManager:
             system = platform.system().lower()
             
             if system == "windows":
-                if self.shell_type == "powershell":
+                if self.shell_type == "wsl":
                     subprocess.Popen([
-                        "powershell", "-NoExit", "-Command", 
+                        "wsl", "bash", "-lc", f"cd {self.cwd} && {command}; exec bash"
+                    ])
+                elif self.shell_type == "powershell":
+                    subprocess.Popen([
+                        "powershell", "-NoExit", "-Command",
                         f"cd '{self.cwd}'; {command}"
                     ])
                 else:
@@ -4037,13 +4067,18 @@ print('ALL_OK')
         """Check if a bundled environment is available"""
         self.logger.info("Checking for bundled environment...")
         
-        # First check relative to the launcher. ``sys.argv[0]`` usually points
-        # to the launched executable, but in onefile mode it may live in the
-        # system temp directory. If so, fall back to ``sys.executable``.
-        launcher_path = os.path.abspath(sys.argv[0])
+        # Determine where the executable resides. In onefile builds
+        # ``sys.executable`` points to a temporary directory, so prefer
+        # the original launcher from ``sys.argv[0]`` when needed.
+        exe_path = os.path.abspath(sys.executable)
         tmp_path = os.path.abspath(tempfile.gettempdir())
-        if launcher_path.startswith(tmp_path) or "onefile" in launcher_path.lower():
-            launcher_path = os.path.abspath(sys.executable)
+        if exe_path.startswith(tmp_path):
+            launcher_path = os.path.abspath(sys.argv[0])
+            if launcher_path.startswith(tmp_path):
+                launcher_path = os.environ.get("NUITKA_ONEFILE_PARENT", exe_path)
+        else:
+            launcher_path = exe_path
+
         executable_dir = Path(os.path.dirname(launcher_path))
         bundled_dir = executable_dir / "bundled_venv"
         
@@ -4260,12 +4295,12 @@ print('ALL_OK')
                 
             # Test essential packages directly without temporary files
             essential_packages = ["manim", "numpy", "customtkinter", "PIL"]
-            
+
             # Create a single test command
-            test_code = """
+            test_code = f"""
 import sys
 missing = []
-packages = """ + str(essential_packages) + """
+packages = {essential_packages!r}
 for pkg in packages:
     try:
         if pkg == 'PIL':
