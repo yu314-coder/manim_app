@@ -4751,14 +4751,14 @@ print('ALL_OK')
             return False
             
     def verify_environment_packages(self, venv_path):
-        """Verify that environment has essential packages without temporary files"""
+        """Verify that environment has essential packages with better error handling"""
         try:
             # Get python path
             if os.name == 'nt':
                 python_exe = os.path.join(venv_path, "Scripts", "python.exe")
             else:
                 python_exe = os.path.join(venv_path, "bin", "python")
-            
+        
             if not os.path.exists(python_exe):
                 self.logger.error(f"Python executable not found: {python_exe}")
                 return False
@@ -4767,54 +4767,68 @@ print('ALL_OK')
             if not self.validate_python_installation(python_exe):
                 return False
                 
-            # Test essential packages directly without temporary files
-            essential_packages = REQUIRED_PACKAGES
-
-            # Create a single test command
-            test_code = (
-                "import sys\n"
-                "missing = []\n"
-                f"packages = {essential_packages!r}\n"
-                "for pkg in packages:\n"
-                "    try:\n"
-                "        if pkg == 'PIL':\n"
-                "            import PIL\n"
-                "        else:\n"
-                "            __import__(pkg)\n"
-                "        print(f'[OK] {pkg}')\n"
-                "    except ImportError:\n"
-                "        missing.append(pkg)\n"
-                "        print(f'[FAIL] {pkg}')\n"
-                "\n"
-                "if missing:\n"
-                "    print('MISSING:' + ','.join(missing))\n"
-                "    sys.exit(1)\n"
-                "else:\n"
-                "    print('ALL_OK')\n"
-                "    sys.exit(0)\n"
-            )
-            
-            # Execute directly without temporary file
+            # Test essential packages
+            essential_packages = ["manim", "numpy", "PIL", "cv2", "customtkinter"]
+    
+            # Create a robust test script
+            test_script = f'''
+    import sys
+    import traceback
+    
+    def test_import(package_name, import_name=None):
+        if import_name is None:
+            import_name = package_name
+        try:
+            __import__(import_name)
+            print(f"[OK] {{package_name}}")
+            return True
+        except ImportError as e:
+            print(f"[FAIL] {{package_name}}")
+            return False
+        except Exception as e:
+            print(f"[ERROR] {{package_name}}: {{e}}")
+            return False
+    
+    # Test packages
+    packages_to_test = {essential_packages!r}
+    import_map = {{"PIL": "PIL", "cv2": "cv2", "customtkinter": "customtkinter", "numpy": "numpy", "manim": "manim"}}
+    
+    failed_packages = []
+    for pkg in packages_to_test:
+        import_name = import_map.get(pkg, pkg)
+        if not test_import(pkg, import_name):
+            failed_packages.append(pkg)
+    
+    if failed_packages:
+        print("MISSING:" + ",".join(failed_packages))
+        sys.exit(1)
+    else:
+        print("ALL_OK")
+        sys.exit(0)
+    '''
+        
+            # Execute test script with better error handling
             result = self.run_hidden_subprocess_nuitka_safe(
-                [python_exe, "-c", test_code],
+                [python_exe, "-c", test_script],
                 capture_output=True,
                 text=True,
                 timeout=60
             )
-            
+        
             if result.returncode == 0 and "ALL_OK" in result.stdout:
                 self.logger.info("All essential packages verified")
                 return True
             else:
                 self.logger.warning(f"Package verification failed: {result.stdout}")
+                if result.stderr:
+                    self.logger.warning(f"Stderr: {result.stderr}")
                 return False
                 
         except Exception as e:
             self.logger.error(f"Error verifying environment packages: {e}")
             import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
-            return False
-        
+            return False  
     def check_system_python(self):
         """Check if system Python has Manim installed (only when not frozen)"""
         # Don't use system Python when running as executable
