@@ -9093,6 +9093,7 @@ class ManimStudioApp:
         terminal_container = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["background"])
         terminal_container.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
         terminal_container.grid_rowconfigure(0, weight=1)
+        terminal_container.grid_rowconfigure(1, weight=0)
         terminal_container.grid_columnconfigure(0, weight=1)
         
         # Initialize Advanced Terminal
@@ -9107,7 +9108,7 @@ class ManimStudioApp:
                 height=15  # Reasonable height
             )
             self.terminal.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-            
+
             # Apply theme to terminal if supported
             if hasattr(self.terminal, 'set_color_scheme'):
                 self.terminal.set_color_scheme({
@@ -9118,6 +9119,35 @@ class ManimStudioApp:
                 })
 
             print("✅ Advanced Terminal initialized successfully")
+
+            # Command input below the terminal
+            input_frame = ctk.CTkFrame(
+                terminal_container,
+                fg_color=VSCODE_COLORS["surface_light"],
+                height=50,
+            )
+            input_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 5))
+            input_frame.grid_columnconfigure(0, weight=1)
+
+            self.command_entry = ctk.CTkEntry(
+                input_frame,
+                placeholder_text="Enter command to execute...",
+                font=ctk.CTkFont(family="Consolas", size=11),
+                height=35,
+            )
+            self.command_entry.grid(row=0, column=0, sticky="ew", padx=10, pady=7)
+            self.command_entry.bind("<Return>", self.execute_command_from_input)
+            self.command_entry.bind("<Tab>", self.handle_command_entry_tab)
+
+            execute_btn = ctk.CTkButton(
+                input_frame,
+                text="▶️ Run",
+                width=60,
+                height=35,
+                command=self.execute_command_from_input,
+                fg_color=VSCODE_COLORS["success"],
+            )
+            execute_btn.grid(row=0, column=1, padx=(5, 10), pady=7)
 
         except Exception as e:
             print(f"❌ Failed to create AdvancedTkTerminal: {e}")
@@ -9389,7 +9419,46 @@ Available commands: cd, ls, pip, python, activate, deactivate, clear, help
                     self._system_terminal = SystemTerminalManager(self)
                     self._system_terminal.execute_command(command, capture_output=True)
 
+        # Refocus on the entry for smoother typing
+        if hasattr(self, 'command_entry'):
+            self.command_entry.focus_set()
         return "break" if event else None
+
+    def handle_command_entry_tab(self, event):
+        """Provide simple tab completion for the command entry"""
+        if not hasattr(self, 'command_entry'):
+            return "break"
+
+        text = self.command_entry.get()
+        cursor_pos = self.command_entry.index('insert')
+        before_cursor = text[:cursor_pos]
+        words = before_cursor.split()
+
+        if not words:
+            completions = list(self.terminal.builtin_commands.keys())
+        else:
+            partial = words[-1]
+            if len(words) == 1:
+                completions = [c for c in self.terminal.builtin_commands.keys() if c.startswith(partial)]
+                completions.extend(self.terminal.get_system_commands(partial))
+            else:
+                completions = self.terminal.get_file_completions(partial)
+
+        completions = sorted(set(completions))
+
+        if not completions:
+            return "break"
+
+        if len(completions) == 1:
+            start_index = before_cursor.rfind(words[-1]) if words else cursor_pos
+            new_text = text[:start_index] + completions[0] + text[cursor_pos:]
+            self.command_entry.delete(0, 'end')
+            self.command_entry.insert(0, new_text)
+            self.command_entry.icursor(start_index + len(completions[0]))
+        else:
+            self.append_output("  " + " ".join(completions[:20]) + "\n")
+
+        return "break"
 
     def append_output(self, text):
         """Append text to appropriate output area"""
