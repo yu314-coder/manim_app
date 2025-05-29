@@ -521,6 +521,43 @@ class AdvancedTkTerminal(tk.Text):
         # Start background tasks
         self.start_background_tasks()
 
+    def add_to_history(self, command: str):
+        """Add a command to history and save"""
+        if not command.strip():
+            return
+        self.command_history.append(command.strip())
+        if len(self.command_history) > self.max_history_size:
+            self.command_history = self.command_history[-self.max_history_size:]
+        self.save_history()
+
+    def load_history(self):
+        """Load command history from file with error handling"""
+        try:
+            history_file = os.path.join(os.path.expanduser("~"), ".manim_studio_history")
+            if os.path.exists(history_file):
+                with open(history_file, "r", encoding="utf-8") as f:
+                    self.command_history = [line.strip() for line in f.readlines() if line.strip()]
+                    self.command_history = self.command_history[-self.max_history_size:]
+                print(f"✅ Loaded {len(self.command_history)} commands from history")
+            else:
+                print("ℹ️ No history file found, starting fresh")
+        except Exception as e:
+            print(f"⚠️ Could not load history: {e}")
+            self.command_history = []
+
+    def save_history(self):
+        """Save command history to file with error handling"""
+        try:
+            history_file = os.path.join(os.path.expanduser("~"), ".manim_studio_history")
+            os.makedirs(os.path.dirname(history_file), exist_ok=True)
+            with open(history_file, "w", encoding="utf-8") as f:
+                for cmd in self.command_history[-self.max_history_size:]:
+                    if cmd.strip():
+                        f.write(cmd.strip() + "\n")
+            print(f"✅ Saved {len(self.command_history)} commands to history")
+        except Exception as e:
+            print(f"⚠️ Could not save history: {e}")
+
     def on_return(self, event=None):
         """FIXED: Handle return key with proper command parsing"""
         try:
@@ -1262,70 +1299,91 @@ class SystemTerminalManager:
             return False
     
     def execute_command(self, command, capture_output=True, on_complete=None):
-        """Execute command"""
+        """Execute command with proper environment and error handling"""
         try:
-            self.command_history.append(command)
+            if isinstance(command, str):
+                self.command_history.append(command)
+            else:
+                self.command_history.append(" ".join(command))
             self.save_history()
-            
+
             if capture_output:
                 def run_command():
                     try:
                         system = platform.system().lower()
-                        
-                        if system == "windows":
-                            if hasattr(self, 'shell_type') and self.shell_type in ["powershell7", "powershell"]:
-                                shell_cmd = ["powershell", "-Command", command]
-                            else:
-                                shell_cmd = ["cmd", "/c", command]
+
+                        if isinstance(command, str):
+                            import shlex
+                            try:
+                                shell_cmd = shlex.split(command)
+                            except ValueError:
+                                shell_cmd = command.split()
                         else:
-                            shell_cmd = ["bash", "-c", command]
-                        
+                            shell_cmd = command
+
                         env = self.env.copy()
-                        
-                        if (hasattr(self.parent_app, 'venv_manager') and 
-                            self.parent_app.venv_manager.current_venv):
+
+                        if (
+                            hasattr(self.parent_app, 'venv_manager') and
+                            self.parent_app.venv_manager.current_venv
+                        ):
                             venv_manager = self.parent_app.venv_manager
                             if venv_manager.python_path:
                                 venv_dir = os.path.dirname(venv_manager.python_path)
                                 env['PATH'] = venv_dir + os.pathsep + env.get('PATH', '')
                                 env['VIRTUAL_ENV'] = os.path.dirname(venv_dir)
-                        
+
+                        startupinfo = None
+                        creationflags = 0
+
+                        if system == "windows":
+                            startupinfo = subprocess.STARTUPINFO()
+                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                            startupinfo.wShowWindow = subprocess.SW_HIDE
+                            creationflags = subprocess.CREATE_NO_WINDOW
+
                         result = subprocess.run(
                             shell_cmd,
                             capture_output=True,
                             text=True,
                             cwd=self.cwd,
                             env=env,
-                            timeout=60
+                            timeout=60,
+                            startupinfo=startupinfo,
+                            creationflags=creationflags,
                         )
-                        
-                        # Output results
+
                         if result.stdout:
-                            self.parent_app.root.after(0, 
-                                lambda: self.write_colored(result.stdout))
+                            self.parent_app.root.after(0, lambda: self.write_colored(result.stdout))
                         if result.stderr:
-                            self.parent_app.root.after(0, 
-                                lambda: self.write_colored(result.stderr))
-                        
+                            self.parent_app.root.after(0, lambda: self.write_colored(result.stderr))
+
                         if on_complete:
                             success = result.returncode == 0
-                            self.parent_app.root.after(0, 
-                                lambda: on_complete(success, result.returncode))
-                            
-                    except Exception as e:
-                        error_msg = f"Command execution error: {str(e)}\n"
-                        self.parent_app.root.after(0, 
-                            lambda: self.write_colored(error_msg))
+                            self.parent_app.root.after(0, lambda: on_complete(success, result.returncode))
+
+                    except subprocess.TimeoutExpired:
+                        err = f"Command timed out: {command}\n"
+                        self.parent_app.root.after(0, lambda: self.write_colored(err))
                         if on_complete:
-                            self.parent_app.root.after(0, 
-                                lambda: on_complete(False, -1))
-                
+                            self.parent_app.root.after(0, lambda: on_complete(False, -1))
+                    except FileNotFoundError:
+                        err = f"Command not found: {command}\n"
+                        self.parent_app.root.after(0, lambda: self.write_colored(err))
+                        if on_complete:
+                            self.parent_app.root.after(0, lambda: on_complete(False, -1))
+                    except Exception as e:
+                        err = f"Command execution error: {str(e)}\n"
+                        self.parent_app.root.after(0, lambda: self.write_colored(err))
+                        if on_complete:
+                            self.parent_app.root.after(0, lambda: on_complete(False, -1))
+
                 threading.Thread(target=run_command, daemon=True).start()
             else:
                 self.execute_in_new_terminal(command)
-                
+
             return True
-            
+
         except Exception as e:
             print(f"Error executing command: {e}")
             return False
@@ -8642,24 +8700,73 @@ class ManimStudioApp:
                     'cursor': VSCODE_COLORS['text_bright'],
                     'selection': VSCODE_COLORS['selection'],
                 })
-            
+
+            print("✅ Advanced Terminal initialized successfully")
+
         except Exception as e:
-            logger.error(f"Failed to create AdvancedTkTerminal: {e}")
-            # Fallback to basic terminal
+            print(f"❌ Failed to create AdvancedTkTerminal: {e}")
             self.create_fallback_terminal(terminal_container)
     
     def create_fallback_terminal(self, parent):
-        """Create fallback terminal if advanced terminal fails"""
-        self.terminal = ctk.CTkTextbox(
+        """Create fallback terminal with basic command input"""
+        parent.grid_rowconfigure(0, weight=1)
+        parent.grid_rowconfigure(1, weight=0)
+        parent.grid_columnconfigure(0, weight=1)
+
+        self.terminal_output = ctk.CTkTextbox(
             parent,
             font=ctk.CTkFont(family="Consolas", size=11),
             fg_color=VSCODE_COLORS["background"],
-            text_color=VSCODE_COLORS["text"]
+            text_color=VSCODE_COLORS["text"],
+            wrap="word"
         )
-        self.terminal.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        
-        # Add basic functionality
-        self.terminal.insert("1.0", "Basic Terminal Mode\nType commands in the input field below.\n\n") 
+        self.terminal_output.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+
+        input_frame = ctk.CTkFrame(parent, fg_color=VSCODE_COLORS["surface_light"], height=50)
+        input_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        input_frame.grid_columnconfigure(0, weight=1)
+
+        prompt_label = ctk.CTkLabel(
+            input_frame,
+            text="$",
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            text_color=VSCODE_COLORS["primary"]
+        )
+        prompt_label.grid(row=0, column=0, padx=(10, 5), pady=7, sticky="w")
+
+        self.command_entry = ctk.CTkEntry(
+            input_frame,
+            placeholder_text="Enter command and press Enter...",
+            font=ctk.CTkFont(family="Consolas", size=11),
+            height=35
+        )
+        self.command_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=7)
+        self.command_entry.bind("<Return>", self.execute_command_from_input)
+
+        execute_btn = ctk.CTkButton(
+            input_frame,
+            text="▶️",
+            width=40,
+            height=35,
+            command=self.execute_command_from_input,
+            fg_color=VSCODE_COLORS["success"],
+            font=ctk.CTkFont(size=14)
+        )
+        execute_btn.grid(row=0, column=2, padx=(5, 10), pady=7)
+
+        self._system_terminal = SystemTerminalManager(self)
+        self.terminal = self._system_terminal
+
+        welcome_msg = """╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ManimStudio Fallback Terminal                            ║
+║                          Ready for Commands                                  ║  
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Type commands in the input field below and press Enter to execute.
+Available commands: cd, ls, pip, python, activate, deactivate, clear, help
+
+"""
+        self.terminal_output.insert("1.0", welcome_msg)
     def create_fallback_output_area(self, parent):
         """Create fallback output area if mono terminal fails"""
         parent.grid_rowconfigure(0, weight=1)
@@ -8839,27 +8946,34 @@ class ManimStudioApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def execute_command_from_input(self, event=None):
-        """Execute command from the input field"""
+        """Execute command from the input field with proper error handling"""
         if hasattr(self, 'command_entry'):
             command = self.command_entry.get().strip()
             if not command:
-                return
-            
-            # Clear input
+                return "break" if event else None
+
+            # Clear input field
             self.command_entry.delete(0, 'end')
-            
-            # Execute command through terminal
+
+            # Echo command to output
+            self.append_output(f"$ {command}\n")
+
             if hasattr(self.terminal, 'execute_command'):
                 self.terminal.execute_command(command)
-            else:
-                # Fallback execution
-                self.append_output(f"$ {command}\n")
+            elif hasattr(self.terminal, 'run_command_redirected'):
                 def on_complete(success, return_code):
                     status = "completed" if success else "failed"
                     self.append_output(f"Command {status} (exit code: {return_code})\n\n")
-                
-                if hasattr(self.terminal, 'execute_command'):
-                    self.terminal.execute_command(command, capture_output=True, on_complete=on_complete)
+
+                self.terminal.run_command_redirected(command, on_complete=on_complete)
+            else:
+                if hasattr(self, '_system_terminal'):
+                    self._system_terminal.execute_command(command, capture_output=True)
+                else:
+                    self._system_terminal = SystemTerminalManager(self)
+                    self._system_terminal.execute_command(command, capture_output=True)
+
+        return "break" if event else None
 
     def append_output(self, text):
         """Append text to appropriate output area"""
