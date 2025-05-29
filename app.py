@@ -481,7 +481,6 @@ class AdvancedTkTerminal(tk.Text):
         self.bind('<Return>', self.on_return)
         self.bind('<Up>', self.history_up)
         self.bind('<Down>', self.history_down)
-        self.bind('<Tab>', self.auto_complete)
         self.bind('<Control-c>', self.interrupt_command)
         self.bind('<Control-l>', self.cmd_clear)
         
@@ -502,13 +501,11 @@ class AdvancedTkTerminal(tk.Text):
             print(f"Error setting color scheme: {e}")
     
     def write_colored(self, text, color='white', style=None):
-        """Write colored text to terminal"""
+        """Write colored text to terminal with improved error handling"""
         try:
-            # Ensure terminal is writable
-            current_state = self.cget('state')
             self.configure(state='normal')
-            
-            # Color mapping
+
+            # Color mapping with validation
             color_map = {
                 'white': '#FFFFFF',
                 'red': '#FF6B6B',
@@ -517,30 +514,53 @@ class AdvancedTkTerminal(tk.Text):
                 'blue': '#61DAFB',
                 'magenta': '#FF79C6',
                 'cyan': '#8BE9FD',
-                'black': '#000000'
+                'black': '#000000',
+                'gray': '#6C7086',
+                'orange': '#FAB387'
             }
-            
-            # Create or get tag for this color
-            tag_name = f"color_{color}"
+
+            # Validate and clean the text
+            if not isinstance(text, str):
+                text = str(text)
+
+            text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
+
+            # Determine color
+            fg_color = color_map.get(color, color if isinstance(color, str) and color.startswith('#') else '#FFFFFF')
+
+            tag_name = f"color_{color}_{id(self)}"
+
             if tag_name not in self.tag_names():
-                fg_color = color_map.get(color, color)
-                font_config = {'foreground': fg_color}
+                tag_config = {'foreground': fg_color}
+
                 if style == 'bold':
-                    font_config['font'] = (self.cget('font')[0], self.cget('font')[1], 'bold')
-                self.tag_configure(tag_name, **font_config)
-            
-            # Insert text with color
+                    current_font = self.cget('font')
+                    if isinstance(current_font, tuple):
+                        family, size = current_font[0], current_font[1]
+                        tag_config['font'] = (family, size, 'bold')
+                    else:
+                        tag_config['font'] = ('Consolas', 11, 'bold')
+
+                self.tag_configure(tag_name, **tag_config)
+
             start_index = self.index('end-1c')
             self.insert('end', text)
             end_index = self.index('end-1c')
-            self.tag_add(tag_name, start_index, end_index)
-            
+
+            if start_index != end_index:
+                self.tag_add(tag_name, start_index, end_index)
+
             self.see('end')
-            # Restore original state if it was different
-            if current_state != 'normal':
-                self.configure(state=current_state)
-        except Exception as e:
-            print(f"Error writing colored text: {e}")
+            self.configure(state='disabled')
+
+        except Exception:
+            try:
+                self.configure(state='normal')
+                self.insert('end', str(text))
+                self.see('end')
+                self.configure(state='disabled')
+            except Exception as e2:
+                print(f"Critical error in write_colored: {e2}")
     
     def write_ansi_text(self, text):
         """Write text with basic ANSI processing"""
@@ -632,7 +652,7 @@ class AdvancedTkTerminal(tk.Text):
         elif event.keysym == 'Down':
             return self.history_down(event)
         elif event.keysym == 'Tab':
-            return self.auto_complete(event)
+            return self.handle_tab_completion(event)
         elif event.char and event.char.isprintable():
             # Allow normal typing
             return None
@@ -1084,62 +1104,126 @@ class AdvancedTkTerminal(tk.Text):
         except tk.TclError:
             pass
     
-    def auto_complete(self, event=None):
-        """Basic auto-completion"""
+    def handle_tab_completion(self, event):
+        """Handle tab completion like a real terminal"""
         try:
-            current_input = self.get('input_start', 'end-1c').strip()
-            
-            if not current_input:
-                return 'break'
-            
-            # Get current word for completion
-            words = current_input.split()
-            if not words:
-                return 'break'
-            
-            current_word = words[-1]
-            
-            # Completion candidates
-            candidates = []
-            
-            # Built-in commands
-            for cmd in self.builtin_commands.keys():
-                if cmd.startswith(current_word):
-                    candidates.append(cmd)
-            
-            # Files and directories in current directory
+            current_line = self.index('insert').split('.')[0]
+            line_start = f"{current_line}.0"
+            insert_pos = self.index('insert')
+
             try:
-                for item in os.listdir(self.cwd):
-                    if item.startswith(current_word):
-                        candidates.append(item)
-            except:
-                pass
-            
-            if len(candidates) == 1:
-                # Single match - complete it
-                completion = candidates[0]
-                # Replace the current word
-                if len(words) > 1:
-                    new_command = ' '.join(words[:-1]) + ' ' + completion
+                input_start = self.index('input_start')
+                current_text = self.get(input_start, insert_pos)
+            except Exception:
+                current_text = self.get(line_start, insert_pos)
+
+            words = current_text.split()
+
+            if not words:
+                completions = list(self.builtin_commands.keys())
+            else:
+                partial = words[-1]
+                if len(words) == 1:
+                    completions = [cmd for cmd in self.builtin_commands.keys() if cmd.startswith(partial)]
+                    if hasattr(self, 'get_system_commands'):
+                        completions.extend(self.get_system_commands(partial))
                 else:
-                    new_command = completion
-                
-                self.delete('input_start', 'end-1c')
-                self.insert('input_start', new_command + ' ')
-            elif len(candidates) > 1:
-                # Multiple matches - show them
-                self.newline()
-                self.write_colored("  ".join(candidates[:10]), color='yellow')
-                if len(candidates) > 10:
-                    self.write_colored(f" ... and {len(candidates)-10} more", color='yellow')
-                self.newline()
-                self.show_prompt()
-                self.insert('end', current_input)
-            
+                    completions = self.get_file_completions(partial)
+
+            if not completions:
+                if self.is_in_code_mode():
+                    self.insert('insert', '    ')
+                else:
+                    self.bell()
+                return 'break'
+
+            if len(completions) == 1:
+                if words:
+                    word_start = len(' '.join(words[:-1])) + (1 if len(words) > 1 else 0)
+                    replace_start = f"{input_start} +{word_start}c"
+                    self.delete(replace_start, insert_pos)
+                    self.insert(replace_start, completions[0])
+                else:
+                    self.insert('insert', completions[0])
+            else:
+                self.show_completions(completions, words[-1] if words else '')
+
+            return 'break'
+
         except Exception as e:
+            print(f"Tab completion error: {e}")
+            if self.is_in_code_mode():
+                self.insert('insert', '    ')
+            return 'break'
+
+    def is_in_code_mode(self):
+        """Check if we're in code editing mode vs terminal mode"""
+        try:
+            current_line = self.get('insert linestart', 'insert lineend')
+            code_patterns = ['def ', 'class ', 'import ', 'from ', 'if ', 'for ', 'while ', '    ']
+            return any(current_line.lstrip().startswith(pattern) for pattern in code_patterns)
+        except Exception:
+            return False
+
+    def get_file_completions(self, partial):
+        """Get file/directory completions for the partial path"""
+        try:
+            if os.path.sep in partial:
+                dirname = os.path.dirname(partial)
+                basename = os.path.basename(partial)
+                search_dir = os.path.join(self.cwd, dirname) if not os.path.isabs(dirname) else dirname
+            else:
+                dirname = ""
+                basename = partial
+                search_dir = self.cwd
+
+            if not os.path.exists(search_dir):
+                return []
+
+            completions = []
+            for item in os.listdir(search_dir):
+                if item.startswith(basename):
+                    full_path = os.path.join(dirname, item) if dirname else item
+                    if os.path.isdir(os.path.join(search_dir, item)):
+                        completions.append(full_path + os.path.sep)
+                    else:
+                        completions.append(full_path)
+            return sorted(completions)
+        except Exception:
+            return []
+
+    def show_completions(self, completions, partial):
+        """Show available completions"""
+        self.newline()
+        max_show = 20
+        if len(completions) > max_show:
+            shown = completions[:max_show]
+            self.write_colored(f"  {' '.join(shown)}", color='yellow')
+            self.newline()
+            self.write_colored(f"  ... and {len(completions) - max_show} more", color='gray')
+        else:
+            self.write_colored(f"  {' '.join(completions)}", color='yellow')
+        self.newline()
+        self.show_prompt()
+        if partial:
+            self.insert('end', partial)
+
+    def get_system_commands(self, partial):
+        """Get system commands that start with partial"""
+        system_commands = []
+        try:
+            path_dirs = os.environ.get('PATH', '').split(os.pathsep)
+            for path_dir in path_dirs[:10]:
+                if os.path.isdir(path_dir):
+                    for item in os.listdir(path_dir):
+                        if item.startswith(partial) and os.access(os.path.join(path_dir, item), os.X_OK):
+                            if os.name == 'nt' and item.endswith('.exe'):
+                                item = item[:-4]
+                            if item not in system_commands:
+                                system_commands.append(item)
+        except Exception:
             pass
-        
-        return 'break'
+        return sorted(system_commands)
     
     def interrupt_command(self, event=None):
         """Interrupt current command"""
@@ -4583,64 +4667,73 @@ print('ALL_OK')
             return False
             
     def verify_environment_packages(self, venv_path):
-        """Verify that environment has essential packages without temporary files"""
+        """Verify that environment has essential packages with better error handling"""
         try:
-            # Get python path
             if os.name == 'nt':
                 python_exe = os.path.join(venv_path, "Scripts", "python.exe")
             else:
                 python_exe = os.path.join(venv_path, "bin", "python")
-            
+
             if not os.path.exists(python_exe):
                 self.logger.error(f"Python executable not found: {python_exe}")
                 return False
-            
-            # Validate that this is not our own executable
+
             if not self.validate_python_installation(python_exe):
                 return False
-                
-            # Test essential packages directly without temporary files
-            essential_packages = REQUIRED_PACKAGES
 
-            # Create a single test command
-            test_code = (
-                "import sys\n"
-                "missing = []\n"
-                f"packages = {essential_packages!r}\n"
-                "for pkg in packages:\n"
-                "    try:\n"
-                "        if pkg == 'PIL':\n"
-                "            import PIL\n"
-                "        else:\n"
-                "            __import__(pkg)\n"
-                "        print(f'[OK] {pkg}')\n"
-                "    except ImportError:\n"
-                "        missing.append(pkg)\n"
-                "        print(f'[FAIL] {pkg}')\n"
-                "\n"
-                "if missing:\n"
-                "    print('MISSING:' + ','.join(missing))\n"
-                "    sys.exit(1)\n"
-                "else:\n"
-                "    print('ALL_OK')\n"
-                "    sys.exit(0)\n"
-            )
-            
-            # Execute directly without temporary file
+            essential_packages = ["manim", "numpy", "PIL", "cv2", "customtkinter"]
+
+            test_script = f'''
+import sys
+import traceback
+
+def test_import(package_name, import_name=None):
+    if import_name is None:
+        import_name = package_name
+    try:
+        __import__(import_name)
+        print(f"[OK] {package_name}")
+        return True
+    except ImportError as e:
+        print(f"[FAIL] {package_name}")
+        return False
+    except Exception as e:
+        print(f"[ERROR] {package_name}: {e}")
+        return False
+
+packages_to_test = {essential_packages!r}
+import_map = {{"PIL": "PIL", "cv2": "cv2", "customtkinter": "customtkinter", "numpy": "numpy", "manim": "manim"}}
+
+failed_packages = []
+for pkg in packages_to_test:
+    import_name = import_map.get(pkg, pkg)
+    if not test_import(pkg, import_name):
+        failed_packages.append(pkg)
+
+if failed_packages:
+    print("MISSING:" + ",".join(failed_packages))
+    sys.exit(1)
+else:
+    print("ALL_OK")
+    sys.exit(0)
+'''
+
             result = self.run_hidden_subprocess_nuitka_safe(
-                [python_exe, "-c", test_code],
+                [python_exe, "-c", test_script],
                 capture_output=True,
                 text=True,
                 timeout=60
             )
-            
+
             if result.returncode == 0 and "ALL_OK" in result.stdout:
                 self.logger.info("All essential packages verified")
                 return True
             else:
                 self.logger.warning(f"Package verification failed: {result.stdout}")
+                if result.stderr:
+                    self.logger.warning(f"Stderr: {result.stderr}")
                 return False
-                
+
         except Exception as e:
             self.logger.error(f"Error verifying environment packages: {e}")
             import traceback
@@ -5194,19 +5287,79 @@ else:
         return True
 
     def check_local_directory_venv(self):
-        """Check for a virtual environment in the application directory"""
-        candidates = ["venv", "env"]
+        """Check for a virtual environment in the application directory with proper validation"""
+        candidates = ["venv", "env", ".venv"]
         for name in candidates:
             venv_path = os.path.join(BASE_DIR, name)
             if os.path.isdir(venv_path) and self.is_valid_venv(venv_path):
                 self.logger.info(f"Found local environment: {venv_path}")
+
                 if self.verify_environment_packages(venv_path):
-                    self.logger.info("Local environment verified")
+                    self.logger.info("Local environment verified with all required packages")
                     self.activate_venv_path(venv_path)
                     return True
                 else:
                     self.logger.warning("Local environment missing required packages")
+                    if hasattr(self.parent_app, 'root'):
+                        install = messagebox.askyesno(
+                            "Missing Packages",
+                            f"Found local environment at {venv_path} but it's missing required packages.\n\nWould you like to install the missing packages?",
+                            parent=self.parent_app.root
+                        )
+                        if install:
+                            self.activate_venv_path(venv_path)
+                            self.install_essential_packages()
+                            return True
+                    continue
         return False
+
+    def install_essential_packages(self):
+        """Install essential packages in current environment"""
+        if not self.current_venv:
+            return False
+
+        essential_packages = ["manim", "numpy", "matplotlib", "pillow", "opencv-python", "customtkinter", "jedi"]
+
+        def install_next_package(index=0):
+            if index >= len(essential_packages):
+                self.parent_app.append_output("✅ All essential packages installed!\n")
+                return
+
+            package = essential_packages[index]
+            self.parent_app.append_output(f"Installing {package}...\n")
+
+            def on_install_complete(success, return_code):
+                if success:
+                    self.parent_app.append_output(f"✅ {package} installed successfully\n")
+                else:
+                    self.parent_app.append_output(f"❌ Failed to install {package}\n")
+                install_next_package(index + 1)
+
+            if hasattr(self.parent_app, 'terminal') and hasattr(self.parent_app.terminal, 'run_command_redirected'):
+                self.parent_app.terminal.run_command_redirected(
+                    [self.pip_path, "install", package],
+                    on_complete=on_install_complete
+                )
+            else:
+                threading.Thread(
+                    target=lambda: self._install_package_fallback(package, on_install_complete),
+                    daemon=True
+                ).start()
+
+        install_next_package()
+
+    def _install_package_fallback(self, package, callback):
+        """Fallback package installation"""
+        try:
+            result = subprocess.run(
+                [self.pip_path, "install", package],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            self.parent_app.root.after(0, lambda: callback(result.returncode == 0, result.returncode))
+        except Exception:
+            self.parent_app.root.after(0, lambda: callback(False, -1))
         
     def install_package(self, package_name, callback=None):
         """Install a package using system terminal"""
