@@ -444,8 +444,7 @@ class AdvancedTkTerminal(tk.Text):
         self.multiline_mode = False
         self.multiline_buffer = []
         
-        # Working directory and environment must be initialized before
-        # computing the default prompt to avoid attribute errors
+        # Working directory and environment
         self.cwd = os.getcwd()
         self.env = os.environ.copy()
 
@@ -650,7 +649,10 @@ class AdvancedTkTerminal(tk.Text):
         """Show command prompt"""
         if self.command_running:
             return
-        
+
+        # Ensure the widget is editable
+        self.configure(state='normal')
+
         # Show prompt with colors
         if self.multiline_mode:
             prompt = "... "
@@ -681,18 +683,18 @@ class AdvancedTkTerminal(tk.Text):
                     self.write_colored(f" [{self.app.venv_manager.current_venv}]", color='red')
                 
                 self.write_colored("$ ", color='green', style='bold')
-        
+
         # Mark input start
         self.input_start_mark = self.index('end-1c')
         self.mark_set('input_start', self.input_start_mark)
 
-        # Re-enable editing so the user can type the next command
+        # Re-enable the widget for user input and focus it
         try:
             self.configure(state='normal')
+            self.mark_set('insert', 'end')
             self.focus_set()
         except Exception:
             pass
-    
     def on_key_press(self, event):
         """Handle key press events with improved tab completion"""
         if event.keysym == 'Return':
@@ -7947,11 +7949,11 @@ class ManimStudioApp:
         except:
             pass
             
-        # Initialize advanced terminal (will be created in create_output_area)
+        # Initialize advanced terminal (created later in create_output_area).
         # Define early so other components can safely reference it during
-        # initialization.
+        # initialization. A separate SystemTerminalManager instance is lazily
+        # created only when needed.
         self.terminal = None
-        # Lazy SystemTerminalManager instance for launching real system shells
         self._system_terminal = None
 
         # Initialize virtual environment manager
@@ -9008,19 +9010,6 @@ class ManimStudioApp:
         )
         clear_btn.pack(side="right", padx=2)
         
-        # System terminal button - smaller
-        open_terminal_btn = ctk.CTkButton(
-            terminal_controls,
-            text="🖥️",
-            width=30,
-            height=25,
-            command=self.open_system_terminal,
-            fg_color="transparent",
-            hover_color=VSCODE_COLORS["surface_lighter"],
-            border_width=1,
-            font=ctk.CTkFont(size=12)
-        )
-        open_terminal_btn.pack(side="right", padx=2)
         
         # Terminal area - takes up most space
         terminal_container = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["background"])
@@ -9207,7 +9196,7 @@ class ManimStudioApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Environment Setup", command=self.manage_environment)
-        tools_menu.add_command(label="Open System Terminal", command=self.open_system_terminal)
+
         tools_menu.add_command(label="Terminal Commands Help", command=self.show_terminal_help)
         
         # Animation menu
@@ -9245,29 +9234,6 @@ class ManimStudioApp:
         # Handle window closing
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-    # Enhanced Terminal Integration Methods
-    def open_system_terminal(self):
-        """Open system terminal in current directory"""
-        try:
-            # Lazily create the SystemTerminalManager
-            if self._system_terminal is None:
-                self._system_terminal = SystemTerminalManager(self)
-
-            # Sync working directory from the UI terminal if available
-            if hasattr(self.terminal, 'cwd'):
-                self._system_terminal.cwd = getattr(self.terminal, 'cwd', self._system_terminal.cwd)
-
-            success = self._system_terminal.open_terminal_here()
-
-            if success:
-                self.append_output("System terminal opened\n")
-                self.update_status("System terminal opened")
-            else:
-                self.append_output("Failed to open system terminal\n")
-                self.update_status("Failed to open terminal")
-        except Exception as e:
-            logger.error(f"Error opening system terminal: {e}")
-            self.append_output(f"Error opening terminal: {e}\n")
     def execute_command_from_input(self, event=None):
         """Execute command from the input field"""
         if hasattr(self, 'command_entry'):
