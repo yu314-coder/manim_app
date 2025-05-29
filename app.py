@@ -142,6 +142,9 @@ APP_VERSION = "3.5.0"
 APP_AUTHOR = "Manim Studio Team"
 APP_EMAIL = "euler.yu@gmail.com"
 
+# Packages required for runtime checks
+REQUIRED_PACKAGES = ["manim", "numpy", "PIL", "cv2", "customtkinter"]
+
 # Essential packages for ManimStudio
 ESSENTIAL_PACKAGES = [
     # Core animation
@@ -4294,7 +4297,7 @@ print('ALL_OK')
                 return False
                 
             # Test essential packages directly without temporary files
-            essential_packages = ["manim", "numpy", "customtkinter", "PIL"]
+            essential_packages = REQUIRED_PACKAGES
 
             # Create a single test command
             test_code = f"""
@@ -9610,7 +9613,7 @@ class MyScene(Scene):
     def check_dependencies(self):
         """Check if required dependencies are installed using system terminal"""
         def check_thread():
-            required = ["manim", "numpy", "PIL", "cv2"]
+            required = REQUIRED_PACKAGES
             missing = []
             
             # Use system terminal if available
@@ -9628,6 +9631,8 @@ for package in packages:
             import PIL
         elif package == 'cv2':
             import cv2
+        elif package == 'customtkinter':
+            import customtkinter
         else:
             __import__(package)
         print(f"[OK] {package} is installed")
@@ -9668,6 +9673,8 @@ else:
                                         install_names.append("Pillow")
                                     elif pkg == 'cv2':
                                         install_names.append("opencv-python")
+                                    elif pkg == 'customtkinter':
+                                        install_names.append("customtkinter")
                                     else:
                                         install_names.append(pkg)
                                         
@@ -9690,7 +9697,12 @@ else:
                 for package in required:
                     try:
                         # Check if package is installed
-                        import_cmd = "PIL" if package == "PIL" else package
+                        if package == "PIL":
+                            import_cmd = "PIL"
+                        elif package == "customtkinter":
+                            import_cmd = "customtkinter"
+                        else:
+                            import_cmd = package
                         result = self.run_hidden_subprocess_nuitka_safe(
                             [python_exe, "-c", f"import {import_cmd}"],
                             capture_output=True
@@ -9709,6 +9721,8 @@ else:
                             install_names.append("Pillow")
                         elif pkg == 'cv2':
                             install_names.append("opencv-python")
+                        elif pkg == 'customtkinter':
+                            install_names.append("customtkinter")
                         else:
                             install_names.append(pkg)
                             
