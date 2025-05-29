@@ -66,18 +66,57 @@ def _resolve_base_dir():
     """
 
     if getattr(sys, "frozen", False):
+        # We're running as a frozen executable
         exe_path = os.path.abspath(sys.executable)
         tmp_path = os.path.abspath(tempfile.gettempdir())
 
+        # Check if we're running from a temporary directory (onefile build)
         if exe_path.startswith(tmp_path):
-            launcher = os.path.abspath(sys.argv[0])
-            if launcher.startswith(tmp_path):
-                launcher = os.environ.get("NUITKA_ONEFILE_PARENT", exe_path)
-            return os.path.dirname(launcher)
+            # Try to get the real executable path from various sources
+            real_exe_path = None
+            
+            # Method 1: Check NUITKA_ONEFILE_PARENT environment variable
+            if os.environ.get("NUITKA_ONEFILE_PARENT"):
+                real_exe_path = os.environ.get("NUITKA_ONEFILE_PARENT")
+            
+            # Method 2: Check sys.argv[0] if it's not in temp
+            elif not os.path.abspath(sys.argv[0]).startswith(tmp_path):
+                real_exe_path = os.path.abspath(sys.argv[0])
+            
+            # Method 3: Try to find .exe files in common locations
+            if not real_exe_path or not os.path.exists(real_exe_path):
+                # Look for the executable in the current working directory
+                cwd = os.getcwd()
+                potential_exe = os.path.join(cwd, "ManimStudio.exe")
+                if os.path.exists(potential_exe):
+                    real_exe_path = potential_exe
+                else:
+                    # Look in the parent directory of the temp path
+                    # This handles cases where the exe is moved after extraction
+                    parent_dirs = [
+                        os.path.dirname(cwd),
+                        os.path.join(os.path.expanduser("~"), "Desktop"),
+                        os.path.join(os.path.expanduser("~"), "Downloads")
+                    ]
+                    for parent_dir in parent_dirs:
+                        potential_exe = os.path.join(parent_dir, "ManimStudio.exe")
+                        if os.path.exists(potential_exe):
+                            real_exe_path = potential_exe
+                            break
+            
+            # Method 4: Last resort - use the user's Documents folder
+            if not real_exe_path or not os.path.exists(real_exe_path):
+                documents = os.path.join(os.path.expanduser("~"), "Documents", "ManimStudio")
+                os.makedirs(documents, exist_ok=True)
+                return documents
+            
+            return os.path.dirname(real_exe_path)
+        
+        # Not in temp directory, use the executable's directory
         return os.path.dirname(exe_path)
 
+    # Running as script
     return os.path.dirname(os.path.abspath(__file__))
-
 
 BASE_DIR = _resolve_base_dir()
 
@@ -4692,10 +4731,12 @@ print('ALL_OK')
             self.logger.error("No bundled environment directory found")
             return self.use_system_python_fallback()
         
-        self.logger.info(f"Extracting bundled environment from: {self.bundled_venv_dir}")
+        self.logger.info(f"Setting up environment using bundled template from: {self.bundled_venv_dir}")
         
-        # Create destination
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        # Create destination next to the REAL executable, not in temp
+        real_base_dir = BASE_DIR  # This should now point to the real executable location
+        default_venv_path = os.path.join(real_base_dir, "venvs", "manim_studio_default")
+        
         if os.path.exists(default_venv_path):
             self.logger.info(f"Removing existing environment: {default_venv_path}")
             try:
@@ -4714,6 +4755,9 @@ print('ALL_OK')
                 
             self.logger.info(f"Creating new environment at: {default_venv_path}")
             self.logger.info(f"Using external Python: {python_exe}")
+            
+            # Ensure parent directory exists
+            os.makedirs(os.path.dirname(default_venv_path), exist_ok=True)
             
             # Use correct venv command with safe subprocess handling
             def on_venv_created(success, return_code):
@@ -4736,7 +4780,6 @@ print('ALL_OK')
             import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             return self.use_system_python_fallback()
-
     def _setup_environment_after_creation(self, venv_path):
         """Set up environment after creation"""
         if os.name == 'nt':
@@ -9062,10 +9105,15 @@ class ManimStudioApp:
         tab_frame = ctk.CTkFrame(output_header, fg_color="transparent")
         tab_frame.grid(row=0, column=0, sticky="w", padx=15, pady=8)
         
-        # Terminal indicator
+        # Terminal indicator - FIXED: Use ASCII safe characters
+        try:
+            terminal_text = "🖥️ Terminal"  # Try Unicode first
+        except UnicodeEncodeError:
+            terminal_text = "[Terminal]"   # Fallback to ASCII
+            
         ctk.CTkLabel(
             tab_frame,
-            text="🖥️ Terminal",
+            text=terminal_text,
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         ).pack(side="left")
@@ -9074,10 +9122,15 @@ class ManimStudioApp:
         terminal_controls = ctk.CTkFrame(output_header, fg_color="transparent")
         terminal_controls.grid(row=0, column=1, sticky="e", padx=15, pady=8)
         
-        # Clear button - smaller
+        # Clear button - smaller with ASCII safe text
+        try:
+            clear_text = "🗑️"
+        except UnicodeEncodeError:
+            clear_text = "[X]"
+            
         clear_btn = ctk.CTkButton(
             terminal_controls,
-            text="🗑️",
+            text=clear_text,
             width=30,
             height=25,
             command=self.clear_output,
@@ -9087,7 +9140,6 @@ class ManimStudioApp:
             font=ctk.CTkFont(size=12)
         )
         clear_btn.pack(side="right", padx=2)
-        
         
         # Terminal area - takes up most space
         terminal_container = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["background"])
@@ -9118,7 +9170,7 @@ class ManimStudioApp:
                     'selection': VSCODE_COLORS['selection'],
                 })
 
-            print("✅ Advanced Terminal initialized successfully")
+            print("Advanced Terminal initialized successfully")
 
             # Command input below the terminal
             input_frame = ctk.CTkFrame(
@@ -9139,9 +9191,14 @@ class ManimStudioApp:
             self.command_entry.bind("<Return>", self.execute_command_from_input)
             self.command_entry.bind("<Tab>", self.handle_command_entry_tab)
 
+            try:
+                execute_text = "▶️ Run"
+            except UnicodeEncodeError:
+                execute_text = "Run"
+
             execute_btn = ctk.CTkButton(
                 input_frame,
-                text="▶️ Run",
+                text=execute_text,
                 width=60,
                 height=35,
                 command=self.execute_command_from_input,
@@ -9150,9 +9207,8 @@ class ManimStudioApp:
             execute_btn.grid(row=0, column=1, padx=(5, 10), pady=7)
 
         except Exception as e:
-            print(f"❌ Failed to create AdvancedTkTerminal: {e}")
+            print(f"Failed to create AdvancedTkTerminal: {e}")
             self.create_fallback_terminal(terminal_container)
-    
     def create_fallback_terminal(self, parent):
         """Create fallback terminal with basic command input"""
         parent.grid_rowconfigure(0, weight=1)
@@ -10552,7 +10608,14 @@ class MyScene(Scene):
             self.append_output("Process stopped by user\n")
         else:
             self.update_status("No process running")
-    
+    def safe_unicode_text(self, unicode_text, fallback_text):
+        """Safely return Unicode text or ASCII fallback based on system encoding"""
+        try:
+            # Test if the unicode text can be encoded by the system
+            unicode_text.encode(sys.stdout.encoding or 'utf-8')
+            return unicode_text
+        except (UnicodeEncodeError, AttributeError):
+            return fallback_text
     # Utility methods
     def create_tooltip(self, widget, text):
         """Create tooltip for widget"""
