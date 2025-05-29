@@ -7939,11 +7939,13 @@ class ManimStudioApp:
         except:
             pass
             
+        # Initialize advanced terminal (will be created in create_output_area)
+        # Define early so other components can safely reference it during
+        # initialization.
+        self.terminal = None
+
         # Initialize virtual environment manager
         self.venv_manager = VirtualEnvironmentManager(self)
-        
-        # Initialize advanced terminal (will be created in create_output_area)
-        self.terminal = None
         
         # Show setup dialog if needed
         if self.venv_manager.needs_setup:
