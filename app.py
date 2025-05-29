@@ -9093,6 +9093,7 @@ class ManimStudioApp:
         terminal_container = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["background"])
         terminal_container.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
         terminal_container.grid_rowconfigure(0, weight=1)
+        terminal_container.grid_rowconfigure(1, weight=0)
         terminal_container.grid_columnconfigure(0, weight=1)
         
         # Initialize Advanced Terminal
@@ -9107,7 +9108,7 @@ class ManimStudioApp:
                 height=15  # Reasonable height
             )
             self.terminal.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-            
+
             # Apply theme to terminal if supported
             if hasattr(self.terminal, 'set_color_scheme'):
                 self.terminal.set_color_scheme({
@@ -9118,6 +9119,34 @@ class ManimStudioApp:
                 })
 
             print("✅ Advanced Terminal initialized successfully")
+
+            # Command input below the terminal
+            input_frame = ctk.CTkFrame(
+                terminal_container,
+                fg_color=VSCODE_COLORS["surface_light"],
+                height=50,
+            )
+            input_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 5))
+            input_frame.grid_columnconfigure(0, weight=1)
+
+            self.command_entry = ctk.CTkEntry(
+                input_frame,
+                placeholder_text="Enter command to execute...",
+                font=ctk.CTkFont(family="Consolas", size=11),
+                height=35,
+            )
+            self.command_entry.grid(row=0, column=0, sticky="ew", padx=10, pady=7)
+            self.command_entry.bind("<Return>", self.execute_command_from_input)
+
+            execute_btn = ctk.CTkButton(
+                input_frame,
+                text="▶️ Run",
+                width=60,
+                height=35,
+                command=self.execute_command_from_input,
+                fg_color=VSCODE_COLORS["success"],
+            )
+            execute_btn.grid(row=0, column=1, padx=(5, 10), pady=7)
 
         except Exception as e:
             print(f"❌ Failed to create AdvancedTkTerminal: {e}")
@@ -9388,6 +9417,9 @@ Available commands: cd, ls, pip, python, activate, deactivate, clear, help
                 else:
                     self._system_terminal = SystemTerminalManager(self)
                     self._system_terminal.execute_command(command, capture_output=True)
+
+            if hasattr(self, 'command_entry'):
+                self.root.after(50, lambda: self.command_entry.focus_set())
 
         return "break" if event else None
 
