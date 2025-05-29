@@ -402,7 +402,7 @@ class PackageInfo:
 
 class AdvancedTkTerminal(tk.Text):
     """
-    Fixed Advanced Terminal Implementation with working command execution
+    Advanced Terminal Implementation (fallback from mono.Terminals)
     """
     
     def __init__(self, parent, app=None, **kwargs):
@@ -414,12 +414,12 @@ class AdvancedTkTerminal(tk.Text):
             'selectbackground': '#264F78',
             'font': ('Consolas', 11),
             'wrap': 'word',
-            'height': 25,
+            'height': 25,  # Increased height
             'width': 120,
             'bd': 0,
             'highlightthickness': 1,
             'highlightcolor': '#007ACC',
-            'state': 'normal'
+            'state': 'normal'  # Start in normal state
         }
         default_kwargs.update(kwargs)
         super().__init__(parent, **default_kwargs)
@@ -432,7 +432,7 @@ class AdvancedTkTerminal(tk.Text):
         self.command_running = False
         self.is_interactive = True
         
-        # Enhanced command history
+        # Advanced command history
         self.command_history = []
         self.history_index = 0
         self.history_search_mode = False
@@ -520,50 +520,428 @@ class AdvancedTkTerminal(tk.Text):
         
         # Start background tasks
         self.start_background_tasks()
-
-    def on_return(self, event=None):
-        """FIXED: Handle return key with proper command parsing"""
+    
+    def set_color_scheme(self, colors):
+        """Set terminal color scheme"""
         try:
-            # Get current command from input area
+            self.configure(
+                bg=colors.get('background', '#0C0C0C'),
+                fg=colors.get('foreground', '#CCCCCC'),
+                insertbackground=colors.get('cursor', '#FFFFFF'),
+                selectbackground=colors.get('selection', '#264F78')
+            )
+        except Exception as e:
+            print(f"Error setting color scheme: {e}")
+    
+    def write_colored(self, text, color='white', style=None):
+        """Write colored text to terminal with improved error handling"""
+        try:
+            # Don't change state to disabled - keep it normal for input
+            
+            # Color mapping with validation
+            color_map = {
+                'white': '#FFFFFF',
+                'red': '#FF6B6B', 
+                'green': '#6BCF7F',
+                'yellow': '#FFD93D',
+                'blue': '#61DAFB',
+                'magenta': '#FF79C6',
+                'cyan': '#8BE9FD',
+                'black': '#000000',
+                'gray': '#6C7086',
+                'orange': '#FAB387'
+            }
+            
+            # Validate and clean the text
+            if not isinstance(text, str):
+                text = str(text)
+            
+            # Remove any non-printable characters that might cause issues
+            text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
+            
+            # Get color, default to white if invalid
+            fg_color = color_map.get(color, color if isinstance(color, str) and color.startswith('#') else '#FFFFFF')
+            
+            # Create unique tag name
+            tag_name = f"color_{color}_{id(self)}"
+            
+            # Configure tag if not exists
+            if tag_name not in self.tag_names():
+                tag_config = {'foreground': fg_color}
+                
+                if style == 'bold':
+                    # Get current font
+                    current_font = self.cget('font')
+                    if isinstance(current_font, tuple):
+                        family, size = current_font[0], current_font[1]
+                        tag_config['font'] = (family, size, 'bold')
+                    else:
+                        tag_config['font'] = ('Consolas', 11, 'bold')
+                
+                self.tag_configure(tag_name, **tag_config)
+            
+            # Insert text with color
+            start_index = self.index('end-1c')
+            self.insert('end', text)
+            end_index = self.index('end-1c')
+            
+            # Apply tag only if we have actual text
+            if start_index != end_index:
+                self.tag_add(tag_name, start_index, end_index)
+            
+            self.see('end')
+            
+        except Exception as e:
+            # Fallback to basic text insertion
+            try:
+                self.insert('end', str(text))
+                self.see('end')
+            except Exception as e2:
+                print(f"Critical error in write_colored: {e2}")
+    
+    def write_ansi_text(self, text):
+        """Write text with ANSI processing"""
+        # Simple ANSI processing - just write as normal text for now
+        self.write_colored(text, 'white')
+    
+    def newline(self):
+        """Add a newline"""
+        self.write_colored('\n')
+    
+    def clear_screen(self):
+        """Clear the terminal screen"""
+        self.delete('1.0', 'end')
+    
+    def show_welcome_banner(self):
+        """Show welcome banner"""
+        banner = f"""╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ManimStudio Advanced Terminal v3.5.0                     ║
+║                       Enhanced Terminal Interface                            ║  
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+🖥️  System: {platform.system()} {platform.release()}
+🐍 Python: {sys.version.split()[0]}
+📁 Working Directory: {self.cwd}
+⚡ Features: History • Completion • Process Control • ANSI Colors
+
+💡 Quick Commands:
+   • help           - Show all commands
+   • history        - View command history  
+   • clear          - Clear screen
+   • activate <env> - Activate virtual environment
+   • python <cmd>   - Run Python command
+   • pip <cmd>      - Run pip command
+
+"""
+        self.write_colored(banner, color='cyan')
+    
+    def get_default_prompt(self):
+        """Get default prompt"""
+        if os.name == 'nt':
+            return f"PS {self.cwd.replace(os.path.expanduser('~'), '~')}> "
+        else:
+            user = getpass.getuser()
+            hostname = platform.node().split('.')[0]
+            return f"{user}@{hostname}:{self.cwd.replace(os.path.expanduser('~'), '~')}$ "
+    
+    def show_prompt(self):
+        """Show command prompt"""
+        if self.command_running:
+            return
+
+        # Show prompt with colors
+        if self.multiline_mode:
+            prompt = "... "
+            self.write_colored(prompt, color='blue')
+        else:
+            current_time = datetime.now().strftime("%H:%M:%S")
+            
+            if os.name == 'nt':
+                self.write_colored("PS ", color='blue', style='bold')
+                self.write_colored(f"[{current_time}] ", color='green')
+                self.write_colored(f"{self.cwd}", color='cyan')
+                
+                if hasattr(self.app, 'venv_manager') and self.app.venv_manager.current_venv:
+                    self.write_colored(f" ({self.app.venv_manager.current_venv})", color='magenta')
+                
+                self.write_colored("> ", color='blue', style='bold')
+            else:
+                user = getpass.getuser()
+                hostname = platform.node().split('.')[0]
+                
+                self.write_colored(f"{user}", color='green', style='bold')
+                self.write_colored("@", color='blue')
+                self.write_colored(f"{hostname}", color='yellow')
+                self.write_colored(":", color='blue')
+                self.write_colored(f"{self.cwd}", color='cyan')
+                
+                if hasattr(self.app, 'venv_manager') and self.app.venv_manager.current_venv:
+                    self.write_colored(f" [{self.app.venv_manager.current_venv}]", color='red')
+                
+                self.write_colored("$ ", color='green', style='bold')
+
+        # Mark where user input starts
+        self.input_start_index = self.index('end-1c')
+        self.mark_set('input_start', self.input_start_index)
+        
+        # Position cursor at end
+        self.mark_set('insert', 'end')
+        self.focus_set()
+
+    def on_key_press(self, event):
+        """Handle key press events with improved tab completion"""
+        # Allow typing anywhere after the prompt
+        current_pos = self.index('insert')
+        
+        # Check if cursor is before the prompt
+        try:
+            if self.compare(current_pos, '<', 'input_start'):
+                # Move cursor to end if trying to type before prompt
+                self.mark_set('insert', 'end')
+                return
+        except:
+            # If input_start mark doesn't exist, allow typing
+            pass
+        
+        if event.keysym == 'Return':
+            return self.on_return(event)
+        elif event.keysym == 'Up':
+            self.history_up()
+            return 'break'
+        elif event.keysym == 'Down':
+            self.history_down()
+            return 'break'
+        elif event.keysym == 'Tab':
+            return self.handle_tab_completion(event)
+        
+        # Allow normal typing for printable characters
+        return None
+
+    def on_key(self, event):
+        """Handle general key events"""
+        # Prevent editing before the prompt
+        try:
+            current_pos = self.index('insert')
+            if self.compare(current_pos, '<', 'input_start'):
+                self.mark_set('insert', 'end')
+                return 'break'
+        except:
+            pass
+        return None
+    
+    def handle_tab_completion(self, event):
+        """Handle tab completion like a real terminal"""
+        try:
+            # Get current line and cursor position
             current_pos = self.index('insert')
             
-            # Try to get command from current line after prompt
-            current_line_start = self.index('insert linestart')
-            current_line_end = self.index('insert lineend')
-            current_line = self.get(current_line_start, current_line_end)
+            # Get text from start of input to cursor
+            try:
+                input_start = self.index('input_start')
+                current_text = self.get(input_start, current_pos)
+            except:
+                # Fallback if input_start mark doesn't exist
+                line_start = self.index('insert linestart')
+                current_text = self.get(line_start, current_pos)
             
-            # Extract command after prompt symbols
-            command = ""
+            # Split into words
+            words = current_text.split()
+            
+            if not words:
+                # No words, try to complete common commands
+                completions = list(self.builtin_commands.keys())
+            else:
+                # Get the last word (partial command/argument)
+                partial = words[-1]
+                
+                if len(words) == 1:
+                    # Completing command
+                    completions = [cmd for cmd in self.builtin_commands.keys() 
+                                  if cmd.startswith(partial)]
+                    
+                    # Add system commands if available
+                    system_cmds = self.get_system_commands(partial)
+                    completions.extend(system_cmds)
+                else:
+                    # Completing arguments (file/directory names)
+                    completions = self.get_file_completions(partial)
+            
+            if not completions:
+                # No completions found, just insert tab spaces for code editing
+                self.insert('insert', '    ')  # 4 spaces for code
+                return "break"
+            
+            if len(completions) == 1:
+                # Single completion - replace partial with full completion
+                if words:
+                    # Replace the last partial word
+                    word_start = len(' '.join(words[:-1])) + (1 if len(words) > 1 else 0)
+                    try:
+                        replace_start = f"{self.index('input_start')} +{word_start}c"
+                        self.delete(replace_start, current_pos)
+                        self.insert(replace_start, completions[0])
+                    except:
+                        self.insert('insert', completions[0])
+                else:
+                    # No partial word, just insert
+                    self.insert('insert', completions[0])
+            else:
+                # Multiple completions - show them
+                self.show_completions(completions, partial)
+            
+            return "break"
+        
+        except Exception as e:
+            print(f"Tab completion error: {e}")
+            # Fallback to inserting spaces
+            self.insert('insert', '    ')
+            return "break"
+
+    def get_file_completions(self, partial):
+        """Get file/directory completions for the partial path"""
+        try:
+            if os.path.sep in partial:
+                # Path contains directory separator
+                dirname = os.path.dirname(partial)
+                basename = os.path.basename(partial)
+                search_dir = os.path.join(self.cwd, dirname) if not os.path.isabs(dirname) else dirname
+            else:
+                # Just a filename
+                dirname = ""
+                basename = partial
+                search_dir = self.cwd
+            
+            if not os.path.exists(search_dir):
+                return []
+            
+            completions = []
+            try:
+                for item in os.listdir(search_dir):
+                    if item.startswith(basename):
+                        full_path = os.path.join(dirname, item) if dirname else item
+                        if os.path.isdir(os.path.join(search_dir, item)):
+                            completions.append(full_path + os.path.sep)
+                        else:
+                            completions.append(full_path)
+            except PermissionError:
+                pass
+            
+            return sorted(completions)
+        except Exception as e:
+            return []
+
+    def show_completions(self, completions, partial):
+        """Show available completions"""
+        self.newline()
+        
+        # Limit number of completions shown
+        max_show = 20
+        if len(completions) > max_show:
+            shown = completions[:max_show]
+            self.write_colored(f"  {' '.join(shown)}", color='yellow')
+            self.newline()
+            self.write_colored(f"  ... and {len(completions) - max_show} more", color='gray')
+        else:
+            self.write_colored(f"  {' '.join(completions)}", color='yellow')
+        
+        self.newline()
+        self.show_prompt()
+        
+        # Restore partial input
+        if partial:
+            self.insert('end', partial)
+
+    def get_system_commands(self, partial):
+        """Get system commands that start with partial"""
+        system_commands = []
+        
+        # Get commands from PATH
+        try:
+            path_dirs = os.environ.get('PATH', '').split(os.pathsep)
+            for path_dir in path_dirs[:10]:  # Limit to first 10 directories for performance
+                if os.path.isdir(path_dir):
+                    try:
+                        for item in os.listdir(path_dir):
+                            if item.startswith(partial) and os.access(os.path.join(path_dir, item), os.X_OK):
+                                if os.name == 'nt':
+                                    # On Windows, remove .exe extension for display
+                                    if item.endswith('.exe'):
+                                        item = item[:-4]
+                                if item not in system_commands:
+                                    system_commands.append(item)
+                    except (PermissionError, OSError):
+                        continue
+        except Exception:
+            pass
+        
+        return sorted(system_commands)
+    
+    def on_return(self, event=None):
+        """Handle return key"""
+        # Get current command
+        try:
+            input_start = self.index('input_start')
+            command = self.get(input_start, 'end-1c').strip()
+        except:
+            # Fallback - get current line
+            line_start = self.index('insert linestart')
+            current_line = self.get(line_start, 'end-1c')
+            # Try to extract command after prompt
             if '> ' in current_line:
                 command = current_line.split('> ', 1)[-1].strip()
             elif '$ ' in current_line:
                 command = current_line.split('$ ', 1)[-1].strip()
             else:
-                # Fallback: get text from input_start if available
-                try:
-                    if hasattr(self, 'input_start_index') and self.input_start_index:
-                        command = self.get(self.input_start_index, 'end-1c').strip()
-                    else:
-                        # Last resort: get the whole current line
-                        command = current_line.strip()
-                except:
-                    command = current_line.strip()
-            
-            self.newline()
-            
-            if command:
-                self.execute_command(command)
-            else:
-                self.show_prompt()
-            
-        except Exception as e:
-            self.write_colored(f"Error processing command: {e}\n", color='red')
+                command = current_line.strip()
+        
+        self.newline()
+        
+        if command:
+            self.execute_command(command)
+        else:
             self.show_prompt()
         
         return 'break'
-
+    
+    def on_click(self, event):
+        """Handle mouse click"""
+        # Allow normal text selection but ensure cursor doesn't go before prompt
+        self.after_idle(self.check_cursor_position)
+    
+    def check_cursor_position(self):
+        """Ensure cursor doesn't go before prompt"""
+        try:
+            current_pos = self.index('insert')
+            if self.compare(current_pos, '<', 'input_start'):
+                self.mark_set('insert', 'end')
+        except:
+            pass
+    
+    def history_up(self):
+        """Navigate history up"""
+        if self.command_history and self.history_index > 0:
+            self.history_index -= 1
+            self.replace_current_command(self.command_history[self.history_index])
+    
+    def history_down(self):
+        """Navigate history down"""
+        if self.command_history and self.history_index < len(self.command_history) - 1:
+            self.history_index += 1
+            self.replace_current_command(self.command_history[self.history_index])
+        else:
+            self.replace_current_command("")
+    
+    def replace_current_command(self, command):
+        """Replace current command with history item"""
+        try:
+            input_start = self.index('input_start')
+            self.delete(input_start, 'end-1c')
+            self.insert('end', command)
+        except:
+            pass
+    
     def execute_command(self, command):
-        """FIXED: Execute command with proper error handling and environment"""
+        """Execute command"""
         try:
             # Add to history
             self.add_to_history(command)
@@ -571,14 +949,8 @@ class AdvancedTkTerminal(tk.Text):
             # Process aliases
             command = self.expand_aliases(command)
             
-            # Parse command using shlex for proper argument splitting
-            try:
-                import shlex
-                parts = shlex.split(command)
-            except ValueError:
-                # Fallback to simple split if shlex fails
-                parts = command.split()
-            
+            # Parse command
+            parts = command.split()
             if not parts:
                 self.show_prompt()
                 return
@@ -601,70 +973,42 @@ class AdvancedTkTerminal(tk.Text):
         except Exception as e:
             self.write_colored(f"Command error: {e}\n", color='red')
             self.show_prompt()
-
+    
     def execute_external_command(self, command_parts):
-        """FIXED: Execute external command with proper environment and error handling"""
+        """Execute external command"""
         try:
             self.command_running = True
             
             # Show command execution
             self.write_colored(f"$ {' '.join(command_parts)}\n", color='yellow')
             
-            # Execute in thread with proper environment
+            # Execute in thread
             def run_command():
                 try:
-                    # Set up environment
                     env = self.env.copy()
-                    
-                    # CRITICAL: Use virtual environment if available
-                    if (hasattr(self.app, 'venv_manager') and 
-                        self.app.venv_manager and 
-                        self.app.venv_manager.current_venv):
-                        
-                        venv_manager = self.app.venv_manager
-                        
-                        # Add virtual environment paths
-                        if venv_manager.python_path:
-                            venv_dir = os.path.dirname(venv_manager.python_path)
-                            # Prepend venv to PATH
+                    if hasattr(self.app, 'venv_manager') and self.app.venv_manager.current_venv:
+                        if self.app.venv_manager.python_path:
+                            venv_dir = os.path.dirname(self.app.venv_manager.python_path)
                             env['PATH'] = venv_dir + os.pathsep + env.get('PATH', '')
                             env['VIRTUAL_ENV'] = os.path.dirname(venv_dir)
-                            
-                            # Set Python-related environment variables
-                            env['PYTHONPATH'] = env.get('PYTHONPATH', '')
                     
-                    # Configure subprocess for hidden execution
-                    startupinfo = None
-                    creationflags = 0
-                    
-                    if os.name == 'nt':
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        creationflags = subprocess.CREATE_NO_WINDOW
-                    
-                    # Execute command with proper configuration
                     result = subprocess.run(
                         command_parts,
                         capture_output=True,
                         text=True,
                         cwd=self.cwd,
                         env=env,
-                        timeout=60,
-                        startupinfo=startupinfo,
-                        creationflags=creationflags,
-                        shell=False  # Explicitly set shell=False for security
+                        timeout=60
                     )
                     
-                    # Output result on main thread
+                    # Output result
                     if result.stdout:
                         self.after(0, lambda: self.write_colored(result.stdout, 'white'))
                     if result.stderr:
                         self.after(0, lambda: self.write_colored(result.stderr, 'red'))
                     
                     if result.returncode != 0:
-                        self.after(0, lambda: self.write_colored(
-                            f"\n[Process exited with code {result.returncode}]\n", 'yellow'))
+                        self.after(0, lambda: self.write_colored(f"\n[Process exited with code {result.returncode}]\n", 'yellow'))
                     
                     self.after(0, self.command_complete)
                     
@@ -672,74 +1016,32 @@ class AdvancedTkTerminal(tk.Text):
                     self.after(0, lambda: self.write_colored("\n[Command timed out]\n", 'red'))
                     self.after(0, self.command_complete)
                 except FileNotFoundError:
-                    self.after(0, lambda: self.write_colored(
-                        f"Command not found: {command_parts[0]}\n", 'red'))
+                    self.after(0, lambda: self.write_colored(f"Command not found: {command_parts[0]}\n", 'red'))
                     self.after(0, self.command_complete)
                 except Exception as e:
                     self.after(0, lambda: self.write_colored(f"Error: {e}\n", 'red'))
                     self.after(0, self.command_complete)
             
-            # Start command in background thread
             threading.Thread(target=run_command, daemon=True).start()
             
         except Exception as e:
             self.write_colored(f"Error executing command: {e}\n", 'red')
             self.command_complete()
-
-    def cmd_pip(self, args):
-        """FIXED: Run pip command using virtual environment"""
-        if (hasattr(self.app, 'venv_manager') and 
-            self.app.venv_manager and 
-            self.app.venv_manager.pip_path):
-            cmd = [self.app.venv_manager.pip_path] + args
-        else:
-            cmd = ['pip'] + args
-        self.execute_external_command(cmd)
-
-    def cmd_python(self, args):
-        """FIXED: Run Python command using virtual environment"""
-        if (hasattr(self.app, 'venv_manager') and 
-            self.app.venv_manager and 
-            self.app.venv_manager.python_path):
-            cmd = [self.app.venv_manager.python_path] + args
-        else:
-            cmd = ['python'] + args
-        self.execute_external_command(cmd)
-
-    def cmd_activate(self, args):
-        """FIXED: Activate virtual environment with proper feedback"""
-        if not args:
-            self.write_colored("Usage: activate <environment_name>\n", color='yellow')
-            return
-        
-        env_name = args[0]
-        if hasattr(self.app, 'venv_manager') and self.app.venv_manager:
-            if self.app.venv_manager.activate_venv(env_name):
-                self.write_colored(f"✅ Activated environment: {env_name}\n", color='green')
-                
-                # Update terminal environment
-                if self.app.venv_manager.python_path:
-                    venv_dir = os.path.dirname(self.app.venv_manager.python_path)
-                    self.env['PATH'] = venv_dir + os.pathsep + self.env.get('PATH', '')
-                    self.env['VIRTUAL_ENV'] = os.path.dirname(venv_dir)
-                    
-                # Update prompt to show active environment
-                self.prompt_format = self.get_default_prompt()
-            else:
-                self.write_colored(f"❌ Failed to activate: {env_name}\n", color='red')
-        else:
-            self.write_colored("❌ Environment manager not available\n", color='red')
-
+    
+    def command_complete(self):
+        """Handle command completion"""
+        self.command_running = False
+        self.show_prompt()
+    
     def run_command_redirected(self, command, on_complete=None, env=None):
-        """FIXED: Run command with output redirection and proper threading"""
+        """Run command with output redirection"""
         def run_in_thread():
             try:
                 # Show command
                 if isinstance(command, list):
-                    cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in command)
+                    cmd_str = ' '.join(command)
                 else:
-                    cmd_str = str(command)
-                    command = shlex.split(command) if isinstance(command, str) else command
+                    cmd_str = command
                 
                 self.after(0, lambda: self.write_colored(f"Executing: {cmd_str}\n", 'yellow'))
                 
@@ -748,26 +1050,11 @@ class AdvancedTkTerminal(tk.Text):
                 if env:
                     run_env.update(env)
                 
-                # Use virtual environment if available
-                if (hasattr(self.app, 'venv_manager') and 
-                    self.app.venv_manager and 
-                    self.app.venv_manager.current_venv):
-                    
-                    venv_manager = self.app.venv_manager
-                    if venv_manager.python_path:
-                        venv_dir = os.path.dirname(venv_manager.python_path)
+                if hasattr(self.app, 'venv_manager') and self.app.venv_manager.current_venv:
+                    if self.app.venv_manager.python_path:
+                        venv_dir = os.path.dirname(self.app.venv_manager.python_path)
                         run_env['PATH'] = venv_dir + os.pathsep + run_env.get('PATH', '')
                         run_env['VIRTUAL_ENV'] = os.path.dirname(venv_dir)
-                
-                # Configure subprocess
-                startupinfo = None
-                creationflags = 0
-                
-                if os.name == 'nt':
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    creationflags = subprocess.CREATE_NO_WINDOW
                 
                 # Execute command
                 result = subprocess.run(
@@ -776,9 +1063,7 @@ class AdvancedTkTerminal(tk.Text):
                     text=True,
                     cwd=self.cwd,
                     env=run_env,
-                    timeout=300,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags
+                    timeout=300
                 )
                 
                 # Output results
@@ -791,143 +1076,311 @@ class AdvancedTkTerminal(tk.Text):
                 if on_complete:
                     self.after(0, lambda: on_complete(result.returncode == 0, result.returncode))
                 
-            except subprocess.TimeoutExpired:
-                self.after(0, lambda: self.write_colored("Command timed out\n", 'red'))
-                if on_complete:
-                    self.after(0, lambda: on_complete(False, -1))
             except Exception as e:
                 self.after(0, lambda: self.write_colored(f"Error: {e}\n", 'red'))
                 if on_complete:
                     self.after(0, lambda: on_complete(False, -1))
         
         threading.Thread(target=run_in_thread, daemon=True).start()
-
-    def show_prompt(self):
-        """FIXED: Show command prompt with proper positioning"""
-        if self.command_running:
-            return
-
+    
+    def add_to_history(self, command):
+        """Add command to history"""
+        command = command.strip()
+        if command and (not self.command_history or self.command_history[-1] != command):
+            self.command_history.append(command)
+            if len(self.command_history) > self.max_history_size:
+                self.command_history = self.command_history[-self.max_history_size:]
+        self.history_index = len(self.command_history)
+        self.save_history()
+    
+    def load_history(self):
+        """Load command history"""
         try:
-            # Show prompt with colors
-            if self.multiline_mode:
-                prompt = "... "
-                self.write_colored(prompt, color='blue')
-            else:
-                current_time = datetime.now().strftime("%H:%M:%S")
-                
-                if os.name == 'nt':
-                    self.write_colored("PS ", color='blue', style='bold')
-                    self.write_colored(f"[{current_time}] ", color='green')
-                    self.write_colored(f"{self.cwd}", color='cyan')
-                    
-                    # Show virtual environment if active
-                    if (hasattr(self.app, 'venv_manager') and 
-                        self.app.venv_manager and 
-                        self.app.venv_manager.current_venv):
-                        self.write_colored(f" ({self.app.venv_manager.current_venv})", color='magenta')
-                    
-                    self.write_colored("> ", color='blue', style='bold')
+            history_file = os.path.join(os.path.expanduser("~"), ".manim_studio_history")
+            if os.path.exists(history_file):
+                with open(history_file, 'r', encoding='utf-8') as f:
+                    self.command_history = [line.strip() for line in f.readlines()]
+                    self.command_history = self.command_history[-self.max_history_size:]
+        except Exception as e:
+            print(f"Could not load history: {e}")
+    
+    def save_history(self):
+        """Save command history"""
+        try:
+            history_file = os.path.join(os.path.expanduser("~"), ".manim_studio_history")
+            with open(history_file, 'w', encoding='utf-8') as f:
+                for cmd in self.command_history[-self.max_history_size:]:
+                    f.write(cmd + '\n')
+        except Exception as e:
+            print(f"Could not save history: {e}")
+    
+    def expand_aliases(self, command):
+        """Expand command aliases"""
+        parts = command.split()
+        if parts and parts[0] in self.aliases:
+            parts[0] = self.aliases[parts[0]]
+        return ' '.join(parts)
+    
+    def start_background_tasks(self):
+        """Start background monitoring tasks"""
+        pass  # Simplified for now
+    
+    # Built-in Commands Implementation
+    def cmd_clear(self, args):
+        """Clear terminal screen"""
+        self.clear_screen()
+        self.show_welcome_banner()
+    
+    def cmd_cd(self, args):
+        """Change directory"""
+        if not args:
+            target = os.path.expanduser("~")
+        elif args[0] == "..":
+            target = os.path.dirname(self.cwd)
+        elif args[0] == "-":
+            # Go to previous directory (simplified)
+            target = os.path.expanduser("~")
+        else:
+            target = args[0]
+            if not os.path.isabs(target):
+                target = os.path.join(self.cwd, target)
+        
+        target = os.path.abspath(target)
+        
+        if os.path.isdir(target):
+            self.cwd = target
+            os.chdir(target)
+            self.write_colored(f"📁 {target}\n", color='cyan')
+        else:
+            self.write_colored(f"❌ Directory not found: {target}\n", color='red')
+    
+    def cmd_pwd(self, args):
+        """Print working directory"""
+        self.write_colored(f"📁 {self.cwd}\n", color='cyan')
+    
+    def cmd_ls(self, args):
+        """List directory contents"""
+        try:
+            path = args[0] if args else self.cwd
+            if not os.path.isabs(path):
+                path = os.path.join(self.cwd, path)
+            
+            entries = sorted(os.listdir(path))
+            
+            for entry in entries:
+                full_path = os.path.join(path, entry)
+                if os.path.isdir(full_path):
+                    self.write_colored(f"📁 {entry}/  ", color='blue')
                 else:
-                    user = getpass.getuser()
-                    hostname = platform.node().split('.')[0]
-                    
-                    self.write_colored(f"{user}", color='green', style='bold')
-                    self.write_colored("@", color='blue')
-                    self.write_colored(f"{hostname}", color='yellow')
-                    self.write_colored(":", color='blue')
-                    self.write_colored(f"{self.cwd}", color='cyan')
-                    
-                    # Show virtual environment if active
-                    if (hasattr(self.app, 'venv_manager') and 
-                        self.app.venv_manager and 
-                        self.app.venv_manager.current_venv):
-                        self.write_colored(f" [{self.app.venv_manager.current_venv}]", color='red')
-                    
-                    self.write_colored("$ ", color='green', style='bold')
-
-            # Mark where user input starts
-            self.input_start_index = self.index('end-1c')
-            self.mark_set('input_start', self.input_start_index)
+                    self.write_colored(f"📄 {entry}  ", color='white')
             
-            # Position cursor at end
-            self.mark_set('insert', 'end')
-            self.focus_set()
+            self.newline()
             
         except Exception as e:
-            # Fallback prompt
-            self.insert('end', "$ ")
-            self.input_start_index = self.index('end-1c')
+            self.write_colored(f"❌ Error: {e}\n", color='red')
+    
+    def cmd_history(self, args):
+        """Show command history"""
+        for i, cmd in enumerate(self.command_history[-20:], 1):
+            self.write_colored(f"{i:3d}  {cmd}\n", color='cyan')
+    
+    def cmd_help(self, args):
+        """Show help"""
+        help_text = """
+🚀 ManimStudio Terminal Commands:
 
-    def write_colored(self, text, color='white', style=None):
-        """FIXED: Write colored text with better error handling"""
+📁 File Operations:
+   cd [dir]       - Change directory
+   cd ..          - Go to parent directory  
+   pwd            - Print working directory
+   ls/dir [path]  - List directory contents
+
+🐍 Python Environment:
+   activate <env> - Activate virtual environment
+   deactivate     - Deactivate current environment
+   python [args]  - Run Python in current environment
+   pip [args]     - Run pip in current environment
+
+⚙️  System:
+   clear/cls      - Clear screen
+   history        - Command history
+   help           - This help
+   exit           - Exit terminal
+   whoami         - Show current user
+   date           - Show current date/time
+
+⌨️  Keyboard Shortcuts:
+   Up/Down        - Navigate history
+   Tab            - Auto-completion
+   Enter          - Execute command
+
+"""
+        self.write_colored(help_text, color='cyan')
+    
+    def cmd_activate(self, args):
+        """Activate virtual environment"""
+        if not args:
+            self.write_colored("Usage: activate <environment_name>\n", color='yellow')
+            return
+        
+        env_name = args[0]
+        if hasattr(self.app, 'venv_manager'):
+            if self.app.venv_manager.activate_venv(env_name):
+                self.write_colored(f"✅ Activated environment: {env_name}\n", color='green')
+                if self.app.venv_manager.python_path:
+                    venv_dir = os.path.dirname(self.app.venv_manager.python_path)
+                    self.env['PATH'] = venv_dir + os.pathsep + self.env.get('PATH', '')
+                    self.env['VIRTUAL_ENV'] = os.path.dirname(venv_dir)
+            else:
+                self.write_colored(f"❌ Failed to activate: {env_name}\n", color='red')
+        else:
+            self.write_colored("❌ Environment manager not available\n", color='red')
+    
+    def cmd_deactivate(self, args):
+        """Deactivate virtual environment"""
+        if hasattr(self.app, 'venv_manager'):
+            self.app.venv_manager.deactivate_venv()
+            self.env = os.environ.copy()
+            self.write_colored("✅ Environment deactivated\n", color='green')
+        else:
+            self.write_colored("❌ Environment manager not available\n", color='red')
+    
+    def cmd_pip(self, args):
+        """Run pip command"""
+        if hasattr(self.app, 'venv_manager') and self.app.venv_manager.pip_path:
+            cmd = [self.app.venv_manager.pip_path] + args
+            self.execute_external_command(cmd)
+        else:
+            cmd = ['pip'] + args
+            self.execute_external_command(cmd)
+    
+    def cmd_python(self, args):
+        """Run Python command"""
+        if hasattr(self.app, 'venv_manager') and self.app.venv_manager.python_path:
+            cmd = [self.app.venv_manager.python_path] + args
+            self.execute_external_command(cmd)
+        else:
+            cmd = ['python'] + args
+            self.execute_external_command(cmd)
+    
+    # Implement other commands with simple responses
+    def cmd_echo(self, args):
+        """Echo arguments"""
+        self.write_colored(" ".join(args) + "\n", color='white')
+    
+    def cmd_whoami(self, args):
+        """Show current user"""
+        self.write_colored(f"👤 {getpass.getuser()}\n", color='green')
+    
+    def cmd_date(self, args):
+        """Show current date"""
+        self.write_colored(f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n", color='yellow')
+    
+    def cmd_env(self, args):
+        """Show environment variables"""
+        for key, value in sorted(list(self.env.items())[:10]):  # Show first 10
+            self.write_colored(f"{key}=", color='cyan')
+            self.write_colored(f"{value}\n", color='white')
+        if len(self.env) > 10:
+            self.write_colored("... (showing first 10)\n", color='yellow')
+    
+    def cmd_exit(self, args):
+        """Exit terminal"""
+        self.write_colored("Terminal session ended.\n", color='yellow')
+    
+    # Simplified implementations for other commands
+    def cmd_alias(self, args):
+        """Manage aliases"""
+        if not args:
+            for alias, command in self.aliases.items():
+                self.write_colored(f"{alias}='{command}'\n", color='cyan')
+    
+    def cmd_unalias(self, args):
+        """Remove alias"""
+        if args and args[0] in self.aliases:
+            del self.aliases[args[0]]
+            self.write_colored(f"✅ Alias removed: {args[0]}\n", color='green')
+    
+    def cmd_jobs(self, args):
+        """List background jobs"""
+        self.write_colored("No background jobs\n", color='yellow')
+    
+    def cmd_fg(self, args):
+        """Bring job to foreground"""
+        self.write_colored("fg: Not implemented\n", color='yellow')
+    
+    def cmd_bg(self, args):
+        """Send job to background"""
+        self.write_colored("bg: Not implemented\n", color='yellow')
+    
+    def cmd_kill(self, args):
+        """Kill process"""
+        self.write_colored("kill: Not implemented\n", color='yellow')
+    
+    def cmd_which(self, args):
+        """Locate command"""
+        if not args:
+            self.write_colored("Usage: which <command>\n", color='red')
+            return
+        
+        command = args[0]
+        if command in self.builtin_commands:
+            self.write_colored(f"{command}: shell builtin\n", color='cyan')
+        else:
+            self.write_colored(f"{command}: not found\n", color='red')
+    
+    def cmd_set(self, args):
+        """Set environment variable"""
+        self.write_colored("set: Not fully implemented\n", color='yellow')
+    
+    def cmd_export(self, args):
+        """Export environment variable"""
+        self.write_colored("export: Not fully implemented\n", color='yellow')
+    
+    def cmd_touch(self, args):
+        """Create empty file"""
+        if not args:
+            self.write_colored("Usage: touch <filename>\n", color='red')
+            return
+        
         try:
-            # Validate and clean the text
-            if not isinstance(text, str):
-                text = str(text)
+            filepath = args[0]
+            if not os.path.isabs(filepath):
+                filepath = os.path.join(self.cwd, filepath)
             
-            # Remove any problematic characters
-            text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
-            
-            # Color mapping
-            color_map = {
-                'white': '#FFFFFF',
-                'red': '#FF6B6B', 
-                'green': '#6BCF7F',
-                'yellow': '#FFD93D',
-                'blue': '#61DAFB',
-                'magenta': '#FF79C6',
-                'cyan': '#8BE9FD',
-                'black': '#000000',
-                'gray': '#6C7086',
-                'orange': '#FAB387'
-            }
-            
-            # Get color
-            fg_color = color_map.get(color, color if isinstance(color, str) and color.startswith('#') else '#FFFFFF')
-            
-            # Create unique tag name
-            tag_name = f"color_{color}_{id(self)}"
-            
-            # Configure tag if not exists
-            try:
-                if tag_name not in self.tag_names():
-                    tag_config = {'foreground': fg_color}
-                    
-                    if style == 'bold':
-                        current_font = self.cget('font')
-                        if isinstance(current_font, tuple) and len(current_font) >= 2:
-                            family, size = current_font[0], current_font[1]
-                            tag_config['font'] = (family, size, 'bold')
-                        else:
-                            tag_config['font'] = ('Consolas', 11, 'bold')
-                    
-                    self.tag_configure(tag_name, **tag_config)
-            except Exception:
-                # If tag configuration fails, continue without styling
+            with open(filepath, 'a'):
                 pass
             
-            # Insert text with color
-            start_index = self.index('end-1c')
-            self.insert('end', text)
-            end_index = self.index('end-1c')
-            
-            # Apply tag only if we have actual text and tag was configured
-            try:
-                if start_index != end_index and tag_name in self.tag_names():
-                    self.tag_add(tag_name, start_index, end_index)
-            except Exception:
-                # If tagging fails, text is still inserted
-                pass
-            
-            self.see('end')
-            
+            self.write_colored(f"✅ Created: {filepath}\n", color='green')
         except Exception as e:
-            # Ultimate fallback: just insert plain text
-            try:
-                self.insert('end', str(text))
-                self.see('end')
-            except Exception:
-                pass  # If even this fails, give up silently
+            self.write_colored(f"❌ Error: {e}\n", color='red')
+    
+    def cmd_cat(self, args):
+        """Display file contents"""
+        if not args:
+            self.write_colored("Usage: cat <filename>\n", color='red')
+            return
+        
+        try:
+            filepath = args[0]
+            if not os.path.isabs(filepath):
+                filepath = os.path.join(self.cwd, filepath)
+            
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+                self.write_colored(content, color='white')
+                if not content.endswith('\n'):
+                    self.newline()
+        except Exception as e:
+            self.write_colored(f"❌ Error: {e}\n", color='red')
+    
+    def cmd_head(self, args):
+        """Display first lines of file"""
+        self.write_colored("head: Not fully implemented\n", color='yellow')
+    
+    def cmd_tail(self, args):
+        """Display last lines of file"""
+        self.write_colored("tail: Not fully implemented\n", color='yellow')
 @dataclass
 class PackageCategory:
     """Package category definition"""
@@ -1262,70 +1715,91 @@ class SystemTerminalManager:
             return False
     
     def execute_command(self, command, capture_output=True, on_complete=None):
-        """Execute command"""
+        """Execute command with proper environment and error handling"""
         try:
-            self.command_history.append(command)
+            if isinstance(command, str):
+                self.command_history.append(command)
+            else:
+                self.command_history.append(" ".join(command))
             self.save_history()
-            
+
             if capture_output:
                 def run_command():
                     try:
                         system = platform.system().lower()
-                        
-                        if system == "windows":
-                            if hasattr(self, 'shell_type') and self.shell_type in ["powershell7", "powershell"]:
-                                shell_cmd = ["powershell", "-Command", command]
-                            else:
-                                shell_cmd = ["cmd", "/c", command]
+
+                        if isinstance(command, str):
+                            import shlex
+                            try:
+                                shell_cmd = shlex.split(command)
+                            except ValueError:
+                                shell_cmd = command.split()
                         else:
-                            shell_cmd = ["bash", "-c", command]
-                        
+                            shell_cmd = command
+
                         env = self.env.copy()
-                        
-                        if (hasattr(self.parent_app, 'venv_manager') and 
-                            self.parent_app.venv_manager.current_venv):
+
+                        if (
+                            hasattr(self.parent_app, 'venv_manager') and
+                            self.parent_app.venv_manager.current_venv
+                        ):
                             venv_manager = self.parent_app.venv_manager
                             if venv_manager.python_path:
                                 venv_dir = os.path.dirname(venv_manager.python_path)
                                 env['PATH'] = venv_dir + os.pathsep + env.get('PATH', '')
                                 env['VIRTUAL_ENV'] = os.path.dirname(venv_dir)
-                        
+
+                        startupinfo = None
+                        creationflags = 0
+
+                        if system == "windows":
+                            startupinfo = subprocess.STARTUPINFO()
+                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                            startupinfo.wShowWindow = subprocess.SW_HIDE
+                            creationflags = subprocess.CREATE_NO_WINDOW
+
                         result = subprocess.run(
                             shell_cmd,
                             capture_output=True,
                             text=True,
                             cwd=self.cwd,
                             env=env,
-                            timeout=60
+                            timeout=60,
+                            startupinfo=startupinfo,
+                            creationflags=creationflags,
                         )
-                        
-                        # Output results
+
                         if result.stdout:
-                            self.parent_app.root.after(0, 
-                                lambda: self.write_colored(result.stdout))
+                            self.parent_app.root.after(0, lambda: self.write_colored(result.stdout))
                         if result.stderr:
-                            self.parent_app.root.after(0, 
-                                lambda: self.write_colored(result.stderr))
-                        
+                            self.parent_app.root.after(0, lambda: self.write_colored(result.stderr))
+
                         if on_complete:
                             success = result.returncode == 0
-                            self.parent_app.root.after(0, 
-                                lambda: on_complete(success, result.returncode))
-                            
-                    except Exception as e:
-                        error_msg = f"Command execution error: {str(e)}\n"
-                        self.parent_app.root.after(0, 
-                            lambda: self.write_colored(error_msg))
+                            self.parent_app.root.after(0, lambda: on_complete(success, result.returncode))
+
+                    except subprocess.TimeoutExpired:
+                        err = f"Command timed out: {command}\n"
+                        self.parent_app.root.after(0, lambda: self.write_colored(err))
                         if on_complete:
-                            self.parent_app.root.after(0, 
-                                lambda: on_complete(False, -1))
-                
+                            self.parent_app.root.after(0, lambda: on_complete(False, -1))
+                    except FileNotFoundError:
+                        err = f"Command not found: {command}\n"
+                        self.parent_app.root.after(0, lambda: self.write_colored(err))
+                        if on_complete:
+                            self.parent_app.root.after(0, lambda: on_complete(False, -1))
+                    except Exception as e:
+                        err = f"Command execution error: {str(e)}\n"
+                        self.parent_app.root.after(0, lambda: self.write_colored(err))
+                        if on_complete:
+                            self.parent_app.root.after(0, lambda: on_complete(False, -1))
+
                 threading.Thread(target=run_command, daemon=True).start()
             else:
                 self.execute_in_new_terminal(command)
-                
+
             return True
-            
+
         except Exception as e:
             print(f"Error executing command: {e}")
             return False
@@ -8642,24 +9116,73 @@ class ManimStudioApp:
                     'cursor': VSCODE_COLORS['text_bright'],
                     'selection': VSCODE_COLORS['selection'],
                 })
-            
+
+            print("✅ Advanced Terminal initialized successfully")
+
         except Exception as e:
-            logger.error(f"Failed to create AdvancedTkTerminal: {e}")
-            # Fallback to basic terminal
+            print(f"❌ Failed to create AdvancedTkTerminal: {e}")
             self.create_fallback_terminal(terminal_container)
     
     def create_fallback_terminal(self, parent):
-        """Create fallback terminal if advanced terminal fails"""
-        self.terminal = ctk.CTkTextbox(
+        """Create fallback terminal with basic command input"""
+        parent.grid_rowconfigure(0, weight=1)
+        parent.grid_rowconfigure(1, weight=0)
+        parent.grid_columnconfigure(0, weight=1)
+
+        self.terminal_output = ctk.CTkTextbox(
             parent,
             font=ctk.CTkFont(family="Consolas", size=11),
             fg_color=VSCODE_COLORS["background"],
-            text_color=VSCODE_COLORS["text"]
+            text_color=VSCODE_COLORS["text"],
+            wrap="word"
         )
-        self.terminal.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        
-        # Add basic functionality
-        self.terminal.insert("1.0", "Basic Terminal Mode\nType commands in the input field below.\n\n") 
+        self.terminal_output.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+
+        input_frame = ctk.CTkFrame(parent, fg_color=VSCODE_COLORS["surface_light"], height=50)
+        input_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        input_frame.grid_columnconfigure(0, weight=1)
+
+        prompt_label = ctk.CTkLabel(
+            input_frame,
+            text="$",
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            text_color=VSCODE_COLORS["primary"]
+        )
+        prompt_label.grid(row=0, column=0, padx=(10, 5), pady=7, sticky="w")
+
+        self.command_entry = ctk.CTkEntry(
+            input_frame,
+            placeholder_text="Enter command and press Enter...",
+            font=ctk.CTkFont(family="Consolas", size=11),
+            height=35
+        )
+        self.command_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=7)
+        self.command_entry.bind("<Return>", self.execute_command_from_input)
+
+        execute_btn = ctk.CTkButton(
+            input_frame,
+            text="▶️",
+            width=40,
+            height=35,
+            command=self.execute_command_from_input,
+            fg_color=VSCODE_COLORS["success"],
+            font=ctk.CTkFont(size=14)
+        )
+        execute_btn.grid(row=0, column=2, padx=(5, 10), pady=7)
+
+        self._system_terminal = SystemTerminalManager(self)
+        self.terminal = self._system_terminal
+
+        welcome_msg = """╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ManimStudio Fallback Terminal                            ║
+║                          Ready for Commands                                  ║  
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Type commands in the input field below and press Enter to execute.
+Available commands: cd, ls, pip, python, activate, deactivate, clear, help
+
+"""
+        self.terminal_output.insert("1.0", welcome_msg)
     def create_fallback_output_area(self, parent):
         """Create fallback output area if mono terminal fails"""
         parent.grid_rowconfigure(0, weight=1)
@@ -8839,27 +9362,34 @@ class ManimStudioApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def execute_command_from_input(self, event=None):
-        """Execute command from the input field"""
+        """Execute command from the input field with proper error handling"""
         if hasattr(self, 'command_entry'):
             command = self.command_entry.get().strip()
             if not command:
-                return
-            
-            # Clear input
+                return "break" if event else None
+
+            # Clear input field
             self.command_entry.delete(0, 'end')
-            
-            # Execute command through terminal
+
+            # Echo command to output
+            self.append_output(f"$ {command}\n")
+
             if hasattr(self.terminal, 'execute_command'):
                 self.terminal.execute_command(command)
-            else:
-                # Fallback execution
-                self.append_output(f"$ {command}\n")
+            elif hasattr(self.terminal, 'run_command_redirected'):
                 def on_complete(success, return_code):
                     status = "completed" if success else "failed"
                     self.append_output(f"Command {status} (exit code: {return_code})\n\n")
-                
-                if hasattr(self.terminal, 'execute_command'):
-                    self.terminal.execute_command(command, capture_output=True, on_complete=on_complete)
+
+                self.terminal.run_command_redirected(command, on_complete=on_complete)
+            else:
+                if hasattr(self, '_system_terminal'):
+                    self._system_terminal.execute_command(command, capture_output=True)
+                else:
+                    self._system_terminal = SystemTerminalManager(self)
+                    self._system_terminal.execute_command(command, capture_output=True)
+
+        return "break" if event else None
 
     def append_output(self, text):
         """Append text to appropriate output area"""
