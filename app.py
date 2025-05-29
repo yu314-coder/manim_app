@@ -22,6 +22,7 @@ import uuid
 import threading
 import shutil
 import zipfile
+import textwrap
 from datetime import datetime
 from pathlib import Path
 import base64
@@ -443,14 +444,15 @@ class AdvancedTkTerminal(tk.Text):
         self.multiline_mode = False
         self.multiline_buffer = []
         
+        # Working directory and environment must be initialized before
+        # computing the default prompt to avoid attribute errors
+        self.cwd = os.getcwd()
+        self.env = os.environ.copy()
+
         # Terminal settings
         self.prompt_format = self.get_default_prompt()
         self.input_start_mark = "end-1c"
         self.prompt_end_mark = "end-1c"
-        
-        # Working directory and environment
-        self.cwd = os.getcwd()
-        self.env = os.environ.copy()
         
         # Process management
         self.background_processes = {}
@@ -683,6 +685,13 @@ class AdvancedTkTerminal(tk.Text):
         # Mark input start
         self.input_start_mark = self.index('end-1c')
         self.mark_set('input_start', self.input_start_mark)
+
+        # Re-enable editing so the user can type the next command
+        try:
+            self.configure(state='normal')
+            self.focus_set()
+        except Exception:
+            pass
     
     def on_key_press(self, event):
         """Handle key press events with improved tab completion"""
@@ -4306,8 +4315,7 @@ class VirtualEnvironmentManager:
         try:
             # Enhanced test with version requirements
             result = self.run_hidden_subprocess_nuitka_safe(
-                [python_path, "-c", """
-import sys
+                [python_path, "-c", """import sys
 major, minor = sys.version_info.major, sys.version_info.minor
 print('{}.{}'.format(major, minor))
 if major < 3 or (major == 3 and minor < 10):
@@ -4770,42 +4778,42 @@ print('ALL_OK')
             # Test essential packages
             essential_packages = ["manim", "numpy", "PIL", "cv2", "customtkinter"]
     
-            # Create a robust test script
-            test_script = f'''
-    import sys
-    import traceback
-    
-    def test_import(package_name, import_name=None):
-        if import_name is None:
-            import_name = package_name
-        try:
-            __import__(import_name)
-            print(f"[OK] {{package_name}}")
-            return True
-        except ImportError as e:
-            print(f"[FAIL] {{package_name}}")
-            return False
-        except Exception as e:
-            print(f"[ERROR] {{package_name}}: {{e}}")
-            return False
-    
-    # Test packages
-    packages_to_test = {essential_packages!r}
-    import_map = {{"PIL": "PIL", "cv2": "cv2", "customtkinter": "customtkinter", "numpy": "numpy", "manim": "manim"}}
-    
-    failed_packages = []
-    for pkg in packages_to_test:
-        import_name = import_map.get(pkg, pkg)
-        if not test_import(pkg, import_name):
-            failed_packages.append(pkg)
-    
-    if failed_packages:
-        print("MISSING:" + ",".join(failed_packages))
-        sys.exit(1)
-    else:
-        print("ALL_OK")
-        sys.exit(0)
-    '''
+            ## Create a robust test script␊
+            test_script = textwrap.dedent(f'''
+                import sys
+                import traceback
+
+                def test_import(package_name, import_name=None):
+                    if import_name is None:
+                        import_name = package_name
+                    try:
+                        __import__(import_name)
+                        print(f"[OK] {{package_name}}")
+                        return True
+                    except ImportError:
+                        print(f"[FAIL] {{package_name}}")
+                        return False
+                    except Exception as e:
+                        print(f"[ERROR] {{package_name}}: {{e}}")
+                        return False
+
+                # Test packages
+                packages_to_test = {essential_packages!r}
+                import_map = {{"PIL": "PIL", "cv2": "cv2", "customtkinter": "customtkinter", "numpy": "numpy", "manim": "manim"}}
+
+                failed_packages = []
+                for pkg in packages_to_test:
+                    import_name = import_map.get(pkg, pkg)
+                    if not test_import(pkg, import_name):
+                        failed_packages.append(pkg)
+
+                if failed_packages:
+                    print("MISSING:" + ",".join(failed_packages))
+                    sys.exit(1)
+                else:
+                    print("ALL_OK")
+                    sys.exit(0)
+            ''')
         
             # Execute test script with better error handling
             result = self.run_hidden_subprocess_nuitka_safe(
@@ -7943,6 +7951,8 @@ class ManimStudioApp:
         # Define early so other components can safely reference it during
         # initialization.
         self.terminal = None
+        # Lazy SystemTerminalManager instance for launching real system shells
+        self._system_terminal = None
 
         # Initialize virtual environment manager
         self.venv_manager = VirtualEnvironmentManager(self)
@@ -8101,7 +8111,7 @@ class ManimStudioApp:
             self.main_area.configure(fg_color=colors["background"])
             
         # Apply to terminal if exists
-        if hasattr(self, 'terminal') and self.terminal:
+        if hasattr(self, 'terminal') and self.terminal and hasattr(self.terminal, 'set_color_scheme'):
             try:
                 self.terminal.set_color_scheme({
                     'background': colors['background'],
@@ -9031,13 +9041,14 @@ class ManimStudioApp:
             )
             self.terminal.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
             
-            # Apply theme to terminal
-            self.terminal.set_color_scheme({
-                'background': VSCODE_COLORS['background'],
-                'foreground': VSCODE_COLORS['text'],
-                'cursor': VSCODE_COLORS['text_bright'],
-                'selection': VSCODE_COLORS['selection'],
-            })
+            # Apply theme to terminal if supported
+            if hasattr(self.terminal, 'set_color_scheme'):
+                self.terminal.set_color_scheme({
+                    'background': VSCODE_COLORS['background'],
+                    'foreground': VSCODE_COLORS['text'],
+                    'cursor': VSCODE_COLORS['text_bright'],
+                    'selection': VSCODE_COLORS['selection'],
+                })
             
         except Exception as e:
             logger.error(f"Failed to create AdvancedTkTerminal: {e}")
@@ -9238,13 +9249,16 @@ class ManimStudioApp:
     def open_system_terminal(self):
         """Open system terminal in current directory"""
         try:
-            if hasattr(self.terminal, 'open_terminal_here'):
-                # Use advanced terminal method
-                success = self.terminal.open_terminal_here()
-            else:
-                # Fallback to basic method
-                success = self.terminal.open_terminal_here() if hasattr(self.terminal, 'open_terminal_here') else False
-                
+            # Lazily create the SystemTerminalManager
+            if self._system_terminal is None:
+                self._system_terminal = SystemTerminalManager(self)
+
+            # Sync working directory from the UI terminal if available
+            if hasattr(self.terminal, 'cwd'):
+                self._system_terminal.cwd = getattr(self.terminal, 'cwd', self._system_terminal.cwd)
+
+            success = self._system_terminal.open_terminal_here()
+
             if success:
                 self.append_output("System terminal opened\n")
                 self.update_status("System terminal opened")
@@ -9254,7 +9268,6 @@ class ManimStudioApp:
         except Exception as e:
             logger.error(f"Error opening system terminal: {e}")
             self.append_output(f"Error opening terminal: {e}\n")
-
     def execute_command_from_input(self, event=None):
         """Execute command from the input field"""
         if hasattr(self, 'command_entry'):
