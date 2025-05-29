@@ -394,6 +394,53 @@ THEME_SCHEMES = {
 # Global color scheme
 VSCODE_COLORS = THEME_SCHEMES["Dark+"]
 
+# ---------------------------------------------------------------------------
+# Utility function to sanitize text for systems that cannot display Unicode
+# ---------------------------------------------------------------------------
+def clean_unicode_text(text):
+    """Remove or replace Unicode characters that might cause encoding issues"""
+    if not isinstance(text, str):
+        return str(text)
+
+    replacements = {
+        '✅': '[OK]',
+        '❌': '[ERROR]',
+        '⚠️': '[WARNING]',
+        '🎬': '[MS]',
+        '📄': '[FILE]',
+        '📁': '[FOLDER]',
+        '💾': '[SAVE]',
+        '▶️': '[PLAY]',
+        '👁️': '[PREVIEW]',
+        '🔧': '[TOOLS]',
+        '🖥️': '[TERMINAL]',
+        '🗑️': '[DELETE]',
+        '🎨': '[ASSETS]',
+        '🚀': '[RENDER]',
+        '⚡': '[QUICK]',
+        '💡': '[IDEA]',
+        '🔍': '[SEARCH]',
+        '📊': '[DATA]',
+        '🤖': '[AI]',
+        '🌐': '[WEB]',
+        '🔒': '[SECURE]',
+        '🎵': '[AUDIO]',
+        '🖼️': '[IMAGE]',
+        '⭐': '[STAR]',
+        '✨': '[SPARKLE]',
+    }
+
+    for u, a in replacements.items():
+        text = text.replace(u, a)
+
+    try:
+        text = text.encode('ascii', errors='replace').decode('ascii')
+    except Exception:
+        import string
+        text = ''.join(ch if ch in string.printable else '?' for ch in text)
+
+    return text
+
 # Enhanced Python syntax highlighting colors (like VSCode Dark+)
 SYNTAX_COLORS = {
     "keyword": "#569CD6",          # Blue - Keywords like def, class, if
@@ -594,9 +641,8 @@ class AdvancedTkTerminal(tk.Text):
             # Validate and clean the text
             if not isinstance(text, str):
                 text = str(text)
-            
-            # Remove any non-printable characters that might cause issues
-            text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
+
+            text = clean_unicode_text(text)
             
             # Get color, default to white if invalid
             fg_color = color_map.get(color, color if isinstance(color, str) and color.startswith('#') else '#FFFFFF')
@@ -658,12 +704,12 @@ class AdvancedTkTerminal(tk.Text):
 ║                       Enhanced Terminal Interface                            ║  
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
-🖥️  System: {platform.system()} {platform.release()}
-🐍 Python: {sys.version.split()[0]}
-📁 Working Directory: {self.cwd}
-⚡ Features: History • Completion • Process Control • ANSI Colors
+System: {platform.system()} {platform.release()}
+Python: {sys.version.split()[0]}
+Working Directory: {self.cwd}
+Features: History • Completion • Process Control • ANSI Colors
 
-💡 Quick Commands:
+Quick Commands:
    • help           - Show all commands
    • history        - View command history  
    • clear          - Clear screen
@@ -1226,21 +1272,21 @@ class AdvancedTkTerminal(tk.Text):
     def cmd_help(self, args):
         """Show help"""
         help_text = """
-🚀 ManimStudio Terminal Commands:
+ManimStudio Terminal Commands:
 
-📁 File Operations:
+File Operations:
    cd [dir]       - Change directory
    cd ..          - Go to parent directory  
    pwd            - Print working directory
    ls/dir [path]  - List directory contents
 
-🐍 Python Environment:
+Python Environment:
    activate <env> - Activate virtual environment
    deactivate     - Deactivate current environment
    python [args]  - Run Python in current environment
    pip [args]     - Run pip in current environment
 
-⚙️  System:
+System:
    clear/cls      - Clear screen
    history        - Command history
    help           - This help
@@ -1248,7 +1294,7 @@ class AdvancedTkTerminal(tk.Text):
    whoami         - Show current user
    date           - Show current date/time
 
-⌨️  Keyboard Shortcuts:
+Keyboard Shortcuts:
    Up/Down        - Navigate history
    Tab            - Auto-completion
    Enter          - Execute command
@@ -1445,12 +1491,12 @@ PACKAGE_CATEGORIES = [
                     "requests", "aiohttp", "httpx", "urllib3", "beautifulsoup4", "scrapy",
                     "selenium", "playwright", "lxml", "html5lib", "werkzeug", "jinja2"]),
     
-    PackageCategory("GUI & Desktop Development", "🖥️", "Desktop application frameworks and GUI tools", 
+    PackageCategory("GUI & Desktop Development", "[GUI]", "Desktop application frameworks and GUI tools",
                    ["tkinter", "customtkinter", "pyqt5", "pyqt6", "pyside2", "pyside6", "kivy",
                     "kivymd", "wxpython", "flet", "dear-pygui", "arcade", "ursina", "moderngl",
                     "glfw", "imgui", "toga", "beeware"]),
     
-    PackageCategory("Animation & Graphics", "🎨", "Animation, 3D graphics, and visual processing", 
+    PackageCategory("Animation & Graphics", "[GRAPHICS]", "Animation, 3D graphics, and visual processing",
                    ["manim", "pygame", "pyglet", "panda3d", "blender", "moderngl", "vispy",
                     "mayavi", "vtk", "open3d", "trimesh", "pyopengl", "arcade", "imageio",
                     "pillow", "wand", "cairo-python", "aggdraw", "skimage"]),
@@ -1515,12 +1561,12 @@ PACKAGE_CATEGORIES = [
                     "pyfirmata", "bleak", "bluepy", "pybluez", "gpiozero", "rpi-gpio",
                     "spidev", "i2c", "smbus", "w1thermsensor"]),
     
-    PackageCategory("Image Processing", "🖼️", "Image manipulation and computer vision", 
+    PackageCategory("Image Processing", "[IMAGE]", "Image manipulation and computer vision",
                    ["pillow", "opencv-python", "scikit-image", "imageio", "wand", "pyqr",
                     "qrcode", "python-barcode", "face-recognition", "dlib", "mediapipe",
                     "albumentations", "imgaug", "kornia", "torchvision"]),
     
-    PackageCategory("Utilities & Helpers", "🔧", "General utilities and helper libraries", 
+    PackageCategory("Utilities & Helpers", "[TOOLS]", "General utilities and helper libraries",
                    ["python-dateutil", "pytz", "arrow", "pendulum", "humanize", "tqdm",
                     "colorama", "termcolor", "click", "argparse", "configparser", "python-dotenv",
                     "pathlib", "shutil", "glob", "fnmatch", "itertools", "functools"]),
@@ -1976,7 +2022,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         # App icon
         icon_label = ctk.CTkLabel(
             header_frame,
-            text="🎬",
+            text="[MS]",
             font=ctk.CTkFont(size=48)
         )
         icon_label.pack(pady=10)
@@ -2244,7 +2290,7 @@ All packages will be installed in an isolated environment that won't affect your
 
         self.terminal_setup_button = ctk.CTkButton(
             button_frame,
-            text="🖥️ Terminal Setup",
+            text="[Terminal Setup]",
             command=self.start_terminal_setup,
             height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
@@ -7219,7 +7265,7 @@ class AssetCard(ctk.CTkFrame):
             # Fallback to icon
             icon_label = ctk.CTkLabel(
                 parent,
-                text="🖼️",
+                text="[IMG]",
                 font=ctk.CTkFont(size=24)
             )
             icon_label.pack(expand=True)
@@ -7403,7 +7449,7 @@ class VideoPlayerWidget(ctk.CTkFrame):
         # Speed section header
         speed_header = ctk.CTkLabel(
             center_controls,
-            text="⚡ Playback Speed",
+            text="Playback Speed",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=VSCODE_COLORS["text"],
         )
@@ -7784,7 +7830,7 @@ class VideoPlayerWidget(ctk.CTkFrame):
         # Modern placeholder design
         self.canvas.create_text(
             canvas_width/2, canvas_height/2 - 40,
-            text="🎬",
+            text="[MS]",
             font=("Arial", 56),
             fill="#4a5568"
         )
@@ -8309,11 +8355,10 @@ class ManimStudioApp:
         header_left = ctk.CTkFrame(self.header, fg_color="transparent")
         header_left.grid(row=0, column=0, sticky="w", padx=20, pady=10)
         
-        # App icon/logo - FIXED: Use ASCII safe characters
-        logo_text = self.safe_unicode_text("🎬", "[MS]")
+        # App icon/logo - ASCII only
         logo_label = ctk.CTkLabel(
             header_left,
-            text=logo_text,
+            text="[MS]",
             font=ctk.CTkFont(size=28)
         )
         logo_label.pack(side="left", padx=(0, 10))
@@ -8340,14 +8385,14 @@ class ManimStudioApp:
         header_center = ctk.CTkFrame(self.header, fg_color="transparent")
         header_center.grid(row=0, column=1, pady=10)
         
-        # Quick action buttons - FIXED: Use ASCII safe characters
+        # Quick action buttons - ASCII only
         quick_actions = [
-            (self.safe_unicode_text("📄", "[N]"), "New File", self.new_file),
-            (self.safe_unicode_text("📁", "[O]"), "Open File", self.open_file),
-            (self.safe_unicode_text("💾", "[S]"), "Save File", self.save_file),
-            (self.safe_unicode_text("▶️", "[R]"), "Render Animation", self.render_animation),
-            (self.safe_unicode_text("👁️", "[P]"), "Quick Preview", self.quick_preview),
-            (self.safe_unicode_text("🔧", "[E]"), "Environment Setup", self.manage_environment),
+            ("[N]", "New File", self.new_file),
+            ("[O]", "Open File", self.open_file),
+            ("[S]", "Save File", self.save_file),
+            ("[R]", "Render Animation", self.render_animation),
+            ("[P]", "Quick Preview", self.quick_preview),
+            ("[E]", "Environment Setup", self.manage_environment),
         ]
         
         for icon, tooltip, command in quick_actions:
@@ -8384,8 +8429,7 @@ class ManimStudioApp:
         venv_frame = ctk.CTkFrame(header_right, fg_color=VSCODE_COLORS["surface_light"])
         venv_frame.pack(side="right", padx=10)
         
-        venv_icon = self.safe_unicode_text("🔧", "[E]")
-        venv_label = ctk.CTkLabel(venv_frame, text=venv_icon, font=ctk.CTkFont(size=14))
+        venv_label = ctk.CTkLabel(venv_frame, text="[E]", font=ctk.CTkFont(size=14))
         venv_label.pack(side="left", padx=(10, 5))
         
         venv_name = self.venv_manager.current_venv or "No environment"
@@ -8452,7 +8496,7 @@ class ManimStudioApp:
         
         header_title = ctk.CTkLabel(
             render_header,
-            text="🎬 Render Settings",
+            text="[R] Render Settings",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
@@ -8702,7 +8746,7 @@ class ManimStudioApp:
         # Render button
         self.render_button = ctk.CTkButton(
             render_frame,
-            text="🚀 Render Animation",
+            text="Render Animation",
             command=self.render_animation,
             height=50,
             font=ctk.CTkFont(size=16, weight="bold"),
@@ -8756,7 +8800,7 @@ class ManimStudioApp:
                 return False
             else:
                 self.custom_validation_label.configure(
-                    text="✓ Valid resolution",
+                    text="Valid resolution",
                     text_color=VSCODE_COLORS["success"]
                 )
                 
@@ -8810,7 +8854,7 @@ class ManimStudioApp:
         
         header_title = ctk.CTkLabel(
             preview_header,
-            text="👁️ Preview Settings",
+            text="[P] Preview Settings",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
@@ -8853,7 +8897,7 @@ class ManimStudioApp:
         # Preview buttons
         self.quick_preview_button = ctk.CTkButton(
             preview_frame,
-            text="⚡ Quick Preview",
+            text="Quick Preview",
             command=self.quick_preview,
             height=45,
             font=ctk.CTkFont(size=14, weight="bold"),
@@ -8874,7 +8918,7 @@ class ManimStudioApp:
         
         header_title = ctk.CTkLabel(
             header_frame,
-            text="🎨 Assets Manager",
+            text="[A] Assets Manager",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
@@ -9106,11 +9150,10 @@ class ManimStudioApp:
         tab_frame = ctk.CTkFrame(output_header, fg_color="transparent")
         tab_frame.grid(row=0, column=0, sticky="w", padx=15, pady=8)
         
-        # Terminal indicator - FIXED: Use ASCII safe characters
-        terminal_text = self.safe_unicode_text("🖥️ Terminal", "[Terminal]")
+        # Terminal indicator - ASCII
         ctk.CTkLabel(
             tab_frame,
-            text=terminal_text,
+            text="[Terminal]",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         ).pack(side="left")
@@ -9120,10 +9163,9 @@ class ManimStudioApp:
         terminal_controls.grid(row=0, column=1, sticky="e", padx=15, pady=8)
         
         # Clear button - smaller with ASCII safe text
-        clear_text = self.safe_unicode_text("🗑️", "[Clear]")
         clear_btn = ctk.CTkButton(
             terminal_controls,
-            text=clear_text,
+            text="[Clear]",
             width=30,
             height=25,
             command=self.clear_output,
@@ -9163,7 +9205,7 @@ class ManimStudioApp:
                     'selection': VSCODE_COLORS['selection'],
                 })
 
-            print("✅ Advanced Terminal initialized successfully")
+            print("Advanced Terminal initialized successfully")
 
             # Command input below the terminal
             input_frame = ctk.CTkFrame(
@@ -9184,10 +9226,9 @@ class ManimStudioApp:
             self.command_entry.bind("<Return>", self.execute_command_from_input)
             self.command_entry.bind("<Tab>", self.handle_command_entry_tab)
 
-            execute_text = self.safe_unicode_text("▶️ Run", "Run")
             execute_btn = ctk.CTkButton(
                 input_frame,
-                text=execute_text,
+                text="Run",
                 width=60,
                 height=35,
                 command=self.execute_command_from_input,
@@ -9196,7 +9237,7 @@ class ManimStudioApp:
             execute_btn.grid(row=0, column=1, padx=(5, 10), pady=7)
 
         except Exception as e:
-            print(f"❌ Failed to create AdvancedTkTerminal: {e}")
+            print(f"Failed to create AdvancedTkTerminal: {e}")
             self.create_fallback_terminal(terminal_container)
     def create_fallback_terminal(self, parent):
         """Create fallback terminal with basic command input"""
@@ -9236,7 +9277,7 @@ class ManimStudioApp:
 
         execute_btn = ctk.CTkButton(
             input_frame,
-            text="▶️",
+            text="Run",
             width=40,
             height=35,
             command=self.execute_command_from_input,
@@ -9291,7 +9332,7 @@ Available commands: cd, ls, pip, python, activate, deactivate, clear, help
         # Execute button
         execute_btn = ctk.CTkButton(
             input_frame,
-            text="▶️ Run",
+            text="Run",
             width=60,
             height=35,
             command=self.execute_command_from_input,
@@ -9507,21 +9548,24 @@ Available commands: cd, ls, pip, python, activate, deactivate, clear, help
 
     def append_output(self, text):
         """Append text to appropriate output area"""
+        # Clean text of any problematic Unicode
+        clean_text = clean_unicode_text(text)
+
         # Try to append to mono terminal first
         if hasattr(self.terminal, 'write_colored'):
             try:
-                self.terminal.write_colored(text, color='white')
+                self.terminal.write_colored(clean_text, color='white')
                 return
             except Exception as e:
                 logger.error(f"Error writing to mono terminal: {e}")
-        
+
         # Fallback to text output areas
         if hasattr(self, 'output_text'):
-            self.output_text.insert("end", text)
+            self.output_text.insert("end", clean_text)
             self.output_text.see("end")
-        
+
         if hasattr(self, 'terminal_output'):
-            self.terminal_output.insert("end", text)
+            self.terminal_output.insert("end", clean_text)
             self.terminal_output.see("end")
 
     def clear_output(self):
@@ -9563,7 +9607,7 @@ Available commands: cd, ls, pip, python, activate, deactivate, clear, help
         # Title
         ctk.CTkLabel(
             content_frame,
-            text="🖥️ Advanced Terminal Commands",
+            text="Advanced Terminal Commands",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         ).pack(pady=(0, 20))
@@ -10195,7 +10239,7 @@ class MyScene(Scene):
                     }
                 except ValueError as e:
                     messagebox.showerror("Invalid Resolution", str(e))
-                    self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                    self.quick_preview_button.configure(text="Quick Preview", state="normal")
                     self.is_previewing = False
                     return
             else:
@@ -10249,7 +10293,7 @@ class MyScene(Scene):
             def on_preview_complete(success, return_code):
                 try:
                     # Reset UI state first
-                    self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                    self.quick_preview_button.configure(text="Quick Preview", state="normal")
                     self.is_previewing = False
                     
                     if success:
@@ -10370,7 +10414,7 @@ class MyScene(Scene):
         except Exception as e:
             self.update_status(f"Preview error: {e}")
             self.append_output(f"Preview error: {e}\n")
-            self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+            self.quick_preview_button.configure(text="Quick Preview", state="normal")
             self.is_previewing = False
 
     def render_animation(self):
@@ -10463,7 +10507,7 @@ class MyScene(Scene):
                 output_file = self.find_output_file(temp_dir, scene_class, format_ext)
                 
                 # Reset UI state
-                self.render_button.configure(text="🚀 Render Animation", state="normal")
+                self.render_button.configure(text="Render Animation", state="normal")
                 self.is_rendering = False
                 
                 if success and output_file and os.path.exists(output_file):
@@ -10516,7 +10560,7 @@ class MyScene(Scene):
         except Exception as e:
             self.update_status(f"Render error: {e}")
             self.append_output(f"Render error: {e}\n")
-            self.render_button.configure(text="🚀 Render Animation", state="normal")
+            self.render_button.configure(text="Render Animation", state="normal")
             self.is_rendering = False
         
     def extract_scene_class_name(self, code):
@@ -10575,7 +10619,7 @@ class MyScene(Scene):
                 self.render_process.terminate()
                 self.render_process = None
                 self.is_rendering = False
-                self.render_button.configure(text="🚀 Render Animation", state="normal")
+                self.render_button.configure(text="Render Animation", state="normal")
                 self.progress_bar.set(0)
                 self.progress_label.configure(text="Render stopped")
                 stopped = True
@@ -10587,7 +10631,7 @@ class MyScene(Scene):
                 self.preview_process.terminate()
                 self.preview_process = None
                 self.is_previewing = False
-                self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                self.quick_preview_button.configure(text="Quick Preview", state="normal")
                 stopped = True
             except:
                 pass
@@ -10597,14 +10641,6 @@ class MyScene(Scene):
             self.append_output("Process stopped by user\n")
         else:
             self.update_status("No process running")
-    def safe_unicode_text(self, unicode_text, fallback_text):
-        """Safely return Unicode text or ASCII fallback based on system encoding"""
-        try:
-            # Test if the unicode text can be encoded by the system
-            unicode_text.encode(sys.stdout.encoding or 'utf-8')
-            return unicode_text
-        except (UnicodeEncodeError, AttributeError):
-            return fallback_text
     # Utility methods
     def create_tooltip(self, widget, text):
         """Create tooltip for widget"""
@@ -10894,7 +10930,7 @@ else:
         # App icon
         icon_label = ctk.CTkLabel(
             content_frame,
-            text="🎬",
+            text="[MS]",
             font=ctk.CTkFont(size=48)
         )
         icon_label.pack(pady=(20, 10))
@@ -11072,34 +11108,34 @@ class GettingStartedDialog(ctk.CTkToplevel):
         # Steps
         steps = [
             ("1. Automatic Environment Setup", """
-✅ ManimStudio automatically detects your Python environment
-✅ On first run, it will guide you through setting up a complete environment
-✅ All essential packages (manim, numpy, matplotlib, jedi) are installed automatically
-✅ No manual configuration required - everything works out of the box
-✅ Virtual environments are created and managed automatically
+* ManimStudio automatically detects your Python environment
+* On first run, it will guide you through setting up a complete environment
+* All essential packages (manim, numpy, matplotlib, jedi) are installed automatically
+* No manual configuration required - everything works out of the box
+* Virtual environments are created and managed automatically
             """),
             ("2. Environment Management", """
-✅ Click the 🔧 Environment Setup button to manage your Python environment
-✅ Create isolated environments for different projects
-✅ One-click installation of Python packages
-✅ Automatic dependency management
-✅ Export/import requirements.txt files
-✅ Seamless switching between environments
+* Click the Environment Setup button to manage your Python environment
+* Create isolated environments for different projects
+* One-click installation of Python packages
+* Automatic dependency management
+* Export/import requirements.txt files
+* Seamless switching between environments
             """),
             ("3. Your First Scene", """
-✅ The editor comes with a complete example scene
-✅ Modify the default code or create your own
-✅ Use IntelliSense for smart autocompletion (Ctrl+Space)
-✅ Click 'Quick Preview' to test your animation
-✅ Use 'Render Animation' for final high-quality output
+* The editor comes with a complete example scene
+* Modify the default code or create your own
+* Use IntelliSense for smart autocompletion (Ctrl+Space)
+* Click 'Quick Preview' to test your animation
+* Use 'Render Animation' for final high-quality output
             """),
             ("4. Professional Features", """
-✅ Choose from multiple professional themes (Dark+, Light+, Monokai, Solarized)
-✅ Advanced code editor with syntax highlighting
-✅ Real-time video preview with playback controls
-✅ Visual asset management for images and audio
-✅ Advanced find/replace with regex support
-✅ Professional rendering up to 8K resolution
+* Choose from multiple professional themes (Dark+, Light+, Monokai, Solarized)
+* Advanced code editor with syntax highlighting
+* Real-time video preview with playback controls
+* Visual asset management for images and audio
+* Advanced find/replace with regex support
+* Professional rendering up to 8K resolution
             """)
         ]
         
@@ -11128,7 +11164,7 @@ class GettingStartedDialog(ctk.CTkToplevel):
         # Title
         ctk.CTkLabel(
             content,
-            text="🎬 Creating Your First Animation",
+            text="[MS] Creating Your First Animation",
             font=ctk.CTkFont(size=20, weight="bold")
         ).pack(pady=(0, 20))
         
@@ -11190,56 +11226,56 @@ class HelloWorld(Scene):
         # Title
         ctk.CTkLabel(
             content,
-            text="⚡ Advanced Features",
+            text="Advanced Features",
             font=ctk.CTkFont(size=20, weight="bold")
         ).pack(pady=(0, 20))
         
         # Features
         features = [
             ("Automatic Environment Management", """
-🔧 Detects and uses existing Python environments automatically
-🔧 Creates virtual environments with one click
-🔧 Installs all required packages automatically
-🔧 Manages dependencies and package versions
-🔧 Seamless switching between environments
+* Detects and uses existing Python environments automatically
+* Creates virtual environments with one click
+* Installs all required packages automatically
+* Manages dependencies and package versions
+* Seamless switching between environments
             """),
             ("Professional Code Editor", """
-💡 Real-time autocompletion using Jedi
-💡 Function signatures and documentation
-💡 Advanced syntax highlighting with VSCode colors
-💡 Smart indentation and bracket matching
-💡 Find and replace with regex support
-💡 Line manipulation (duplicate, move, comment)
-💡 Customizable font sizes and themes
+* Real-time autocompletion using Jedi
+* Function signatures and documentation
+* Advanced syntax highlighting with VSCode colors
+* Smart indentation and bracket matching
+* Find and replace with regex support
+* Line manipulation (duplicate, move, comment)
+* Customizable font sizes and themes
             """),
             ("Advanced Rendering System", """
-🎬 Real-time video preview with playback controls
-🎬 Multiple output formats (MP4, GIF, WebM, PNG)
-🎬 Quality presets from 480p to 8K
-🎬 Professional UI with progress tracking
-🎬 Multi-threaded rendering system
-🎬 Audio synchronization support
-🎬 Frame-by-frame playback controls
+* Real-time video preview with playback controls
+* Multiple output formats (MP4, GIF, WebM, PNG)
+* Quality presets from 480p to 8K
+* Professional UI with progress tracking
+* Multi-threaded rendering system
+* Audio synchronization support
+* Frame-by-frame playback controls
             """),
             ("Professional UI Features", """
-🎨 Multiple built-in themes (Dark+, Light+, Monokai, Solarized)
-🎨 Professional VSCode-style interface
-🎨 Visual asset manager for images and audio
-🎨 Drag-and-drop asset integration
-🎨 Professional status bar and tooltips
-🎨 Contextual menus and shortcuts
+* Multiple built-in themes (Dark+, Light+, Monokai, Solarized)
+* Professional VSCode-style interface
+* Visual asset manager for images and audio
+* Drag-and-drop asset integration
+* Professional status bar and tooltips
+* Contextual menus and shortcuts
             """),
             ("Keyboard Shortcuts", """
-⌨️ Ctrl+S: Save file
-⌨️ F5: Quick preview
-⌨️ F7: Render animation
-⌨️ Ctrl+Space: Trigger autocompletion
-⌨️ Ctrl+F: Find and replace
-⌨️ Ctrl+/: Toggle comments
-⌨️ Alt+Up/Down: Move lines
-⌨️ F11: Toggle fullscreen
-⌨️ Ctrl++/-: Adjust font size
-⌨️ Ctrl+D: Duplicate line
+* Ctrl+S: Save file
+* F5: Quick preview
+* F7: Render animation
+* Ctrl+Space: Trigger autocompletion
+* Ctrl+F: Find and replace
+* Ctrl+/: Toggle comments
+* Alt+Up/Down: Move lines
+* F11: Toggle fullscreen
+* Ctrl++/-: Adjust font size
+* Ctrl+D: Duplicate line
             """)
         ]
         
