@@ -8309,10 +8309,11 @@ class ManimStudioApp:
         header_left = ctk.CTkFrame(self.header, fg_color="transparent")
         header_left.grid(row=0, column=0, sticky="w", padx=20, pady=10)
         
-        # App icon/logo
+        # App icon/logo - FIXED: Use ASCII safe characters
+        logo_text = self.safe_unicode_text("🎬", "[MS]")
         logo_label = ctk.CTkLabel(
             header_left,
-            text="🎬",
+            text=logo_text,
             font=ctk.CTkFont(size=28)
         )
         logo_label.pack(side="left", padx=(0, 10))
@@ -8339,14 +8340,14 @@ class ManimStudioApp:
         header_center = ctk.CTkFrame(self.header, fg_color="transparent")
         header_center.grid(row=0, column=1, pady=10)
         
-        # Quick action buttons
+        # Quick action buttons - FIXED: Use ASCII safe characters
         quick_actions = [
-            ("📄", "New File", self.new_file),
-            ("📁", "Open File", self.open_file),
-            ("💾", "Save File", self.save_file),
-            ("▶️", "Render Animation", self.render_animation),
-            ("👁️", "Quick Preview", self.quick_preview),
-            ("🔧", "Environment Setup", self.manage_environment),
+            (self.safe_unicode_text("📄", "[N]"), "New File", self.new_file),
+            (self.safe_unicode_text("📁", "[O]"), "Open File", self.open_file),
+            (self.safe_unicode_text("💾", "[S]"), "Save File", self.save_file),
+            (self.safe_unicode_text("▶️", "[R]"), "Render Animation", self.render_animation),
+            (self.safe_unicode_text("👁️", "[P]"), "Quick Preview", self.quick_preview),
+            (self.safe_unicode_text("🔧", "[E]"), "Environment Setup", self.manage_environment),
         ]
         
         for icon, tooltip, command in quick_actions:
@@ -8383,7 +8384,8 @@ class ManimStudioApp:
         venv_frame = ctk.CTkFrame(header_right, fg_color=VSCODE_COLORS["surface_light"])
         venv_frame.pack(side="right", padx=10)
         
-        venv_label = ctk.CTkLabel(venv_frame, text="🔧", font=ctk.CTkFont(size=14))
+        venv_icon = self.safe_unicode_text("🔧", "[E]")
+        venv_label = ctk.CTkLabel(venv_frame, text=venv_icon, font=ctk.CTkFont(size=14))
         venv_label.pack(side="left", padx=(10, 5))
         
         venv_name = self.venv_manager.current_venv or "No environment"
@@ -8426,8 +8428,7 @@ class ManimStudioApp:
             font=ctk.CTkFont(size=12),
             text_color=VSCODE_COLORS["text"]
         )
-        self.auto_preview_checkbox.pack(side="right", padx=15)
-        
+        self.auto_preview_checkbox.pack(side="right", padx=15)   
     def create_sidebar(self):
         """Create sidebar with settings and controls"""
         self.sidebar = ctk.CTkFrame(self.root, width=350, corner_radius=0, fg_color=VSCODE_COLORS["surface"])
@@ -9106,11 +9107,7 @@ class ManimStudioApp:
         tab_frame.grid(row=0, column=0, sticky="w", padx=15, pady=8)
         
         # Terminal indicator - FIXED: Use ASCII safe characters
-        try:
-            terminal_text = "🖥️ Terminal"  # Try Unicode first
-        except UnicodeEncodeError:
-            terminal_text = "[Terminal]"   # Fallback to ASCII
-            
+        terminal_text = self.safe_unicode_text("🖥️ Terminal", "[Terminal]")
         ctk.CTkLabel(
             tab_frame,
             text=terminal_text,
@@ -9123,11 +9120,7 @@ class ManimStudioApp:
         terminal_controls.grid(row=0, column=1, sticky="e", padx=15, pady=8)
         
         # Clear button - smaller with ASCII safe text
-        try:
-            clear_text = "🗑️"
-        except UnicodeEncodeError:
-            clear_text = "[X]"
-            
+        clear_text = self.safe_unicode_text("🗑️", "[Clear]")
         clear_btn = ctk.CTkButton(
             terminal_controls,
             text=clear_text,
@@ -9170,7 +9163,7 @@ class ManimStudioApp:
                     'selection': VSCODE_COLORS['selection'],
                 })
 
-            print("Advanced Terminal initialized successfully")
+            print("✅ Advanced Terminal initialized successfully")
 
             # Command input below the terminal
             input_frame = ctk.CTkFrame(
@@ -9191,11 +9184,7 @@ class ManimStudioApp:
             self.command_entry.bind("<Return>", self.execute_command_from_input)
             self.command_entry.bind("<Tab>", self.handle_command_entry_tab)
 
-            try:
-                execute_text = "▶️ Run"
-            except UnicodeEncodeError:
-                execute_text = "Run"
-
+            execute_text = self.safe_unicode_text("▶️ Run", "Run")
             execute_btn = ctk.CTkButton(
                 input_frame,
                 text=execute_text,
@@ -9207,7 +9196,7 @@ class ManimStudioApp:
             execute_btn.grid(row=0, column=1, padx=(5, 10), pady=7)
 
         except Exception as e:
-            print(f"Failed to create AdvancedTkTerminal: {e}")
+            print(f"❌ Failed to create AdvancedTkTerminal: {e}")
             self.create_fallback_terminal(terminal_container)
     def create_fallback_terminal(self, parent):
         """Create fallback terminal with basic command input"""
