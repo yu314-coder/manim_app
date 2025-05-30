@@ -57,63 +57,41 @@ from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
 def _resolve_base_dir():
-    """Return the directory where the executable/script resides.
-
-    When packaged as a onefile executable, ``sys.executable`` points to a
-    temporary extraction directory.  In that case we want to use the original
-    launcher path from ``sys.argv[0]`` (or Nuitka's environment variable) so
-    that the virtual environment is created next to the real executable.
-    """
+    """Return the directory where the real executable resides, not temp extraction."""
 
     if getattr(sys, "frozen", False):
         # We're running as a frozen executable
-        exe_path = os.path.abspath(sys.executable)
-        tmp_path = os.path.abspath(tempfile.gettempdir())
 
-        # Check if we're running from a temporary directory (onefile build)
-        if exe_path.startswith(tmp_path):
-            # Try to get the real executable path from various sources
-            real_exe_path = None
-            
-            # Method 1: Check NUITKA_ONEFILE_PARENT environment variable
-            if os.environ.get("NUITKA_ONEFILE_PARENT"):
-                real_exe_path = os.environ.get("NUITKA_ONEFILE_PARENT")
-            
-            # Method 2: Check sys.argv[0] if it's not in temp
-            elif not os.path.abspath(sys.argv[0]).startswith(tmp_path):
-                real_exe_path = os.path.abspath(sys.argv[0])
-            
-            # Method 3: Try to find .exe files in common locations
-            if not real_exe_path or not os.path.exists(real_exe_path):
-                # Look for the executable in the current working directory
-                cwd = os.getcwd()
-                potential_exe = os.path.join(cwd, "ManimStudio.exe")
-                if os.path.exists(potential_exe):
-                    real_exe_path = potential_exe
-                else:
-                    # Look in the parent directory of the temp path
-                    # This handles cases where the exe is moved after extraction
-                    parent_dirs = [
-                        os.path.dirname(cwd),
-                        os.path.join(os.path.expanduser("~"), "Desktop"),
-                        os.path.join(os.path.expanduser("~"), "Downloads")
-                    ]
-                    for parent_dir in parent_dirs:
-                        potential_exe = os.path.join(parent_dir, "ManimStudio.exe")
-                        if os.path.exists(potential_exe):
-                            real_exe_path = potential_exe
-                            break
-            
-            # Method 4: Last resort - use the user's Documents folder
-            if not real_exe_path or not os.path.exists(real_exe_path):
-                documents = os.path.join(os.path.expanduser("~"), "Documents", "ManimStudio")
-                os.makedirs(documents, exist_ok=True)
-                return documents
-            
-            return os.path.dirname(real_exe_path)
-        
-        # Not in temp directory, use the executable's directory
-        return os.path.dirname(exe_path)
+        # Method 1: Try NUITKA_ONEFILE_PARENT environment variable (most reliable)
+        if os.environ.get("NUITKA_ONEFILE_PARENT"):
+            real_exe_path = os.environ.get("NUITKA_ONEFILE_PARENT")
+            if os.path.exists(real_exe_path):
+                return os.path.dirname(real_exe_path)
+
+        # Method 2: Check if sys.argv[0] points to real exe
+        argv_path = os.path.abspath(sys.argv[0])
+        if argv_path.endswith('.exe') and os.path.exists(argv_path):
+            # Verify it's not in temp
+            if not argv_path.startswith(tempfile.gettempdir()):
+                return os.path.dirname(argv_path)
+
+        # Method 3: Search for ManimStudio.exe in common locations
+        search_locations = [
+            os.getcwd(),
+            os.path.dirname(os.path.abspath(sys.argv[0])),
+            os.path.join(os.path.expanduser("~"), "Desktop"),
+            os.path.join(os.path.expanduser("~"), "Downloads"),
+        ]
+
+        for location in search_locations:
+            potential_exe = os.path.join(location, "ManimStudio.exe")
+            if os.path.exists(potential_exe):
+                return location
+
+        # Method 4: Last resort - use Documents folder
+        fallback_dir = os.path.join(os.path.expanduser("~"), "Documents", "ManimStudio")
+        os.makedirs(fallback_dir, exist_ok=True)
+        return fallback_dir
 
     # Running as script
     return os.path.dirname(os.path.abspath(__file__))
@@ -185,6 +163,27 @@ APP_EMAIL = "euler.yu@gmail.com"
 
 # Packages required for runtime checks
 REQUIRED_PACKAGES = ["manim", "numpy", "PIL", "cv2", "customtkinter"]
+
+# Hard coded package lists for environment setup
+ESSENTIAL_PACKAGES_FOR_SETUP = [
+    "manim",
+    "numpy>=1.22.0",
+    "matplotlib>=3.5.0",
+    "jedi>=0.18.0",
+    "customtkinter>=5.2.0",
+    "Pillow>=9.0.0",
+    "opencv-python>=4.6.0",
+    "psutil>=5.9.0",
+]
+
+OPTIONAL_PACKAGES_FOR_SETUP = [
+    "scipy>=1.8.0",
+    "sympy>=1.11.0",
+    "pandas>=1.4.0",
+    "seaborn>=0.11.0",
+    "imageio>=2.19.0",
+    "moviepy>=1.0.3",
+]
 
 # Essential packages for ManimStudio
 ESSENTIAL_PACKAGES = [
@@ -4647,22 +4646,15 @@ print('ALL_OK')
         return best_python
 
     def detect_existing_environment(self):
-        """Detect existing suitable environment or use bundled one"""
+        """Detect existing suitable environment"""
         self.logger.info("Detecting existing environments...")
-        
+
         # CRITICAL: Never consider our own executable as a Python environment
         if self.is_frozen:
             our_exe = os.path.abspath(sys.executable)
             self.logger.info(f"Running as frozen executable: {our_exe}")
             self.logger.info("Will only use external Python interpreters")
 
-            # Older versions attempted to run our own executable with
-            # ``--version`` to confirm it was not a real Python interpreter.
-            # This caused additional instances of the application to spawn
-            # and appear briefly to the user.  The check is unnecessary
-            # because we already know the path points back to our bundled
-            # executable, so simply skip launching it.
-        
         # Check for local environment alongside the application
         if self.check_local_directory_venv():
             return True
@@ -4681,215 +4673,26 @@ print('ALL_OK')
                     self.logger.warning("Default environment missing required packages")
             else:
                 self.logger.warning("Default environment structure is invalid")
-                
-        # CRITICAL: Don't check current virtual environment when frozen
-        # because sys.executable points to our .exe file
+
+        # Only check current virtual environment when NOT frozen
         if not self.is_frozen:
-            # Only check if we're in a virtual environment when running as script
             if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
                 venv_name = os.path.basename(sys.prefix)
                 self.current_venv = f"current_{venv_name}"
                 self.python_path = sys.executable
                 self.pip_path = os.path.join(os.path.dirname(sys.executable), "pip")
-                
-                # Check if this environment has essential packages
+
                 if self.verify_current_environment():
                     self.logger.info(f"Using current virtual environment: {venv_name}")
                     return True
-            
+
             # Check system Python for Manim (only when not frozen)
             if self.check_system_python():
                 return True
         else:
             self.logger.info("Running as executable - skipping current environment detection")
-        
-        # Check for bundled environment
-        if self.check_bundled_environment():
-            self.logger.info("Found bundled environment, will extract when needed")
-            return False  # Still need setup, but we have bundled environment
-            
+
         return False
-
-    def check_bundled_environment(self):
-        """Check if a bundled environment is available"""
-        self.logger.info("Checking for bundled environment...")
-        
-        # Determine where the executable resides. In onefile builds
-        # ``sys.executable`` points to a temporary directory, so prefer
-        # the original launcher from ``sys.argv[0]`` when needed.
-        exe_path = os.path.abspath(sys.executable)
-        tmp_path = os.path.abspath(tempfile.gettempdir())
-        if exe_path.startswith(tmp_path):
-            launcher_path = os.path.abspath(sys.argv[0])
-            if launcher_path.startswith(tmp_path):
-                launcher_path = os.environ.get("NUITKA_ONEFILE_PARENT", exe_path)
-        else:
-            launcher_path = exe_path
-
-        executable_dir = Path(os.path.dirname(launcher_path))
-        bundled_dir = executable_dir / "bundled_venv"
-        
-        # Also check temporary extraction paths used by onefile builds
-        if not bundled_dir.exists():
-            self.logger.info("Checking for bundled environment in temp directory...")
-            for path in sys.path:
-                if 'onefile_' in path and os.path.exists(path):
-                    temp_bundled = Path(path) / "bundled_venv"
-                    if temp_bundled.exists():
-                        self.logger.info(f"Found bundled environment in temp path: {temp_bundled}")
-                        bundled_dir = temp_bundled
-                        break
-                    # Also check parent directory
-                    parent_bundled = Path(path).parent / "bundled_venv"
-                    if parent_bundled.exists():
-                        self.logger.info(f"Found bundled environment in parent path: {parent_bundled}")
-                        bundled_dir = parent_bundled
-                        break
-        
-        # Development fallback
-        if not bundled_dir.exists():
-            # Try relative path for development
-            bundled_dir = Path("bundled_venv")
-            if not bundled_dir.exists():
-                self.logger.warning("No bundled environment found")
-                return False
-        
-        self.logger.info(f"Found bundled environment: {bundled_dir}")
-        
-        # Check if there's a manifest
-        manifest_path = bundled_dir / "manifest.json"
-        if manifest_path.exists():
-            try:
-                with open(manifest_path, 'r') as f:
-                    import json
-                    manifest = json.load(f)
-                    self.logger.info(f"Bundled environment includes: {manifest.get('essential_packages', [])}")
-            except Exception as e:
-                self.logger.error(f"Error reading manifest: {e}")
-        
-        # Mark bundled environment available
-        self.bundled_venv_dir = bundled_dir
-        return True
-
-    def extract_bundled_environment(self):
-        """Extract bundled environment with correct venv command"""
-        if not hasattr(self, 'bundled_venv_dir'):
-            self.logger.error("No bundled environment directory found")
-            return self.use_system_python_fallback()
-        
-        self.logger.info(f"Setting up environment using bundled template from: {self.bundled_venv_dir}")
-        
-        # Create destination next to the REAL executable, not in temp
-        real_base_dir = BASE_DIR  # This should now point to the real executable location
-        default_venv_path = os.path.join(real_base_dir, "venvs", "manim_studio_default")
-        
-        if os.path.exists(default_venv_path):
-            self.logger.info(f"Removing existing environment: {default_venv_path}")
-            try:
-                shutil.rmtree(default_venv_path)
-                self.logger.info("Existing environment removed successfully")
-            except Exception as e:
-                self.logger.error(f"Error removing existing environment: {e}")
-        
-        # Create new venv using EXTERNAL Python
-        try:
-            # Find external Python
-            python_exe = self.find_system_python()
-            if not python_exe:
-                self.logger.error("No external Python found for environment creation")
-                return self.use_system_python_fallback()
-                
-            self.logger.info(f"Creating new environment at: {default_venv_path}")
-            self.logger.info(f"Using external Python: {python_exe}")
-            
-            # Ensure parent directory exists
-            os.makedirs(os.path.dirname(default_venv_path), exist_ok=True)
-            
-            # Use correct venv command with safe subprocess handling
-            def on_venv_created(success, return_code):
-                if success:
-                    self.logger.info("Virtual environment created successfully")
-                    self._setup_environment_after_creation(default_venv_path)
-                else:
-                    self.logger.error(f"Failed to create venv: exit code {return_code}")
-                    self.use_system_python_fallback()
-            
-            # FIXED: Correct venv command with safe threading
-            self.run_command_with_threading_fix(
-                [python_exe, "-m", "venv", default_venv_path],
-                on_complete=on_venv_created
-            )
-            return True
-        
-        except Exception as e:
-            self.logger.error(f"Failed to extract bundled environment: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
-            return self.use_system_python_fallback()
-    def _setup_environment_after_creation(self, venv_path):
-        """Set up environment after creation"""
-        if os.name == 'nt':
-            python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
-        else:
-            python_exe = os.path.join(venv_path, "bin", "python")
-            pip_exe = os.path.join(venv_path, "bin", "pip")
-            
-        self.logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
-        self.logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
-        
-        if not os.path.exists(python_exe):
-            self.logger.error("Python executable not found in created environment")
-            return self.use_system_python_fallback()
-            
-        # Ensure pip is available
-        if not os.path.exists(pip_exe):
-            self.logger.info("Pip not found, installing...")
-            try:
-                # Try to install pip using ensurepip
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    [python_exe, "-m", "ensurepip", "--upgrade"],
-                    capture_output=True, 
-                    text=True, 
-                    timeout=60
-                )
-                if result.returncode != 0:
-                    self.logger.error("Failed to install pip with ensurepip")
-                    return self.use_system_python_fallback()
-            except Exception as e:
-                self.logger.error(f"Error installing pip: {e}")
-                return self.use_system_python_fallback()
-            
-        # Activate it for further operations
-        self.python_path = python_exe
-        self.pip_path = pip_exe
-        self.current_venv = "manim_studio_default"
-        
-        # Read manifest to install required packages
-        if hasattr(self, 'bundled_venv_dir'):
-            manifest_path = self.bundled_venv_dir / "manifest.json"
-            if manifest_path.exists():
-                try:
-                    with open(manifest_path, 'r') as f:
-                        import json
-                        manifest = json.load(f)
-                        essential_packages = manifest.get('essential_packages', [])
-                        
-                        # Install packages using system terminal
-                        if hasattr(self.parent_app, 'terminal') and essential_packages:
-                            for pkg in essential_packages:
-                                self.run_command_with_threading_fix([self.pip_path, "install", pkg])
-                except Exception as e:
-                    self.logger.error(f"Error reading or processing manifest: {e}")
-        
-        # Verify installation
-        if self.verify_environment_packages(venv_path):
-            self.logger.info("Environment setup complete and verified")
-            self.needs_setup = False
-            return True
-        else:
-            self.logger.error("Environment verification failed after setup")
-            return self.use_system_python_fallback()
 
     def use_system_python_fallback(self):
         """Use system Python as fallback when environment setup fails"""
@@ -5025,10 +4828,11 @@ print('ALL_OK')
             return False
 
     def show_setup_dialog(self):
-        """Show the environment setup dialog"""
+        """Show the environment setup dialog with simplified approach"""
         self.logger.info("Showing environment setup dialog")
+
         # First try system Python fallback if we're in a difficult situation
-        if self.needs_setup and not hasattr(self, 'bundled_venv_dir') and not self.using_fallback:
+        if self.needs_setup and not self.using_fallback:
             self.logger.info("Trying system Python fallback before showing dialog")
             success = self.use_system_python_fallback()
             if success:
@@ -5036,100 +4840,60 @@ print('ALL_OK')
                 return
             else:
                 self.logger.info("System Python fallback failed, will show setup dialog")
-        
+
         # Make sure the parent window is raised and visible
         if hasattr(self.parent_app, 'root'):
             self.parent_app.root.deiconify()
             self.parent_app.root.lift()
             self.parent_app.root.focus_force()
             self.parent_app.root.update()
-        
-        # If we have a bundled environment, extract it silently instead
-        if hasattr(self, 'bundled_venv_dir'):
-            # Show a simple messagebox and extract in background
-            try:
-                import tkinter.messagebox as messagebox
-                messagebox.showinfo(
-                    "Setting Up Environment",
-                    "ManimStudio is setting up the required environment.\n"
-                    "This will take a moment. Please wait..."
-                )
-                self.logger.info("Showed setup message box")
-            except Exception as e:
-                self.logger.error(f"Error showing setup messagebox: {e}")
-                
-            # Extract in another thread to not block UI
-            import threading
-            def extract_thread():
-                try:
-                    self.logger.info("Starting extraction in background thread")
-                    success = self.extract_bundled_environment()
-                    if success:
-                        self.logger.info("Successfully extracted bundled environment")
-                    else:
-                        # Show dialog as fallback
-                        self.logger.error("Failed to extract bundled environment")
-                        self.bundled_venv_dir = None  # Clear to avoid loop
-                        self.parent_app.root.after(100, self._show_dialog)
-                except Exception as e:
-                    self.logger.error(f"Error in extract thread: {e}")
-                    import traceback
-                    self.logger.error(f"Traceback: {traceback.format_exc()}")
-                    self.parent_app.root.after(100, self._show_dialog)
-                    
-            threading.Thread(target=extract_thread, daemon=True).start()
-        else:
-            self.logger.info("No bundled environment, showing dialog")
-            self._show_dialog()
-            
-    def _show_dialog(self):
-        """Internal method to show the actual dialog"""
-        self.logger.info("Showing environment setup dialog")
+
+        # Show simple setup dialog
+        self.logger.info("Showing simplified setup dialog")
+        self._show_simple_setup_dialog()
+
+    def _show_simple_setup_dialog(self):
+        """Show simplified setup dialog"""
         try:
-            # Try to import the dialog (assuming it's in the same module)
             from tkinter import messagebox
-            
-            # Show simple fallback dialog
-            if messagebox.askyesno(
-                "Environment Setup Required",
-                "ManimStudio needs to set up a Python environment.\n\n"
-                "This will install manim and other required packages.\n\n"
-                "Continue with automatic setup?"
-            ):
-                # Try to create default environment
-                success = self.create_default_environment()
+
+            message = (
+                f"ManimStudio needs to set up a Python environment.\n\n"
+                f"Location: {os.path.join(self.venv_dir, 'manim_studio_default')}\n\n"
+                f"This will install: {', '.join(ESSENTIAL_PACKAGES_FOR_SETUP[:4])} and more.\n\n"
+                f"Continue with automatic setup?"
+            )
+
+            if messagebox.askyesno("Environment Setup Required", message):
+                success = self.create_default_environment(
+                    log_callback=lambda msg: print(f"Setup: {msg}")
+                )
                 if success:
-                    messagebox.showinfo(
-                        "Setup Complete",
-                        "Environment setup completed successfully!"
-                    )
+                    messagebox.showinfo("Setup Complete", "Environment setup completed successfully!")
                 else:
-                    messagebox.showerror(
-                        "Setup Failed", 
-                        "Environment setup failed. Using system Python as fallback."
-                    )
+                    messagebox.showerror("Setup Failed", "Environment setup failed. Using system Python as fallback.")
                     self.use_system_python_fallback()
             else:
-                # User cancelled - use system Python fallback
                 self.use_system_python_fallback()
-                
+
         except Exception as e:
-            self.logger.error(f"Error showing environment setup dialog: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
-            
-            # Last resort fallback - use system Python
-            self.logger.info("Trying system Python as last resort")
+            self.logger.error(f"Error showing setup dialog: {e}")
+            # Last resort fallback
             self.use_system_python_fallback()
 
     def create_default_environment(self, log_callback=None):
-        """Create the default ManimStudio environment using unified method"""
+        """Create the default ManimStudio environment with hard-coded packages"""
+        if log_callback:
+            log_callback("Creating default ManimStudio environment...")
+            log_callback(f"Target location: {os.path.join(self.venv_dir, 'manim_studio_default')}")
+
         return self.create_environment_unified(
-            name="manim_studio_default", 
+            name="manim_studio_default",
             location=self.venv_dir,
-            packages=ESSENTIAL_PACKAGES[:8],  # Core packages only
-            log_callback=log_callback
+            packages=ESSENTIAL_PACKAGES_FOR_SETUP,
+            log_callback=log_callback,
         )
+
 
     def create_environment_unified(self, name, location, packages=None, log_callback=None):
         """Unified environment creation with correct venv command and path handling"""

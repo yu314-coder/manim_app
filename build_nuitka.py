@@ -56,8 +56,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
     assets_dir = Path("assets")
     assets_dir.mkdir(exist_ok=True)
     
-    # Prepare bundled venv
-    bundled_venv = prepare_bundled_environment()
     
     # Create enhanced no-console patch
     create_no_console_patch()
@@ -168,7 +166,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
     # Include data directories
     cmd.extend([
         "--include-data-dir=assets=assets",
-        f"--include-data-dir={bundled_venv}=bundled_venv",
     ])
     
     # Add custom performance flags to maximize CPU
@@ -980,76 +977,6 @@ def check_system_prerequisites():
     
     return True
 
-def prepare_bundled_environment():
-    """Create a minimal bundled environment that can be included in the build"""
-    if USE_ASCII_ONLY:
-        print("Preparing minimal bundled environment...")
-    else:
-        print("📦 Preparing minimal bundled environment...")
-    
-    # Create a minimal venv for bundling
-    bundled_venv_dir = Path("bundled_venv")
-    if bundled_venv_dir.exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning existing bundled environment...")
-        else:
-            print("🧹 Cleaning existing bundled environment...")
-        shutil.rmtree(bundled_venv_dir)
-    
-    import venv
-    if USE_ASCII_ONLY:
-        print("Creating minimal bundled venv...")
-    else:
-        print("🔨 Creating minimal bundled venv...")
-    venv.create(bundled_venv_dir, with_pip=True)
-    
-    # Create a manifest of essential packages
-    with open(bundled_venv_dir / "manifest.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "essential_packages": [
-                "manim", "numpy", "customtkinter", "matplotlib", "pillow", 
-                "opencv-python", "jedi"
-            ],
-            "version": "3.5.0",
-            "note": "This is a template environment - actual environments will be created next to the executable"
-        }, f, indent=2)
-    
-    # Create a setup script that will be used to create the real environment
-    setup_script = '''# setup_environment.py
-import os
-import sys
-import venv
-import subprocess
-
-def create_real_environment(base_dir):
-    """Create the real environment next to the executable"""
-    venv_dir = os.path.join(base_dir, "venvs", "manim_studio_default")
-    
-    if not os.path.exists(venv_dir):
-        os.makedirs(os.path.dirname(venv_dir), exist_ok=True)
-        venv.create(venv_dir, with_pip=True)
-        
-        # Install essential packages
-        pip_exe = os.path.join(venv_dir, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(venv_dir, "bin", "pip")
-        essential_packages = ["manim", "numpy", "customtkinter", "matplotlib", "pillow", "opencv-python", "jedi"]
-        
-        for package in essential_packages:
-            try:
-                subprocess.run([pip_exe, "install", package], check=True, capture_output=True)
-            except subprocess.CalledProcessError:
-                pass  # Continue with other packages if one fails
-    
-    return venv_dir
-'''
-    
-    with open(bundled_venv_dir / "setup_environment.py", "w", encoding="utf-8") as f:
-        f.write(setup_script)
-    
-    if USE_ASCII_ONLY:
-        print("Minimal environment prepared")
-    else:
-        print("✅ Minimal environment prepared")
-    return bundled_venv_dir
 def is_package_importable(package_name):
     """Check if a package can be imported"""
     try:
