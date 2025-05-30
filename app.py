@@ -408,8 +408,9 @@ VSCODE_COLORS = THEME_SCHEMES["Dark+"]
 def clean_unicode_text(text):
     """Remove or replace Unicode characters that might cause encoding issues"""
     if not isinstance(text, str):
-        return str(text)
+        text = str(text)
 
+    # Enhanced replacement map with more symbols
     replacements = {
         '✅': '[OK]',
         '❌': '[ERROR]',
@@ -436,19 +437,38 @@ def clean_unicode_text(text):
         '🖼️': '[IMAGE]',
         '⭐': '[STAR]',
         '✨': '[SPARKLE]',
+        '🎉': '[SUCCESS]',
+        '🔥': '[FAST]',
+        '⚙️': '[SETTINGS]',
+        '📦': '[PACKAGE]',
+        '🐛': '[DEBUG]',
+        '🔇': '[SILENT]',
+        # Additional problematic characters
+        '\u274c': '[ERROR]',  # The specific character causing the issue
+        '\u2705': '[OK]',
+        '\u26a0': '[WARNING]',
+        '\u2699': '[SETTINGS]',
+        '\u1f4a6': '[PACKAGE]',
     }
 
-    for u, a in replacements.items():
-        text = text.replace(u, a)
+    # Apply replacements
+    for unicode_char, ascii_replacement in replacements.items():
+        text = text.replace(unicode_char, ascii_replacement)
 
+    # Try encoding to ASCII with replacement
     try:
-        text = text.encode('ascii', errors='replace').decode('ascii')
-    except Exception:
-        import string
-        text = ''.join(ch if ch in string.printable else '?' for ch in text)
+        # First try to encode to the system's preferred encoding
+        text = text.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8')
+    except (UnicodeEncodeError, AttributeError):
+        try:
+            # Fallback to ASCII
+            text = text.encode('ascii', errors='replace').decode('ascii')
+        except Exception:
+            # Last resort - keep only printable ASCII characters
+            import string
+            text = ''.join(ch if ch in string.printable else '?' for ch in text)
 
     return text
-
 # Enhanced Python syntax highlighting colors (like VSCode Dark+)
 SYNTAX_COLORS = {
     "keyword": "#569CD6",          # Blue - Keywords like def, class, if
@@ -1034,7 +1054,7 @@ Quick Commands:
             pass
     
     def execute_command(self, command):
-        """Execute command with proper quote handling"""
+        """Execute command with proper quote handling and environment activation"""
         try:
             # Add to history
             self.add_to_history(command)
@@ -1056,7 +1076,7 @@ Quick Commands:
                 try:
                     self.builtin_commands[cmd_name](args)
                 except Exception as e:
-                    self.write_colored(f"Error: {e}\n", color='red')
+                    self.write_colored(f"Error: {clean_unicode_text(str(e))}\n", color='red')
                 self.show_prompt()
                 return
             
@@ -1064,7 +1084,7 @@ Quick Commands:
             self.execute_external_command(parts)
             
         except Exception as e:
-            self.write_colored(f"Command error: {e}\n", color='red')
+            self.write_colored(f"Command error: {clean_unicode_text(str(e))}\n", color='red')
             self.show_prompt()
     def execute_external_command(self, command_parts):
         """Execute external command with proper space handling"""
@@ -1341,24 +1361,37 @@ Keyboard Shortcuts:
         self.write_colored(help_text, color='cyan')
     
     def cmd_activate(self, args):
-        """Activate virtual environment"""
+        """Activate virtual environment with proper error handling"""
         if not args:
             self.write_colored("Usage: activate <environment_name>\n", color='yellow')
             return
         
         env_name = args[0]
         if hasattr(self.app, 'venv_manager'):
-            if self.app.venv_manager.activate_venv(env_name):
-                self.write_colored(f"✅ Activated environment: {env_name}\n", color='green')
-                if self.app.venv_manager.python_path:
-                    venv_dir = os.path.dirname(self.app.venv_manager.python_path)
-                    self.env['PATH'] = venv_dir + os.pathsep + self.env.get('PATH', '')
-                    self.env['VIRTUAL_ENV'] = os.path.dirname(venv_dir)
-            else:
-                self.write_colored(f"❌ Failed to activate: {env_name}\n", color='red')
+            try:
+                if self.app.venv_manager.activate_venv(env_name):
+                    self.write_colored(f"[OK] Activated environment: {env_name}\n", color='green')
+                    if self.app.venv_manager.python_path:
+                        venv_dir = os.path.dirname(self.app.venv_manager.python_path)
+                        self.env['PATH'] = venv_dir + os.pathsep + self.env.get('PATH', '')
+                        self.env['VIRTUAL_ENV'] = os.path.dirname(venv_dir)
+                    # Update the app's venv status display
+                    if hasattr(self.app, 'venv_status_label'):
+                        self.app.venv_status_label.configure(text=env_name)
+                else:
+                    self.write_colored(f"[ERROR] Failed to activate: {env_name}\n", color='red')
+                    # List available environments
+                    available_envs = self.app.venv_manager.list_venvs()
+                    if available_envs:
+                        self.write_colored("Available environments:\n", color='yellow')
+                        for env in available_envs:
+                            self.write_colored(f"  - {env}\n", color='cyan')
+                    else:
+                        self.write_colored("No environments found. Create one with the Environment Setup button.\n", color='yellow')
+            except Exception as e:
+                self.write_colored(f"[ERROR] Activation error: {clean_unicode_text(str(e))}\n", color='red')
         else:
-            self.write_colored("❌ Environment manager not available\n", color='red')
-    
+            self.write_colored("[ERROR] Environment manager not available\n", color='red')
     def cmd_deactivate(self, args):
         """Deactivate virtual environment"""
         if hasattr(self.app, 'venv_manager'):
@@ -4997,10 +5030,11 @@ print('ALL_OK')
         self._show_simple_setup_dialog()
 
     def _show_simple_setup_dialog(self):
-        """Show simplified setup dialog"""
+        """Show simplified setup dialog with ASCII-safe text"""
         try:
             from tkinter import messagebox
 
+            # Use ASCII-safe text throughout
             message = (
                 f"ManimStudio needs to set up a Python environment.\n\n"
                 f"Location: {os.path.join(self.venv_dir, 'manim_studio_default')}\n\n"
@@ -5010,7 +5044,7 @@ print('ALL_OK')
 
             if messagebox.askyesno("Environment Setup Required", message):
                 success = self.create_default_environment(
-                    log_callback=lambda msg: print(f"Setup: {msg}")
+                    log_callback=lambda msg: print(f"Setup: {clean_unicode_text(msg)}")
                 )
                 if success:
                     messagebox.showinfo("Setup Complete", "Environment setup completed successfully!")
@@ -5024,7 +5058,6 @@ print('ALL_OK')
             self.logger.error(f"Error showing setup dialog: {e}")
             # Last resort fallback
             self.use_system_python_fallback()
-
     def create_default_environment(self, log_callback=None):
         """Create the default ManimStudio environment with hard-coded packages"""
         if log_callback:
@@ -5057,7 +5090,7 @@ print('ALL_OK')
                 
             python_exe = self.find_system_python()
             if not python_exe:
-                error_msg = "❌ CRITICAL: No Python installation found!\n\n"
+                error_msg = "[ERROR] CRITICAL: No Python installation found!\n\n"
                 error_msg += "Please install Python from https://python.org and restart the application."
                 raise Exception(error_msg)
             
@@ -5067,16 +5100,16 @@ print('ALL_OK')
                 selected_exe = os.path.abspath(python_exe)
                 
                 if selected_exe == our_exe:
-                    error_msg = "❌ CRITICAL ERROR: Application tried to use itself as Python interpreter!\n\n"
+                    error_msg = "[ERROR] CRITICAL ERROR: Application tried to use itself as Python interpreter!\n\n"
                     error_msg += f"Our executable: {our_exe}\n"
                     error_msg += f"Selected Python: {selected_exe}\n\n"
                     error_msg += "Please install a proper Python interpreter from https://python.org"
                     raise Exception(error_msg)
                     
             if log_callback:
-                log_callback(f"✅ Using EXTERNAL Python: {python_exe}")
-                log_callback(f"✅ Our executable: {sys.executable}")
-                log_callback(f"✅ Verified they are different!")
+                log_callback(f"[OK] Using EXTERNAL Python: {python_exe}")
+                log_callback(f"[OK] Our executable: {sys.executable}")
+                log_callback(f"[OK] Verified they are different!")
                 
             # Log critical information
             self.logger.info("=" * 60)
@@ -5123,12 +5156,12 @@ print('ALL_OK')
                 error_details += f"Working directory: {self.temp_dir}"
                 self.logger.error(f"Venv creation failed:\n{error_details}")
                 if log_callback:
-                    log_callback(f"❌ Venv creation failed with exit code {result.returncode}")
-                    log_callback(f"Error: {result.stderr}")
+                    log_callback(f"[ERROR] Venv creation failed with exit code {result.returncode}")
+                    log_callback(f"Error: {clean_unicode_text(result.stderr)}")
                 raise Exception(f"Failed to create virtual environment:\n{result.stderr}")
                 
             if log_callback:
-                log_callback("✅ Virtual environment created with external Python!")
+                log_callback("[OK] Virtual environment created with external Python!")
 
             # Step 2: Set up paths (subprocess handles spaces automatically)
             if os.name == 'nt':
@@ -5156,10 +5189,10 @@ print('ALL_OK')
             
             if result.returncode == 0:
                 if log_callback:
-                    log_callback("✅ Pip upgraded successfully")
+                    log_callback("[OK] Pip upgraded successfully")
             else:
                 if log_callback:
-                    log_callback("⚠ Warning: Could not upgrade pip")
+                    log_callback("[WARNING] Could not upgrade pip")
 
             # Step 4: Install packages using list format
             if packages:
@@ -5181,10 +5214,10 @@ print('ALL_OK')
                     
                     if result.returncode == 0:
                         if log_callback:
-                            log_callback(f"✅ Successfully installed {package}")
+                            log_callback(f"[OK] Successfully installed {package}")
                     else:
                         if log_callback:
-                            log_callback(f"❌ Failed to install {package}: {result.stderr}")
+                            log_callback(f"[ERROR] Failed to install {package}: {clean_unicode_text(result.stderr)}")
 
             # Step 5: Activate the environment
             self.python_path = python_path
@@ -5193,14 +5226,14 @@ print('ALL_OK')
             self.needs_setup = False
 
             if log_callback:
-                log_callback("✅ Environment setup completed successfully!")
+                log_callback("[OK] Environment setup completed successfully!")
 
             return True
 
         except Exception as e:
             error_msg = f"Environment creation failed: {str(e)}"
             if log_callback:
-                log_callback(f"❌ {error_msg}")
+                log_callback(f"[ERROR] {error_msg}")
             self.logger.error(error_msg)
             return False
     def run_command_with_threading_fix(self, command, on_complete=None, env=None):
@@ -5822,7 +5855,21 @@ class IntelliSenseEngine:
             except Exception as e:
                 logger.error(f"Signature help error: {e}")
         return None
-
+    def _safe_log(self, message, level="INFO"):
+        """Log message with ASCII-safe text"""
+        try:
+            clean_message = clean_unicode_text(str(message))
+            if level == "ERROR":
+                self.logger.error(clean_message)
+            elif level == "WARNING":
+                self.logger.warning(clean_message)
+            elif level == "DEBUG":
+                self.logger.debug(clean_message)
+            else:
+                self.logger.info(clean_message)
+        except Exception:
+            # Fallback to print if logging fails
+            print(f"{level}: {clean_unicode_text(str(message))}")
 
 class AutocompletePopup(tk.Toplevel):
     """Professional autocomplete popup window"""
