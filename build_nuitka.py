@@ -273,6 +273,138 @@ def build_self_contained_version(jobs=None, priority="normal"):
             print("❌ Build failed!")
         print(f"Return code: {return_code}")
         return None
+
+def build_standalone_version(jobs=None, priority="normal"):
+    """Build standalone version (directory-based, not onefile)"""
+
+    cpu_count = multiprocessing.cpu_count()
+    if jobs is None:
+        jobs = max(1, cpu_count - 1)
+
+    if USE_ASCII_ONLY:
+        print(f"Building STANDALONE version (directory-based) with {jobs} CPU threads...")
+    else:
+        print(f"🐍 Building STANDALONE version (directory-based) with {jobs} CPU threads...")
+
+    if Path("build").exists():
+        shutil.rmtree("build")
+    if Path("dist").exists():
+        shutil.rmtree("dist")
+
+    assets_dir = Path("assets")
+    assets_dir.mkdir(exist_ok=True)
+
+    create_no_console_patch()
+    create_fixes_module()
+    create_subprocess_helper()
+
+    if not check_system_prerequisites():
+        print("❌ System prerequisites check failed" if not USE_ASCII_ONLY else "ERROR: System prerequisites check failed")
+        return None
+
+    cmd = [
+        sys.executable, "-m", "nuitka",
+        "--standalone",
+    ]
+
+    cmd.append("--windows-console-mode=disable")
+    cmd.append("--windows-disable-console")
+    cmd.append("--enable-plugin=tk-inter")
+    cmd.append("--lto=no")
+    cmd.extend([
+        "--nofollow-import-to=zstandard",
+        "--nofollow-import-to=setuptools",
+        "--nofollow-import-to=test.support",
+    ])
+    cmd.extend([
+        "--remove-output",
+        "--assume-yes-for-downloads",
+        "--mingw64",
+        "--disable-ccache",
+        "--show-memory",
+        "--show-progress",
+    ])
+
+    essential_packages = [
+        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
+        "matplotlib", "scipy", "manim", "jedi"
+    ]
+
+    for package in essential_packages:
+        if is_package_importable(package):
+            correct_name = get_correct_package_name(package)
+            if correct_name:
+                cmd.append(f"--include-package={correct_name}")
+
+    essential_modules = [
+        "json", "tempfile", "threading", "subprocess",
+        "os", "sys", "ctypes", "venv", "fixes", "psutil",
+        "process_utils"
+    ]
+
+    for module in essential_modules:
+        cmd.append(f"--include-module={module}")
+
+    cmd.append("--include-package-data=manim")
+
+    cmd.extend([
+        "--output-dir=dist",
+    ])
+
+    if Path("assets/icon.ico").exists():
+        cmd.append("--windows-icon-from-ico=assets/icon.ico")
+
+    cmd.extend([
+        "--include-data-dir=assets=assets",
+    ])
+
+    cmd.append("--disable-dll-dependency-cache")
+    cmd.append(f"--jobs={jobs}")
+
+    cmd.append("app.py")
+
+    print("Building standalone executable...")
+    print("Command:", " ".join(cmd))
+    print("=" * 60)
+
+    env = os.environ.copy()
+    env["GCC_LTO"] = "0"
+    env["NUITKA_DISABLE_LTO"] = "1"
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        universal_newlines=True,
+        env=env
+    )
+
+    while True:
+        line = process.stdout.readline()
+        if not line and process.poll() is not None:
+            break
+        if line:
+            print(line.strip())
+
+    return_code = process.poll()
+
+    if return_code == 0:
+        print("=" * 60)
+        print("✅ Standalone build successful!" if not USE_ASCII_ONLY else "Standalone build successful!")
+
+        exe_path = find_standalone_executable()
+        if exe_path:
+            print(f"📁 Executable: {exe_path}" if not USE_ASCII_ONLY else f"Executable: {exe_path}")
+            print(f"📁 Distribution folder: {exe_path.parent}" if not USE_ASCII_ONLY else f"Distribution folder: {exe_path.parent}")
+            return exe_path
+        else:
+            print("❌ Executable not found" if not USE_ASCII_ONLY else "Executable not found")
+            return None
+    else:
+        print("❌ Build failed!" if not USE_ASCII_ONLY else "Build failed!")
+        return None
 def create_subprocess_helper():
     """Create a unified helper module for subprocess handling"""
     helper_content = '''# process_utils.py - Unified helper for subprocess handling with NO CONSOLE
@@ -1073,6 +1205,28 @@ def find_executable():
     
     return None
 
+def find_standalone_executable():
+    """Find standalone executable"""
+    dist_dir = Path("dist")
+    if not dist_dir.exists():
+        return None
+
+    possible_paths = [
+        dist_dir / "app.exe",
+        dist_dir / "app.dist" / "app.exe",
+        dist_dir / "ManimStudio.exe",
+    ]
+
+    for path in possible_paths:
+        if path.exists():
+            return path
+
+    for exe_file in dist_dir.rglob("*.exe"):
+        if exe_file.name not in ["python.exe", "pythonw.exe"]:
+            return exe_file
+
+    return None
+
 def list_contents():
     """List contents of build directories"""
     for dir_name in ["dist", "build"]:
@@ -1157,7 +1311,7 @@ def main():
     parser.add_argument("--jobs", type=int, help="Number of CPU threads to use (default: CPU count - 1)")
     parser.add_argument("--max-cpu", action="store_true", help="Use all available CPU cores with oversubscription")
     parser.add_argument("--turbo", action="store_true", help="Use turbo mode - maximum CPU with high priority")
-    parser.add_argument("--build-type", type=int, choices=[1, 2, 3], help="Build type: 1=silent, 2=debug, 3=both")
+    parser.add_argument("--build-type", type=int, choices=[1, 2, 3, 4], help="Build type: 1=onefile, 2=standalone, 3=debug, 4=both silent")
     parser.add_argument("--ascii", action="store_true", help="Use ASCII output instead of Unicode symbols")
     
     # Parse args but keep default behavior if not specified
@@ -1228,14 +1382,16 @@ def main():
         # Ask for build type
         print("\nSelect build type:")
         if USE_ASCII_ONLY:
-            print("1. Silent release build (NO CONSOLE EVER)")
-            print("2. Debug build (with console for testing)")
-            print("3. Both builds")
+            print("1. Silent onefile build (single .exe)")
+            print("2. Silent standalone build (directory)")
+            print("3. Debug build (with console)")
+            print("4. Both silent builds")
         else:
-            print("1. 🔇 Silent release build (NO CONSOLE EVER)")
-            print("2. 🐛 Debug build (with console for testing)")
-            print("3. 📦 Both builds")
-        choice = input("\nEnter your choice (1-3): ").strip()
+            print("1. 🔇 Silent onefile build (single .exe)")
+            print("2. 📁 Silent standalone build (directory)")
+            print("3. 🐛 Debug build (with console)")
+            print("4. 📦 Both silent builds")
+        choice = input("\nEnter your choice (1-4): ").strip()
     
     success = False
     
@@ -1243,22 +1399,20 @@ def main():
         exe_path = build_self_contained_version(jobs=jobs, priority=process_priority)
         success = exe_path is not None
     elif choice == "2":
+        exe_path = build_standalone_version(jobs=jobs, priority=process_priority)
+        success = exe_path is not None
+    elif choice == "3":
         if USE_ASCII_ONLY:
             print("Debug build option temporarily disabled while fixing compatibility issues")
         else:
             print("🐛 Debug build option temporarily disabled while fixing compatibility issues")
         success = False
-    elif choice == "3":
-        if USE_ASCII_ONLY:
-            print("\nBuilding silent release version first...")
-        else:
-            print("\n🔇 Building silent release version first...")
-        release_exe = build_self_contained_version(jobs=jobs, priority=process_priority)
-        if USE_ASCII_ONLY:
-            print("\nDebug build option temporarily disabled")
-        else:
-            print("\n🐛 Debug build option temporarily disabled")
-        success = release_exe is not None
+    elif choice == "4":
+        print("\n🔇 Building onefile version...")
+        onefile_exe = build_self_contained_version(jobs=jobs, priority=process_priority)
+        print("\n📁 Building standalone version...")
+        standalone_exe = build_standalone_version(jobs=jobs, priority=process_priority)
+        success = onefile_exe is not None or standalone_exe is not None
     else:
         if USE_ASCII_ONLY:
             print("Invalid choice!")
@@ -1272,7 +1426,7 @@ def main():
             print("Build completed successfully!")
         else:
             print("🎉 Build completed successfully!")
-        if choice == "1" or choice == "3":
+        if choice in ("1", "4"):
             if USE_ASCII_ONLY:
                 print("GUARANTEE: The release version will NEVER show console windows")
                 print("   Main app: Silent")
