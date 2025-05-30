@@ -1024,9 +1024,12 @@ def get_nuitka_version():
         return "Unknown"
 
 def create_launcher_script(exe_path):
-    """Create a batch launcher script"""
+    """Create a batch launcher script that sets the correct environment"""
+    exe_dir = os.path.dirname(exe_path)
     launcher_content = f'''@echo off
-REM Silent launcher - no console windows
+REM Set environment variable so the app knows where it really is
+set NUITKA_ONEFILE_PARENT={exe_path}
+REM Launch the application
 start "" "{exe_path}"
 exit
 '''
@@ -1035,11 +1038,20 @@ exit
     with open(launcher_path, 'w', encoding="utf-8") as f:
         f.write(launcher_content)
     
+    # Also create a PowerShell launcher
+    ps_launcher_content = f'''# PowerShell launcher for ManimStudio
+$env:NUITKA_ONEFILE_PARENT = "{exe_path}"
+Start-Process -FilePath "{exe_path}"
+'''
+    
+    ps_launcher_path = Path("Launch_ManimStudio.ps1")
+    with open(ps_launcher_path, 'w', encoding="utf-8") as f:
+        f.write(ps_launcher_content)
+    
     if USE_ASCII_ONLY:
-        print(f"Created silent launcher: {launcher_path}")
+        print(f"Created launchers: {launcher_path} and {ps_launcher_path}")
     else:
-        print(f"📝 Created silent launcher: {launcher_path}")
-
+        print(f"📝 Created launchers: {launcher_path} and {ps_launcher_path}")
 def find_executable():
     """Find the built executable"""
     possible_paths = [

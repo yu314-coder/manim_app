@@ -57,11 +57,11 @@ from tkinter import filedialog, messagebox
 
 # Determine base directory of the running script or executable
 def _resolve_base_dir():
-    """Return the directory where the real executable resides, not temp extraction."""
+    """Return the directory where the real ManimStudio.exe resides, not temp extraction."""
 
     if getattr(sys, "frozen", False):
         # We're running as a frozen executable
-
+        
         # Method 1: Try NUITKA_ONEFILE_PARENT environment variable (most reliable)
         if os.environ.get("NUITKA_ONEFILE_PARENT"):
             real_exe_path = os.environ.get("NUITKA_ONEFILE_PARENT")
@@ -70,10 +70,10 @@ def _resolve_base_dir():
 
         # Method 2: Check if sys.argv[0] points to real exe
         argv_path = os.path.abspath(sys.argv[0])
-        if argv_path.endswith('.exe') and os.path.exists(argv_path):
-            # Verify it's not in temp
-            if not argv_path.startswith(tempfile.gettempdir()):
-                return os.path.dirname(argv_path)
+        if (argv_path.endswith('.exe') and 
+            os.path.exists(argv_path) and 
+            not argv_path.startswith(tempfile.gettempdir())):
+            return os.path.dirname(argv_path)
 
         # Method 3: Search for ManimStudio.exe in common locations
         search_locations = [
@@ -81,6 +81,7 @@ def _resolve_base_dir():
             os.path.dirname(os.path.abspath(sys.argv[0])),
             os.path.join(os.path.expanduser("~"), "Desktop"),
             os.path.join(os.path.expanduser("~"), "Downloads"),
+            os.path.join(os.path.expanduser("~"), "Documents"),
         ]
 
         for location in search_locations:
@@ -88,18 +89,26 @@ def _resolve_base_dir():
             if os.path.exists(potential_exe):
                 return location
 
-        # Method 4: Last resort - use Documents folder
-        fallback_dir = os.path.join(os.path.expanduser("~"), "Documents", "ManimStudio")
-        os.makedirs(fallback_dir, exist_ok=True)
-        return fallback_dir
+        # Method 4: Try to find any .exe file that might be our executable
+        current_dir = os.getcwd()
+        for file in os.listdir(current_dir):
+            if file.endswith('.exe') and 'manim' in file.lower():
+                return current_dir
+
+        # Method 5: Last resort - current working directory
+        return os.getcwd()
 
     # Running as script
     return os.path.dirname(os.path.abspath(__file__))
-
 BASE_DIR = _resolve_base_dir()
 
-# Global media directory alongside the application
+# Global media directory alongside the application - ensure not in temp
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
+if (tempfile.gettempdir() in MEDIA_DIR or 
+    'onefile_' in MEDIA_DIR):
+    # Use current working directory instead
+    MEDIA_DIR = os.path.join(os.getcwd(), "media")
+
 os.makedirs(MEDIA_DIR, exist_ok=True)
 # Try to import Jedi for IntelliSense
 try:
@@ -1121,25 +1130,25 @@ Quick Commands:
             self.write_colored(f"Error executing command: {e}\n", 'red')
             self.command_complete()
     def command_complete(self):
-        """Handle command completion and ensure input focus"""
+        """Handle command completion without aggressive focus stealing"""
         try:
             self.command_running = False
             self.show_prompt()
             
-            # Ensure the input field gets focus back
+            # Only refocus if user was actively using terminal
             if hasattr(self, 'app') and hasattr(self.app, 'command_entry'):
                 try:
-                    self.app.command_entry.focus_set()
+                    # Check if any important widget currently has focus
+                    current_focus = self.app.root.focus_get()
+                    if (current_focus is None or 
+                        current_focus == self.app.root or
+                        isinstance(current_focus, type(self.app.command_entry))):
+                        self.app.command_entry.focus_set()
                 except Exception:
                     pass  # Ignore focus errors
         except Exception as e:
             # Even if there's an error, reset the running state
             self.command_running = False
-            try:
-                if hasattr(self, 'app') and hasattr(self.app, 'command_entry'):
-                    self.app.command_entry.focus_set()
-            except Exception:
-                pass
     def run_command_redirected(self, command, on_complete=None, env=None):
         """Run command with output redirection"""
         def run_in_thread():
@@ -2171,7 +2180,17 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             width=120
         ).grid(row=1, column=0, sticky="w", pady=3)
         
-        env_path = os.path.join(BASE_DIR, "venvs", "manim_studio_default")
+        # Show path next to the executable
+        if hasattr(self.venv_manager, 'venv_dir'):
+            env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
+        else:
+            # Fallback - try to find real executable location
+            real_base = self._find_real_executable_directory()
+            if real_base:
+                env_path = os.path.join(real_base, "venvs", "manim_studio_default")
+            else:
+                env_path = os.path.join(os.getcwd(), "venvs", "manim_studio_default")
+        
         self.env_path_label = ctk.CTkLabel(
             env_details_frame,
             text=env_path
@@ -2688,7 +2707,28 @@ All packages will be installed in an isolated environment that won't affect your
                 self.destroy()
         else:
             self.destroy()
-            
+    def _find_real_executable_directory(self):
+        """Find the real directory where ManimStudio.exe is located"""
+        # Check environment variable first
+        if os.environ.get("NUITKA_ONEFILE_PARENT"):
+            real_exe_path = os.environ.get("NUITKA_ONEFILE_PARENT")
+            if os.path.exists(real_exe_path):
+                return os.path.dirname(real_exe_path)
+        
+        # Search for ManimStudio.exe in common locations
+        search_locations = [
+            os.getcwd(),
+            os.path.join(os.path.expanduser("~"), "Desktop"),
+            os.path.join(os.path.expanduser("~"), "Downloads"),
+            os.path.join(os.path.expanduser("~"), "Documents"),
+        ]
+        
+        for location in search_locations:
+            potential_exe = os.path.join(location, "ManimStudio.exe")
+            if os.path.exists(potential_exe):
+                return location
+        
+        return None
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
     """Enhanced dialog for manual virtual environment management"""
     
@@ -3933,13 +3973,27 @@ class VirtualEnvironmentManager:
         
         # Use application directory so environments live alongside the executable
         base_dir = BASE_DIR
+        
+        # Ensure we're using the REAL executable directory, not temp
+        if (tempfile.gettempdir() in base_dir or 
+            'onefile_' in base_dir or 
+            'Temp' in base_dir):
+            # Try to find the real executable location
+            real_base = self._find_real_executable_directory()
+            if real_base:
+                base_dir = real_base
+            else:
+                # Fallback to current working directory
+                base_dir = os.getcwd()
+        
         self.venv_dir = os.path.join(base_dir, "venvs")
         os.makedirs(self.venv_dir, exist_ok=True)
         
-        # CRITICAL: Enhanced frozen detection
-        self.is_frozen = self._detect_if_frozen()
+        # Log the actual directory being used
+        logger.info(f"Using virtual environment directory: {self.venv_dir}")
         
-        # Apply Nuitka onefile fixes first
+        # Rest of initialization...
+        self.is_frozen = self._detect_if_frozen()
         self.fix_nuitka_onefile_issues()
         
         # Set up dedicated logger
@@ -5628,6 +5682,28 @@ else:
         
         # Return at least 1KB to avoid showing 0
         return max(1024, total_size)
+    def _find_real_executable_directory(self):
+        """Find the real directory where ManimStudio.exe is located"""
+        # Check environment variable first
+        if os.environ.get("NUITKA_ONEFILE_PARENT"):
+            real_exe_path = os.environ.get("NUITKA_ONEFILE_PARENT")
+            if os.path.exists(real_exe_path):
+                return os.path.dirname(real_exe_path)
+        
+        # Search for ManimStudio.exe in common locations
+        search_locations = [
+            os.getcwd(),
+            os.path.join(os.path.expanduser("~"), "Desktop"),
+            os.path.join(os.path.expanduser("~"), "Downloads"),
+            os.path.join(os.path.expanduser("~"), "Documents"),
+        ]
+        
+        for location in search_locations:
+            potential_exe = os.path.join(location, "ManimStudio.exe")
+            if os.path.exists(potential_exe):
+                return location
+        
+        return None
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
@@ -6706,6 +6782,25 @@ class EnhancedPythonEditor(tk.Text):
         if self.parent_app and hasattr(self.parent_app, 'show_replace_dialog'):
             self.parent_app.show_replace_dialog()
         return "break"
+    def on_focus_in(self, event=None):
+        """Handle editor getting focus - prevent interference"""
+        # Set a flag to indicate editor is active
+        if hasattr(self.parent_app, '_editor_has_focus'):
+            self.parent_app._editor_has_focus = True
+        
+        # Schedule focus protection
+        self.after(100, self._protect_editor_focus)
+    
+    def on_focus_out(self, event=None):
+        """Handle editor losing focus"""
+        if hasattr(self.parent_app, '_editor_has_focus'):
+            self.parent_app._editor_has_focus = False
+    
+    def _protect_editor_focus(self):
+        """Protect editor focus from being stolen"""
+        if self.focus_get() == self:
+            # Editor still has focus, schedule next protection check
+            self.after(500, self._protect_editor_focus)
 
 
 class LineNumbers(tk.Text):
@@ -7967,15 +8062,23 @@ class ManimStudioApp:
             
     def load_settings(self):
         """Load settings from file"""
-        if getattr(sys, 'frozen', False):
-            # Running as executable
-            settings_dir = os.path.join(os.path.dirname(sys.executable), "settings")
-        else:
-            # Running as script
-            settings_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        # Use the same directory as the executable for settings
+        settings_dir = os.path.join(BASE_DIR, "settings")
+        
+        # Ensure settings directory is not in temp
+        if (tempfile.gettempdir() in settings_dir or 
+            'onefile_' in settings_dir):
+            # Find real executable directory
+            real_base = self._find_real_executable_directory()
+            if real_base:
+                settings_dir = os.path.join(real_base, "settings")
+            else:
+                settings_dir = os.path.join(os.getcwd(), "settings")
     
         os.makedirs(settings_dir, exist_ok=True)
         self.settings_file = os.path.join(settings_dir, "settings.json")
+        
+
         
         # Default settings
         self.settings = {
@@ -8881,6 +8984,38 @@ class ManimStudioApp:
         self.code_editor.auto_completion_enabled = self.intellisense_var.get()
         self.code_editor.autocomplete_delay = self.settings["auto_completion_delay"]
         
+        # FOCUS MANAGEMENT: Add focus protection for code editor
+        def on_editor_focus_in(event=None):
+            """Handle editor getting focus - prevent interference"""
+            self._editor_has_focus = True
+            self._last_editor_focus_time = time.time()
+        
+        def on_editor_focus_out(event=None):
+            """Handle editor losing focus"""
+            # Small delay before allowing terminal focus
+            self.root.after(200, lambda: setattr(self, '_editor_has_focus', False))
+        
+        def on_editor_click(event=None):
+            """Handle editor click - indicate active use"""
+            self._editor_has_focus = True
+            self._last_editor_focus_time = time.time()
+        
+        def on_editor_keypress(event=None):
+            """Handle editor keypress - indicate active use"""
+            self._editor_has_focus = True
+            self._last_editor_focus_time = time.time()
+        
+        # Bind focus protection events
+        self.code_editor.bind('<FocusIn>', on_editor_focus_in)
+        self.code_editor.bind('<FocusOut>', on_editor_focus_out)
+        self.code_editor.bind('<Button-1>', on_editor_click)
+        self.code_editor.bind('<KeyPress>', on_editor_keypress)
+        self.code_editor.bind('<Key>', on_editor_keypress)
+        
+        # Initialize focus flags
+        self._editor_has_focus = False
+        self._last_editor_focus_time = 0
+        
         # Create line numbers widget
         self.line_numbers = LineNumbers(editor_container, self.code_editor)
         self.line_numbers.grid(row=0, column=0, sticky="nsew", padx=(10, 0), pady=10)
@@ -8892,7 +9027,6 @@ class ManimStudioApp:
         
         # Load default code
         self.load_default_code()
-        
     def create_preview_area(self):
         """Create preview area"""
         preview_frame = ctk.CTkFrame(self.main_area, fg_color=VSCODE_COLORS["surface"])
@@ -9305,8 +9439,7 @@ Available commands: cd, ls, pip, python, activate, deactivate, clear, help
         try:
             command = self.command_entry.get().strip()
             if not command:
-                # Always refocus even if no command
-                self.command_entry.focus_set()
+                # Don't force focus if user didn't enter anything
                 return "break" if event else None
 
             # Clear input field
@@ -9315,48 +9448,45 @@ Available commands: cd, ls, pip, python, activate, deactivate, clear, help
             # Echo command to output
             self.append_output(f"$ {command}\n")
 
-            # Define completion handler that ALWAYS refocuses input
-            def ensure_refocus_and_complete(success=True, return_code=0):
+            # Define completion handler that only refocuses when appropriate
+            def smart_refocus_and_complete(success=True, return_code=0):
                 try:
                     status = "completed" if success else "failed"
                     self.append_output(f"Command {status} (exit code: {return_code})\n\n")
                 except Exception as e:
                     self.append_output(f"Command execution error: {e}\n\n")
                 finally:
-                    # ALWAYS refocus the input field, no matter what
-                    try:
-                        self.command_entry.focus_set()
-                    except Exception:
-                        pass  # Ignore focus errors
+                    # Only refocus if no other important widget has focus
+                    current_focus = self.root.focus_get()
+                    if (current_focus is None or 
+                        current_focus == self.root or 
+                        current_focus == self.command_entry):
+                        try:
+                            self.command_entry.focus_set()
+                        except Exception:
+                            pass
 
             # Try different execution methods with proper error handling
             try:
                 if hasattr(self.terminal, 'execute_command'):
                     self.terminal.execute_command(command)
                 elif hasattr(self.terminal, 'run_command_redirected'):
-                    self.terminal.run_command_redirected(command, on_complete=ensure_refocus_and_complete)
+                    self.terminal.run_command_redirected(command, on_complete=smart_refocus_and_complete)
                 else:
                     if hasattr(self, '_system_terminal'):
-                        self._system_terminal.execute_command(command, capture_output=True, on_complete=ensure_refocus_and_complete)
+                        self._system_terminal.execute_command(command, capture_output=True, on_complete=smart_refocus_and_complete)
                     else:
                         self._system_terminal = SystemTerminalManager(self)
-                        self._system_terminal.execute_command(command, capture_output=True, on_complete=ensure_refocus_and_complete)
+                        self._system_terminal.execute_command(command, capture_output=True, on_complete=smart_refocus_and_complete)
             except Exception as e:
                 self.append_output(f"Error executing command: {e}\n")
-                ensure_refocus_and_complete(False, -1)
+                smart_refocus_and_complete(False, -1)
 
         except Exception as e:
             # Handle any other exceptions
             try:
                 self.append_output(f"Input error: {e}\n")
             except:
-                pass
-        finally:
-            # FINAL safety net - always try to refocus
-            try:
-                if hasattr(self, 'command_entry'):
-                    self.command_entry.focus_set()
-            except Exception:
                 pass
 
         return "break" if event else None
@@ -10525,14 +10655,82 @@ class MyScene(Scene):
         self.status_label.configure(text=message)
         self.root.update_idletasks()
     def ensure_command_input_focus(self):
-        """Safety method to ensure command input always has focus"""
+        """Smart focus management - only refocus terminal when appropriate"""
         try:
-            if hasattr(self, 'command_entry'):
-                self.command_entry.focus_set()
-                # Also ensure the command entry is visible
-                if hasattr(self.command_entry, 'see'):
-                    self.command_entry.see('end')
-        except Exception as e:
+            if not hasattr(self, 'command_entry'):
+                return
+            
+            # Don't steal focus if editor is being actively used
+            if getattr(self, '_editor_has_focus', False):
+                return
+            
+            # Don't steal focus if editor was recently used (within 2 seconds)
+            current_time = time.time()
+            last_editor_time = getattr(self, '_last_editor_focus_time', 0)
+            if current_time - last_editor_time < 2.0:
+                return
+                
+            # Get current focus
+            current_focus = self.root.focus_get()
+            
+            # Don't steal focus from important widgets
+            if current_focus:
+                widget_class = current_focus.__class__.__name__
+                widget_master = getattr(current_focus, 'master', None)
+                
+                # List of widgets that should keep their focus
+                protected_widgets = [
+                    'EnhancedPythonEditor',  # Code editor
+                    'Text',                  # Any text widget
+                    'Entry',                 # Entry widgets
+                    'CTkEntry',              # CustomTkinter entries
+                    'CTkTextbox',            # CustomTkinter textboxes
+                    'Listbox',               # Listboxes
+                    'CTkComboBox',           # Combo boxes
+                    'CTkOptionMenu',         # Option menus
+                    'CTkSlider',             # Sliders
+                    'Spinbox',               # Spinboxes
+                ]
+                
+                # Don't steal focus from protected widgets
+                if widget_class in protected_widgets:
+                    return
+                    
+                # Don't steal focus from code editor specifically
+                if (hasattr(current_focus, 'parent_app') or 
+                    isinstance(current_focus, tk.Text) or
+                    hasattr(current_focus, 'auto_completion_enabled')):
+                    return
+                    
+                # Don't steal focus if user is typing in any text-like widget
+                if hasattr(current_focus, 'get') and hasattr(current_focus, 'insert'):
+                    return
+                
+                # Don't steal focus from dialog windows
+                if hasattr(current_focus, 'winfo_toplevel'):
+                    toplevel = current_focus.winfo_toplevel()
+                    if toplevel != self.root:
+                        return
+            
+            # Check if we're in the middle of rendering or other intensive operations
+            if getattr(self, 'is_rendering', False) or getattr(self, 'is_previewing', False):
+                # During intensive operations, be less aggressive about focus
+                if current_focus and current_focus != self.root:
+                    return
+            
+            # Only refocus if no important widget has focus or if focus is completely lost
+            if (current_focus is None or 
+                current_focus == self.root or 
+                current_focus == self.command_entry):
+                
+                # Additional check: make sure command entry exists and is visible
+                if (hasattr(self.command_entry, 'winfo_exists') and 
+                    self.command_entry.winfo_exists() and
+                    self.command_entry.winfo_viewable()):
+                    
+                    self.command_entry.focus_set()
+                
+        except Exception:
             # Silent fail - don't let focus errors break the app
             pass
     def start_background_tasks(self):
@@ -10560,58 +10758,36 @@ class MyScene(Scene):
             
         update_venv_status()
         
-        # Periodically ensure command input focus (every 2 seconds)
-        def ensure_focus():
-            self.ensure_command_input_focus()
-            self.root.after(2000, ensure_focus)
+        # FIXED: Only ensure focus occasionally and only when appropriate
+        def gentle_focus_check():
+            # Only check focus every 10 seconds, not every 2 seconds
+            current_focus = self.root.focus_get()
             
-        ensure_focus()
+            # Only refocus if focus is completely lost (None or root)
+            if current_focus is None or current_focus == self.root:
+                self.ensure_command_input_focus()
+            
+            self.root.after(10000, gentle_focus_check)  # Every 10 seconds instead of 2
+            
+        # Start gentle focus check after a delay
+        self.root.after(5000, gentle_focus_check)
         
         # Check for dependencies
         self.root.after(1000, self.check_dependencies)
         
-        # Terminal health check - ensure terminal is responsive
-        def terminal_health_check():
-            try:
-                # Check if terminal exists and is responsive
-                if hasattr(self, 'terminal'):
-                    # If terminal seems unresponsive, try to restore focus
-                    if hasattr(self, 'command_entry'):
-                        # Check if command_entry exists and is accessible
-                        if self.command_entry.winfo_exists():
-                            # Ensure it's enabled and focusable
-                            if str(self.command_entry.cget('state')) != 'disabled':
-                                self.ensure_command_input_focus()
-            except Exception:
-                pass  # Silent fail
-            
-            # Schedule next health check
-            self.root.after(10000, terminal_health_check)  # Every 10 seconds
+        # REMOVED: Aggressive terminal health check that steals focus
+        # REMOVED: Monitor system that forces focus during rendering
         
-        # Start terminal health check after a delay
-        self.root.after(5000, terminal_health_check)
-        
-        # Monitor system resources (optional - can help detect if system is under load)
-        def monitor_system():
-            try:
-                if hasattr(self, 'is_rendering') and hasattr(self, 'is_previewing'):
-                    # If system is busy with rendering/previewing, be more aggressive about focus
-                    if self.is_rendering or self.is_previewing:
-                        self.ensure_command_input_focus()
-            except Exception:
-                pass
-            
-            # Check every 5 seconds during intensive operations
-            self.root.after(5000, monitor_system)
-        
-        monitor_system()
-        
-        # Focus restoration after window events
+        # Focus restoration only on window events (not aggressive)
         def window_focus_handler():
             try:
-                # Restore focus when window regains focus
-                self.root.bind('<FocusIn>', lambda e: self.ensure_command_input_focus())
-                self.root.bind('<Button-1>', lambda e: self.root.after(100, self.ensure_command_input_focus))
+                # Only restore focus when window regains focus, not constantly
+                def on_window_focus(event):
+                    # Only refocus terminal if no other widget has focus
+                    if self.root.focus_get() is None:
+                        self.root.after(100, self.ensure_command_input_focus)
+                
+                self.root.bind('<FocusIn>', on_window_focus)
             except Exception:
                 pass
         
@@ -10951,6 +11127,28 @@ Licensed under MIT License"""
         except Exception as e:
             logger.error(f"Application error: {e}")
             messagebox.showerror("Error", f"Application error: {e}")
+    def _find_real_executable_directory(self):
+        """Find the real directory where ManimStudio.exe is located"""
+        # Check environment variable first
+        if os.environ.get("NUITKA_ONEFILE_PARENT"):
+            real_exe_path = os.environ.get("NUITKA_ONEFILE_PARENT")
+            if os.path.exists(real_exe_path):
+                return os.path.dirname(real_exe_path)
+        
+        # Search for ManimStudio.exe in common locations
+        search_locations = [
+            os.getcwd(),
+            os.path.join(os.path.expanduser("~"), "Desktop"),
+            os.path.join(os.path.expanduser("~"), "Downloads"),
+            os.path.join(os.path.expanduser("~"), "Documents"),
+        ]
+        
+        for location in search_locations:
+            potential_exe = os.path.join(location, "ManimStudio.exe")
+            if os.path.exists(potential_exe):
+                return location
+        
+        return None
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
     
@@ -11380,8 +11578,93 @@ def main():
                     except Exception:
                         pass
 
-        # Ensure working directory is the application directory
-        os.chdir(BASE_DIR)
+        # CRITICAL FIX: Find the real executable directory (not temp extraction)
+        real_base = None
+        if getattr(sys, "frozen", False):
+            # We're running as a frozen executable
+            
+            # Method 1: Try NUITKA_ONEFILE_PARENT environment variable (most reliable)
+            if os.environ.get("NUITKA_ONEFILE_PARENT"):
+                real_exe_path = os.environ.get("NUITKA_ONEFILE_PARENT")
+                if os.path.exists(real_exe_path):
+                    real_base = os.path.dirname(real_exe_path)
+                    print(f"Found real executable directory via environment: {real_base}")
+            
+            # Method 2: Check if sys.argv[0] points to real exe (not in temp)
+            if not real_base:
+                argv_path = os.path.abspath(sys.argv[0])
+                if (argv_path.endswith('.exe') and 
+                    os.path.exists(argv_path) and 
+                    not argv_path.startswith(tempfile.gettempdir()) and
+                    'onefile_' not in argv_path):
+                    real_base = os.path.dirname(argv_path)
+                    print(f"Found real executable directory via argv: {real_base}")
+            
+            # Method 3: Search for ManimStudio.exe in common locations
+            if not real_base:
+                search_locations = [
+                    os.getcwd(),
+                    os.path.dirname(os.path.abspath(sys.argv[0])) if not tempfile.gettempdir() in os.path.dirname(os.path.abspath(sys.argv[0])) else None,
+                    os.path.join(os.path.expanduser("~"), "Desktop"),
+                    os.path.join(os.path.expanduser("~"), "Downloads"),
+                    os.path.join(os.path.expanduser("~"), "Documents"),
+                ]
+                
+                # Filter out None values
+                search_locations = [loc for loc in search_locations if loc]
+                
+                for location in search_locations:
+                    if not location:
+                        continue
+                        
+                    potential_exe = os.path.join(location, "ManimStudio.exe")
+                    if os.path.exists(potential_exe):
+                        real_base = location
+                        print(f"Found real executable directory via search: {real_base}")
+                        break
+            
+            # Method 4: Try to find any .exe file that might be our executable
+            if not real_base:
+                current_dir = os.getcwd()
+                if not (tempfile.gettempdir() in current_dir or 'onefile_' in current_dir):
+                    for file in os.listdir(current_dir):
+                        if file.endswith('.exe') and 'manim' in file.lower():
+                            real_base = current_dir
+                            print(f"Found real executable directory via current dir scan: {real_base}")
+                            break
+            
+            # Method 5: Last resort - use current working directory if it's not temp
+            if not real_base:
+                current_dir = os.getcwd()
+                if not (tempfile.gettempdir() in current_dir or 'onefile_' in current_dir):
+                    real_base = current_dir
+                    print(f"Using current working directory as fallback: {real_base}")
+                else:
+                    # Even more desperate - use Documents folder
+                    real_base = os.path.join(os.path.expanduser("~"), "Documents", "ManimStudio")
+                    os.makedirs(real_base, exist_ok=True)
+                    print(f"Using Documents folder as final fallback: {real_base}")
+            
+            # Set the working directory to the real executable location
+            if real_base:
+                try:
+                    os.chdir(real_base)
+                    print(f"Changed working directory to: {real_base}")
+                    
+                    # Update the BASE_DIR global to reflect the real location
+                    import app
+                    app.BASE_DIR = real_base
+                    
+                    # Also update MEDIA_DIR
+                    app.MEDIA_DIR = os.path.join(real_base, "media")
+                    os.makedirs(app.MEDIA_DIR, exist_ok=True)
+                    
+                except Exception as e:
+                    print(f"Warning: Could not change to real directory {real_base}: {e}")
+        else:
+            # Running as script - use the directory containing the script
+            real_base = os.path.dirname(os.path.abspath(__file__))
+            os.chdir(real_base)
 
         # Early load of fixes module to handle runtime issues
         try:
@@ -11399,9 +11682,14 @@ def main():
             print("Warning: matplotlib not available")
             pass
         
-        # Create application directory
-        app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        # Create application directory next to the executable (not in temp!)
+        if real_base:
+            app_dir = os.path.join(real_base, ".manim_studio")
+        else:
+            app_dir = os.path.join(os.getcwd(), ".manim_studio")
+        
         os.makedirs(app_dir, exist_ok=True)
+        print(f"Application directory: {app_dir}")
 
         # Prevent multiple instances
         lock_file = os.path.join(app_dir, "app.lock")
@@ -11429,7 +11717,7 @@ def main():
         except Exception:
             pass
         
-        # Set up logging
+        # Set up logging in the real directory
         log_file = os.path.join(app_dir, "manim_studio.log")
         logging.basicConfig(
             level=logging.INFO,
@@ -11439,6 +11727,11 @@ def main():
                 logging.StreamHandler()
             ]
         )
+        
+        # Log the final directories being used
+        logging.info(f"Real executable directory: {real_base or 'Not found'}")
+        logging.info(f"Working directory: {os.getcwd()}")
+        logging.info(f"Application directory: {app_dir}")
         
         # Check for Jedi availability
         if not JEDI_AVAILABLE:
@@ -11464,7 +11757,6 @@ def main():
             messagebox.showerror("Startup Error", f"Failed to start application: {e}")
         except:
             print(f"Failed to start application: {e}")
-
 class SimpleEnvironmentDialog(ctk.CTkToplevel):
     """Emergency fallback dialog if other dialogs fail"""
     
