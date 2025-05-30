@@ -10280,18 +10280,21 @@ class MyScene(Scene):
             # Get the number of cores to use
             num_cores = self.get_render_cores()
                 
-            # Build manim command
+            # Build manim command using absolute paths to avoid confusion
+            abs_media_dir = os.path.abspath(MEDIA_DIR)
+            abs_scene_file = os.path.abspath(scene_file)
+
             command = [
                 python_exe, "-m", "manim",
-                scene_file,
+                abs_scene_file,
                 scene_class,
                 quality_flag,
                 "--format=mp4",
                 f"--fps={preview_quality['fps']}",
                 "--disable_caching",
-                f"--media_dir={MEDIA_DIR}",
+                f"--media_dir={abs_media_dir}",
                 "--renderer=cairo",
-                "--verbosity=INFO"  # Add verbose output
+                "--verbosity=DEBUG"  # More verbose output for troubleshooting
             ]
             
             # Add custom resolution if using custom quality
@@ -10597,27 +10600,69 @@ class MyScene(Scene):
         return scene_classes[0] if scene_classes else "MyScene"
         
     def find_output_file(self, temp_dir, scene_class, format_ext):
-        """Find rendered output file"""
-        # Common output directories
-        search_dirs = [
-            os.path.join(BASE_DIR, "media", "videos", "scene"),
-            os.path.join(BASE_DIR, "media", "videos", scene_class)
+        """Find rendered output file with comprehensive search"""
+
+        search_locations = [
+            os.path.join(os.getcwd(), "media"),
+            os.path.join(temp_dir, "media"),
+            os.path.join(BASE_DIR, "media"),
+            os.path.join(os.path.expanduser("~"), "media"),
+            temp_dir,
+            MEDIA_DIR if 'MEDIA_DIR' in globals() else None,
         ]
-        
-        # Add quality-specific directories
-        quality_dirs = ["480p30", "720p30", "1080p60", "2160p60", "4320p60"]
-        for base_dir in search_dirs.copy():
-            for quality_dir in quality_dirs:
-                search_dirs.append(os.path.join(base_dir, quality_dir))
-                
-        # Search for output file
-        for search_dir in search_dirs:
-            if os.path.exists(search_dir):
-                for root, dirs, files in os.walk(search_dir):
+
+        search_locations = [loc for loc in search_locations if loc]
+
+        quality_dirs = ["480p15", "480p30", "720p30", "1080p60", "2160p60", "4320p60", ""]
+
+        search_patterns = [
+            f"{scene_class}.{format_ext}",
+            f"scene.{format_ext}",
+            f"*.{format_ext}",
+        ]
+
+        for base_location in search_locations:
+            if not base_location or not os.path.exists(base_location):
+                continue
+
+            search_dirs = [
+                base_location,
+                os.path.join(base_location, "videos"),
+                os.path.join(base_location, "videos", "scene"),
+                os.path.join(base_location, "videos", scene_class),
+            ]
+
+            for search_dir in search_dirs.copy():
+                for qd in quality_dirs:
+                    if qd:
+                        search_dirs.append(os.path.join(search_dir, qd))
+
+            for search_dir in search_dirs:
+                if not os.path.exists(search_dir):
+                    continue
+
+                for pattern in search_patterns:
+                    if "*" in pattern:
+                        matches = glob.glob(os.path.join(search_dir, pattern))
+                        if matches:
+                            return max(matches, key=os.path.getmtime)
+                    else:
+                        file_path = os.path.join(search_dir, pattern)
+                        if os.path.exists(file_path):
+                            return file_path
+
+        for base_location in search_locations[:3]:
+            if not base_location or not os.path.exists(base_location):
+                continue
+            try:
+                for root, dirs, files in os.walk(base_location):
                     for file in files:
-                        if file.endswith(f".{format_ext}") and scene_class in file:
+                        if (file.endswith(f".{format_ext}") and
+                            (scene_class.lower() in file.lower() or "scene" in file.lower())):
                             return os.path.join(root, file)
-                            
+            except Exception:
+                continue
+
         return None
         
     def save_rendered_file(self, source_file, format_ext):
