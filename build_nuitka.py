@@ -17,6 +17,45 @@ import codecs
 import tqdm 
 # Global flag to use ASCII instead of Unicode symbols
 USE_ASCII_ONLY = True
+# Updated lists for better build performance
+MINIMAL_PACKAGES = [
+    "customtkinter", "tkinter", "PIL", "numpy", "jedi", "psutil"
+]
+
+ESSENTIAL_PACKAGES_WITH_TESTS_EXCLUDED = [
+    "customtkinter", "tkinter", "PIL", "numpy", "cv2", 
+    "matplotlib", "jedi", "psutil"
+]
+
+# Comprehensive list of modules to exclude for faster builds
+PROBLEMATIC_MODULES = [
+    "zstandard", "zstandard.backend_cffi", "setuptools",
+    "test.support", "_distutils_hack", "distutils",
+    "numpy.distutils", "setuptools_scm",
+    # Exclude ALL test modules to speed up compilation
+    "sympy.*.tests.*", "sympy.*.test_*", "sympy.tests.*",
+    "sympy.polys.benchmarks.*", "sympy.physics.quantum.tests.*",
+    "sympy.solvers.ode.tests.*", "sympy.polys.tests.*",
+    "sympy.geometry.tests.*", "sympy.core.tests.*",
+    "sympy.functions.tests.*", "sympy.matrices.tests.*",
+    "sympy.plotting.tests.*", "sympy.printing.tests.*",
+    "sympy.simplify.tests.*", "sympy.stats.tests.*",
+    "sympy.tensor.tests.*", "sympy.utilities.tests.*",
+    # Exclude benchmark modules
+    "*.benchmarks.*", "*.test_*", "*.tests.*",
+    # Exclude other problematic modules
+    "matplotlib.tests.*", "numpy.tests.*", "PIL.tests.*",
+    "cv2.tests.*", "jedi.test.*", "pytest.*",
+    # Specifically exclude the problematic sympy modules
+    "sympy.polys.polyquinticconst", "sympy.polys.benchmarks.bench_solvers",
+    "sympy.physics.quantum.tests.test_spin", "sympy.solvers.ode.tests.test_systems"
+]
+
+ESSENTIAL_SYMPY_MODULES = [
+    "sympy.core", "sympy.printing", "sympy.parsing",
+    "sympy.functions.elementary", "sympy.simplify.simplify",
+    "sympy.utilities.lambdify"
+]
 def build_self_contained_version(jobs=None, priority="normal"):
     """Build self-contained version with NO CONSOLE EVER"""
     
@@ -55,7 +94,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
     # Create assets directory if it doesn't exist
     assets_dir = Path("assets")
     assets_dir.mkdir(exist_ok=True)
-    
     
     # Create enhanced no-console patch
     create_no_console_patch()
@@ -98,29 +136,53 @@ def build_self_contained_version(jobs=None, priority="normal"):
     # CRITICAL: Completely disable LTO to fix the zstandard error
     cmd.append("--lto=no")
     
-    # Explicitly exclude problematic modules
-    cmd.append("--nofollow-import-to=zstandard")
-    cmd.append("--nofollow-import-to=zstandard.backend_cffi")
-    cmd.append("--nofollow-import-to=setuptools")
-    cmd.append("--nofollow-import-to=test.support")
-    cmd.append("--nofollow-import-to=_distutils_hack")
+    # Explicitly exclude problematic modules - COMPREHENSIVE LIST
+    problematic_modules = [
+        "zstandard", "zstandard.backend_cffi", "setuptools",
+        "test.support", "_distutils_hack", "distutils",
+        "numpy.distutils", "setuptools_scm",
+        # Exclude ALL test modules to speed up compilation
+        "sympy.*.tests.*", "sympy.*.test_*", "sympy.tests.*",
+        "sympy.polys.benchmarks.*", "sympy.physics.quantum.tests.*",
+        "sympy.solvers.ode.tests.*", "sympy.polys.tests.*",
+        "sympy.geometry.tests.*", "sympy.core.tests.*",
+        "sympy.functions.tests.*", "sympy.matrices.tests.*",
+        "sympy.plotting.tests.*", "sympy.printing.tests.*",
+        "sympy.simplify.tests.*", "sympy.stats.tests.*",
+        "sympy.tensor.tests.*", "sympy.utilities.tests.*",
+        # Exclude the specific problematic modules from the error
+        "sympy.polys.benchmarks.bench_solvers",
+        "sympy.physics.quantum.tests.test_spin",
+        "sympy.solvers.ode.tests.test_systems",
+        "sympy.polys.polyquinticconst",
+        # Exclude benchmark modules
+        "*.benchmarks.*", "*.test_*", "*.tests.*",
+        # Exclude other problematic modules
+        "matplotlib.tests.*", "numpy.tests.*", "PIL.tests.*",
+        "cv2.tests.*", "jedi.test.*", "pytest.*",
+    ]
+    
+    for module in problematic_modules:
+        cmd.append(f"--nofollow-import-to={module}")
     
     # IMPORTANT: Use show-progress instead of no-progressbar
     cmd.append("--show-progress")
     
-    # Add optimization flags that don't use LTO
+    # Add optimization flags that don't use LTO with faster compilation
     cmd.extend([
         "--remove-output",                     # Remove intermediate files to reduce I/O
         "--assume-yes-for-downloads",          # Don't prompt for downloads
         "--mingw64",                           # Use MinGW64 compiler
         "--disable-ccache",                    # Disable ccache to avoid issues
         "--show-memory",                       # Show memory usage
+        "--disable-dll-dependency-cache",     # Disable DLL cache
+        "--onefile-tempdir-spec=CACHE",       # Use cache for temp files
     ])
     
-    # Check for importable packages and include only those that exist
+    # Check for importable packages and include only those that exist (SELECTIVE APPROACH)
     essential_packages = [
         "customtkinter", "tkinter", "PIL", "numpy", "cv2", 
-        "matplotlib", "scipy", "manim", "jedi"
+        "matplotlib", "jedi", "psutil"
     ]
     
     included_packages = []
@@ -140,18 +202,61 @@ def build_self_contained_version(jobs=None, priority="normal"):
             else:
                 print(f"⚠️ Skipping unavailable package: {package}")
     
+    # Handle manim separately with more control
+    if is_package_importable("manim"):
+        cmd.append("--include-package=manim")
+        cmd.append("--include-package-data=manim")
+        # Exclude manim tests
+        cmd.append("--nofollow-import-to=manim.*.tests")
+        cmd.append("--nofollow-import-to=manim.test.*")
+        included_packages.append("manim")
+        if USE_ASCII_ONLY:
+            print("Including manim (excluding tests)")
+        else:
+            print("✅ Including manim (excluding tests)")
+    
+    # Handle sympy with minimal inclusion to avoid compilation issues
+    if is_package_importable("sympy"):
+        # Only include essential sympy modules
+        essential_sympy_modules = [
+            "sympy.core", "sympy.printing", "sympy.parsing",
+            "sympy.functions.elementary", "sympy.utilities.lambdify"
+        ]
+        
+        for module in essential_sympy_modules:
+            cmd.append(f"--include-module={module}")
+        
+        # Exclude ALL problematic sympy subpackages
+        sympy_exclusions = [
+            "sympy.polys", "sympy.physics", "sympy.geometry",
+            "sympy.matrices", "sympy.stats", "sympy.tensor",
+            "sympy.*.tests", "sympy.*.benchmarks", "sympy.plotting"
+        ]
+        
+        for exclusion in sympy_exclusions:
+            cmd.append(f"--nofollow-import-to={exclusion}")
+        
+        included_packages.append("sympy (minimal)")
+        if USE_ASCII_ONLY:
+            print("Including minimal sympy (core only, excluding problematic modules)")
+        else:
+            print("✅ Including minimal sympy (core only, excluding problematic modules)")
+    
     # Include critical modules that are part of standard library
     essential_modules = [
         "json", "tempfile", "threading", "subprocess", 
         "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils"
+        "process_utils", "logging", "pathlib"
     ]
     
     for module in essential_modules:
         cmd.append(f"--include-module={module}")
     
-    # Include package data for Manim (for config files)
-    cmd.append("--include-package-data=manim")
+    # Include package data for Manim (for config files) - but exclude tests
+    if is_package_importable("manim"):
+        cmd.append("--include-package-data=manim")
+        # But exclude test data
+        cmd.append("--nofollow-import-to=manim.*.tests.*")
     
     # Output options
     cmd.extend([
@@ -169,7 +274,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
     ])
     
     # Add custom performance flags to maximize CPU
-    cmd.append("--disable-dll-dependency-cache")
     cmd.append("--force-stdout-spec=PIPE")
     cmd.append("--force-stderr-spec=PIPE")
     
@@ -217,9 +321,11 @@ def build_self_contained_version(jobs=None, priority="normal"):
     if USE_ASCII_ONLY:
         print(f"CPU Info: {cpu_count} logical cores available")
         print(f"Using {jobs} compilation threads")
+        print(f"Included {len(included_packages)} packages")
     else:
         print(f"🖥️ CPU Info: {cpu_count} logical cores available")
         print(f"⚙️ Using {jobs} compilation threads")
+        print(f"📦 Included {len(included_packages)} packages")
     
     # Print output in real-time
     while True:
@@ -273,7 +379,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
             print("❌ Build failed!")
         print(f"Return code: {return_code}")
         return None
-
 def build_standalone_version(jobs=None, priority="normal"):
     """Build standalone version (directory-based, not onefile) with complete LaTeX support"""
 
@@ -337,17 +442,36 @@ def build_standalone_version(jobs=None, priority="normal"):
     # CRITICAL: Disable LTO to prevent zstandard linking issues
     cmd.append("--lto=no")
 
-    # Exclude problematic modules that cause build issues
+    # Exclude problematic modules that cause build issues - COMPREHENSIVE LIST
     problematic_modules = [
         "zstandard", "zstandard.backend_cffi", "setuptools",
         "test.support", "_distutils_hack", "distutils",
-        "numpy.distutils", "setuptools_scm"
+        "numpy.distutils", "setuptools_scm",
+        # Exclude ALL test modules to speed up compilation
+        "sympy.*.tests.*", "sympy.*.test_*", "sympy.tests.*",
+        "sympy.polys.benchmarks.*", "sympy.physics.quantum.tests.*",
+        "sympy.solvers.ode.tests.*", "sympy.polys.tests.*",
+        "sympy.geometry.tests.*", "sympy.core.tests.*",
+        "sympy.functions.tests.*", "sympy.matrices.tests.*",
+        "sympy.plotting.tests.*", "sympy.printing.tests.*",
+        "sympy.simplify.tests.*", "sympy.stats.tests.*",
+        "sympy.tensor.tests.*", "sympy.utilities.tests.*",
+        # Exclude the specific problematic modules from the error
+        "sympy.polys.benchmarks.bench_solvers",
+        "sympy.physics.quantum.tests.test_spin",
+        "sympy.solvers.ode.tests.test_systems",
+        "sympy.polys.polyquinticconst",
+        # Exclude benchmark modules
+        "*.benchmarks.*", "*.test_*", "*.tests.*",
+        # Exclude other problematic modules
+        "matplotlib.tests.*", "numpy.tests.*", "PIL.tests.*",
+        "cv2.tests.*", "jedi.test.*", "pytest.*",
     ]
 
     for module in problematic_modules:
         cmd.append(f"--nofollow-import-to={module}")
 
-    # Progress and optimization flags
+    # Progress and optimization flags with faster compilation
     cmd.extend([
         "--show-progress",
         "--remove-output",
@@ -356,15 +480,13 @@ def build_standalone_version(jobs=None, priority="normal"):
         "--disable-ccache",
         "--show-memory",
         "--disable-dll-dependency-cache",
+        "--onefile-tempdir-spec=CACHE",  # Use cache for temp files
     ])
 
-    # Essential packages - check availability before including
+    # Essential packages - check availability before including (SELECTIVE APPROACH)
     essential_packages = [
         "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "scipy", "manim", "jedi", "psutil",
-        "sympy", "latex2mathml", "antlr4", "pygments",
-        "colour", "moderngl", "requests", "pandas", "imageio",
-        "moviepy", "rich", "colorama"
+        "matplotlib", "jedi", "psutil"
     ]
 
     included_packages = []
@@ -384,6 +506,60 @@ def build_standalone_version(jobs=None, priority="normal"):
             else:
                 print(f"⚠️ Skipping unavailable package: {package}")
 
+    # Handle manim separately with more control
+    if is_package_importable("manim"):
+        cmd.append("--include-package=manim")
+        cmd.append("--include-package-data=manim")
+        # Exclude manim tests
+        cmd.append("--nofollow-import-to=manim.*.tests")
+        cmd.append("--nofollow-import-to=manim.test.*")
+        included_packages.append("manim")
+        if USE_ASCII_ONLY:
+            print("Including manim (excluding tests)")
+        else:
+            print("✅ Including manim (excluding tests)")
+
+    # Handle sympy with minimal inclusion for LaTeX support but avoid problematic modules
+    if is_package_importable("sympy"):
+        # Only include essential sympy modules for LaTeX
+        essential_sympy_modules = [
+            "sympy.core", "sympy.printing.latex", "sympy.printing.mathml",
+            "sympy.parsing", "sympy.functions.elementary", 
+            "sympy.utilities.lambdify", "sympy.simplify.simplify"
+        ]
+        
+        for module in essential_sympy_modules:
+            cmd.append(f"--include-module={module}")
+        
+        # Exclude ALL problematic sympy subpackages
+        sympy_exclusions = [
+            "sympy.polys", "sympy.physics", "sympy.geometry",
+            "sympy.matrices", "sympy.stats", "sympy.tensor",
+            "sympy.*.tests", "sympy.*.benchmarks", "sympy.plotting",
+            "sympy.solvers.ode", "sympy.polys.benchmarks"
+        ]
+        
+        for exclusion in sympy_exclusions:
+            cmd.append(f"--nofollow-import-to={exclusion}")
+        
+        included_packages.append("sympy (minimal LaTeX)")
+        if USE_ASCII_ONLY:
+            print("Including minimal sympy for LaTeX (excluding problematic modules)")
+        else:
+            print("✅ Including minimal sympy for LaTeX (excluding problematic modules)")
+
+    # Include additional LaTeX support packages if available
+    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour"]
+    
+    for package in latex_packages:
+        if is_package_importable(package):
+            cmd.append(f"--include-package={package}")
+            included_packages.append(package)
+            if USE_ASCII_ONLY:
+                print(f"Including LaTeX support: {package}")
+            else:
+                print(f"📦 Including LaTeX support: {package}")
+
     # Critical system modules
     essential_modules = [
         "json", "tempfile", "threading", "subprocess",
@@ -398,11 +574,8 @@ def build_standalone_version(jobs=None, priority="normal"):
     for module in essential_modules:
         cmd.append(f"--include-module={module}")
 
-    # LaTeX and mathematical expression support
-    latex_data_packages = [
-        "manim", "latex2mathml", "sympy", "antlr4",
-        "pygments", "matplotlib", "numpy"
-    ]
+    # LaTeX and mathematical expression support data (selective)
+    latex_data_packages = ["manim", "matplotlib", "numpy"]
 
     for package in latex_data_packages:
         if is_package_importable(package):
@@ -412,25 +585,30 @@ def build_standalone_version(jobs=None, priority="normal"):
             else:
                 print(f"📦 Including data for: {package}")
 
-    # Include LaTeX-specific modules
+    # Include LaTeX-specific modules (minimal set)
     latex_modules = [
-        "sympy.parsing", "sympy.printing", "sympy.core",
-        "sympy.functions", "sympy.geometry", "sympy.matrices",
-        "latex2mathml.converter", "antlr4.tree", "antlr4.xpath"
+        "sympy.printing.latex", "sympy.printing.mathml", 
+        "sympy.core.basic", "sympy.core.expr"
     ]
 
     for module in latex_modules:
         if is_package_importable(module.split('.')[0]):
             cmd.append(f"--include-module={module}")
 
-    # Manim-specific data inclusion
-    cmd.extend([
-        "--include-package-data=manim",
-        "--include-package-data=manim.mobject",
-        "--include-package-data=manim.scene",
-        "--include-package-data=manim.animation",
-        "--include-package-data=manim.utils",
-    ])
+    # Manim-specific data inclusion (but exclude tests)
+    if is_package_importable("manim"):
+        cmd.extend([
+            "--include-package-data=manim",
+            "--include-package-data=manim.mobject",
+            "--include-package-data=manim.scene",
+            "--include-package-data=manim.animation",
+            "--include-package-data=manim.utils",
+        ])
+        # But exclude test data
+        cmd.extend([
+            "--nofollow-import-to=manim.*.tests.*",
+            "--nofollow-import-to=manim.test.*"
+        ])
 
     # Output configuration
     cmd.extend([
@@ -448,7 +626,7 @@ def build_standalone_version(jobs=None, priority="normal"):
     # Include data directories and assets
     data_dirs = ["assets=assets"]
 
-    # Try to include matplotlib data if available
+    # Try to include matplotlib data if available (but not tests)
     try:
         import matplotlib
         mpl_data = Path(matplotlib.get_data_path())
@@ -471,9 +649,9 @@ def build_standalone_version(jobs=None, priority="normal"):
     cmd.append("app.py")
 
     if USE_ASCII_ONLY:
-        print("Building standalone executable with complete LaTeX support...")
+        print("Building standalone executable with LaTeX support...")
     else:
-        print("🔨 Building standalone executable with complete LaTeX support...")
+        print("🔨 Building standalone executable with LaTeX support...")
     print("Command:", " ".join(cmd))
     print("=" * 60)
 
@@ -541,21 +719,19 @@ def build_standalone_version(jobs=None, priority="normal"):
             if USE_ASCII_ONLY:
                 print(f"Executable: {exe_path}")
                 print(f"Distribution folder: {exe_path.parent}")
-                print(f"\nSUCCESS! Standalone version ready with full LaTeX support!")
+                print(f"\nSUCCESS! Standalone version ready with LaTeX support!")
                 print(f"Features included:")
-                print(f"  - Complete mathematical expression rendering")
-                print(f"  - LaTeX formula support")
-                print(f"  - SymPy symbolic mathematics")
+                print(f"  - Mathematical expression rendering")
+                print(f"  - Basic LaTeX formula support")
                 print(f"  - Professional animation engine")
                 print(f"  - No console windows")
             else:
                 print(f"📁 Executable: {exe_path}")
                 print(f"📁 Distribution folder: {exe_path.parent}")
-                print(f"\n🎉 SUCCESS! Standalone version ready with full LaTeX support!")
+                print(f"\n🎉 SUCCESS! Standalone version ready with LaTeX support!")
                 print(f"🧮 Features included:")
-                print(f"  ✅ Complete mathematical expression rendering")
-                print(f"  ✅ LaTeX formula support")
-                print(f"  ✅ SymPy symbolic mathematics")
+                print(f"  ✅ Mathematical expression rendering")
+                print(f"  ✅ Basic LaTeX formula support")
                 print(f"  ✅ Professional animation engine")
                 print(f"  ✅ No console windows")
 
@@ -1418,7 +1594,217 @@ def find_executable():
                 return item
     
     return None
+def build_minimal_version(jobs=None, priority="normal"):
+    """Build minimal version without heavy packages like sympy for fastest compilation"""
+    
+    cpu_count = multiprocessing.cpu_count()
+    if jobs is None:
+        jobs = max(1, cpu_count - 1)
 
+    if USE_ASCII_ONLY:
+        print(f"Building MINIMAL version (fast build) with {jobs} CPU threads...")
+    else:
+        print(f"🚀 Building MINIMAL version (fast build) with {jobs} CPU threads...")
+
+    # Clean previous builds
+    if Path("build").exists():
+        if USE_ASCII_ONLY:
+            print("Cleaning build directory...")
+        else:
+            print("🧹 Cleaning build directory...")
+        shutil.rmtree("build")
+    if Path("dist").exists():
+        if USE_ASCII_ONLY:
+            print("Cleaning dist directory...")
+        else:
+            print("🧹 Cleaning dist directory...")
+        shutil.rmtree("dist")
+
+    # Create assets directory
+    assets_dir = Path("assets")
+    assets_dir.mkdir(exist_ok=True)
+
+    # Create patches
+    create_no_console_patch()
+    create_fixes_module()
+    create_subprocess_helper()
+
+    # Check prerequisites
+    if not check_system_prerequisites():
+        if USE_ASCII_ONLY:
+            print("ERROR: System prerequisites check failed")
+        else:
+            print("❌ System prerequisites check failed")
+        return False
+
+    # Basic command with minimal packages
+    cmd = [
+        sys.executable, "-m", "nuitka",
+        "--standalone",
+        "--onefile",
+        "--windows-console-mode=disable",
+        "--windows-disable-console",
+        "--enable-plugin=tk-inter",
+        "--lto=no",
+        "--show-progress",
+        "--remove-output",
+        "--assume-yes-for-downloads",
+        "--mingw64",
+        "--disable-ccache",
+        "--show-memory",
+        "--disable-dll-dependency-cache",
+        "--onefile-tempdir-spec=CACHE",
+    ]
+
+    # Exclude ALL problematic modules including sympy and scipy completely
+    massive_exclusions = [
+        "sympy.*", "scipy.*", "*.tests.*", "*.test_*", "test.*",
+        "pytest.*", "*.benchmarks.*", "setuptools.*", "distutils.*",
+        "zstandard.*", "_distutils_hack.*", "numpy.distutils.*",
+        "matplotlib.tests.*", "PIL.tests.*", "cv2.tests.*"
+    ]
+    
+    for module in massive_exclusions:
+        cmd.append(f"--nofollow-import-to={module}")
+
+    # Include only essential packages (no sympy, no scipy, no manim initially)
+    for package in MINIMAL_PACKAGES:
+        if is_package_importable(package):
+            correct_name = get_correct_package_name(package)
+            if correct_name:
+                cmd.append(f"--include-package={correct_name}")
+                if USE_ASCII_ONLY:
+                    print(f"Including minimal package: {correct_name}")
+                else:
+                    print(f"✅ Including minimal package: {correct_name}")
+
+    # Try to include manim but with heavy exclusions
+    if is_package_importable("manim"):
+        cmd.append("--include-package=manim")
+        cmd.append("--include-package-data=manim")
+        # Exclude manim tests and heavy modules
+        cmd.append("--nofollow-import-to=manim.*.tests")
+        cmd.append("--nofollow-import-to=manim.test.*")
+        if USE_ASCII_ONLY:
+            print("Including manim (minimal, excluding tests)")
+        else:
+            print("✅ Including manim (minimal, excluding tests)")
+
+    # Include essential modules
+    essential_modules = [
+        "json", "tempfile", "threading", "subprocess",
+        "os", "sys", "ctypes", "venv", "fixes", "psutil",
+        "process_utils", "logging", "pathlib", "shutil"
+    ]
+
+    for module in essential_modules:
+        cmd.append(f"--include-module={module}")
+
+    # Output configuration
+    cmd.extend([
+        "--output-dir=dist",
+        "--output-filename=ManimStudio_Minimal.exe",
+        f"--jobs={jobs}",
+    ])
+
+    # Icon if available
+    if Path("assets/icon.ico").exists():
+        cmd.append("--windows-icon-from-ico=assets/icon.ico")
+
+    # Include assets
+    cmd.append("--include-data-dir=assets=assets")
+
+    # Final target
+    cmd.append("app.py")
+
+    if USE_ASCII_ONLY:
+        print("Building minimal executable (fastest compilation)...")
+    else:
+        print("🔨 Building minimal executable (fastest compilation)...")
+    print("Command:", " ".join(cmd))
+    print("=" * 60)
+
+    # Environment setup
+    env = os.environ.copy()
+    env["GCC_LTO"] = "0"
+    env["NUITKA_DISABLE_LTO"] = "1"
+    env["GCC_COMPILE_ARGS"] = "-fno-lto"
+
+    # Set process priority
+    process_priority = 0
+    if priority == "high" and sys.platform == "win32":
+        if USE_ASCII_ONLY:
+            print("Setting HIGH process priority for fastest compilation")
+        else:
+            print("🔥 Setting HIGH process priority for fastest compilation")
+        process_priority = 0x00000080
+
+    # Run the build
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        universal_newlines=True,
+        env=env,
+        creationflags=process_priority if sys.platform == "win32" else 0
+    )
+
+    # Display info
+    if USE_ASCII_ONLY:
+        print(f"CPU Info: {multiprocessing.cpu_count()} logical cores available")
+        print(f"Using {jobs} compilation threads")
+        print("Excluded heavy modules: sympy, scipy, all tests, benchmarks")
+    else:
+        print(f"🖥️ CPU Info: {multiprocessing.cpu_count()} logical cores available")
+        print(f"⚙️ Using {jobs} compilation threads")
+        print("🚫 Excluded heavy modules: sympy, scipy, all tests, benchmarks")
+
+    # Stream output
+    while True:
+        line = process.stdout.readline()
+        if not line and process.poll() is not None:
+            break
+        if line:
+            print(line.strip())
+
+    return_code = process.poll()
+
+    if return_code == 0:
+        print("=" * 60)
+        if USE_ASCII_ONLY:
+            print("Minimal build successful!")
+        else:
+            print("✅ Minimal build successful!")
+        
+        exe_path = find_executable()
+        if exe_path:
+            size_mb = exe_path.stat().st_size / (1024 * 1024)
+            if USE_ASCII_ONLY:
+                print(f"Executable: {exe_path} ({size_mb:.1f} MB)")
+                print("FAST BUILD: Excluded heavy modules for quick compilation")
+            else:
+                print(f"📁 Executable: {exe_path} ({size_mb:.1f} MB)")
+                print("⚡ FAST BUILD: Excluded heavy modules for quick compilation")
+            
+            create_launcher_script(exe_path)
+            return exe_path
+        else:
+            if USE_ASCII_ONLY:
+                print("Executable not found")
+            else:
+                print("❌ Executable not found")
+            list_contents()
+            return None
+    else:
+        print("=" * 60)
+        if USE_ASCII_ONLY:
+            print("Minimal build failed!")
+        else:
+            print("❌ Minimal build failed!")
+        print(f"Return code: {return_code}")
+        return None
 def find_standalone_executable():
     """Find standalone executable"""
     dist_dir = Path("dist")
@@ -1525,13 +1911,12 @@ def main():
     parser.add_argument("--jobs", type=int, help="Number of CPU threads to use (default: CPU count - 1)")
     parser.add_argument("--max-cpu", action="store_true", help="Use all available CPU cores with oversubscription")
     parser.add_argument("--turbo", action="store_true", help="Use turbo mode - maximum CPU with high priority")
-    parser.add_argument("--build-type", type=int, choices=[1, 2, 3, 4], help="Build type: 1=onefile, 2=standalone, 3=debug, 4=both silent")
+    parser.add_argument("--build-type", type=int, choices=[1, 2, 3, 4, 5], help="Build type: 1=onefile, 2=standalone, 3=debug, 4=both silent, 5=minimal")
     parser.add_argument("--ascii", action="store_true", help="Use ASCII output instead of Unicode symbols")
     
     # Parse args but keep default behavior if not specified
     args, remaining_args = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + remaining_args
-    
     
     if args.ascii:
         USE_ASCII_ONLY = True
@@ -1587,7 +1972,7 @@ def main():
         ]
     )
     
-    logging.info("Building silent release version")
+    logging.info("Building release version with improved performance")
     
     # Use command line arg if provided, otherwise prompt
     if args.build_type:
@@ -1600,12 +1985,14 @@ def main():
             print("2. Silent standalone build (directory)")
             print("3. Debug build (with console)")
             print("4. Both silent builds")
+            print("5. Minimal build (fastest, no sympy/scipy)")
         else:
             print("1. 🔇 Silent onefile build (single .exe)")
             print("2. 📁 Silent standalone build (directory)")
             print("3. 🐛 Debug build (with console)")
             print("4. 📦 Both silent builds")
-        choice = input("\nEnter your choice (1-4): ").strip()
+            print("5. ⚡ Minimal build (fastest, no sympy/scipy)")
+        choice = input("\nEnter your choice (1-5): ").strip()
     
     success = False
     
@@ -1622,11 +2009,15 @@ def main():
             print("🐛 Debug build option temporarily disabled while fixing compatibility issues")
         success = False
     elif choice == "4":
-        print("\n🔇 Building onefile version...")
+        print("\n" + ("Building onefile version..." if USE_ASCII_ONLY else "🔇 Building onefile version..."))
         onefile_exe = build_self_contained_version(jobs=jobs, priority=process_priority)
-        print("\n📁 Building standalone version...")
+        print("\n" + ("Building standalone version..." if USE_ASCII_ONLY else "📁 Building standalone version..."))
         standalone_exe = build_standalone_version(jobs=jobs, priority=process_priority)
         success = onefile_exe is not None or standalone_exe is not None
+    elif choice == "5":
+        print("\n" + ("Building minimal version (fastest)..." if USE_ASCII_ONLY else "⚡ Building minimal version (fastest)..."))
+        exe_path = build_minimal_version(jobs=jobs, priority=process_priority)
+        success = exe_path is not None
     else:
         if USE_ASCII_ONLY:
             print("Invalid choice!")
@@ -1640,27 +2031,41 @@ def main():
             print("Build completed successfully!")
         else:
             print("🎉 Build completed successfully!")
-        if choice in ("1", "4"):
+        
+        if choice == "5":
+            if USE_ASCII_ONLY:
+                print("MINIMAL BUILD: Fast compilation without heavy mathematical libraries")
+                print("   Included: Basic manim, customtkinter, PIL, numpy")
+                print("   Excluded: sympy, scipy, all tests, benchmarks")
+                print("   Result: Much faster compilation time")
+            else:
+                print("⚡ MINIMAL BUILD: Fast compilation without heavy mathematical libraries")
+                print("   ✅ Included: Basic manim, customtkinter, PIL, numpy")
+                print("   🚫 Excluded: sympy, scipy, all tests, benchmarks")
+                print("   🚀 Result: Much faster compilation time")
+        else:
             if USE_ASCII_ONLY:
                 print("GUARANTEE: The release version will NEVER show console windows")
                 print("   Main app: Silent")
                 print("   Manim operations: Hidden")
                 print("   Package installs: Silent")
                 print("   All operations: Invisible")
-                print("Professional desktop application ready!")
             else:
                 print("🔇 GUARANTEE: The release version will NEVER show console windows")
                 print("   ✅ Main app: Silent")
                 print("   ✅ Manim operations: Hidden")
                 print("   ✅ Package installs: Silent")
                 print("   ✅ All operations: Invisible")
-                print("🚀 Professional desktop application ready!")
+        
+        if USE_ASCII_ONLY:
+            print("Professional desktop application ready!")
+        else:
+            print("🚀 Professional desktop application ready!")
     else:
         if USE_ASCII_ONLY:
             print("Build failed!")
         else:
             print("❌ Build failed!")
         sys.exit(1)
-
 if __name__ == "__main__":
     main()
