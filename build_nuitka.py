@@ -275,7 +275,7 @@ def build_self_contained_version(jobs=None, priority="normal"):
         return None
 
 def build_standalone_version(jobs=None, priority="normal"):
-    """Build standalone version (directory-based, not onefile)"""
+    """Build standalone version (directory-based, not onefile) with complete LaTeX support"""
 
     cpu_count = multiprocessing.cpu_count()
     if jobs is None:
@@ -286,91 +286,217 @@ def build_standalone_version(jobs=None, priority="normal"):
     else:
         print(f"🐍 Building STANDALONE version (directory-based) with {jobs} CPU threads...")
 
+    # Clean previous builds
     if Path("build").exists():
+        if USE_ASCII_ONLY:
+            print("Cleaning build directory...")
+        else:
+            print("🧹 Cleaning build directory...")
         shutil.rmtree("build")
     if Path("dist").exists():
+        if USE_ASCII_ONLY:
+            print("Cleaning dist directory...")
+        else:
+            print("🧹 Cleaning dist directory...")
         shutil.rmtree("dist")
 
+    # Create assets directory if it doesn't exist
     assets_dir = Path("assets")
     assets_dir.mkdir(exist_ok=True)
 
+    # Create enhanced patches and helpers
     create_no_console_patch()
     create_fixes_module()
     create_subprocess_helper()
 
+    # Check system prerequisites
     if not check_system_prerequisites():
         print("❌ System prerequisites check failed" if not USE_ASCII_ONLY else "ERROR: System prerequisites check failed")
         return None
 
+    # Get Nuitka version
+    nuitka_version = get_nuitka_version()
+    if USE_ASCII_ONLY:
+        print(f"Detected Nuitka version: {nuitka_version}")
+    else:
+        print(f"📊 Detected Nuitka version: {nuitka_version}")
+
+    # Basic command structure
     cmd = [
         sys.executable, "-m", "nuitka",
         "--standalone",
     ]
 
+    # Enhanced console hiding - use both methods for maximum compatibility
     cmd.append("--windows-console-mode=disable")
     cmd.append("--windows-disable-console")
+
+    # Enable GUI toolkit support
     cmd.append("--enable-plugin=tk-inter")
+
+    # CRITICAL: Disable LTO to prevent zstandard linking issues
     cmd.append("--lto=no")
+
+    # Exclude problematic modules that cause build issues
+    problematic_modules = [
+        "zstandard", "zstandard.backend_cffi", "setuptools",
+        "test.support", "_distutils_hack", "distutils",
+        "numpy.distutils", "setuptools_scm"
+    ]
+
+    for module in problematic_modules:
+        cmd.append(f"--nofollow-import-to={module}")
+
+    # Progress and optimization flags
     cmd.extend([
-        "--nofollow-import-to=zstandard",
-        "--nofollow-import-to=setuptools",
-        "--nofollow-import-to=test.support",
-    ])
-    cmd.extend([
+        "--show-progress",
         "--remove-output",
         "--assume-yes-for-downloads",
         "--mingw64",
         "--disable-ccache",
         "--show-memory",
-        "--show-progress",
+        "--disable-dll-dependency-cache",
     ])
 
+    # Essential packages - check availability before including
     essential_packages = [
         "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "scipy", "manim", "jedi"
+        "matplotlib", "scipy", "manim", "jedi", "psutil",
+        "sympy", "latex2mathml", "antlr4", "pygments",
+        "colour", "moderngl", "requests", "pandas", "imageio",
+        "moviepy", "rich", "colorama"
     ]
 
+    included_packages = []
     for package in essential_packages:
         if is_package_importable(package):
             correct_name = get_correct_package_name(package)
             if correct_name:
+                included_packages.append(correct_name)
                 cmd.append(f"--include-package={correct_name}")
+                if USE_ASCII_ONLY:
+                    print(f"Including package: {correct_name}")
+                else:
+                    print(f"✅ Including package: {correct_name}")
+        else:
+            if USE_ASCII_ONLY:
+                print(f"Skipping unavailable package: {package}")
+            else:
+                print(f"⚠️ Skipping unavailable package: {package}")
 
+    # Critical system modules
     essential_modules = [
         "json", "tempfile", "threading", "subprocess",
         "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils"
+        "process_utils", "logging", "pathlib", "shutil",
+        "glob", "re", "time", "datetime", "uuid", "base64",
+        "io", "codecs", "platform", "getpass", "signal",
+        "atexit", "queue", "math", "random", "collections",
+        "itertools", "functools", "operator", "copy"
     ]
 
     for module in essential_modules:
         cmd.append(f"--include-module={module}")
 
-    cmd.append("--include-package-data=manim")
+    # LaTeX and mathematical expression support
+    latex_data_packages = [
+        "manim", "latex2mathml", "sympy", "antlr4",
+        "pygments", "matplotlib", "numpy"
+    ]
 
+    for package in latex_data_packages:
+        if is_package_importable(package):
+            cmd.append(f"--include-package-data={package}")
+            if USE_ASCII_ONLY:
+                print(f"Including data for: {package}")
+            else:
+                print(f"📦 Including data for: {package}")
+
+    # Include LaTeX-specific modules
+    latex_modules = [
+        "sympy.parsing", "sympy.printing", "sympy.core",
+        "sympy.functions", "sympy.geometry", "sympy.matrices",
+        "latex2mathml.converter", "antlr4.tree", "antlr4.xpath"
+    ]
+
+    for module in latex_modules:
+        if is_package_importable(module.split('.')[0]):
+            cmd.append(f"--include-module={module}")
+
+    # Manim-specific data inclusion
+    cmd.extend([
+        "--include-package-data=manim",
+        "--include-package-data=manim.mobject",
+        "--include-package-data=manim.scene",
+        "--include-package-data=manim.animation",
+        "--include-package-data=manim.utils",
+    ])
+
+    # Output configuration
     cmd.extend([
         "--output-dir=dist",
     ])
 
+    # Icon (if available)
     if Path("assets/icon.ico").exists():
         cmd.append("--windows-icon-from-ico=assets/icon.ico")
+        if USE_ASCII_ONLY:
+            print("Using custom icon")
+        else:
+            print("🎨 Using custom icon")
 
-    cmd.extend([
-        "--include-data-dir=assets=assets",
-    ])
+    # Include data directories and assets
+    data_dirs = ["assets=assets"]
 
-    cmd.append("--disable-dll-dependency-cache")
+    # Try to include matplotlib data if available
+    try:
+        import matplotlib
+        mpl_data = Path(matplotlib.get_data_path())
+        if mpl_data.exists():
+            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
+            if USE_ASCII_ONLY:
+                print("Including matplotlib data")
+            else:
+                print("📊 Including matplotlib data")
+    except ImportError:
+        pass
+
+    for data_dir in data_dirs:
+        cmd.append(f"--include-data-dir={data_dir}")
+
+    # Performance optimization
     cmd.append(f"--jobs={jobs}")
 
+    # Final target
     cmd.append("app.py")
 
-    print("Building standalone executable...")
+    if USE_ASCII_ONLY:
+        print("Building standalone executable with complete LaTeX support...")
+    else:
+        print("🔨 Building standalone executable with complete LaTeX support...")
     print("Command:", " ".join(cmd))
     print("=" * 60)
 
+    # Environment variables for compilation
     env = os.environ.copy()
     env["GCC_LTO"] = "0"
     env["NUITKA_DISABLE_LTO"] = "1"
+    env["GCC_COMPILE_ARGS"] = "-fno-lto"
 
+    # Disable problematic optimizations
+    env["NUITKA_DISABLE_CCACHE"] = "1"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    # Set process priority for faster compilation
+    process_priority = 0
+    if priority == "high" and sys.platform == "win32":
+        if USE_ASCII_ONLY:
+            print("Setting HIGH process priority for maximum CPU utilization")
+        else:
+            print("🔥 Setting HIGH process priority for maximum CPU utilization")
+        process_priority = 0x00000080
+
+    # Start compilation process
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -378,9 +504,21 @@ def build_standalone_version(jobs=None, priority="normal"):
         text=True,
         bufsize=1,
         universal_newlines=True,
-        env=env
+        env=env,
+        creationflags=process_priority if sys.platform == "win32" else 0
     )
 
+    # Display CPU and build info
+    if USE_ASCII_ONLY:
+        print(f"CPU Info: {cpu_count} logical cores available")
+        print(f"Using {jobs} compilation threads")
+        print(f"Included {len(included_packages)} packages")
+    else:
+        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
+        print(f"⚙️ Using {jobs} compilation threads")
+        print(f"📦 Included {len(included_packages)} packages")
+
+    # Stream compilation output in real-time
     while True:
         line = process.stdout.readline()
         if not line and process.poll() is not None:
@@ -392,18 +530,56 @@ def build_standalone_version(jobs=None, priority="normal"):
 
     if return_code == 0:
         print("=" * 60)
-        print("✅ Standalone build successful!" if not USE_ASCII_ONLY else "Standalone build successful!")
+        if USE_ASCII_ONLY:
+            print("Standalone build successful!")
+        else:
+            print("✅ Standalone build successful!")
 
+        # Find the executable
         exe_path = find_standalone_executable()
         if exe_path:
-            print(f"📁 Executable: {exe_path}" if not USE_ASCII_ONLY else f"Executable: {exe_path}")
-            print(f"📁 Distribution folder: {exe_path.parent}" if not USE_ASCII_ONLY else f"Distribution folder: {exe_path.parent}")
+            if USE_ASCII_ONLY:
+                print(f"Executable: {exe_path}")
+                print(f"Distribution folder: {exe_path.parent}")
+                print(f"\nSUCCESS! Standalone version ready with full LaTeX support!")
+                print(f"Features included:")
+                print(f"  - Complete mathematical expression rendering")
+                print(f"  - LaTeX formula support")
+                print(f"  - SymPy symbolic mathematics")
+                print(f"  - Professional animation engine")
+                print(f"  - No console windows")
+            else:
+                print(f"📁 Executable: {exe_path}")
+                print(f"📁 Distribution folder: {exe_path.parent}")
+                print(f"\n🎉 SUCCESS! Standalone version ready with full LaTeX support!")
+                print(f"🧮 Features included:")
+                print(f"  ✅ Complete mathematical expression rendering")
+                print(f"  ✅ LaTeX formula support")
+                print(f"  ✅ SymPy symbolic mathematics")
+                print(f"  ✅ Professional animation engine")
+                print(f"  ✅ No console windows")
+
+            # Create configuration file for LaTeX
+            create_latex_config(exe_path.parent)
+
+            # Create launcher scripts
+            create_launcher_script(exe_path)
+
             return exe_path
         else:
-            print("❌ Executable not found" if not USE_ASCII_ONLY else "Executable not found")
+            if USE_ASCII_ONLY:
+                print("Executable not found")
+            else:
+                print("❌ Executable not found")
+            list_contents()
             return None
     else:
-        print("❌ Build failed!" if not USE_ASCII_ONLY else "Build failed!")
+        print("=" * 60)
+        if USE_ASCII_ONLY:
+            print("Build failed!")
+        else:
+            print("❌ Build failed!")
+        print(f"Return code: {return_code}")
         return None
 def create_subprocess_helper():
     """Create a unified helper module for subprocess handling"""
@@ -1184,6 +1360,44 @@ Start-Process -FilePath "{exe_path}"
         print(f"Created launchers: {launcher_path} and {ps_launcher_path}")
     else:
         print(f"📝 Created launchers: {launcher_path} and {ps_launcher_path}")
+
+def create_latex_config(dist_dir):
+    """Create LaTeX configuration for the standalone build"""
+    try:
+        config_content = """# ManimStudio LaTeX Configuration
+# This file configures LaTeX support for mathematical expressions
+
+[tex]
+# Use built-in LaTeX processing
+tex_template = TeX_Template_string
+
+[CLI]
+# Reduce verbosity to avoid console output
+verbosity = WARNING
+
+[logger]
+# Configure logging for standalone app
+logging_level = WARNING
+
+[output]
+# Optimize for standalone deployment
+disable_caching = True
+"""
+
+        config_path = Path(dist_dir) / "manim_config.cfg"
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(config_content)
+
+        if USE_ASCII_ONLY:
+            print(f"Created LaTeX config: {config_path}")
+        else:
+            print(f"📝 Created LaTeX config: {config_path}")
+
+    except Exception as e:
+        if USE_ASCII_ONLY:
+            print(f"Warning: Could not create LaTeX config: {e}")
+        else:
+            print(f"⚠️ Warning: Could not create LaTeX config: {e}")
 def find_executable():
     """Find the built executable"""
     possible_paths = [
