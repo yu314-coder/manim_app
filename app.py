@@ -175,14 +175,56 @@ REQUIRED_PACKAGES = ["manim", "numpy", "PIL", "cv2", "customtkinter"]
 
 # Hard coded package lists for environment setup
 ESSENTIAL_PACKAGES_FOR_SETUP = [
+    # Core animation engine
     "manim",
+
+    # Essential numerical and scientific computing
     "numpy>=1.22.0",
     "matplotlib>=3.5.0",
+    "scipy>=1.8.0",
+
+    # Development and IDE support
     "jedi>=0.18.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+
+    # GUI framework
     "customtkinter>=5.2.0",
+
+    # Image and video processing
     "Pillow>=9.0.0",
     "opencv-python>=4.6.0",
+    "imageio>=2.19.0",
+    "moviepy>=1.0.3",
+
+    # System utilities
     "psutil>=5.9.0",
+
+    # LaTeX and mathematical expression support
+    "latex2mathml>=3.75.0",
+    "sympy>=1.11.0",
+    "antlr4-python3-runtime>=4.11.0",
+
+    # Data analysis (commonly used with Manim)
+    "pandas>=1.4.0",
+
+    # Network and utilities
+    "requests>=2.28.0",
+
+    # Package management essentials
+    "pip>=23.0.0",
+    "setuptools>=65.0.0",
+    "wheel>=0.38.0",
+
+    # Color and text utilities
+    "colorama>=0.4.4",
+    "rich>=13.0.0",
+
+    # Additional math and rendering support
+    "pygments>=2.13.0",
+    "colour>=0.1.5",
+    "moderngl>=5.6.0",
+    "moderngl-window>=2.4.0",
 ]
 
 OPTIONAL_PACKAGES_FOR_SETUP = [
@@ -11086,7 +11128,84 @@ else:
         
         # Start installing the first package
         install_package()
-        
+
+    def setup_latex_support(self):
+        """Setup LaTeX support for Manim"""
+        try:
+            self.append_output("Setting up LaTeX support for mathematical expressions...\n")
+
+            latex_commands = ["latex", "pdflatex", "xelatex", "lualatex"]
+            latex_found = False
+
+            for cmd in latex_commands:
+                try:
+                    result = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        self.append_output(f"Found {cmd}: {result.stdout.split()[0]}\n")
+                        latex_found = True
+                        break
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    continue
+
+            if not latex_found:
+                if os.name == 'nt':
+                    self.append_output("LaTeX not found. Installing MiKTeX (portable)...\n")
+                    self.install_portable_latex()
+                else:
+                    self.append_output("""LaTeX not found. Please install LaTeX:
+Ubuntu/Debian: sudo apt-get install texlive-full
+macOS: brew install --cask mactex
+or install MiKTeX from: https://miktex.org/download
+""")
+
+            self.configure_manim_latex()
+
+        except Exception as e:
+            self.append_output(f"Warning: Could not setup LaTeX support: {e}\n")
+
+    def install_portable_latex(self):
+        """Install portable LaTeX for Windows"""
+        try:
+            install_commands = [
+                [self.venv_manager.pip_path, "install", "latex2mathml"],
+                [self.venv_manager.pip_path, "install", "sympy"],
+            ]
+
+            for cmd in install_commands:
+                self.append_output(f"Running: {' '.join(cmd)}\n")
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                if result.stdout:
+                    self.append_output(result.stdout)
+                if result.stderr:
+                    self.append_output(result.stderr)
+
+            self.append_output("Installed Python-based LaTeX support\n")
+
+        except Exception as e:
+            self.append_output(f"Could not install portable LaTeX: {e}\n")
+
+    def configure_manim_latex(self):
+        """Configure Manim to work without system LaTeX if needed"""
+        try:
+            config_content = """[tex]
+tex_template = TeX_Template_string
+
+[CLI]
+verbosity = WARNING
+"""
+
+            config_dir = os.path.join(os.path.expanduser("~"), ".manim")
+            os.makedirs(config_dir, exist_ok=True)
+
+            config_path = os.path.join(config_dir, "manim.cfg")
+            with open(config_path, "w") as f:
+                f.write(config_content)
+
+            self.append_output(f"Created Manim config at: {config_path}\n")
+
+        except Exception as e:
+            self.append_output(f"Could not configure Manim: {e}\n")
+
     # Help functions
     def open_manim_docs(self):
         """Open Manim documentation"""
