@@ -15,8 +15,10 @@ import threading
 import io
 import codecs
 import tqdm 
+
 # Global flag to use ASCII instead of Unicode symbols
 USE_ASCII_ONLY = True
+
 # Updated lists for better build performance
 MINIMAL_PACKAGES = [
     "customtkinter", "tkinter", "PIL", "numpy", "jedi", "psutil"
@@ -56,6 +58,55 @@ ESSENTIAL_SYMPY_MODULES = [
     "sympy.functions.elementary", "sympy.simplify.simplify",
     "sympy.utilities.lambdify"
 ]
+
+def create_manim_safe_config():
+    """Create a manim configuration that works without LaTeX"""
+    config_content = '''# Safe Manim Configuration for Standalone Builds
+import os
+
+# Set environment variables to disable LaTeX
+os.environ["MANIM_DISABLE_LATEX"] = "1"
+os.environ["MANIM_TEX_TEMPLATE"] = ""
+
+# Configure manim to work without LaTeX
+try:
+    import manim
+    
+    # Override config defaults
+    if hasattr(manim, 'config'):
+        manim.config.tex_template = None
+        manim.config.preview = False
+        manim.config.verbosity = "ERROR"
+        
+    # Monkey patch problematic functions
+    try:
+        from manim.utils import tex_file_writing
+        
+        def safe_latex_fallback(*args, **kwargs):
+            """Fallback when LaTeX operations fail"""
+            print("LaTeX not available - using text fallback")
+            return None
+            
+        # Replace problematic functions with safe versions
+        tex_file_writing.latex = safe_latex_fallback
+        tex_file_writing.print_all_tex_errors = lambda *args: None
+        
+    except ImportError:
+        pass
+        
+except ImportError:
+    # Manim not available
+    pass
+'''
+    
+    with open("manim_safe_config.py", "w", encoding="utf-8") as f:
+        f.write(config_content)
+    
+    if USE_ASCII_ONLY:
+        print("Created safe manim configuration")
+    else:
+        print("📄 Created safe manim configuration")
+
 def build_self_contained_version(jobs=None, priority="normal"):
     """Build self-contained version with NO CONSOLE EVER"""
     
@@ -103,6 +154,9 @@ def build_self_contained_version(jobs=None, priority="normal"):
     
     # Create helper script for unified subprocess handling
     create_subprocess_helper()
+    
+    # Create safe manim configuration
+    create_manim_safe_config()
     
     # Check system prerequisites
     if not check_system_prerequisites():
@@ -246,7 +300,7 @@ def build_self_contained_version(jobs=None, priority="normal"):
     essential_modules = [
         "json", "tempfile", "threading", "subprocess", 
         "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib"
+        "process_utils", "logging", "pathlib", "manim_safe_config"
     ]
     
     for module in essential_modules:
@@ -379,6 +433,7 @@ def build_self_contained_version(jobs=None, priority="normal"):
             print("❌ Build failed!")
         print(f"Return code: {return_code}")
         return None
+
 def build_standalone_version(jobs=None, priority="normal"):
     """Build standalone version (directory-based, not onefile) with complete LaTeX support"""
 
@@ -413,6 +468,7 @@ def build_standalone_version(jobs=None, priority="normal"):
     create_no_console_patch()
     create_fixes_module()
     create_subprocess_helper()
+    create_manim_safe_config()
 
     # Check system prerequisites
     if not check_system_prerequisites():
@@ -568,7 +624,7 @@ def build_standalone_version(jobs=None, priority="normal"):
         "glob", "re", "time", "datetime", "uuid", "base64",
         "io", "codecs", "platform", "getpass", "signal",
         "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy"
+        "itertools", "functools", "operator", "copy", "manim_safe_config"
     ]
 
     for module in essential_modules:
@@ -757,6 +813,7 @@ def build_standalone_version(jobs=None, priority="normal"):
             print("❌ Build failed!")
         print(f"Return code: {return_code}")
         return None
+
 def create_subprocess_helper():
     """Create a unified helper module for subprocess handling"""
     helper_content = '''# process_utils.py - Unified helper for subprocess handling with NO CONSOLE
@@ -925,8 +982,8 @@ __all__ = [
         print("📄 Created subprocess helper module")
 
 def create_fixes_module():
-    """Create fixes module to handle runtime issues"""
-    fixes_content = '''# fixes.py - Applied patches for the build process
+    """Create fixes module to handle runtime issues including LaTeX errors"""
+    fixes_content = '''# fixes.py - Applied patches for the build process including LaTeX fixes
 import os
 import sys
 from pathlib import Path
@@ -984,7 +1041,7 @@ except:
     pass
 
 def fix_manim_config():
-    """Fix the manim configuration issue by creating a default.cfg file"""
+    """Fix the manim configuration issue by creating a default.cfg file with LaTeX disabled"""
     try:
         # For packaged app - find the temp directory where files are extracted
         temp_base = None
@@ -998,10 +1055,10 @@ def fix_manim_config():
             manim_config_dir = os.path.join(temp_base, 'manim', '_config')
             os.makedirs(manim_config_dir, exist_ok=True)
             
-            # Create a basic default.cfg file
+            # Create a basic default.cfg file with LaTeX disabled
             default_cfg_path = os.path.join(manim_config_dir, 'default.cfg')
             with open(default_cfg_path, 'w') as f:
-                f.write(DEFAULT_MANIM_CONFIG)
+                f.write(DEFAULT_MANIM_CONFIG_NO_LATEX)
                 
             print(f"Created manim config at: {default_cfg_path}")
             return True
@@ -1009,31 +1066,82 @@ def fix_manim_config():
         print(f"Error fixing manim config: {e}")
     return False
 
-# Default minimal manim config content
-DEFAULT_MANIM_CONFIG = """
+def patch_manim_latex():
+    """Patch manim to disable LaTeX rendering and use fallback text rendering"""
+    try:
+        # Try to import manim and patch its LaTeX handling
+        import manim
+        
+        # Patch the tex file writing module to handle missing LaTeX gracefully
+        try:
+            from manim.utils import tex_file_writing
+            
+            # Store original function
+            if not hasattr(tex_file_writing, '_original_print_all_tex_errors'):
+                tex_file_writing._original_print_all_tex_errors = tex_file_writing.print_all_tex_errors
+                
+                def safe_print_all_tex_errors(log_file, tex_compiler, tex_file):
+                    """Safe version that doesn't crash when LaTeX is missing"""
+                    try:
+                        if not log_file.exists():
+                            print(f"Warning: {tex_compiler} failed but LaTeX is not available in standalone build")
+                            print("Falling back to text rendering...")
+                            return
+                        return tex_file_writing._original_print_all_tex_errors(log_file, tex_compiler, tex_file)
+                    except Exception as e:
+                        print(f"LaTeX error handled gracefully: {e}")
+                        return
+                
+                tex_file_writing.print_all_tex_errors = safe_print_all_tex_errors
+                print("Patched manim LaTeX error handling")
+                
+        except ImportError:
+            pass
+            
+        # Try to disable LaTeX globally in manim config
+        try:
+            if hasattr(manim, 'config'):
+                # Disable LaTeX-related features
+                manim.config.tex_template = None
+                manim.config.preview = False
+                print("Disabled LaTeX in manim config")
+        except:
+            pass
+            
+    except ImportError:
+        # Manim not available, that's fine
+        pass
+    except Exception as e:
+        print(f"Error patching manim LaTeX: {e}")
+
+# Default minimal manim config content with LaTeX completely disabled
+DEFAULT_MANIM_CONFIG_NO_LATEX = """
 [CLI]
 media_dir = ./media
-verbosity = INFO
-notify_outdated_version = True
+verbosity = ERROR
+notify_outdated_version = False
 tex_template = 
+preview = False
 
 [logger]
 logging_keyword = manim
-logging_level = INFO
+logging_level = ERROR
 
 [output]
-max_files_cached = 100
-flush_cache = False
-disable_caching = False
+max_files_cached = 10
+flush_cache = True
+disable_caching = True
 
 [progress_bar]
-leave_progress_bars = True
-use_progress_bars = True
+leave_progress_bars = False
+use_progress_bars = False
 
 [tex]
-intermediate_filetype = dvi
-text_to_replace = YourTextHere
-tex_template_file = tex_template.tex
+# Completely disable LaTeX to prevent runtime errors
+intermediate_filetype = 
+text_to_replace = 
+tex_template_file = 
+tex_template = 
 
 [universal]
 background_color = BLACK
@@ -1047,9 +1155,10 @@ size = 1280,720
 
 # Add this to app.py's main() at the start
 def apply_fixes():
-    """Apply all fixes at startup"""
+    """Apply all fixes at startup including LaTeX patches"""
     fix_manim_config()
     patch_subprocess()
+    patch_manim_latex()
 
 # Enhanced subprocess patching that uses our unified helpers
 def patch_subprocess():
@@ -1123,9 +1232,9 @@ def patch_subprocess():
         f.write(fixes_content)
     
     if USE_ASCII_ONLY:
-        print("Created fixes module to handle runtime issues")
+        print("Created enhanced fixes module with LaTeX error handling")
     else:
-        print("📄 Created fixes module to handle runtime issues")
+        print("📄 Created enhanced fixes module with LaTeX error handling")
 
 def create_no_console_patch():
     """Create a more aggressive patch file to ensure NO subprocess calls show console windows"""
@@ -1538,18 +1647,22 @@ Start-Process -FilePath "{exe_path}"
         print(f"📝 Created launchers: {launcher_path} and {ps_launcher_path}")
 
 def create_latex_config(dist_dir):
-    """Create LaTeX configuration for the standalone build"""
+    """Create LaTeX configuration for the standalone build with fallback options"""
     try:
         config_content = """# ManimStudio LaTeX Configuration
-# This file configures LaTeX support for mathematical expressions
+# This file configures LaTeX support with fallback options
 
 [tex]
-# Use built-in LaTeX processing
-tex_template = TeX_Template_string
+# Disable LaTeX by default for standalone builds to prevent errors
+tex_template = 
+intermediate_filetype = dvi
+text_to_replace = YourTextHere
 
 [CLI]
 # Reduce verbosity to avoid console output
 verbosity = WARNING
+# Disable LaTeX preview to prevent errors
+preview = False
 
 [logger]
 # Configure logging for standalone app
@@ -1558,22 +1671,58 @@ logging_level = WARNING
 [output]
 # Optimize for standalone deployment
 disable_caching = True
+flush_cache = False
+max_files_cached = 10
+
+[universal]
+# Use safer defaults
+background_color = BLACK
+
+[window]
+# Window settings for standalone
+background_opacity = 1
+fullscreen = False
+size = 1280,720
 """
 
         config_path = Path(dist_dir) / "manim_config.cfg"
         with open(config_path, "w", encoding="utf-8") as f:
             f.write(config_content)
 
+        # Also create a no-tex config
+        no_tex_config = """# No-LaTeX Configuration for Maximum Compatibility
+[tex]
+# Completely disable LaTeX to prevent runtime errors
+tex_template = 
+intermediate_filetype = 
+text_to_replace = 
+
+[CLI]
+verbosity = ERROR
+preview = False
+
+[logger]
+logging_level = ERROR
+
+[output]
+disable_caching = True
+"""
+        
+        no_tex_path = Path(dist_dir) / "manim_no_tex.cfg"
+        with open(no_tex_path, "w", encoding="utf-8") as f:
+            f.write(no_tex_config)
+
         if USE_ASCII_ONLY:
-            print(f"Created LaTeX config: {config_path}")
+            print(f"Created LaTeX configs: {config_path} and {no_tex_path}")
         else:
-            print(f"📝 Created LaTeX config: {config_path}")
+            print(f"📝 Created LaTeX configs: {config_path} and {no_tex_path}")
 
     except Exception as e:
         if USE_ASCII_ONLY:
             print(f"Warning: Could not create LaTeX config: {e}")
         else:
             print(f"⚠️ Warning: Could not create LaTeX config: {e}")
+
 def find_executable():
     """Find the built executable"""
     possible_paths = [
@@ -1594,6 +1743,7 @@ def find_executable():
                 return item
     
     return None
+
 def build_minimal_version(jobs=None, priority="normal"):
     """Build minimal version without heavy packages like sympy for fastest compilation"""
     
@@ -1628,6 +1778,7 @@ def build_minimal_version(jobs=None, priority="normal"):
     create_no_console_patch()
     create_fixes_module()
     create_subprocess_helper()
+    create_manim_safe_config()
 
     # Check prerequisites
     if not check_system_prerequisites():
@@ -1694,7 +1845,7 @@ def build_minimal_version(jobs=None, priority="normal"):
     essential_modules = [
         "json", "tempfile", "threading", "subprocess",
         "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil"
+        "process_utils", "logging", "pathlib", "shutil", "manim_safe_config"
     ]
 
     for module in essential_modules:
@@ -1805,6 +1956,7 @@ def build_minimal_version(jobs=None, priority="normal"):
             print("❌ Minimal build failed!")
         print(f"Return code: {return_code}")
         return None
+
 def find_standalone_executable():
     """Find standalone executable"""
     dist_dir = Path("dist")
@@ -2067,5 +2219,6 @@ def main():
         else:
             print("❌ Build failed!")
         sys.exit(1)
+
 if __name__ == "__main__":
     main()

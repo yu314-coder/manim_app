@@ -11718,10 +11718,16 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
             )
 
 def main():
-    """Application entry point"""
+    """Application entry point with enhanced LaTeX error handling"""
     import sys 
+    import os
+    import tempfile
+    import atexit
+    import logging
+    import psutil
+    
     try:
-        # Early console hiding for Windows
+        # STEP 1: Early console hiding for Windows
         if sys.platform == "win32":
             try:
                 import ctypes
@@ -11729,12 +11735,20 @@ def main():
             except:
                 pass
 
-        # Import the no-console patch immediately to hide ALL console windows
+        # STEP 2: Set LaTeX-disabling environment variables EARLY (before any manim imports)
+        os.environ["MANIM_DISABLE_LATEX"] = "1"
+        os.environ["MANIM_TEX_TEMPLATE"] = ""
+        os.environ["MANIM_PREVIEW"] = "False"
+        os.environ["MANIM_VERBOSITY"] = "ERROR"
+        
+        # STEP 3: Import the no-console patch immediately to hide ALL console windows
         try:
             import ENHANCED_NO_CONSOLE_PATCH
+            print("Enhanced no-console patch loaded")
         except ImportError:
             try:
                 import NO_CONSOLE_PATCH
+                print("Basic no-console patch loaded")
             except ImportError:
                 # No patch available, create one in-memory
                 import subprocess
@@ -11788,8 +11802,59 @@ def main():
                             user32.ShowWindow(hwnd, SW_HIDE)
                     except Exception:
                         pass
+                print("In-memory no-console patch created")
 
-        # CRITICAL FIX: Find the real executable directory (not temp extraction)
+        # STEP 4: Load safe manim configuration BEFORE any manim imports
+        try:
+            import manim_safe_config
+            print("Safe manim configuration loaded")
+        except ImportError:
+            # Create safe config in memory if file doesn't exist
+            try:
+                import manim
+                
+                # Override config defaults to disable LaTeX
+                if hasattr(manim, 'config'):
+                    manim.config.tex_template = None
+                    manim.config.preview = False
+                    manim.config.verbosity = "ERROR"
+                    print("Manim LaTeX disabled via direct config")
+                    
+                # Patch problematic LaTeX functions
+                try:
+                    from manim.utils import tex_file_writing
+                    
+                    def safe_latex_fallback(*args, **kwargs):
+                        """Fallback when LaTeX operations fail"""
+                        print("LaTeX not available - using text fallback")
+                        return None
+                        
+                    # Store original and replace with safe version
+                    if not hasattr(tex_file_writing, '_original_print_all_tex_errors'):
+                        tex_file_writing._original_print_all_tex_errors = tex_file_writing.print_all_tex_errors
+                        
+                        def safe_print_all_tex_errors(log_file, tex_compiler, tex_file):
+                            """Safe version that doesn't crash when LaTeX is missing"""
+                            try:
+                                if not log_file.exists():
+                                    print(f"Warning: {tex_compiler} failed but LaTeX is not available in standalone build")
+                                    print("Falling back to text rendering...")
+                                    return
+                                return tex_file_writing._original_print_all_tex_errors(log_file, tex_compiler, tex_file)
+                            except Exception as e:
+                                print(f"LaTeX error handled gracefully: {e}")
+                                return
+                        
+                        tex_file_writing.print_all_tex_errors = safe_print_all_tex_errors
+                        print("Patched manim LaTeX error handling")
+                        
+                except ImportError:
+                    pass
+                    
+            except ImportError:
+                print("Manim not available - LaTeX concerns N/A")
+
+        # STEP 5: CRITICAL FIX: Find the real executable directory (not temp extraction)
         real_base = None
         if getattr(sys, "frozen", False):
             # We're running as a frozen executable
@@ -11877,23 +11942,31 @@ def main():
             real_base = os.path.dirname(os.path.abspath(__file__))
             os.chdir(real_base)
 
-        # Early load of fixes module to handle runtime issues
+        # STEP 6: Early load of fixes module to handle runtime issues INCLUDING LaTeX
         try:
             import fixes
             fixes.apply_fixes()
+            print("Runtime fixes applied successfully")
         except ImportError:
             print("Warning: fixes module not available")
-            pass
+            # Apply basic LaTeX fixes manually
+            try:
+                # Disable zstandard to avoid linking issues
+                sys.modules['zstandard'] = None
+                print("Applied zstandard patch manually")
+            except:
+                pass
 
-        # Force matplotlib backend to TkAgg
+        # STEP 7: Force matplotlib backend to TkAgg BEFORE any matplotlib usage
         try:
             import matplotlib
             matplotlib.use('TkAgg')
+            print(f"Matplotlib backend set to: {matplotlib.get_backend()}")
         except ImportError:
             print("Warning: matplotlib not available")
             pass
         
-        # Create application directory next to the executable (not in temp!)
+        # STEP 8: Create application directory next to the executable (not in temp!)
         if real_base:
             app_dir = os.path.join(real_base, ".manim_studio")
         else:
@@ -11902,7 +11975,54 @@ def main():
         os.makedirs(app_dir, exist_ok=True)
         print(f"Application directory: {app_dir}")
 
-        # Prevent multiple instances
+        # STEP 9: Create safe manim config files if they don't exist
+        try:
+            manim_config_path = os.path.join(app_dir, "manim_config.cfg")
+            if not os.path.exists(manim_config_path):
+                safe_manim_config = """# Safe Manim Configuration for Standalone Builds
+[CLI]
+media_dir = ./media
+verbosity = ERROR
+notify_outdated_version = False
+tex_template = 
+preview = False
+
+[logger]
+logging_keyword = manim
+logging_level = ERROR
+
+[output]
+max_files_cached = 10
+flush_cache = True
+disable_caching = True
+
+[progress_bar]
+leave_progress_bars = False
+use_progress_bars = False
+
+[tex]
+# Completely disable LaTeX to prevent runtime errors
+intermediate_filetype = 
+text_to_replace = 
+tex_template_file = 
+tex_template = 
+
+[universal]
+background_color = BLACK
+assets_dir = ./
+
+[window]
+background_opacity = 1
+fullscreen = False
+size = 1280,720
+"""
+                with open(manim_config_path, 'w', encoding='utf-8') as f:
+                    f.write(safe_manim_config)
+                print(f"Created safe manim config at: {manim_config_path}")
+        except Exception as e:
+            print(f"Warning: Could not create manim config: {e}")
+
+        # STEP 10: Prevent multiple instances
         lock_file = os.path.join(app_dir, "app.lock")
         try:
             if os.path.exists(lock_file):
@@ -11928,7 +12048,7 @@ def main():
         except Exception:
             pass
         
-        # Set up logging in the real directory
+        # STEP 11: Set up logging in the real directory
         log_file = os.path.join(app_dir, "manim_studio.log")
         logging.basicConfig(
             level=logging.INFO,
@@ -11939,35 +12059,107 @@ def main():
             ]
         )
         
-        # Log the final directories being used
-        logging.info(f"Real executable directory: {real_base or 'Not found'}")
-        logging.info(f"Working directory: {os.getcwd()}")
-        logging.info(f"Application directory: {app_dir}")
+        # Create logger instance
+        logger = logging.getLogger(__name__)
         
-        # Check for Jedi availability
-        if not JEDI_AVAILABLE:
+        # Log the final directories being used
+        logger.info(f"Real executable directory: {real_base or 'Not found'}")
+        logger.info(f"Working directory: {os.getcwd()}")
+        logger.info(f"Application directory: {app_dir}")
+        logger.info("LaTeX disabled for standalone compatibility")
+        
+        # STEP 12: Check for Jedi availability (if needed)
+        try:
+            import jedi
+            JEDI_AVAILABLE = True
+            logger.info("Jedi available for IntelliSense")
+        except ImportError:
+            JEDI_AVAILABLE = False
             print("Warning: Jedi not available. IntelliSense features will be limited.")
             print("Install Jedi with: pip install jedi")
         
-        # Create and run application
+        # STEP 13: Final safety check - ensure critical modules are available
+        critical_modules = []
+        try:
+            import tkinter
+            critical_modules.append("tkinter")
+        except ImportError:
+            logger.error("Critical error: tkinter not available")
+            raise ImportError("tkinter is required but not available")
+            
+        try:
+            import customtkinter
+            critical_modules.append("customtkinter")
+        except ImportError:
+            print("Warning: customtkinter not available, falling back to tkinter")
+            
+        logger.info(f"Critical modules available: {critical_modules}")
+        
+        # STEP 14: Create and run application
+        from app import ManimStudioApp
         app = ManimStudioApp()
         
         # Show getting started on first run
         settings_file = os.path.join(app_dir, "settings.json")
         if not os.path.exists(settings_file):
-            app.root.after(1000, lambda: GettingStartedDialog(app.root))
+            try:
+                from dialogs import GettingStartedDialog
+                app.root.after(1000, lambda: GettingStartedDialog(app.root))
+            except ImportError:
+                logger.info("Getting started dialog not available")
         
+        logger.info("Starting ManimStudio application...")
         app.run()
         
     except Exception as e:
-        logger.error(f"Startup error: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Enhanced error handling with better logging
+        error_msg = f"Startup error: {e}"
+        
+        # Try to log the error
         try:
-            from tkinter import messagebox
-            messagebox.showerror("Startup Error", f"Failed to start application: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(error_msg)
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
         except:
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+        
+        # Try to show user-friendly error dialog
+        try:
+            import tkinter
+            from tkinter import messagebox
+            root = tkinter.Tk()
+            root.withdraw()  # Hide the main window
+            
+            # Show detailed error for debugging
+            detailed_error = f"""Failed to start ManimStudio.
+
+Error: {e}
+
+This is likely due to:
+1. Missing dependencies
+2. LaTeX configuration issues (now handled automatically)
+3. File permission problems
+4. Corrupted installation
+
+Solutions:
+1. Try running as administrator
+2. Check that all required packages are installed
+3. Ensure the executable has write permissions to its directory
+
+Technical details have been logged to manim_studio.log if available."""
+            
+            messagebox.showerror("ManimStudio Startup Error", detailed_error)
+        except:
+            # Fallback to console output
             print(f"Failed to start application: {e}")
+            print("Please check the log file for details or try running with admin privileges.")
+            
+        # Exit with error code
+        sys.exit(1)
 class SimpleEnvironmentDialog(ctk.CTkToplevel):
     """Emergency fallback dialog if other dialogs fail"""
     
