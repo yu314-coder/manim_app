@@ -56,7 +56,13 @@ except:
     pass
 
 def fix_manim_config():
-    """Fix the manim configuration issue by creating a default.cfg file"""
+    """Fix the manim configuration issue by creating a default.cfg file
+    and a minimal TeX template that does not rely on the ``standalone``
+    LaTeX class.  The template is written to ``tex_template.tex`` in the
+    same directory as ``default.cfg`` and the path is exposed via the
+    ``MANIM_TEX_TEMPLATE_PATH`` environment variable so that Manim can
+    pick it up at runtime.
+    """
     try:
         # For packaged app - find the temp directory where files are extracted
         temp_base = None
@@ -69,12 +75,22 @@ def fix_manim_config():
             # Create manim config directory
             manim_config_dir = os.path.join(temp_base, 'manim', '_config')
             os.makedirs(manim_config_dir, exist_ok=True)
-            
+
             # Create a basic default.cfg file
             default_cfg_path = os.path.join(manim_config_dir, 'default.cfg')
             with open(default_cfg_path, 'w') as f:
                 f.write(DEFAULT_MANIM_CONFIG)
-                
+
+            # Write minimal LaTeX template that works without the
+            # ``standalone`` package.  This prevents the common
+            # "standalone not found" error when LaTeX is incomplete.
+            template_path = os.path.join(manim_config_dir, 'tex_template.tex')
+            with open(template_path, 'w', encoding='utf-8') as f:
+                f.write(BASIC_TEX_TEMPLATE)
+
+            # Expose the template path so other modules can use it
+            os.environ['MANIM_TEX_TEMPLATE_PATH'] = template_path
+
             print(f"Created manim config at: {default_cfg_path}")
             return True
     except Exception as e:
@@ -87,7 +103,7 @@ DEFAULT_MANIM_CONFIG = """
 media_dir = ./media
 verbosity = INFO
 notify_outdated_version = True
-tex_template = 
+tex_template =
 
 [logger]
 logging_keyword = manim
@@ -117,11 +133,25 @@ fullscreen = False
 size = 1280,720
 """
 
+# Minimal LaTeX template that does not require the ``standalone``
+# document class.  Used when generating the temporary Manim
+# configuration for the packaged application.
+BASIC_TEX_TEMPLATE = r"""
+\documentclass[preview]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage[english]{babel}
+\begin{document}
+YourTextHere
+\end{document}
+"""
+
 # Add this to app.py's main() at the start
 def apply_fixes():
     """Apply all fixes at startup"""
     fix_manim_config()
     patch_subprocess()
+    patch_manim_latex()
 
 # Enhanced subprocess patching that uses our unified helpers
 def patch_subprocess():
@@ -187,4 +217,24 @@ def patch_subprocess():
         return True
     except Exception as e:
         print(f"Error patching subprocess: {e}")
+        return False
+
+
+def patch_manim_latex():
+    """Apply custom LaTeX template if available."""
+    try:
+        template_path = os.environ.get('MANIM_TEX_TEMPLATE_PATH')
+        if not template_path or not os.path.exists(template_path):
+            return False
+
+        import manim
+        from manim.utils.tex_templates import TexTemplate
+
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template_text = f.read()
+
+        manim.config.tex_template = TexTemplate(template_text)
+        return True
+    except Exception as e:
+        print(f"Error applying LaTeX template: {e}")
         return False
