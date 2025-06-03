@@ -3,9 +3,17 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, colorchooser
 import tkinter.scrolledtext as st
-import pty
-import select
+import sys
 import pyte
+
+if sys.platform == "win32":
+    try:
+        from pywinpty import PtyProcess
+    except Exception:
+        PtyProcess = None
+else:
+    import pty
+    import select
 import tempfile
 import os
 import logging
@@ -903,11 +911,14 @@ Keyboard Shortcuts:
 # Experimental PTY based terminal similar to VS Code's integrated terminal
 # ---------------------------------------------------------------------------
 class TerminalFrame(tk.Frame):
-    """Minimal pseudo terminal implementation using ``pty`` and ``pyte``."""
+    """Minimal pseudo terminal implementation using ``pty``/``pywinpty`` and ``pyte``."""
 
-    def __init__(self, master=None, shell_cmd="/bin/bash"):
+    def __init__(self, master=None, shell_cmd=None):
         super().__init__(master)
         self.pack(fill="both", expand=True)
+
+        if shell_cmd is None:
+            shell_cmd = "cmd.exe" if os.name == "nt" else "/bin/bash"
 
         self.text = st.ScrolledText(self, wrap="none", font=("Consolas", 12))
         self.text.pack(fill="both", expand=True)
@@ -918,15 +929,22 @@ class TerminalFrame(tk.Frame):
         self.screen = pyte.Screen(80, 24)
         self.stream = pyte.Stream(self.screen)
 
-        self.pid, self.master_fd = pty.fork()
-        if self.pid == 0:
-            os.execvp(shell_cmd, [shell_cmd])
+        self.is_windows = os.name == "nt"
+        if self.is_windows:
+            if PtyProcess is None:
+                raise RuntimeError("pywinpty is required on Windows for TerminalFrame")
+            self.proc = PtyProcess.spawn(shell_cmd)
+            threading.Thread(target=self._read_loop_windows, daemon=True).start()
         else:
-            threading.Thread(target=self._read_loop, daemon=True).start()
+            self.pid, self.master_fd = pty.fork()
+            if self.pid == 0:
+                os.execvp(shell_cmd, [shell_cmd])
+            else:
+                threading.Thread(target=self._read_loop_unix, daemon=True).start()
 
         self.insert_index = "1.0"
 
-    def _read_loop(self):
+    def _read_loop_unix(self):
         while True:
             r, _, _ = select.select([self.master_fd], [], [], 0.1)
             if self.master_fd in r:
@@ -938,6 +956,17 @@ class TerminalFrame(tk.Frame):
                     break
                 self.stream.feed(data.decode(errors="ignore"))
                 self._render_screen()
+
+    def _read_loop_windows(self):
+        while True:
+            try:
+                data = self.proc.read(1024)
+            except Exception:
+                break
+            if not data:
+                break
+            self.stream.feed(data.decode(errors="ignore"))
+            self._render_screen()
 
     def _render_screen(self):
         def redraw():
@@ -974,8 +1003,11 @@ class TerminalFrame(tk.Frame):
             seq = event.char
         if seq:
             try:
-                os.write(self.master_fd, seq.encode())
-            except BrokenPipeError:
+                if self.is_windows:
+                    self.proc.write(seq)
+                else:
+                    os.write(self.master_fd, seq.encode())
+            except Exception:
                 pass
         return "break"
 
@@ -1904,7 +1936,7 @@ All packages will be installed in an isolated environment that won't affect your
                 
             # Execute pip install with CPU control
             result = run_original(
-                [self.venv_manager.pip_path, "install", package],
+                [self.venv_manager.python_path, "-m", "pip", "install", package],
                 capture_output=True,
                 text=True,
                 env=env,
@@ -3138,7 +3170,7 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             self.update_status("Upgrading pip...", 0.15)
             self.log("Upgrading pip...")
             
-            result = self.run_command([pip_path, "install", "--upgrade", "pip"])
+            result = self.run_command([python_path, "-m", "pip", "install", "--upgrade", "pip"])
             if result.returncode != 0:
                 self.log(f"WARNING: Failed to upgrade pip: {result.stderr}")
             else:
@@ -3154,7 +3186,7 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
                     self.update_status(f"Installing {package}...", progress)
                     
                     self.log(f"Installing {package}...")
-                    result = self.run_command([pip_path, "install", package])
+                    result = self.run_command([python_path, "-m", "pip", "install", package])
                     
                     if result.returncode == 0:
                         self.log(f"✓ Successfully installed {package}")
@@ -4673,7 +4705,7 @@ else:
                     if log_callback:
                         log_callback(f"Installing {package} ({i+1}/{len(packages)})...")
                         
-                    install_cmd = [pip_path, "install", package]
+                    install_cmd = [python_path, "-m", "pip", "install", package]
                     result = self.run_hidden_subprocess_nuitka_safe(
                         install_cmd, 
                         capture_output=True, 
@@ -9803,7 +9835,7 @@ else:
                 install_package(index + 1)
             
             self.terminal.run_command_redirected(
-                [self.venv_manager.pip_path, "install", package],
+                [self.venv_manager.python_path, "-m", "pip", "install", package],
                 on_complete=on_install_complete
             )
         
