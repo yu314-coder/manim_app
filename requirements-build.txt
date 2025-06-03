@@ -13,3 +13,4 @@ networkx>=3.1
 pyinstaller>=5.10.1
 CTkGradient
 mono-term
+pyte
