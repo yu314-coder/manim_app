@@ -396,7 +396,7 @@ class LaTeXFallbackHandler:
                         if args:
                             text = str(args[0])
                             # Simple LaTeX to text conversion
-                            text = text.replace('\\\\', '\n')
+                            text = text.replace('\\\\', '\\n')
                             text = text.replace('$', '')
                             text = text.replace('{', '').replace('}', '')
                         else:
@@ -495,29 +495,29 @@ def setup_latex_environment():
             
             # Custom LaTeX template with bundled packages
             latex_template = r"""
-\documentclass[preview]{standalone}
-\usepackage[english]{babel}
-\usepackage{amsmath}
-\usepackage{amsfonts}
-\usepackage{amssymb}
-\usepackage{dsfont}
-\usepackage{setspace}
-\usepackage{tipa}
-\usepackage{relsize}
-\usepackage{textcomp}
-\usepackage{mathrsfs}
-\usepackage{calligra}
-\usepackage{wasysym}
-\usepackage{ragged2e}
-\usepackage{physics}
-\usepackage{xcolor}
-\usepackage{microtype}
-\DisableLigatures{encoding = *, family = * }
-\usepackage[UTF8]{ctex}
-\linespread{1}
-\begin{document}
+\\documentclass[preview]{{standalone}}
+\\usepackage[english]{{babel}}
+\\usepackage{{amsmath}}
+\\usepackage{{amsfonts}}
+\\usepackage{{amssymb}}
+\\usepackage{{dsfont}}
+\\usepackage{{setspace}}
+\\usepackage{{tipa}}
+\\usepackage{{relsize}}
+\\usepackage{{textcomp}}
+\\usepackage{{mathrsfs}}
+\\usepackage{{calligra}}
+\\usepackage{{wasysym}}
+\\usepackage{{ragged2e}}
+\\usepackage{{physics}}
+\\usepackage{{xcolor}}
+\\usepackage{{microtype}}
+\\DisableLigatures{{encoding = *, family = * }}
+\\usepackage[UTF8]{{ctex}}
+\\linespread{{1}}
+\\begin{{document}}
 YourTextHere
-\end{document}
+\\end{{document}}
 """
             
             if hasattr(manim, 'config'):
@@ -581,9 +581,9 @@ def initialize_latex_support():
             import matplotlib
             matplotlib.rcParams['text.usetex'] = True
             matplotlib.rcParams['text.latex.preamble'] = r"""
-                \usepackage{amsmath}
-                \usepackage{amsfonts}
-                \usepackage{amssymb}
+                \\usepackage{amsmath}
+                \\usepackage{amsfonts}
+                \\usepackage{amssymb}
             """
             print("✅ Configured matplotlib with LaTeX")
         except ImportError:
@@ -775,562 +775,6 @@ except ImportError:
         print("Created safe manim configuration")
     else:
         print("📄 Created safe manim configuration")
-
-def download_tinytex_portable():
-    """Download and setup TinyTeX portable for Manim"""
-    import urllib.request
-    import zipfile
-    import platform
-    
-    print("📦 Downloading TinyTeX portable for Manim...")
-    
-    # TinyTeX download URLs
-    system = platform.system().lower()
-    if system == "windows":
-        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/TinyTeX-v2024.06.zip"
-        tinytex_file = "TinyTeX.zip"
-    elif system == "darwin":  # macOS
-        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/TinyTeX-v2024.06.tgz"
-        tinytex_file = "TinyTeX.tgz"
-    else:  # Linux
-        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/TinyTeX-v2024.06.tar.gz"
-        tinytex_file = "TinyTeX.tar.gz"
-    
-    try:
-        # Download TinyTeX
-        print(f"Downloading from {tinytex_url}...")
-        urllib.request.urlretrieve(tinytex_url, tinytex_file)
-        
-        # Extract TinyTeX
-        latex_bundle_dir = Path("latex_bundle")
-        latex_bundle_dir.mkdir(exist_ok=True)
-        
-        if system == "windows":
-            with zipfile.ZipFile(tinytex_file, 'r') as zip_ref:
-                zip_ref.extractall(latex_bundle_dir)
-        else:
-            import tarfile
-            with tarfile.open(tinytex_file, 'r:gz') as tar_ref:
-                tar_ref.extractall(latex_bundle_dir)
-        
-        # Install essential Manim packages
-        install_manim_latex_packages(latex_bundle_dir)
-        
-        # Cleanup
-        os.remove(tinytex_file)
-        
-        print("✅ TinyTeX portable setup complete!")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error downloading TinyTeX: {e}")
-        print("Falling back to minimal LaTeX setup...")
-        return False
-
-def install_manim_latex_packages(latex_dir):
-    """Install essential LaTeX packages for Manim"""
-    
-    # Essential packages for Manim (from the manim-latex chocolatey package)
-    essential_packages = [
-        "amsmath", "babel-english", "cbfonts-fd", "cm-super", 
-        "count1to", "ctex", "doublestroke", "dvisvgm", "everysel", 
-        "fontspec", "frcursive", "fundus-calligra", "gnu-freefont", 
-        "jknapltx", "latex-bin", "mathastext", "microtype", "multitoc", 
-        "physics", "preview", "prelim2e", "ragged2e", "relsize", 
-        "rsfs", "setspace", "standalone", "tipa", "wasy", "wasysym", 
-        "xcolor", "xetex", "xkeyval"
-    ]
-    
-    # Find tlmgr executable
-    if sys.platform == "win32":
-        tlmgr_path = latex_dir / "bin" / "windows" / "tlmgr.bat"
-    else:
-        tlmgr_path = latex_dir / "bin" / "universal-darwin" / "tlmgr" if sys.platform == "darwin" else latex_dir / "bin" / "x86_64-linux" / "tlmgr"
-    
-    if tlmgr_path.exists():
-        print("Installing essential Manim LaTeX packages...")
-        try:
-            # Update tlmgr first
-            subprocess.run([str(tlmgr_path), "update", "--self"], 
-                         capture_output=True, text=True, timeout=300)
-            
-            # Install packages in batches to avoid timeout
-            batch_size = 5
-            for i in range(0, len(essential_packages), batch_size):
-                batch = essential_packages[i:i+batch_size]
-                print(f"Installing batch: {', '.join(batch)}")
-                
-                cmd = [str(tlmgr_path), "install"] + batch
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-                
-                if result.returncode != 0:
-                    print(f"Warning: Some packages in batch {batch} failed to install")
-                    print(f"Error: {result.stderr}")
-                else:
-                    print(f"✅ Installed: {', '.join(batch)}")
-                    
-        except subprocess.TimeoutExpired:
-            print("⚠️ Package installation timed out, but basic LaTeX should work")
-        except Exception as e:
-            print(f"⚠️ Error installing packages: {e}")
-    else:
-        print(f"⚠️ tlmgr not found at {tlmgr_path}")
-
-def create_latex_environment_setup():
-    """Create environment setup for bundled LaTeX"""
-    
-    setup_script = '''# latex_environment.py - LaTeX environment setup for standalone builds
-import os
-import sys
-from pathlib import Path
-import subprocess
-
-def setup_latex_environment():
-    """Setup LaTeX environment for standalone builds"""
-    
-    # Find the executable directory
-    if hasattr(sys, '_MEIPASS'):  # PyInstaller
-        base_dir = Path(sys._MEIPASS)
-    elif hasattr(sys, 'executable'):  # Nuitka
-        base_dir = Path(sys.executable).parent
-    else:
-        base_dir = Path(__file__).parent
-    
-    # Look for latex_bundle
-    latex_bundle = base_dir / "latex_bundle"
-    
-    # Alternative locations
-    if not latex_bundle.exists():
-        possible_locations = [
-            base_dir / ".." / "latex_bundle",
-            Path.cwd() / "latex_bundle",
-            base_dir / "TinyTeX",
-            base_dir / "texlive"
-        ]
-        
-        for location in possible_locations:
-            if location.exists():
-                latex_bundle = location
-                break
-    
-    if latex_bundle.exists():
-        print(f"📦 Found LaTeX bundle at: {latex_bundle}")
-        
-        # Setup environment variables
-        os.environ["TEXMFHOME"] = str(latex_bundle / "texmf-dist")
-        os.environ["TEXMFLOCAL"] = str(latex_bundle / "texmf-local") 
-        os.environ["TEXMFVAR"] = str(latex_bundle / "texmf-var")
-        os.environ["TEXMFCONFIG"] = str(latex_bundle / "texmf-config")
-        
-        # Find the correct bin directory based on platform
-        import platform
-        system = platform.system().lower()
-        
-        if system == "windows":
-            bin_dir = latex_bundle / "bin" / "windows"
-        elif system == "darwin":
-            bin_dir = latex_bundle / "bin" / "universal-darwin"
-        else:  # Linux
-            bin_dir = latex_bundle / "bin" / "x86_64-linux"
-        
-        # Add to PATH if bin directory exists
-        if bin_dir.exists():
-            current_path = os.environ.get("PATH", "")
-            if str(bin_dir) not in current_path:
-                os.environ["PATH"] = str(bin_dir) + os.pathsep + current_path
-            print(f"✅ Added LaTeX binaries to PATH: {bin_dir}")
-        
-        # Test LaTeX installation
-        test_latex_installation()
-        
-        return True
-    else:
-        print("❌ LaTeX bundle not found - LaTeX features will be disabled")
-        return False
-
-def test_latex_installation():
-    """Test if LaTeX is working properly"""
-    try:
-        # Test basic LaTeX command
-        result = subprocess.run(["latex", "--version"], 
-                              capture_output=True, text=True, timeout=10)
-        
-        if result.returncode == 0:
-            print("✅ LaTeX is working properly")
-            
-            # Test if essential packages are available
-            test_packages = ["amsmath", "standalone", "dvisvgm"]
-            for package in test_packages:
-                result = subprocess.run(["kpsewhich", f"{package}.sty"], 
-                                      capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    print(f"✅ Package {package} is available")
-                else:
-                    print(f"⚠️ Package {package} not found")
-        else:
-            print(f"⚠️ LaTeX test failed: {result.stderr}")
-            
-    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        print(f"⚠️ LaTeX test failed: {e}")
-
-def patch_manim_for_bundled_latex():
-    """Patch Manim to work with bundled LaTeX"""
-    try:
-        import manim
-        
-        # Set up Manim config for bundled LaTeX
-        if hasattr(manim, 'config'):
-            # Use a robust LaTeX template
-            manim.config.tex_template = None  # Use default template
-            manim.config.preview = False
-            manim.config.verbosity = "WARNING"
-            
-        print("✅ Manim configured for bundled LaTeX")
-        
-    except ImportError:
-        print("⚠️ Manim not available")
-    except Exception as e:
-        print(f"⚠️ Error configuring Manim: {e}")
-
-# Auto-setup on import
-if __name__ == "__main__":
-    setup_latex_environment()
-else:
-    # Setup environment when imported
-    setup_latex_environment()
-    patch_manim_for_bundled_latex()
-'''
-    
-    with open("latex_environment.py", "w", encoding="utf-8") as f:
-        f.write(setup_script)
-    
-    print("📄 Created LaTeX environment setup script")
-
-def create_improved_latex_config():
-    """Create improved LaTeX configuration with proper fallbacks"""
-    
-    config_content = '''# manim_latex_config.py - Improved LaTeX configuration
-import os
-import sys
-import subprocess
-from pathlib import Path
-
-class LaTeXManager:
-    """Manages LaTeX installation and configuration for Manim"""
-    
-    def __init__(self):
-        self.latex_available = False
-        self.latex_path = None
-        self.setup_latex()
-    
-    def setup_latex(self):
-        """Setup LaTeX environment"""
-        
-        # Import our environment setup
-        try:
-            import latex_environment
-            self.latex_available = True
-            print("✅ LaTeX environment loaded successfully")
-        except ImportError:
-            print("⚠️ LaTeX environment setup not available")
-        
-        # Test LaTeX availability
-        self.test_latex()
-        
-        # Configure Manim
-        self.configure_manim()
-    
-    def test_latex(self):
-        """Test if LaTeX is available and working"""
-        try:
-            result = subprocess.run(["latex", "--version"], 
-                                  capture_output=True, text=True, timeout=5)
-            
-            if result.returncode == 0:
-                self.latex_available = True
-                self.latex_path = "latex"  # Available in PATH
-                print("✅ LaTeX is available and working")
-                return True
-            else:
-                print("⚠️ LaTeX test failed")
-                return False
-                
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            print("⚠️ LaTeX not found in PATH")
-            return False
-    
-    def configure_manim(self):
-        """Configure Manim based on LaTeX availability"""
-        try:
-            import manim
-            from manim.utils import tex_file_writing
-            
-            if self.latex_available:
-                # LaTeX is available - use it
-                print("🔬 Configuring Manim with LaTeX support")
-                
-                # Ensure we use a robust template
-                if hasattr(manim, 'config'):
-                    manim.config.preview = False
-                    manim.config.verbosity = "WARNING"
-                    
-                # Patch tex_file_writing for better error handling
-                self.patch_tex_error_handling(tex_file_writing)
-                
-            else:
-                # LaTeX not available - set up fallbacks
-                print("🔄 Configuring Manim with LaTeX fallbacks")
-                self.setup_latex_fallbacks(manim, tex_file_writing)
-                
-        except ImportError:
-            print("⚠️ Manim not available")
-    
-    def patch_tex_error_handling(self, tex_module):
-        """Patch tex file writing for better error handling"""
-        
-        if hasattr(tex_module, 'print_all_tex_errors'):
-            original_print_errors = tex_module.print_all_tex_errors
-            
-            def enhanced_print_errors(log_file, tex_compiler, tex_file):
-                """Enhanced error printing with better diagnostics"""
-                try:
-                    if log_file.exists():
-                        return original_print_errors(log_file, tex_compiler, tex_file)
-                    else:
-                        print(f"⚠️ LaTeX compilation failed with {tex_compiler}")
-                        print(f"Log file not found: {log_file}")
-                        print("This might indicate a PATH or installation issue")
-                        
-                        # Try to provide helpful diagnostics
-                        self.diagnose_latex_issue(tex_compiler)
-                        
-                except Exception as e:
-                    print(f"⚠️ Error in LaTeX error handling: {e}")
-            
-            tex_module.print_all_tex_errors = enhanced_print_errors
-    
-    def diagnose_latex_issue(self, tex_compiler):
-        """Diagnose LaTeX issues and provide solutions"""
-        print("🔍 Diagnosing LaTeX issue...")
-        
-        # Check if compiler exists
-        try:
-            result = subprocess.run([tex_compiler, "--version"], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                print(f"✅ {tex_compiler} is available")
-            else:
-                print(f"❌ {tex_compiler} failed to run")
-        except FileNotFoundError:
-            print(f"❌ {tex_compiler} not found in PATH")
-            print("💡 Solution: Ensure LaTeX is properly installed and in PATH")
-        except subprocess.TimeoutExpired:
-            print(f"⏱️ {tex_compiler} timed out")
-    
-    def setup_latex_fallbacks(self, manim, tex_module):
-        """Setup fallbacks when LaTeX is not available"""
-        
-        # Patch tex_to_svg_file to return None gracefully
-        if hasattr(tex_module, 'tex_to_svg_file'):
-            original_tex_to_svg = tex_module.tex_to_svg_file
-            
-            def fallback_tex_to_svg(tex_string, **kwargs):
-                """Fallback function when LaTeX is not available"""
-                print(f"⚠️ LaTeX not available, skipping rendering of: {tex_string[:50]}...")
-                return None
-            
-            tex_module.tex_to_svg_file = fallback_tex_to_svg
-        
-        # Patch TeX mobjects to use text fallbacks
-        try:
-            from manim.mobject.text.tex_mobject import TexMobject, MathTex
-            from manim.mobject.text.text_mobject import Text
-            
-            class FallbackTexMobject(Text):
-                """Fallback TeX mobject using plain text"""
-                def __init__(self, *tex_strings, **kwargs):
-                    # Convert LaTeX to plain text
-                    if tex_strings:
-                        text = str(tex_strings[0])
-                        # Basic LaTeX cleanup
-                        text = text.replace('\\\\', '\n')
-                        text = text.replace('$', '')
-                        # Remove basic LaTeX commands
-                        import re
-                        text = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\\1', text)
-                        text = re.sub(r'\\[a-zA-Z]+', '', text)
-                    else:
-                        text = "LaTeX Expression"
-                    
-                    super().__init__(text, **kwargs)
-            
-            # Replace TeX classes with fallbacks
-            manim.mobject.text.tex_mobject.TexMobject = FallbackTexMobject
-            manim.mobject.text.tex_mobject.MathTex = FallbackTexMobject
-            
-            print("✅ LaTeX fallbacks configured")
-            
-        except ImportError:
-            print("⚠️ Could not configure LaTeX fallbacks")
-
-# Global manager instance
-latex_manager = LaTeXManager()
-
-# Export for external use
-def is_latex_available():
-    """Check if LaTeX is available"""
-    return latex_manager.latex_available
-
-def get_latex_path():
-    """Get path to LaTeX executable"""
-    return latex_manager.latex_path
-'''
-    
-    with open("manim_latex_config.py", "w", encoding="utf-8") as f:
-        f.write(config_content)
-    
-    print("📄 Created improved LaTeX configuration")
-
-def create_minimal_latex_setup():
-    """Create minimal LaTeX setup as fallback"""
-    print("📦 Creating minimal LaTeX setup...")
-    
-    minimal_dir = Path("latex_bundle")
-    minimal_dir.mkdir(exist_ok=True)
-    
-    # Create minimal structure
-    (minimal_dir / "bin").mkdir(exist_ok=True)
-    (minimal_dir / "texmf-dist" / "tex" / "latex").mkdir(parents=True, exist_ok=True)
-    
-    # Create a dummy latex executable for testing
-    if sys.platform == "win32":
-        dummy_latex = minimal_dir / "bin" / "latex.exe"
-        with open(dummy_latex, "w") as f:
-            f.write("@echo LaTeX not available in this build\n")
-    
-    print("📦 Minimal LaTeX setup created")
-
-def create_latex_verification_script(dist_dir):
-    """Create script to verify LaTeX installation"""
-    
-    verification_script = '''# verify_latex.py - Verify LaTeX installation
-import subprocess
-import sys
-from pathlib import Path
-
-def verify_latex_installation():
-    """Verify that LaTeX is working properly"""
-    print("🔍 Verifying LaTeX installation...")
-    
-    tests_passed = 0
-    total_tests = 5
-    
-    # Test 1: Check if latex command exists
-    try:
-        result = subprocess.run(["latex", "--version"], 
-                              capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            print("✅ LaTeX command available")
-            tests_passed += 1
-        else:
-            print("❌ LaTeX command failed")
-    except Exception as e:
-        print(f"❌ LaTeX command not found: {e}")
-    
-    # Test 2: Check essential packages
-    essential_packages = ["amsmath", "standalone", "preview"]
-    package_test_passed = True
-    
-    for package in essential_packages:
-        try:
-            result = subprocess.run(["kpsewhich", f"{package}.sty"], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                print(f"✅ Package {package} found")
-            else:
-                print(f"❌ Package {package} not found")
-                package_test_passed = False
-        except Exception:
-            print(f"❌ Could not check package {package}")
-            package_test_passed = False
-    
-    if package_test_passed:
-        tests_passed += 1
-    
-    # Test 3: Try to compile a simple LaTeX document
-    try:
-        test_tex = '''
-\\documentclass{standalone}
-\\usepackage{amsmath}
-\\begin{document}
-$E = mc^2$
-\\end{document}
-'''
-        
-        test_file = Path("test_latex.tex")
-        with open(test_file, "w") as f:
-            f.write(test_tex)
-        
-        result = subprocess.run(["latex", "-interaction=nonstopmode", "test_latex.tex"], 
-                              capture_output=True, text=True, timeout=30)
-        
-        if result.returncode == 0:
-            print("✅ LaTeX compilation test passed")
-            tests_passed += 1
-        else:
-            print("❌ LaTeX compilation test failed")
-            print(f"Error: {result.stderr}")
-        
-        # Cleanup
-        for ext in [".tex", ".dvi", ".aux", ".log"]:
-            cleanup_file = Path(f"test_latex{ext}")
-            if cleanup_file.exists():
-                cleanup_file.unlink()
-                
-    except Exception as e:
-        print(f"❌ LaTeX compilation test error: {e}")
-    
-    # Test 4: Check dvisvgm
-    try:
-        result = subprocess.run(["dvisvgm", "--version"], 
-                              capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            print("✅ dvisvgm available")
-            tests_passed += 1
-        else:
-            print("❌ dvisvgm failed")
-    except Exception:
-        print("❌ dvisvgm not found")
-    
-    # Test 5: Test Manim LaTeX integration
-    try:
-        import manim_latex_config
-        if manim_latex_config.is_latex_available():
-            print("✅ Manim LaTeX integration working")
-            tests_passed += 1
-        else:
-            print("❌ Manim LaTeX integration failed")
-    except Exception as e:
-        print(f"❌ Manim LaTeX integration error: {e}")
-    
-    print(f"\\n🎯 LaTeX verification: {tests_passed}/{total_tests} tests passed")
-    
-    if tests_passed >= 3:
-        print("🎉 LaTeX installation is working!")
-        return True
-    else:
-        print("⚠️ LaTeX installation has issues")
-        return False
-
-if __name__ == "__main__":
-    verify_latex_installation()
-'''
-    
-    verification_path = Path(dist_dir) / "verify_latex.py"
-    with open(verification_path, "w", encoding="utf-8") as f:
-        f.write(verification_script)
-    
-    print(f"📝 Created LaTeX verification script: {verification_path}")
 
 def build_self_contained_version(jobs=None, priority="normal"):
     """Build self-contained version with NO CONSOLE EVER"""
@@ -1574,6 +1018,728 @@ def build_self_contained_version(jobs=None, priority="normal"):
     env["GCC_LTO"] = "0"
     env["NUITKA_DISABLE_LTO"] = "1"
     env["GCC_COMPILE_ARGS"] = "-fno-lto"
+    
+    # Set process priority if on Windows
+    process_priority = 0  # Normal priority by default
+    if priority == "high" and sys.platform == "win32":
+        if USE_ASCII_ONLY:
+            print("Setting HIGH process priority for maximum CPU utilization")
+        else:
+            print("🔥 Setting HIGH process priority for maximum CPU utilization")
+        process_priority = 0x00000080  # HIGH_PRIORITY_CLASS
+    
+    # IMPORTANT: Use standard subprocess directly to ensure output is visible
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,  # Line buffered output
+        universal_newlines=True,
+        env=env,
+        creationflags=process_priority if sys.platform == "win32" else 0
+    )
+    
+    # Display CPU info
+    if USE_ASCII_ONLY:
+        print(f"CPU Info: {cpu_count} logical cores available")
+        print(f"Using {jobs} compilation threads")
+        print(f"Included {len(included_packages)} packages")
+    else:
+        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
+        print(f"⚙️ Using {jobs} compilation threads")
+        print(f"📦 Included {len(included_packages)} packages")
+    
+    # Print output in real-time
+    while True:
+        line = process.stdout.readline()
+        if not line and process.poll() is not None:
+            break
+        if line:
+            print(line.strip())
+    
+    return_code = process.poll()
+    
+    if return_code == 0:
+        print("=" * 60)
+        if USE_ASCII_ONLY:
+            print("NO-CONSOLE build successful!")
+        else:
+            print("✅ NO-CONSOLE build successful!")
+        
+        # Find executable
+        exe_path = find_executable()
+        
+        if exe_path:
+            size_mb = exe_path.stat().st_size / (1024 * 1024)
+            if USE_ASCII_ONLY:
+                print(f"Executable: {exe_path} ({size_mb:.1f} MB)")
+                print(f"\nSUCCESS! Silent executable ready!")
+                print(f"Run: {exe_path}")
+                print(f"\nGUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
+            else:
+                print(f"📁 Executable: {exe_path} ({size_mb:.1f} MB)")
+                print(f"\n🎉 SUCCESS! Silent executable ready!")
+                print(f"🚀 Run: {exe_path}")
+                print(f"\n🔇 GUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
+            
+            # Create a launcher script
+            create_launcher_script(exe_path)
+            
+            return exe_path
+        else:
+            if USE_ASCII_ONLY:
+                print("Executable not found")
+            else:
+                print("❌ Executable not found")
+            list_contents()
+            return None
+    else:
+        print("=" * 60)
+        if USE_ASCII_ONLY:
+            print("Build failed!")
+        else:
+            print("❌ Build failed!")
+        print(f"Return code: {return_code}")
+        return None
+
+def build_standalone_version(jobs=None, priority="normal"):
+    """Build standalone version (directory-based, not onefile) with complete LaTeX support"""
+
+    cpu_count = multiprocessing.cpu_count()
+    if jobs is None:
+        jobs = max(1, cpu_count - 1)
+
+    if USE_ASCII_ONLY:
+        print(f"Building STANDALONE version (directory-based) with {jobs} CPU threads...")
+    else:
+        print(f"🐍 Building STANDALONE version (directory-based) with {jobs} CPU threads...")
+
+    # Clean previous builds
+    if Path("build").exists():
+        if USE_ASCII_ONLY:
+            print("Cleaning build directory...")
+        else:
+            print("🧹 Cleaning build directory...")
+        shutil.rmtree("build")
+    if Path("dist").exists():
+        if USE_ASCII_ONLY:
+            print("Cleaning dist directory...")
+        else:
+            print("🧹 Cleaning dist directory...")
+        shutil.rmtree("dist")
+
+    # Create assets directory if it doesn't exist
+    assets_dir = Path("assets")
+    assets_dir.mkdir(exist_ok=True)
+
+    # Create enhanced patches and helpers
+    create_no_console_patch()
+    create_fixes_module()
+    create_subprocess_helper()
+    create_manim_safe_config()
+
+    # Check system prerequisites
+    if not check_system_prerequisites():
+        print("❌ System prerequisites check failed" if not USE_ASCII_ONLY else "ERROR: System prerequisites check failed")
+        return None
+
+    # Get Nuitka version
+    nuitka_version = get_nuitka_version()
+    if USE_ASCII_ONLY:
+        print(f"Detected Nuitka version: {nuitka_version}")
+    else:
+        print(f"📊 Detected Nuitka version: {nuitka_version}")
+
+    # Basic command structure
+    cmd = [
+        sys.executable, "-m", "nuitka",
+        "--standalone",
+    ]
+
+    # Enhanced console hiding - use both methods for maximum compatibility
+    cmd.append("--windows-console-mode=disable")
+    cmd.append("--windows-disable-console")
+
+    # Enable GUI toolkit support
+    cmd.append("--enable-plugin=tk-inter")
+
+    # CRITICAL: Disable LTO to prevent zstandard linking issues
+    cmd.append("--lto=no")
+
+    # Exclude problematic modules that cause build issues - COMPREHENSIVE LIST
+    problematic_modules = [
+        "zstandard", "zstandard.backend_cffi", "setuptools",
+        "test.support", "_distutils_hack", "distutils",
+        "numpy.distutils", "setuptools_scm",
+        # Exclude ALL test modules to speed up compilation
+        "sympy.*.tests.*", "sympy.*.test_*", "sympy.tests.*",
+        "sympy.polys.benchmarks.*", "sympy.physics.quantum.tests.*",
+        "sympy.solvers.ode.tests.*", "sympy.polys.tests.*",
+        "sympy.geometry.tests.*", "sympy.core.tests.*",
+        "sympy.functions.tests.*", "sympy.matrices.tests.*",
+        "sympy.plotting.tests.*", "sympy.printing.tests.*",
+        "sympy.simplify.tests.*", "sympy.stats.tests.*",
+        "sympy.tensor.tests.*", "sympy.utilities.tests.*",
+        # Exclude the specific problematic modules from the error
+        "sympy.polys.benchmarks.bench_solvers",
+        "sympy.physics.quantum.tests.test_spin",
+        "sympy.solvers.ode.tests.test_systems",
+        "sympy.polys.polyquinticconst",
+        # Exclude benchmark modules
+        "*.benchmarks.*", "*.test_*", "*.tests.*",
+        # Exclude other problematic modules
+        "matplotlib.tests.*", "numpy.tests.*", "PIL.tests.*",
+        "cv2.tests.*", "jedi.test.*", "pytest.*",
+    ]
+
+    for module in problematic_modules:
+        cmd.append(f"--nofollow-import-to={module}")
+
+    # Progress and optimization flags with faster compilation
+    cmd.extend([
+        "--show-progress",
+        "--remove-output",
+        "--assume-yes-for-downloads",
+        "--mingw64",
+        "--disable-ccache",
+        "--show-memory",
+        "--disable-dll-dependency-cache",
+        "--onefile-tempdir-spec=CACHE",  # Use cache for temp files
+    ])
+
+    # Essential packages - check availability before including (SELECTIVE APPROACH)
+    essential_packages = [
+        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
+        "matplotlib", "jedi", "psutil"
+    ]
+
+    included_packages = []
+    for package in essential_packages:
+        if is_package_importable(package):
+            correct_name = get_correct_package_name(package)
+            if correct_name:
+                included_packages.append(correct_name)
+                cmd.append(f"--include-package={correct_name}")
+                if USE_ASCII_ONLY:
+                    print(f"Including package: {correct_name}")
+                else:
+                    print(f"✅ Including package: {correct_name}")
+        else:
+            if USE_ASCII_ONLY:
+                print(f"Skipping unavailable package: {package}")
+            else:
+                print(f"⚠️ Skipping unavailable package: {package}")
+
+    # Handle manim separately with more control
+    if is_package_importable("manim"):
+        cmd.append("--include-package=manim")
+        cmd.append("--include-package-data=manim")
+        # Exclude manim tests
+        cmd.append("--nofollow-import-to=manim.*.tests")
+        cmd.append("--nofollow-import-to=manim.test.*")
+        included_packages.append("manim")
+        if USE_ASCII_ONLY:
+            print("Including manim (excluding tests)")
+        else:
+            print("✅ Including manim (excluding tests)")
+
+    # Handle sympy with minimal inclusion for LaTeX support but avoid problematic modules
+    if is_package_importable("sympy"):
+        # Only include essential sympy modules for LaTeX
+        essential_sympy_modules = [
+            "sympy.core", "sympy.printing.latex", "sympy.printing.mathml",
+            "sympy.parsing", "sympy.functions.elementary", 
+            "sympy.utilities.lambdify", "sympy.simplify.simplify"
+        ]
+        
+        for module in essential_sympy_modules:
+            cmd.append(f"--include-module={module}")
+        
+        # Exclude ALL problematic sympy subpackages
+        sympy_exclusions = [
+            "sympy.polys", "sympy.physics", "sympy.geometry",
+            "sympy.matrices", "sympy.stats", "sympy.tensor",
+            "sympy.*.tests", "sympy.*.benchmarks", "sympy.plotting",
+            "sympy.solvers.ode", "sympy.polys.benchmarks"
+        ]
+        
+        for exclusion in sympy_exclusions:
+            cmd.append(f"--nofollow-import-to={exclusion}")
+        
+        included_packages.append("sympy (minimal LaTeX)")
+        if USE_ASCII_ONLY:
+            print("Including minimal sympy for LaTeX (excluding problematic modules)")
+        else:
+            print("✅ Including minimal sympy for LaTeX (excluding problematic modules)")
+
+    # Include additional LaTeX support packages if available
+    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour"]
+    
+    for package in latex_packages:
+        if is_package_importable(package):
+            cmd.append(f"--include-package={package}")
+            included_packages.append(package)
+            if USE_ASCII_ONLY:
+                print(f"Including LaTeX support: {package}")
+            else:
+                print(f"📦 Including LaTeX support: {package}")
+
+    # Critical system modules
+    essential_modules = [
+        "json", "tempfile", "threading", "subprocess",
+        "os", "sys", "ctypes", "venv", "fixes", "psutil",
+        "process_utils", "logging", "pathlib", "shutil",
+        "glob", "re", "time", "datetime", "uuid", "base64",
+        "io", "codecs", "platform", "getpass", "signal",
+        "atexit", "queue", "math", "random", "collections",
+        "itertools", "functools", "operator", "copy", "manim_safe_config"
+    ]
+
+    for module in essential_modules:
+        cmd.append(f"--include-module={module}")
+
+    # LaTeX and mathematical expression support data (selective)
+    latex_data_packages = ["manim", "matplotlib", "numpy"]
+
+    for package in latex_data_packages:
+        if is_package_importable(package):
+            cmd.append(f"--include-package-data={package}")
+            if USE_ASCII_ONLY:
+                print(f"Including data for: {package}")
+            else:
+                print(f"📦 Including data for: {package}")
+
+    # Include LaTeX-specific modules (minimal set)
+    latex_modules = [
+        "sympy.printing.latex", "sympy.printing.mathml", 
+        "sympy.core.basic", "sympy.core.expr"
+    ]
+
+    for module in latex_modules:
+        if is_package_importable(module.split('.')[0]):
+            cmd.append(f"--include-module={module}")
+
+    # Manim-specific data inclusion (but exclude tests)
+    if is_package_importable("manim"):
+        cmd.extend([
+            "--include-package-data=manim",
+            "--include-package-data=manim.mobject",
+            "--include-package-data=manim.scene",
+            "--include-package-data=manim.animation",
+            "--include-package-data=manim.utils",
+        ])
+        # But exclude test data
+        cmd.extend([
+            "--nofollow-import-to=manim.*.tests.*",
+            "--nofollow-import-to=manim.test.*"
+        ])
+
+    # Output configuration
+    cmd.extend([
+        "--output-dir=dist",
+    ])
+
+    # Icon (if available)
+    if Path("assets/icon.ico").exists():
+        cmd.append("--windows-icon-from-ico=assets/icon.ico")
+        if USE_ASCII_ONLY:
+            print("Using custom icon")
+        else:
+            print("🎨 Using custom icon")
+
+    # Include data directories and assets
+    data_dirs = ["assets=assets"]
+
+    # Try to include matplotlib data if available (but not tests)
+    try:
+        import matplotlib
+        mpl_data = Path(matplotlib.get_data_path())
+        if mpl_data.exists():
+            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
+            if USE_ASCII_ONLY:
+                print("Including matplotlib data")
+            else:
+                print("📊 Including matplotlib data")
+    except ImportError:
+        pass
+
+    for data_dir in data_dirs:
+        cmd.append(f"--include-data-dir={data_dir}")
+
+    # Performance optimization
+    cmd.append(f"--jobs={jobs}")
+
+    # Final target
+    cmd.append("app.py")
+
+    if USE_ASCII_ONLY:
+        print("Building standalone executable with LaTeX support...")
+    else:
+        print("🔨 Building standalone executable with LaTeX support...")
+    print("Command:", " ".join(cmd))
+    print("=" * 60)
+
+    # Environment variables for compilation
+    env = os.environ.copy()
+    env["GCC_LTO"] = "0"
+    env["NUITKA_DISABLE_LTO"] = "1"
+    env["GCC_COMPILE_ARGS"] = "-fno-lto"
+
+    # Disable problematic optimizations
+    env["NUITKA_DISABLE_CCACHE"] = "1"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    # Set process priority for faster compilation
+    process_priority = 0
+    if priority == "high" and sys.platform == "win32":
+        if USE_ASCII_ONLY:
+            print("Setting HIGH process priority for maximum CPU utilization")
+        else:
+            print("🔥 Setting HIGH process priority for maximum CPU utilization")
+        process_priority = 0x00000080
+
+    # Start compilation process
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        universal_newlines=True,
+        env=env,
+        creationflags=process_priority if sys.platform == "win32" else 0
+    )
+
+    # Display CPU and build info
+    if USE_ASCII_ONLY:
+        print(f"CPU Info: {cpu_count} logical cores available")
+        print(f"Using {jobs} compilation threads")
+        print(f"Included {len(included_packages)} packages")
+    else:
+        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
+        print(f"⚙️ Using {jobs} compilation threads")
+        print(f"📦 Included {len(included_packages)} packages")
+
+    # Stream compilation output in real-time
+    while True:
+        line = process.stdout.readline()
+        if not line and process.poll() is not None:
+            break
+        if line:
+            print(line.strip())
+
+    return_code = process.poll()
+
+    if return_code == 0:
+        print("=" * 60)
+        if USE_ASCII_ONLY:
+            print("Standalone build successful!")
+        else:
+            print("✅ Standalone build successful!")
+
+        # Find the executable
+        exe_path = find_standalone_executable()
+        if exe_path:
+            if USE_ASCII_ONLY:
+                print(f"Executable: {exe_path}")
+                print(f"Distribution folder: {exe_path.parent}")
+                print(f"\nSUCCESS! Standalone version ready with LaTeX support!")
+                print(f"Features included:")
+                print(f"  - Mathematical expression rendering")
+                print(f"  - Basic LaTeX formula support")
+                print(f"  - Professional animation engine")
+                print(f"  - No console windows")
+            else:
+                print(f"📁 Executable: {exe_path}")
+                print(f"📁 Distribution folder: {exe_path.parent}")
+                print(f"\n🎉 SUCCESS! Standalone version ready with LaTeX support!")
+                print(f"🧮 Features included:")
+                print(f"  ✅ Mathematical expression rendering")
+                print(f"  ✅ Basic LaTeX formula support")
+                print(f"  ✅ Professional animation engine")
+                print(f"  ✅ No console windows")
+
+            # Create configuration file for LaTeX
+            create_latex_config(exe_path.parent)
+
+            # Create launcher scripts
+            create_launcher_script(exe_path)
+
+            return exe_path
+        else:
+            if USE_ASCII_ONLY:
+                print("Executable not found")
+            else:
+                print("❌ Executable not found")
+            list_contents()
+            return None
+    else:
+        print("=" * 60)
+        if USE_ASCII_ONLY:
+            print("Build failed!")
+        else:
+            print("❌ Build failed!")
+        print(f"Return code: {return_code}")
+        return None
+
+def build_standalone_with_full_latex(jobs=None, priority="normal"):
+    """Build standalone version with complete LaTeX support bundled"""
+    
+    cpu_count = multiprocessing.cpu_count()
+    if jobs is None:
+        jobs = max(1, cpu_count - 1)
+
+    if USE_ASCII_ONLY:
+        print(f"Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
+    else:
+        print(f"🔬 Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
+
+    # First, create LaTeX bundle
+    print("=" * 60)
+    if USE_ASCII_ONLY:
+        print("Step 1: Creating LaTeX bundle...")
+    else:
+        print("📦 Step 1: Creating LaTeX bundle...")
+    
+    # Create and run LaTeX bundler
+    create_latex_bundle_script()
+    
+    try:
+        # Run the bundler
+        result = run_hidden_process([sys.executable, "latex_bundler.py"], capture_output=True, text=True)
+        if result.returncode == 0:
+            if USE_ASCII_ONLY:
+                print("LaTeX bundle created successfully")
+            else:
+                print("✅ LaTeX bundle created successfully")
+        else:
+            if USE_ASCII_ONLY:
+                print("Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
+                print(result.stderr)
+            else:
+                print("⚠️ Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
+                print(result.stderr)
+    except Exception as e:
+        if USE_ASCII_ONLY:
+            print(f"Warning: Could not create LaTeX bundle: {e}")
+        else:
+            print(f"⚠️ Warning: Could not create LaTeX bundle: {e}")
+
+    # Clean previous builds
+    if Path("build").exists():
+        shutil.rmtree("build")
+    if Path("dist").exists():
+        shutil.rmtree("dist")
+
+    # Create assets directory
+    assets_dir = Path("assets")
+    assets_dir.mkdir(exist_ok=True)
+
+    print("=" * 60)
+    if USE_ASCII_ONLY:
+        print("Step 2: Creating build configuration...")
+    else:
+        print("🔧 Step 2: Creating build configuration...")
+
+    # Create enhanced patches and helpers
+    create_no_console_patch()
+    create_fixes_module()
+    create_subprocess_helper()
+    create_full_latex_manim_config()  # Full LaTeX config instead of safe config
+
+    # Check prerequisites
+    if not check_system_prerequisites():
+        print("❌ System prerequisites check failed")
+        return None
+
+    # Get Nuitka version
+    nuitka_version = get_nuitka_version()
+    if USE_ASCII_ONLY:
+        print(f"Detected Nuitka version: {nuitka_version}")
+    else:
+        print(f"📊 Detected Nuitka version: {nuitka_version}")
+
+    print("=" * 60)
+    if USE_ASCII_ONLY:
+        print("Step 3: Building with full LaTeX support...")
+    else:
+        print("🔨 Step 3: Building with full LaTeX support...")
+
+    # Basic command structure
+    cmd = [
+        sys.executable, "-m", "nuitka",
+        "--standalone",
+        "--windows-console-mode=disable",
+        "--windows-disable-console",
+        "--enable-plugin=tk-inter",
+        "--lto=no",
+        "--show-progress",
+        "--remove-output",
+        "--assume-yes-for-downloads",
+        "--mingw64",
+        "--disable-ccache",
+        "--show-memory",
+        "--disable-dll-dependency-cache",
+    ]
+
+    # MINIMAL exclusions - only exclude test modules but keep LaTeX functionality
+    minimal_exclusions = [
+        # Only exclude test modules, keep all LaTeX functionality
+        "*.tests.*", "*.test_*", "test.*",
+        "pytest.*", "*.benchmarks.*",
+        # Still exclude problematic modules that cause build issues
+        "zstandard.*", "setuptools.*", "_distutils_hack.*",
+        # Exclude only specific problematic SymPy test modules (from your original error)
+        "sympy.polys.benchmarks.bench_solvers",
+        "sympy.physics.quantum.tests.test_spin", 
+        "sympy.solvers.ode.tests.test_systems",
+        "sympy.polys.polyquinticconst",
+        # Keep all other SymPy modules including LaTeX ones
+    ]
+
+    for module in minimal_exclusions:
+        cmd.append(f"--nofollow-import-to={module}")
+
+    # Include ALL packages including LaTeX support
+    comprehensive_packages = [
+        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
+        "matplotlib", "jedi", "psutil", "manim"
+    ]
+
+    included_packages = []
+    for package in comprehensive_packages:
+        if is_package_importable(package):
+            correct_name = get_correct_package_name(package)
+            if correct_name:
+                included_packages.append(correct_name)
+                cmd.append(f"--include-package={correct_name}")
+                # Include package data for complete functionality
+                cmd.append(f"--include-package-data={correct_name}")
+                if USE_ASCII_ONLY:
+                    print(f"Including full package: {correct_name}")
+                else:
+                    print(f"📦 Including full package: {correct_name}")
+
+    # Include SymPy with FULL LaTeX support (opposite of previous approach)
+    if is_package_importable("sympy"):
+        # Include ALL SymPy modules except the problematic test ones
+        cmd.append("--include-package=sympy")
+        cmd.append("--include-package-data=sympy")
+        
+        # Only exclude the specific problematic modules from the build error
+        sympy_test_exclusions = [
+            "sympy.polys.benchmarks.bench_solvers",
+            "sympy.physics.quantum.tests.test_spin",
+            "sympy.solvers.ode.tests.test_systems", 
+            "sympy.polys.polyquinticconst",
+            # General test exclusions but keep LaTeX modules
+            "sympy.*.tests.*", "sympy.*.test_*"
+        ]
+        
+        for exclusion in sympy_test_exclusions:
+            cmd.append(f"--nofollow-import-to={exclusion}")
+        
+        included_packages.append("sympy (full LaTeX support)")
+        if USE_ASCII_ONLY:
+            print("Including SymPy with FULL LaTeX support")
+        else:
+            print("🧮 Including SymPy with FULL LaTeX support")
+
+    # Include LaTeX support packages if available
+    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour", "jinja2"]
+    
+    for package in latex_packages:
+        if is_package_importable(package):
+            cmd.append(f"--include-package={package}")
+            cmd.append(f"--include-package-data={package}")
+            included_packages.append(package)
+            if USE_ASCII_ONLY:
+                print(f"Including LaTeX support package: {package}")
+            else:
+                print(f"📚 Including LaTeX support package: {package}")
+
+    # Include comprehensive system modules for LaTeX
+    comprehensive_modules = [
+        "json", "tempfile", "threading", "subprocess",
+        "os", "sys", "ctypes", "venv", "fixes", "psutil",
+        "process_utils", "logging", "pathlib", "shutil",
+        "glob", "re", "time", "datetime", "uuid", "base64",
+        "io", "codecs", "platform", "getpass", "signal",
+        "atexit", "queue", "math", "random", "collections",
+        "itertools", "functools", "operator", "copy",
+        "manim_latex_config",  # Our full LaTeX config
+        "latex_bundler",       # LaTeX bundler
+        # Additional modules for LaTeX support
+        "xml", "xml.etree", "xml.etree.ElementTree",
+        "urllib", "urllib.request", "urllib.parse",
+        "zipfile", "tarfile", "gzip", "bz2",
+        "hashlib", "hmac", "ssl", "socket"
+    ]
+
+    for module in comprehensive_modules:
+        cmd.append(f"--include-module={module}")
+
+    # Include LaTeX bundle directory if it exists
+    if Path("latex_bundle").exists():
+        cmd.append("--include-data-dir=latex_bundle=latex_bundle")
+        if USE_ASCII_ONLY:
+            print("Including bundled LaTeX installation")
+        else:
+            print("📦 Including bundled LaTeX installation")
+
+    # Include comprehensive data for LaTeX support
+    data_packages = ["manim", "matplotlib", "numpy", "sympy"]
+
+    for package in data_packages:
+        if is_package_importable(package):
+            cmd.append(f"--include-package-data={package}")
+            if USE_ASCII_ONLY:
+                print(f"Including comprehensive data for: {package}")
+            else:
+                print(f"📊 Including comprehensive data for: {package}")
+
+    # Output configuration
+    cmd.extend([
+        "--output-dir=dist",
+        f"--jobs={jobs}",
+    ])
+
+    # Icon if available
+    if Path("assets/icon.ico").exists():
+        cmd.append("--windows-icon-from-ico=assets/icon.ico")
+
+    # Include all data directories
+    data_dirs = ["assets=assets"]
+    
+    # Try to include matplotlib data
+    try:
+        import matplotlib
+        mpl_data = Path(matplotlib.get_data_path())
+        if mpl_data.exists():
+            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
+            if USE_ASCII_ONLY:
+                print("Including matplotlib data directory")
+            else:
+                print("📊 Including matplotlib data directory")
+    except ImportError:
+        pass
+
+    for data_dir in data_dirs:
+        cmd.append(f"--include-data-dir={data_dir}")
+
+    # Final target
+    cmd.append("app.py")
+
+    print("Building standalone executable with COMPLETE LaTeX support...")
+    print("Command:", " ".join(cmd))
+    print("=" * 60)
+
+    # Environment setup for LaTeX support
+    env = os.environ.copy()
+    env["GCC_LTO"] = "0"
+    env["NUITKA_DISABLE_LTO"] = "1"
+    env["GCC_COMPILE_ARGS"] = "-fno-lto"
 
     # Set process priority
     process_priority = 0
@@ -1664,202 +1830,6 @@ def build_self_contained_version(jobs=None, priority="normal"):
             print("Full LaTeX build failed!")
         else:
             print("❌ Full LaTeX build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_with_full_latex_v2(jobs=None, priority="normal"):
-    """Enhanced standalone build with proper LaTeX bundling"""
-    
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    print(f"🔬 Building standalone with ENHANCED LaTeX support using {jobs} CPU threads...")
-
-    # Step 1: Download and setup TinyTeX
-    print("=" * 60)
-    print("📦 Step 1: Setting up LaTeX environment...")
-    
-    latex_success = download_tinytex_portable()
-    
-    if not latex_success:
-        print("⚠️ TinyTeX download failed, creating minimal LaTeX setup...")
-        # Create minimal LaTeX setup as fallback
-        create_minimal_latex_setup()
-
-    # Step 2: Create environment scripts
-    print("🔧 Step 2: Creating environment setup...")
-    create_latex_environment_setup()
-    create_improved_latex_config()
-
-    # Clean previous builds
-    if Path("build").exists():
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        shutil.rmtree("dist")
-
-    # Create assets directory
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    # Step 3: Create patches and helpers
-    print("🔧 Step 3: Creating build configuration...")
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-
-    # Check prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    print("=" * 60)
-    print("🔨 Step 4: Building with enhanced LaTeX support...")
-
-    # Build command
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-        "--windows-console-mode=disable",
-        "--windows-disable-console",
-        "--enable-plugin=tk-inter",
-        "--lto=no",
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-    ]
-
-    # Minimal exclusions to keep LaTeX functionality
-    exclusions = [
-        "*.tests.*", "*.test_*", "test.*",
-        "pytest.*", "setuptools.*", "_distutils_hack.*",
-        "zstandard.*"
-    ]
-    
-    for module in exclusions:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Include all necessary packages
-    packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil", "manim", "sympy"
-    ]
-
-    for package in packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                cmd.append(f"--include-package={correct_name}")
-                cmd.append(f"--include-package-data={correct_name}")
-                print(f"✅ Including: {correct_name}")
-
-    # Include our LaTeX modules
-    latex_modules = [
-        "latex_environment", "manim_latex_config", "fixes", 
-        "process_utils", "ENHANCED_NO_CONSOLE_PATCH"
-    ]
-
-    for module in latex_modules:
-        cmd.append(f"--include-module={module}")
-
-    # Include LaTeX bundle if it exists
-    if Path("latex_bundle").exists():
-        cmd.append("--include-data-dir=latex_bundle=latex_bundle")
-        print("📦 Including LaTeX bundle")
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-        f"--jobs={jobs}",
-    ])
-
-    # Icon if available
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-
-    # Include data directories
-    cmd.append("--include-data-dir=assets=assets")
-
-    # Final target
-    cmd.append("app.py")
-
-    print("Building enhanced LaTeX-enabled executable...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment setup
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-
-    # Set process priority
-    process_priority = 0
-    if priority == "high" and sys.platform == "win32":
-        print("🔥 Setting HIGH process priority")
-        process_priority = 0x00000080
-
-    # Run the build
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-
-    # Display build info
-    print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-    print(f"⚙️ Using {jobs} compilation threads")
-    print("📦 Enhanced LaTeX support enabled")
-
-    # Stream compilation output
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-
-    return_code = process.poll()
-
-    if return_code == 0:
-        print("=" * 60)
-        print("✅ Enhanced LaTeX build successful!")
-
-        exe_path = find_standalone_executable()
-        if exe_path:
-            # Create setup verification script
-            create_latex_verification_script(exe_path.parent)
-            create_launcher_script(exe_path)
-            
-            print(f"📁 Executable: {exe_path}")
-            print("🎉 ENHANCED LaTeX FEATURES:")
-            print("  ✅ Bundled TinyTeX distribution")
-            print("  ✅ Automatic LaTeX environment setup")
-            print("  ✅ Robust error handling and fallbacks")
-            print("  ✅ Full Manim LaTeX support")
-            print("  ✅ Portable - no external dependencies")
-            print("  ✅ No console windows")
-
-            return exe_path
-        else:
-            print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        print("❌ Enhanced LaTeX build failed!")
         print(f"Return code: {return_code}")
         return None
 
@@ -2001,2175 +1971,9 @@ def test_latex_functionality():
         
         plt.figure(figsize=(6, 4))
         plt.plot(x, y)
-        plt.xlabel(r'$x"
-    
-    # Set process priority if on Windows
-    process_priority = 0  # Normal priority by default
-    if priority == "high" and sys.platform == "win32":
-        if USE_ASCII_ONLY:
-            print("Setting HIGH process priority for maximum CPU utilization")
-        else:
-            print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080  # HIGH_PRIORITY_CLASS
-    
-    # IMPORTANT: Use standard subprocess directly to ensure output is visible
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,  # Line buffered output
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-    
-    # Display CPU info
-    if USE_ASCII_ONLY:
-        print(f"CPU Info: {cpu_count} logical cores available")
-        print(f"Using {jobs} compilation threads")
-        print(f"Included {len(included_packages)} packages")
-    else:
-        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-        print(f"⚙️ Using {jobs} compilation threads")
-        print(f"📦 Included {len(included_packages)} packages")
-    
-    # Print output in real-time
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-    
-    return_code = process.poll()
-    
-    if return_code == 0:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("NO-CONSOLE build successful!")
-        else:
-            print("✅ NO-CONSOLE build successful!")
-        
-        # Find executable
-        exe_path = find_executable()
-        
-        if exe_path:
-            size_mb = exe_path.stat().st_size / (1024 * 1024)
-            if USE_ASCII_ONLY:
-                print(f"Executable: {exe_path} ({size_mb:.1f} MB)")
-                print(f"\nSUCCESS! Silent executable ready!")
-                print(f"Run: {exe_path}")
-                print(f"\nGUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
-            else:
-                print(f"📁 Executable: {exe_path} ({size_mb:.1f} MB)")
-                print(f"\n🎉 SUCCESS! Silent executable ready!")
-                print(f"🚀 Run: {exe_path}")
-                print(f"\n🔇 GUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
-            
-            # Create a launcher script
-            create_launcher_script(exe_path)
-            
-            return exe_path
-        else:
-            if USE_ASCII_ONLY:
-                print("Executable not found")
-            else:
-                print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Build failed!")
-        else:
-            print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_version(jobs=None, priority="normal"):
-    """Build standalone version (directory-based, not onefile) with complete LaTeX support"""
-
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    if USE_ASCII_ONLY:
-        print(f"Building STANDALONE version (directory-based) with {jobs} CPU threads...")
-    else:
-        print(f"🐍 Building STANDALONE version (directory-based) with {jobs} CPU threads...")
-
-    # Clean previous builds
-    if Path("build").exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning build directory...")
-        else:
-            print("🧹 Cleaning build directory...")
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning dist directory...")
-        else:
-            print("🧹 Cleaning dist directory...")
-        shutil.rmtree("dist")
-
-    # Create assets directory if it doesn't exist
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-    create_manim_safe_config()
-
-    # Check system prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed" if not USE_ASCII_ONLY else "ERROR: System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    if USE_ASCII_ONLY:
-        print(f"Detected Nuitka version: {nuitka_version}")
-    else:
-        print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    # Basic command structure
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-    ]
-
-    # Enhanced console hiding - use both methods for maximum compatibility
-    cmd.append("--windows-console-mode=disable")
-    cmd.append("--windows-disable-console")
-
-    # Enable GUI toolkit support
-    cmd.append("--enable-plugin=tk-inter")
-
-    # CRITICAL: Disable LTO to prevent zstandard linking issues
-    cmd.append("--lto=no")
-
-    # Exclude problematic modules that cause build issues - COMPREHENSIVE LIST
-    problematic_modules = [
-        "zstandard", "zstandard.backend_cffi", "setuptools",
-        "test.support", "_distutils_hack", "distutils",
-        "numpy.distutils", "setuptools_scm",
-        # Exclude ALL test modules to speed up compilation
-        "sympy.*.tests.*", "sympy.*.test_*", "sympy.tests.*",
-        "sympy.polys.benchmarks.*", "sympy.physics.quantum.tests.*",
-        "sympy.solvers.ode.tests.*", "sympy.polys.tests.*",
-        "sympy.geometry.tests.*", "sympy.core.tests.*",
-        "sympy.functions.tests.*", "sympy.matrices.tests.*",
-        "sympy.plotting.tests.*", "sympy.printing.tests.*",
-        "sympy.simplify.tests.*", "sympy.stats.tests.*",
-        "sympy.tensor.tests.*", "sympy.utilities.tests.*",
-        # Exclude the specific problematic modules from the error
-        "sympy.polys.benchmarks.bench_solvers",
-        "sympy.physics.quantum.tests.test_spin",
-        "sympy.solvers.ode.tests.test_systems",
-        "sympy.polys.polyquinticconst",
-        # Exclude benchmark modules
-        "*.benchmarks.*", "*.test_*", "*.tests.*",
-        # Exclude other problematic modules
-        "matplotlib.tests.*", "numpy.tests.*", "PIL.tests.*",
-        "cv2.tests.*", "jedi.test.*", "pytest.*",
-    ]
-
-    for module in problematic_modules:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Progress and optimization flags with faster compilation
-    cmd.extend([
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-        "--onefile-tempdir-spec=CACHE",  # Use cache for temp files
-    ])
-
-    # Essential packages - check availability before including (SELECTIVE APPROACH)
-    essential_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil"
-    ]
-
-    included_packages = []
-    for package in essential_packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                included_packages.append(correct_name)
-                cmd.append(f"--include-package={correct_name}")
-                if USE_ASCII_ONLY:
-                    print(f"Including package: {correct_name}")
-                else:
-                    print(f"✅ Including package: {correct_name}")
-        else:
-            if USE_ASCII_ONLY:
-                print(f"Skipping unavailable package: {package}")
-            else:
-                print(f"⚠️ Skipping unavailable package: {package}")
-
-    # Handle manim separately with more control
-    if is_package_importable("manim"):
-        cmd.append("--include-package=manim")
-        cmd.append("--include-package-data=manim")
-        # Exclude manim tests
-        cmd.append("--nofollow-import-to=manim.*.tests")
-        cmd.append("--nofollow-import-to=manim.test.*")
-        included_packages.append("manim")
-        if USE_ASCII_ONLY:
-            print("Including manim (excluding tests)")
-        else:
-            print("✅ Including manim (excluding tests)")
-
-    # Handle sympy with minimal inclusion for LaTeX support but avoid problematic modules
-    if is_package_importable("sympy"):
-        # Only include essential sympy modules for LaTeX
-        essential_sympy_modules = [
-            "sympy.core", "sympy.printing.latex", "sympy.printing.mathml",
-            "sympy.parsing", "sympy.functions.elementary", 
-            "sympy.utilities.lambdify", "sympy.simplify.simplify"
-        ]
-        
-        for module in essential_sympy_modules:
-            cmd.append(f"--include-module={module}")
-        
-        # Exclude ALL problematic sympy subpackages
-        sympy_exclusions = [
-            "sympy.polys", "sympy.physics", "sympy.geometry",
-            "sympy.matrices", "sympy.stats", "sympy.tensor",
-            "sympy.*.tests", "sympy.*.benchmarks", "sympy.plotting",
-            "sympy.solvers.ode", "sympy.polys.benchmarks"
-        ]
-        
-        for exclusion in sympy_exclusions:
-            cmd.append(f"--nofollow-import-to={exclusion}")
-        
-        included_packages.append("sympy (minimal LaTeX)")
-        if USE_ASCII_ONLY:
-            print("Including minimal sympy for LaTeX (excluding problematic modules)")
-        else:
-            print("✅ Including minimal sympy for LaTeX (excluding problematic modules)")
-
-    # Include additional LaTeX support packages if available
-    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour"]
-    
-    for package in latex_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package={package}")
-            included_packages.append(package)
-            if USE_ASCII_ONLY:
-                print(f"Including LaTeX support: {package}")
-            else:
-                print(f"📦 Including LaTeX support: {package}")
-
-    # Critical system modules
-    essential_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy", "manim_safe_config"
-    ]
-
-    for module in essential_modules:
-        cmd.append(f"--include-module={module}")
-
-    # LaTeX and mathematical expression support data (selective)
-    latex_data_packages = ["manim", "matplotlib", "numpy"]
-
-    for package in latex_data_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package-data={package}")
-            if USE_ASCII_ONLY:
-                print(f"Including data for: {package}")
-            else:
-                print(f"📦 Including data for: {package}")
-
-    # Include LaTeX-specific modules (minimal set)
-    latex_modules = [
-        "sympy.printing.latex", "sympy.printing.mathml", 
-        "sympy.core.basic", "sympy.core.expr"
-    ]
-
-    for module in latex_modules:
-        if is_package_importable(module.split('.')[0]):
-            cmd.append(f"--include-module={module}")
-
-    # Manim-specific data inclusion (but exclude tests)
-    if is_package_importable("manim"):
-        cmd.extend([
-            "--include-package-data=manim",
-            "--include-package-data=manim.mobject",
-            "--include-package-data=manim.scene",
-            "--include-package-data=manim.animation",
-            "--include-package-data=manim.utils",
-        ])
-        # But exclude test data
-        cmd.extend([
-            "--nofollow-import-to=manim.*.tests.*",
-            "--nofollow-import-to=manim.test.*"
-        ])
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-    ])
-
-    # Icon (if available)
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-        if USE_ASCII_ONLY:
-            print("Using custom icon")
-        else:
-            print("🎨 Using custom icon")
-
-    # Include data directories and assets
-    data_dirs = ["assets=assets"]
-
-    # Try to include matplotlib data if available (but not tests)
-    try:
-        import matplotlib
-        mpl_data = Path(matplotlib.get_data_path())
-        if mpl_data.exists():
-            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
-            if USE_ASCII_ONLY:
-                print("Including matplotlib data")
-            else:
-                print("📊 Including matplotlib data")
-    except ImportError:
-        pass
-
-    for data_dir in data_dirs:
-        cmd.append(f"--include-data-dir={data_dir}")
-
-    # Performance optimization
-    cmd.append(f"--jobs={jobs}")
-
-    # Final target
-    cmd.append("app.py")
-
-    if USE_ASCII_ONLY:
-        print("Building standalone executable with LaTeX support...")
-    else:
-        print("🔨 Building standalone executable with LaTeX support...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment variables for compilation
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto"
-
-    # Disable problematic optimizations
-    env["NUITKA_DISABLE_CCACHE"] = "1"
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-
-    # Set process priority for faster compilation
-    process_priority = 0
-    if priority == "high" and sys.platform == "win32":
-        if USE_ASCII_ONLY:
-            print("Setting HIGH process priority for maximum CPU utilization")
-        else:
-            print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080
-
-    # Start compilation process
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-
-    # Display CPU and build info
-    if USE_ASCII_ONLY:
-        print(f"CPU Info: {cpu_count} logical cores available")
-        print(f"Using {jobs} compilation threads")
-        print(f"Included {len(included_packages)} packages")
-    else:
-        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-        print(f"⚙️ Using {jobs} compilation threads")
-        print(f"📦 Included {len(included_packages)} packages")
-
-    # Stream compilation output in real-time
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-
-    return_code = process.poll()
-
-    if return_code == 0:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Standalone build successful!")
-        else:
-            print("✅ Standalone build successful!")
-
-        # Find the executable
-        exe_path = find_standalone_executable()
-        if exe_path:
-            if USE_ASCII_ONLY:
-                print(f"Executable: {exe_path}")
-                print(f"Distribution folder: {exe_path.parent}")
-                print(f"\nSUCCESS! Standalone version ready with LaTeX support!")
-                print(f"Features included:")
-                print(f"  - Mathematical expression rendering")
-                print(f"  - Basic LaTeX formula support")
-                print(f"  - Professional animation engine")
-                print(f"  - No console windows")
-            else:
-                print(f"📁 Executable: {exe_path}")
-                print(f"📁 Distribution folder: {exe_path.parent}")
-                print(f"\n🎉 SUCCESS! Standalone version ready with LaTeX support!")
-                print(f"🧮 Features included:")
-                print(f"  ✅ Mathematical expression rendering")
-                print(f"  ✅ Basic LaTeX formula support")
-                print(f"  ✅ Professional animation engine")
-                print(f"  ✅ No console windows")
-
-            # Create configuration file for LaTeX
-            create_latex_config(exe_path.parent)
-
-            # Create launcher scripts
-            create_launcher_script(exe_path)
-
-            return exe_path
-        else:
-            if USE_ASCII_ONLY:
-                print("Executable not found")
-            else:
-                print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Build failed!")
-        else:
-            print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_with_full_latex(jobs=None, priority="normal"):
-    """Build standalone version with complete LaTeX support bundled"""
-    
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    if USE_ASCII_ONLY:
-        print(f"Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
-    else:
-        print(f"🔬 Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
-
-    # First, create LaTeX bundle
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 1: Creating LaTeX bundle...")
-    else:
-        print("📦 Step 1: Creating LaTeX bundle...")
-    
-    # Create and run LaTeX bundler
-    create_latex_bundle_script()
-    
-    try:
-        # Run the bundler
-        result = run_hidden_process([sys.executable, "latex_bundler.py"], capture_output=True, text=True)
-        if result.returncode == 0:
-            if USE_ASCII_ONLY:
-                print("LaTeX bundle created successfully")
-            else:
-                print("✅ LaTeX bundle created successfully")
-        else:
-            if USE_ASCII_ONLY:
-                print("Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
-                print(result.stderr)
-            else:
-                print("⚠️ Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
-                print(result.stderr)
-    except Exception as e:
-        if USE_ASCII_ONLY:
-            print(f"Warning: Could not create LaTeX bundle: {e}")
-        else:
-            print(f"⚠️ Warning: Could not create LaTeX bundle: {e}")
-
-    # Clean previous builds
-    if Path("build").exists():
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        shutil.rmtree("dist")
-
-    # Create assets directory
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 2: Creating build configuration...")
-    else:
-        print("🔧 Step 2: Creating build configuration...")
-
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-    create_full_latex_manim_config()  # Full LaTeX config instead of safe config
-
-    # Check prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    if USE_ASCII_ONLY:
-        print(f"Detected Nuitka version: {nuitka_version}")
-    else:
-        print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 3: Building with full LaTeX support...")
-    else:
-        print("🔨 Step 3: Building with full LaTeX support...")
-
-    # Basic command structure
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-        "--windows-console-mode=disable",
-        "--windows-disable-console",
-        "--enable-plugin=tk-inter",
-        "--lto=no",
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-    ]
-
-    # MINIMAL exclusions - only exclude test modules but keep LaTeX functionality
-    minimal_exclusions = [
-        # Only exclude test modules, keep all LaTeX functionality
-        "*.tests.*", "*.test_*", "test.*",
-        "pytest.*", "*.benchmarks.*",
-        # Still exclude problematic modules that cause build issues
-        "zstandard.*", "setuptools.*", "_distutils_hack.*",
-        # Exclude only specific problematic SymPy test modules (from your original error)
-        "sympy.polys.benchmarks.bench_solvers",
-        "sympy.physics.quantum.tests.test_spin", 
-        "sympy.solvers.ode.tests.test_systems",
-        "sympy.polys.polyquinticconst",
-        # Keep all other SymPy modules including LaTeX ones
-    ]
-
-    for module in minimal_exclusions:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Include ALL packages including LaTeX support
-    comprehensive_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil", "manim"
-    ]
-
-    included_packages = []
-    for package in comprehensive_packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                included_packages.append(correct_name)
-                cmd.append(f"--include-package={correct_name}")
-                # Include package data for complete functionality
-                cmd.append(f"--include-package-data={correct_name}")
-                if USE_ASCII_ONLY:
-                    print(f"Including full package: {correct_name}")
-                else:
-                    print(f"📦 Including full package: {correct_name}")
-
-    # Include SymPy with FULL LaTeX support (opposite of previous approach)
-    if is_package_importable("sympy"):
-        # Include ALL SymPy modules except the problematic test ones
-        cmd.append("--include-package=sympy")
-        cmd.append("--include-package-data=sympy")
-        
-        # Only exclude the specific problematic modules from the build error
-        sympy_test_exclusions = [
-            "sympy.polys.benchmarks.bench_solvers",
-            "sympy.physics.quantum.tests.test_spin",
-            "sympy.solvers.ode.tests.test_systems", 
-            "sympy.polys.polyquinticconst",
-            # General test exclusions but keep LaTeX modules
-            "sympy.*.tests.*", "sympy.*.test_*"
-        ]
-        
-        for exclusion in sympy_test_exclusions:
-            cmd.append(f"--nofollow-import-to={exclusion}")
-        
-        included_packages.append("sympy (full LaTeX support)")
-        if USE_ASCII_ONLY:
-            print("Including SymPy with FULL LaTeX support")
-        else:
-            print("🧮 Including SymPy with FULL LaTeX support")
-
-    # Include LaTeX support packages if available
-    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour", "jinja2"]
-    
-    for package in latex_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package={package}")
-            cmd.append(f"--include-package-data={package}")
-            included_packages.append(package)
-            if USE_ASCII_ONLY:
-                print(f"Including LaTeX support package: {package}")
-            else:
-                print(f"📚 Including LaTeX support package: {package}")
-
-    # Include comprehensive system modules for LaTeX
-    comprehensive_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy",
-        "manim_latex_config",  # Our full LaTeX config
-        "latex_bundler",       # LaTeX bundler
-        # Additional modules for LaTeX support
-        "xml", "xml.etree", "xml.etree.ElementTree",
-        "urllib", "urllib.request", "urllib.parse",
-        "zipfile", "tarfile", "gzip", "bz2",
-        "hashlib", "hmac", "ssl", "socket"
-    ]
-
-    for module in comprehensive_modules:
-        cmd.append(f"--include-module={module}")
-
-    # Include LaTeX bundle directory if it exists
-    if Path("latex_bundle").exists():
-        cmd.append("--include-data-dir=latex_bundle=latex_bundle")
-        if USE_ASCII_ONLY:
-            print("Including bundled LaTeX installation")
-        else:
-            print("📦 Including bundled LaTeX installation")
-
-    # Include comprehensive data for LaTeX support
-    data_packages = ["manim", "matplotlib", "numpy", "sympy"]
-
-    for package in data_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package-data={package}")
-            if USE_ASCII_ONLY:
-                print(f"Including comprehensive data for: {package}")
-            else:
-                print(f"📊 Including comprehensive data for: {package}")
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-        f"--jobs={jobs}",
-    ])
-
-    # Icon if available
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-
-    # Include all data directories
-    data_dirs = ["assets=assets"]
-    
-    # Try to include matplotlib data
-    try:
-        import matplotlib
-        mpl_data = Path(matplotlib.get_data_path())
-        if mpl_data.exists():
-            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
-            if USE_ASCII_ONLY:
-                print("Including matplotlib data directory")
-            else:
-                print("📊 Including matplotlib data directory")
-    except ImportError:
-        pass
-
-    for data_dir in data_dirs:
-        cmd.append(f"--include-data-dir={data_dir}")
-
-    # Final target
-    cmd.append("app.py")
-
-    print("Building standalone executable with COMPLETE LaTeX support...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment setup for LaTeX support
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto)
-        plt.ylabel(r'$\\sin(x)"
-    
-    # Set process priority if on Windows
-    process_priority = 0  # Normal priority by default
-    if priority == "high" and sys.platform == "win32":
-        if USE_ASCII_ONLY:
-            print("Setting HIGH process priority for maximum CPU utilization")
-        else:
-            print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080  # HIGH_PRIORITY_CLASS
-    
-    # IMPORTANT: Use standard subprocess directly to ensure output is visible
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,  # Line buffered output
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-    
-    # Display CPU info
-    if USE_ASCII_ONLY:
-        print(f"CPU Info: {cpu_count} logical cores available")
-        print(f"Using {jobs} compilation threads")
-        print(f"Included {len(included_packages)} packages")
-    else:
-        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-        print(f"⚙️ Using {jobs} compilation threads")
-        print(f"📦 Included {len(included_packages)} packages")
-    
-    # Print output in real-time
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-    
-    return_code = process.poll()
-    
-    if return_code == 0:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("NO-CONSOLE build successful!")
-        else:
-            print("✅ NO-CONSOLE build successful!")
-        
-        # Find executable
-        exe_path = find_executable()
-        
-        if exe_path:
-            size_mb = exe_path.stat().st_size / (1024 * 1024)
-            if USE_ASCII_ONLY:
-                print(f"Executable: {exe_path} ({size_mb:.1f} MB)")
-                print(f"\nSUCCESS! Silent executable ready!")
-                print(f"Run: {exe_path}")
-                print(f"\nGUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
-            else:
-                print(f"📁 Executable: {exe_path} ({size_mb:.1f} MB)")
-                print(f"\n🎉 SUCCESS! Silent executable ready!")
-                print(f"🚀 Run: {exe_path}")
-                print(f"\n🔇 GUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
-            
-            # Create a launcher script
-            create_launcher_script(exe_path)
-            
-            return exe_path
-        else:
-            if USE_ASCII_ONLY:
-                print("Executable not found")
-            else:
-                print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Build failed!")
-        else:
-            print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_version(jobs=None, priority="normal"):
-    """Build standalone version (directory-based, not onefile) with complete LaTeX support"""
-
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    if USE_ASCII_ONLY:
-        print(f"Building STANDALONE version (directory-based) with {jobs} CPU threads...")
-    else:
-        print(f"🐍 Building STANDALONE version (directory-based) with {jobs} CPU threads...")
-
-    # Clean previous builds
-    if Path("build").exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning build directory...")
-        else:
-            print("🧹 Cleaning build directory...")
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning dist directory...")
-        else:
-            print("🧹 Cleaning dist directory...")
-        shutil.rmtree("dist")
-
-    # Create assets directory if it doesn't exist
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-    create_manim_safe_config()
-
-    # Check system prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed" if not USE_ASCII_ONLY else "ERROR: System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    if USE_ASCII_ONLY:
-        print(f"Detected Nuitka version: {nuitka_version}")
-    else:
-        print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    # Basic command structure
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-    ]
-
-    # Enhanced console hiding - use both methods for maximum compatibility
-    cmd.append("--windows-console-mode=disable")
-    cmd.append("--windows-disable-console")
-
-    # Enable GUI toolkit support
-    cmd.append("--enable-plugin=tk-inter")
-
-    # CRITICAL: Disable LTO to prevent zstandard linking issues
-    cmd.append("--lto=no")
-
-    # Exclude problematic modules that cause build issues - COMPREHENSIVE LIST
-    problematic_modules = [
-        "zstandard", "zstandard.backend_cffi", "setuptools",
-        "test.support", "_distutils_hack", "distutils",
-        "numpy.distutils", "setuptools_scm",
-        # Exclude ALL test modules to speed up compilation
-        "sympy.*.tests.*", "sympy.*.test_*", "sympy.tests.*",
-        "sympy.polys.benchmarks.*", "sympy.physics.quantum.tests.*",
-        "sympy.solvers.ode.tests.*", "sympy.polys.tests.*",
-        "sympy.geometry.tests.*", "sympy.core.tests.*",
-        "sympy.functions.tests.*", "sympy.matrices.tests.*",
-        "sympy.plotting.tests.*", "sympy.printing.tests.*",
-        "sympy.simplify.tests.*", "sympy.stats.tests.*",
-        "sympy.tensor.tests.*", "sympy.utilities.tests.*",
-        # Exclude the specific problematic modules from the error
-        "sympy.polys.benchmarks.bench_solvers",
-        "sympy.physics.quantum.tests.test_spin",
-        "sympy.solvers.ode.tests.test_systems",
-        "sympy.polys.polyquinticconst",
-        # Exclude benchmark modules
-        "*.benchmarks.*", "*.test_*", "*.tests.*",
-        # Exclude other problematic modules
-        "matplotlib.tests.*", "numpy.tests.*", "PIL.tests.*",
-        "cv2.tests.*", "jedi.test.*", "pytest.*",
-    ]
-
-    for module in problematic_modules:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Progress and optimization flags with faster compilation
-    cmd.extend([
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-        "--onefile-tempdir-spec=CACHE",  # Use cache for temp files
-    ])
-
-    # Essential packages - check availability before including (SELECTIVE APPROACH)
-    essential_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil"
-    ]
-
-    included_packages = []
-    for package in essential_packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                included_packages.append(correct_name)
-                cmd.append(f"--include-package={correct_name}")
-                if USE_ASCII_ONLY:
-                    print(f"Including package: {correct_name}")
-                else:
-                    print(f"✅ Including package: {correct_name}")
-        else:
-            if USE_ASCII_ONLY:
-                print(f"Skipping unavailable package: {package}")
-            else:
-                print(f"⚠️ Skipping unavailable package: {package}")
-
-    # Handle manim separately with more control
-    if is_package_importable("manim"):
-        cmd.append("--include-package=manim")
-        cmd.append("--include-package-data=manim")
-        # Exclude manim tests
-        cmd.append("--nofollow-import-to=manim.*.tests")
-        cmd.append("--nofollow-import-to=manim.test.*")
-        included_packages.append("manim")
-        if USE_ASCII_ONLY:
-            print("Including manim (excluding tests)")
-        else:
-            print("✅ Including manim (excluding tests)")
-
-    # Handle sympy with minimal inclusion for LaTeX support but avoid problematic modules
-    if is_package_importable("sympy"):
-        # Only include essential sympy modules for LaTeX
-        essential_sympy_modules = [
-            "sympy.core", "sympy.printing.latex", "sympy.printing.mathml",
-            "sympy.parsing", "sympy.functions.elementary", 
-            "sympy.utilities.lambdify", "sympy.simplify.simplify"
-        ]
-        
-        for module in essential_sympy_modules:
-            cmd.append(f"--include-module={module}")
-        
-        # Exclude ALL problematic sympy subpackages
-        sympy_exclusions = [
-            "sympy.polys", "sympy.physics", "sympy.geometry",
-            "sympy.matrices", "sympy.stats", "sympy.tensor",
-            "sympy.*.tests", "sympy.*.benchmarks", "sympy.plotting",
-            "sympy.solvers.ode", "sympy.polys.benchmarks"
-        ]
-        
-        for exclusion in sympy_exclusions:
-            cmd.append(f"--nofollow-import-to={exclusion}")
-        
-        included_packages.append("sympy (minimal LaTeX)")
-        if USE_ASCII_ONLY:
-            print("Including minimal sympy for LaTeX (excluding problematic modules)")
-        else:
-            print("✅ Including minimal sympy for LaTeX (excluding problematic modules)")
-
-    # Include additional LaTeX support packages if available
-    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour"]
-    
-    for package in latex_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package={package}")
-            included_packages.append(package)
-            if USE_ASCII_ONLY:
-                print(f"Including LaTeX support: {package}")
-            else:
-                print(f"📦 Including LaTeX support: {package}")
-
-    # Critical system modules
-    essential_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy", "manim_safe_config"
-    ]
-
-    for module in essential_modules:
-        cmd.append(f"--include-module={module}")
-
-    # LaTeX and mathematical expression support data (selective)
-    latex_data_packages = ["manim", "matplotlib", "numpy"]
-
-    for package in latex_data_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package-data={package}")
-            if USE_ASCII_ONLY:
-                print(f"Including data for: {package}")
-            else:
-                print(f"📦 Including data for: {package}")
-
-    # Include LaTeX-specific modules (minimal set)
-    latex_modules = [
-        "sympy.printing.latex", "sympy.printing.mathml", 
-        "sympy.core.basic", "sympy.core.expr"
-    ]
-
-    for module in latex_modules:
-        if is_package_importable(module.split('.')[0]):
-            cmd.append(f"--include-module={module}")
-
-    # Manim-specific data inclusion (but exclude tests)
-    if is_package_importable("manim"):
-        cmd.extend([
-            "--include-package-data=manim",
-            "--include-package-data=manim.mobject",
-            "--include-package-data=manim.scene",
-            "--include-package-data=manim.animation",
-            "--include-package-data=manim.utils",
-        ])
-        # But exclude test data
-        cmd.extend([
-            "--nofollow-import-to=manim.*.tests.*",
-            "--nofollow-import-to=manim.test.*"
-        ])
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-    ])
-
-    # Icon (if available)
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-        if USE_ASCII_ONLY:
-            print("Using custom icon")
-        else:
-            print("🎨 Using custom icon")
-
-    # Include data directories and assets
-    data_dirs = ["assets=assets"]
-
-    # Try to include matplotlib data if available (but not tests)
-    try:
-        import matplotlib
-        mpl_data = Path(matplotlib.get_data_path())
-        if mpl_data.exists():
-            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
-            if USE_ASCII_ONLY:
-                print("Including matplotlib data")
-            else:
-                print("📊 Including matplotlib data")
-    except ImportError:
-        pass
-
-    for data_dir in data_dirs:
-        cmd.append(f"--include-data-dir={data_dir}")
-
-    # Performance optimization
-    cmd.append(f"--jobs={jobs}")
-
-    # Final target
-    cmd.append("app.py")
-
-    if USE_ASCII_ONLY:
-        print("Building standalone executable with LaTeX support...")
-    else:
-        print("🔨 Building standalone executable with LaTeX support...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment variables for compilation
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto"
-
-    # Disable problematic optimizations
-    env["NUITKA_DISABLE_CCACHE"] = "1"
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-
-    # Set process priority for faster compilation
-    process_priority = 0
-    if priority == "high" and sys.platform == "win32":
-        if USE_ASCII_ONLY:
-            print("Setting HIGH process priority for maximum CPU utilization")
-        else:
-            print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080
-
-    # Start compilation process
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-
-    # Display CPU and build info
-    if USE_ASCII_ONLY:
-        print(f"CPU Info: {cpu_count} logical cores available")
-        print(f"Using {jobs} compilation threads")
-        print(f"Included {len(included_packages)} packages")
-    else:
-        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-        print(f"⚙️ Using {jobs} compilation threads")
-        print(f"📦 Included {len(included_packages)} packages")
-
-    # Stream compilation output in real-time
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-
-    return_code = process.poll()
-
-    if return_code == 0:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Standalone build successful!")
-        else:
-            print("✅ Standalone build successful!")
-
-        # Find the executable
-        exe_path = find_standalone_executable()
-        if exe_path:
-            if USE_ASCII_ONLY:
-                print(f"Executable: {exe_path}")
-                print(f"Distribution folder: {exe_path.parent}")
-                print(f"\nSUCCESS! Standalone version ready with LaTeX support!")
-                print(f"Features included:")
-                print(f"  - Mathematical expression rendering")
-                print(f"  - Basic LaTeX formula support")
-                print(f"  - Professional animation engine")
-                print(f"  - No console windows")
-            else:
-                print(f"📁 Executable: {exe_path}")
-                print(f"📁 Distribution folder: {exe_path.parent}")
-                print(f"\n🎉 SUCCESS! Standalone version ready with LaTeX support!")
-                print(f"🧮 Features included:")
-                print(f"  ✅ Mathematical expression rendering")
-                print(f"  ✅ Basic LaTeX formula support")
-                print(f"  ✅ Professional animation engine")
-                print(f"  ✅ No console windows")
-
-            # Create configuration file for LaTeX
-            create_latex_config(exe_path.parent)
-
-            # Create launcher scripts
-            create_launcher_script(exe_path)
-
-            return exe_path
-        else:
-            if USE_ASCII_ONLY:
-                print("Executable not found")
-            else:
-                print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Build failed!")
-        else:
-            print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_with_full_latex(jobs=None, priority="normal"):
-    """Build standalone version with complete LaTeX support bundled"""
-    
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    if USE_ASCII_ONLY:
-        print(f"Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
-    else:
-        print(f"🔬 Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
-
-    # First, create LaTeX bundle
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 1: Creating LaTeX bundle...")
-    else:
-        print("📦 Step 1: Creating LaTeX bundle...")
-    
-    # Create and run LaTeX bundler
-    create_latex_bundle_script()
-    
-    try:
-        # Run the bundler
-        result = run_hidden_process([sys.executable, "latex_bundler.py"], capture_output=True, text=True)
-        if result.returncode == 0:
-            if USE_ASCII_ONLY:
-                print("LaTeX bundle created successfully")
-            else:
-                print("✅ LaTeX bundle created successfully")
-        else:
-            if USE_ASCII_ONLY:
-                print("Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
-                print(result.stderr)
-            else:
-                print("⚠️ Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
-                print(result.stderr)
-    except Exception as e:
-        if USE_ASCII_ONLY:
-            print(f"Warning: Could not create LaTeX bundle: {e}")
-        else:
-            print(f"⚠️ Warning: Could not create LaTeX bundle: {e}")
-
-    # Clean previous builds
-    if Path("build").exists():
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        shutil.rmtree("dist")
-
-    # Create assets directory
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 2: Creating build configuration...")
-    else:
-        print("🔧 Step 2: Creating build configuration...")
-
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-    create_full_latex_manim_config()  # Full LaTeX config instead of safe config
-
-    # Check prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    if USE_ASCII_ONLY:
-        print(f"Detected Nuitka version: {nuitka_version}")
-    else:
-        print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 3: Building with full LaTeX support...")
-    else:
-        print("🔨 Step 3: Building with full LaTeX support...")
-
-    # Basic command structure
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-        "--windows-console-mode=disable",
-        "--windows-disable-console",
-        "--enable-plugin=tk-inter",
-        "--lto=no",
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-    ]
-
-    # MINIMAL exclusions - only exclude test modules but keep LaTeX functionality
-    minimal_exclusions = [
-        # Only exclude test modules, keep all LaTeX functionality
-        "*.tests.*", "*.test_*", "test.*",
-        "pytest.*", "*.benchmarks.*",
-        # Still exclude problematic modules that cause build issues
-        "zstandard.*", "setuptools.*", "_distutils_hack.*",
-        # Exclude only specific problematic SymPy test modules (from your original error)
-        "sympy.polys.benchmarks.bench_solvers",
-        "sympy.physics.quantum.tests.test_spin", 
-        "sympy.solvers.ode.tests.test_systems",
-        "sympy.polys.polyquinticconst",
-        # Keep all other SymPy modules including LaTeX ones
-    ]
-
-    for module in minimal_exclusions:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Include ALL packages including LaTeX support
-    comprehensive_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil", "manim"
-    ]
-
-    included_packages = []
-    for package in comprehensive_packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                included_packages.append(correct_name)
-                cmd.append(f"--include-package={correct_name}")
-                # Include package data for complete functionality
-                cmd.append(f"--include-package-data={correct_name}")
-                if USE_ASCII_ONLY:
-                    print(f"Including full package: {correct_name}")
-                else:
-                    print(f"📦 Including full package: {correct_name}")
-
-    # Include SymPy with FULL LaTeX support (opposite of previous approach)
-    if is_package_importable("sympy"):
-        # Include ALL SymPy modules except the problematic test ones
-        cmd.append("--include-package=sympy")
-        cmd.append("--include-package-data=sympy")
-        
-        # Only exclude the specific problematic modules from the build error
-        sympy_test_exclusions = [
-            "sympy.polys.benchmarks.bench_solvers",
-            "sympy.physics.quantum.tests.test_spin",
-            "sympy.solvers.ode.tests.test_systems", 
-            "sympy.polys.polyquinticconst",
-            # General test exclusions but keep LaTeX modules
-            "sympy.*.tests.*", "sympy.*.test_*"
-        ]
-        
-        for exclusion in sympy_test_exclusions:
-            cmd.append(f"--nofollow-import-to={exclusion}")
-        
-        included_packages.append("sympy (full LaTeX support)")
-        if USE_ASCII_ONLY:
-            print("Including SymPy with FULL LaTeX support")
-        else:
-            print("🧮 Including SymPy with FULL LaTeX support")
-
-    # Include LaTeX support packages if available
-    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour", "jinja2"]
-    
-    for package in latex_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package={package}")
-            cmd.append(f"--include-package-data={package}")
-            included_packages.append(package)
-            if USE_ASCII_ONLY:
-                print(f"Including LaTeX support package: {package}")
-            else:
-                print(f"📚 Including LaTeX support package: {package}")
-
-    # Include comprehensive system modules for LaTeX
-    comprehensive_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy",
-        "manim_latex_config",  # Our full LaTeX config
-        "latex_bundler",       # LaTeX bundler
-        # Additional modules for LaTeX support
-        "xml", "xml.etree", "xml.etree.ElementTree",
-        "urllib", "urllib.request", "urllib.parse",
-        "zipfile", "tarfile", "gzip", "bz2",
-        "hashlib", "hmac", "ssl", "socket"
-    ]
-
-    for module in comprehensive_modules:
-        cmd.append(f"--include-module={module}")
-
-    # Include LaTeX bundle directory if it exists
-    if Path("latex_bundle").exists():
-        cmd.append("--include-data-dir=latex_bundle=latex_bundle")
-        if USE_ASCII_ONLY:
-            print("Including bundled LaTeX installation")
-        else:
-            print("📦 Including bundled LaTeX installation")
-
-    # Include comprehensive data for LaTeX support
-    data_packages = ["manim", "matplotlib", "numpy", "sympy"]
-
-    for package in data_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package-data={package}")
-            if USE_ASCII_ONLY:
-                print(f"Including comprehensive data for: {package}")
-            else:
-                print(f"📊 Including comprehensive data for: {package}")
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-        f"--jobs={jobs}",
-    ])
-
-    # Icon if available
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-
-    # Include all data directories
-    data_dirs = ["assets=assets"]
-    
-    # Try to include matplotlib data
-    try:
-        import matplotlib
-        mpl_data = Path(matplotlib.get_data_path())
-        if mpl_data.exists():
-            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
-            if USE_ASCII_ONLY:
-                print("Including matplotlib data directory")
-            else:
-                print("📊 Including matplotlib data directory")
-    except ImportError:
-        pass
-
-    for data_dir in data_dirs:
-        cmd.append(f"--include-data-dir={data_dir}")
-
-    # Final target
-    cmd.append("app.py")
-
-    print("Building standalone executable with COMPLETE LaTeX support...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment setup for LaTeX support
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto)
-        plt.title(r'$y = \\sin(x)"
-    
-    # Set process priority if on Windows
-    process_priority = 0  # Normal priority by default
-    if priority == "high" and sys.platform == "win32":
-        if USE_ASCII_ONLY:
-            print("Setting HIGH process priority for maximum CPU utilization")
-        else:
-            print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080  # HIGH_PRIORITY_CLASS
-    
-    # IMPORTANT: Use standard subprocess directly to ensure output is visible
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,  # Line buffered output
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-    
-    # Display CPU info
-    if USE_ASCII_ONLY:
-        print(f"CPU Info: {cpu_count} logical cores available")
-        print(f"Using {jobs} compilation threads")
-        print(f"Included {len(included_packages)} packages")
-    else:
-        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-        print(f"⚙️ Using {jobs} compilation threads")
-        print(f"📦 Included {len(included_packages)} packages")
-    
-    # Print output in real-time
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-    
-    return_code = process.poll()
-    
-    if return_code == 0:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("NO-CONSOLE build successful!")
-        else:
-            print("✅ NO-CONSOLE build successful!")
-        
-        # Find executable
-        exe_path = find_executable()
-        
-        if exe_path:
-            size_mb = exe_path.stat().st_size / (1024 * 1024)
-            if USE_ASCII_ONLY:
-                print(f"Executable: {exe_path} ({size_mb:.1f} MB)")
-                print(f"\nSUCCESS! Silent executable ready!")
-                print(f"Run: {exe_path}")
-                print(f"\nGUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
-            else:
-                print(f"📁 Executable: {exe_path} ({size_mb:.1f} MB)")
-                print(f"\n🎉 SUCCESS! Silent executable ready!")
-                print(f"🚀 Run: {exe_path}")
-                print(f"\n🔇 GUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
-            
-            # Create a launcher script
-            create_launcher_script(exe_path)
-            
-            return exe_path
-        else:
-            if USE_ASCII_ONLY:
-                print("Executable not found")
-            else:
-                print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Build failed!")
-        else:
-            print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_version(jobs=None, priority="normal"):
-    """Build standalone version (directory-based, not onefile) with complete LaTeX support"""
-
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    if USE_ASCII_ONLY:
-        print(f"Building STANDALONE version (directory-based) with {jobs} CPU threads...")
-    else:
-        print(f"🐍 Building STANDALONE version (directory-based) with {jobs} CPU threads...")
-
-    # Clean previous builds
-    if Path("build").exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning build directory...")
-        else:
-            print("🧹 Cleaning build directory...")
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning dist directory...")
-        else:
-            print("🧹 Cleaning dist directory...")
-        shutil.rmtree("dist")
-
-    # Create assets directory if it doesn't exist
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-    create_manim_safe_config()
-
-    # Check system prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed" if not USE_ASCII_ONLY else "ERROR: System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    if USE_ASCII_ONLY:
-        print(f"Detected Nuitka version: {nuitka_version}")
-    else:
-        print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    # Basic command structure
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-    ]
-
-    # Enhanced console hiding - use both methods for maximum compatibility
-    cmd.append("--windows-console-mode=disable")
-    cmd.append("--windows-disable-console")
-
-    # Enable GUI toolkit support
-    cmd.append("--enable-plugin=tk-inter")
-
-    # CRITICAL: Disable LTO to prevent zstandard linking issues
-    cmd.append("--lto=no")
-
-    # Exclude problematic modules that cause build issues - COMPREHENSIVE LIST
-    problematic_modules = [
-        "zstandard", "zstandard.backend_cffi", "setuptools",
-        "test.support", "_distutils_hack", "distutils",
-        "numpy.distutils", "setuptools_scm",
-        # Exclude ALL test modules to speed up compilation
-        "sympy.*.tests.*", "sympy.*.test_*", "sympy.tests.*",
-        "sympy.polys.benchmarks.*", "sympy.physics.quantum.tests.*",
-        "sympy.solvers.ode.tests.*", "sympy.polys.tests.*",
-        "sympy.geometry.tests.*", "sympy.core.tests.*",
-        "sympy.functions.tests.*", "sympy.matrices.tests.*",
-        "sympy.plotting.tests.*", "sympy.printing.tests.*",
-        "sympy.simplify.tests.*", "sympy.stats.tests.*",
-        "sympy.tensor.tests.*", "sympy.utilities.tests.*",
-        # Exclude the specific problematic modules from the error
-        "sympy.polys.benchmarks.bench_solvers",
-        "sympy.physics.quantum.tests.test_spin",
-        "sympy.solvers.ode.tests.test_systems",
-        "sympy.polys.polyquinticconst",
-        # Exclude benchmark modules
-        "*.benchmarks.*", "*.test_*", "*.tests.*",
-        # Exclude other problematic modules
-        "matplotlib.tests.*", "numpy.tests.*", "PIL.tests.*",
-        "cv2.tests.*", "jedi.test.*", "pytest.*",
-    ]
-
-    for module in problematic_modules:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Progress and optimization flags with faster compilation
-    cmd.extend([
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-        "--onefile-tempdir-spec=CACHE",  # Use cache for temp files
-    ])
-
-    # Essential packages - check availability before including (SELECTIVE APPROACH)
-    essential_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil"
-    ]
-
-    included_packages = []
-    for package in essential_packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                included_packages.append(correct_name)
-                cmd.append(f"--include-package={correct_name}")
-                if USE_ASCII_ONLY:
-                    print(f"Including package: {correct_name}")
-                else:
-                    print(f"✅ Including package: {correct_name}")
-        else:
-            if USE_ASCII_ONLY:
-                print(f"Skipping unavailable package: {package}")
-            else:
-                print(f"⚠️ Skipping unavailable package: {package}")
-
-    # Handle manim separately with more control
-    if is_package_importable("manim"):
-        cmd.append("--include-package=manim")
-        cmd.append("--include-package-data=manim")
-        # Exclude manim tests
-        cmd.append("--nofollow-import-to=manim.*.tests")
-        cmd.append("--nofollow-import-to=manim.test.*")
-        included_packages.append("manim")
-        if USE_ASCII_ONLY:
-            print("Including manim (excluding tests)")
-        else:
-            print("✅ Including manim (excluding tests)")
-
-    # Handle sympy with minimal inclusion for LaTeX support but avoid problematic modules
-    if is_package_importable("sympy"):
-        # Only include essential sympy modules for LaTeX
-        essential_sympy_modules = [
-            "sympy.core", "sympy.printing.latex", "sympy.printing.mathml",
-            "sympy.parsing", "sympy.functions.elementary", 
-            "sympy.utilities.lambdify", "sympy.simplify.simplify"
-        ]
-        
-        for module in essential_sympy_modules:
-            cmd.append(f"--include-module={module}")
-        
-        # Exclude ALL problematic sympy subpackages
-        sympy_exclusions = [
-            "sympy.polys", "sympy.physics", "sympy.geometry",
-            "sympy.matrices", "sympy.stats", "sympy.tensor",
-            "sympy.*.tests", "sympy.*.benchmarks", "sympy.plotting",
-            "sympy.solvers.ode", "sympy.polys.benchmarks"
-        ]
-        
-        for exclusion in sympy_exclusions:
-            cmd.append(f"--nofollow-import-to={exclusion}")
-        
-        included_packages.append("sympy (minimal LaTeX)")
-        if USE_ASCII_ONLY:
-            print("Including minimal sympy for LaTeX (excluding problematic modules)")
-        else:
-            print("✅ Including minimal sympy for LaTeX (excluding problematic modules)")
-
-    # Include additional LaTeX support packages if available
-    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour"]
-    
-    for package in latex_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package={package}")
-            included_packages.append(package)
-            if USE_ASCII_ONLY:
-                print(f"Including LaTeX support: {package}")
-            else:
-                print(f"📦 Including LaTeX support: {package}")
-
-    # Critical system modules
-    essential_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy", "manim_safe_config"
-    ]
-
-    for module in essential_modules:
-        cmd.append(f"--include-module={module}")
-
-    # LaTeX and mathematical expression support data (selective)
-    latex_data_packages = ["manim", "matplotlib", "numpy"]
-
-    for package in latex_data_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package-data={package}")
-            if USE_ASCII_ONLY:
-                print(f"Including data for: {package}")
-            else:
-                print(f"📦 Including data for: {package}")
-
-    # Include LaTeX-specific modules (minimal set)
-    latex_modules = [
-        "sympy.printing.latex", "sympy.printing.mathml", 
-        "sympy.core.basic", "sympy.core.expr"
-    ]
-
-    for module in latex_modules:
-        if is_package_importable(module.split('.')[0]):
-            cmd.append(f"--include-module={module}")
-
-    # Manim-specific data inclusion (but exclude tests)
-    if is_package_importable("manim"):
-        cmd.extend([
-            "--include-package-data=manim",
-            "--include-package-data=manim.mobject",
-            "--include-package-data=manim.scene",
-            "--include-package-data=manim.animation",
-            "--include-package-data=manim.utils",
-        ])
-        # But exclude test data
-        cmd.extend([
-            "--nofollow-import-to=manim.*.tests.*",
-            "--nofollow-import-to=manim.test.*"
-        ])
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-    ])
-
-    # Icon (if available)
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-        if USE_ASCII_ONLY:
-            print("Using custom icon")
-        else:
-            print("🎨 Using custom icon")
-
-    # Include data directories and assets
-    data_dirs = ["assets=assets"]
-
-    # Try to include matplotlib data if available (but not tests)
-    try:
-        import matplotlib
-        mpl_data = Path(matplotlib.get_data_path())
-        if mpl_data.exists():
-            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
-            if USE_ASCII_ONLY:
-                print("Including matplotlib data")
-            else:
-                print("📊 Including matplotlib data")
-    except ImportError:
-        pass
-
-    for data_dir in data_dirs:
-        cmd.append(f"--include-data-dir={data_dir}")
-
-    # Performance optimization
-    cmd.append(f"--jobs={jobs}")
-
-    # Final target
-    cmd.append("app.py")
-
-    if USE_ASCII_ONLY:
-        print("Building standalone executable with LaTeX support...")
-    else:
-        print("🔨 Building standalone executable with LaTeX support...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment variables for compilation
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto"
-
-    # Disable problematic optimizations
-    env["NUITKA_DISABLE_CCACHE"] = "1"
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-
-    # Set process priority for faster compilation
-    process_priority = 0
-    if priority == "high" and sys.platform == "win32":
-        if USE_ASCII_ONLY:
-            print("Setting HIGH process priority for maximum CPU utilization")
-        else:
-            print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080
-
-    # Start compilation process
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-
-    # Display CPU and build info
-    if USE_ASCII_ONLY:
-        print(f"CPU Info: {cpu_count} logical cores available")
-        print(f"Using {jobs} compilation threads")
-        print(f"Included {len(included_packages)} packages")
-    else:
-        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-        print(f"⚙️ Using {jobs} compilation threads")
-        print(f"📦 Included {len(included_packages)} packages")
-
-    # Stream compilation output in real-time
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-
-    return_code = process.poll()
-
-    if return_code == 0:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Standalone build successful!")
-        else:
-            print("✅ Standalone build successful!")
-
-        # Find the executable
-        exe_path = find_standalone_executable()
-        if exe_path:
-            if USE_ASCII_ONLY:
-                print(f"Executable: {exe_path}")
-                print(f"Distribution folder: {exe_path.parent}")
-                print(f"\nSUCCESS! Standalone version ready with LaTeX support!")
-                print(f"Features included:")
-                print(f"  - Mathematical expression rendering")
-                print(f"  - Basic LaTeX formula support")
-                print(f"  - Professional animation engine")
-                print(f"  - No console windows")
-            else:
-                print(f"📁 Executable: {exe_path}")
-                print(f"📁 Distribution folder: {exe_path.parent}")
-                print(f"\n🎉 SUCCESS! Standalone version ready with LaTeX support!")
-                print(f"🧮 Features included:")
-                print(f"  ✅ Mathematical expression rendering")
-                print(f"  ✅ Basic LaTeX formula support")
-                print(f"  ✅ Professional animation engine")
-                print(f"  ✅ No console windows")
-
-            # Create configuration file for LaTeX
-            create_latex_config(exe_path.parent)
-
-            # Create launcher scripts
-            create_launcher_script(exe_path)
-
-            return exe_path
-        else:
-            if USE_ASCII_ONLY:
-                print("Executable not found")
-            else:
-                print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Build failed!")
-        else:
-            print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_with_full_latex(jobs=None, priority="normal"):
-    """Build standalone version with complete LaTeX support bundled"""
-    
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    if USE_ASCII_ONLY:
-        print(f"Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
-    else:
-        print(f"🔬 Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
-
-    # First, create LaTeX bundle
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 1: Creating LaTeX bundle...")
-    else:
-        print("📦 Step 1: Creating LaTeX bundle...")
-    
-    # Create and run LaTeX bundler
-    create_latex_bundle_script()
-    
-    try:
-        # Run the bundler
-        result = run_hidden_process([sys.executable, "latex_bundler.py"], capture_output=True, text=True)
-        if result.returncode == 0:
-            if USE_ASCII_ONLY:
-                print("LaTeX bundle created successfully")
-            else:
-                print("✅ LaTeX bundle created successfully")
-        else:
-            if USE_ASCII_ONLY:
-                print("Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
-                print(result.stderr)
-            else:
-                print("⚠️ Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
-                print(result.stderr)
-    except Exception as e:
-        if USE_ASCII_ONLY:
-            print(f"Warning: Could not create LaTeX bundle: {e}")
-        else:
-            print(f"⚠️ Warning: Could not create LaTeX bundle: {e}")
-
-    # Clean previous builds
-    if Path("build").exists():
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        shutil.rmtree("dist")
-
-    # Create assets directory
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 2: Creating build configuration...")
-    else:
-        print("🔧 Step 2: Creating build configuration...")
-
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-    create_full_latex_manim_config()  # Full LaTeX config instead of safe config
-
-    # Check prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    if USE_ASCII_ONLY:
-        print(f"Detected Nuitka version: {nuitka_version}")
-    else:
-        print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 3: Building with full LaTeX support...")
-    else:
-        print("🔨 Step 3: Building with full LaTeX support...")
-
-    # Basic command structure
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-        "--windows-console-mode=disable",
-        "--windows-disable-console",
-        "--enable-plugin=tk-inter",
-        "--lto=no",
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-    ]
-
-    # MINIMAL exclusions - only exclude test modules but keep LaTeX functionality
-    minimal_exclusions = [
-        # Only exclude test modules, keep all LaTeX functionality
-        "*.tests.*", "*.test_*", "test.*",
-        "pytest.*", "*.benchmarks.*",
-        # Still exclude problematic modules that cause build issues
-        "zstandard.*", "setuptools.*", "_distutils_hack.*",
-        # Exclude only specific problematic SymPy test modules (from your original error)
-        "sympy.polys.benchmarks.bench_solvers",
-        "sympy.physics.quantum.tests.test_spin", 
-        "sympy.solvers.ode.tests.test_systems",
-        "sympy.polys.polyquinticconst",
-        # Keep all other SymPy modules including LaTeX ones
-    ]
-
-    for module in minimal_exclusions:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Include ALL packages including LaTeX support
-    comprehensive_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil", "manim"
-    ]
-
-    included_packages = []
-    for package in comprehensive_packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                included_packages.append(correct_name)
-                cmd.append(f"--include-package={correct_name}")
-                # Include package data for complete functionality
-                cmd.append(f"--include-package-data={correct_name}")
-                if USE_ASCII_ONLY:
-                    print(f"Including full package: {correct_name}")
-                else:
-                    print(f"📦 Including full package: {correct_name}")
-
-    # Include SymPy with FULL LaTeX support (opposite of previous approach)
-    if is_package_importable("sympy"):
-        # Include ALL SymPy modules except the problematic test ones
-        cmd.append("--include-package=sympy")
-        cmd.append("--include-package-data=sympy")
-        
-        # Only exclude the specific problematic modules from the build error
-        sympy_test_exclusions = [
-            "sympy.polys.benchmarks.bench_solvers",
-            "sympy.physics.quantum.tests.test_spin",
-            "sympy.solvers.ode.tests.test_systems", 
-            "sympy.polys.polyquinticconst",
-            # General test exclusions but keep LaTeX modules
-            "sympy.*.tests.*", "sympy.*.test_*"
-        ]
-        
-        for exclusion in sympy_test_exclusions:
-            cmd.append(f"--nofollow-import-to={exclusion}")
-        
-        included_packages.append("sympy (full LaTeX support)")
-        if USE_ASCII_ONLY:
-            print("Including SymPy with FULL LaTeX support")
-        else:
-            print("🧮 Including SymPy with FULL LaTeX support")
-
-    # Include LaTeX support packages if available
-    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour", "jinja2"]
-    
-    for package in latex_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package={package}")
-            cmd.append(f"--include-package-data={package}")
-            included_packages.append(package)
-            if USE_ASCII_ONLY:
-                print(f"Including LaTeX support package: {package}")
-            else:
-                print(f"📚 Including LaTeX support package: {package}")
-
-    # Include comprehensive system modules for LaTeX
-    comprehensive_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy",
-        "manim_latex_config",  # Our full LaTeX config
-        "latex_bundler",       # LaTeX bundler
-        # Additional modules for LaTeX support
-        "xml", "xml.etree", "xml.etree.ElementTree",
-        "urllib", "urllib.request", "urllib.parse",
-        "zipfile", "tarfile", "gzip", "bz2",
-        "hashlib", "hmac", "ssl", "socket"
-    ]
-
-    for module in comprehensive_modules:
-        cmd.append(f"--include-module={module}")
-
-    # Include LaTeX bundle directory if it exists
-    if Path("latex_bundle").exists():
-        cmd.append("--include-data-dir=latex_bundle=latex_bundle")
-        if USE_ASCII_ONLY:
-            print("Including bundled LaTeX installation")
-        else:
-            print("📦 Including bundled LaTeX installation")
-
-    # Include comprehensive data for LaTeX support
-    data_packages = ["manim", "matplotlib", "numpy", "sympy"]
-
-    for package in data_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package-data={package}")
-            if USE_ASCII_ONLY:
-                print(f"Including comprehensive data for: {package}")
-            else:
-                print(f"📊 Including comprehensive data for: {package}")
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-        f"--jobs={jobs}",
-    ])
-
-    # Icon if available
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-
-    # Include all data directories
-    data_dirs = ["assets=assets"]
-    
-    # Try to include matplotlib data
-    try:
-        import matplotlib
-        mpl_data = Path(matplotlib.get_data_path())
-        if mpl_data.exists():
-            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
-            if USE_ASCII_ONLY:
-                print("Including matplotlib data directory")
-            else:
-                print("📊 Including matplotlib data directory")
-    except ImportError:
-        pass
-
-    for data_dir in data_dirs:
-        cmd.append(f"--include-data-dir={data_dir}")
-
-    # Final target
-    cmd.append("app.py")
-
-    print("Building standalone executable with COMPLETE LaTeX support...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment setup for LaTeX support
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto)
+        plt.xlabel(r'$x$')
+        plt.ylabel(r'$\\sin(x)$')
+        plt.title(r'$y = \\sin(x)$')
         plt.close()  # Don't display, just test
         
         print("✅ Matplotlib LaTeX rendering")
@@ -5442,7 +3246,128 @@ def check_requirements():
     else:
         print("✅ All requirements met!")
     return True
+def download_tinytex_portable():
+    """Download and setup TinyTeX portable for Manim"""
+    import urllib.request
+    import zipfile
+    import platform
+    
+    print("📦 Downloading TinyTeX portable for Manim...")
+    
+    # TinyTeX download URLs
+    system = platform.system().lower()
+    if system == "windows":
+        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/tinitex.zip"
+        tinytex_file = "TinyTeX.zip"
+    elif system == "darwin":  # macOS
+        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/TinyTeX-v2024.06.tgz"
+        tinytex_file = "TinyTeX.tgz"
+    else:  # Linux
+        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/TinyTeX-v2024.06.tar.gz"
+        tinytex_file = "TinyTeX.tar.gz"
+    
+    try:
+        # Download TinyTeX
+        print(f"Downloading from {tinytex_url}...")
+        urllib.request.urlretrieve(tinytex_url, tinytex_file)
+        
+        # Extract TinyTeX
+        latex_bundle_dir = Path("latex_bundle")
+        latex_bundle_dir.mkdir(exist_ok=True)
+        
+        if system == "windows":
+            with zipfile.ZipFile(tinytex_file, 'r') as zip_ref:
+                zip_ref.extractall(latex_bundle_dir)
+        else:
+            import tarfile
+            with tarfile.open(tinytex_file, 'r:gz') as tar_ref:
+                tar_ref.extractall(latex_bundle_dir)
+        
+        # Install essential Manim packages
+        install_manim_latex_packages(latex_bundle_dir)
+        
+        # Cleanup
+        os.remove(tinytex_file)
+        
+        print("✅ TinyTeX portable setup complete!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error downloading TinyTeX: {e}")
+        print("Falling back to minimal LaTeX setup...")
+        return False
 
+def install_manim_latex_packages(latex_dir):
+    """Install essential LaTeX packages for Manim"""
+    
+    # Essential packages for Manim (from the manim-latex chocolatey package)
+    essential_packages = [
+        "amsmath", "babel-english", "cbfonts-fd", "cm-super", 
+        "count1to", "ctex", "doublestroke", "dvisvgm", "everysel", 
+        "fontspec", "frcursive", "fundus-calligra", "gnu-freefont", 
+        "jknapltx", "latex-bin", "mathastext", "microtype", "multitoc", 
+        "physics", "preview", "prelim2e", "ragged2e", "relsize", 
+        "rsfs", "setspace", "standalone", "tipa", "wasy", "wasysym", 
+        "xcolor", "xetex", "xkeyval"
+    ]
+    
+    # Find tlmgr executable
+    if sys.platform == "win32":
+        tlmgr_path = latex_dir / "bin" / "windows" / "tlmgr.bat"
+    else:
+        tlmgr_path = latex_dir / "bin" / "universal-darwin" / "tlmgr" if sys.platform == "darwin" else latex_dir / "bin" / "x86_64-linux" / "tlmgr"
+    
+    if tlmgr_path.exists():
+        print("Installing essential Manim LaTeX packages...")
+        try:
+            # Update tlmgr first
+            subprocess.run([str(tlmgr_path), "update", "--self"], 
+                         capture_output=True, text=True, timeout=300)
+            
+            # Install packages in batches to avoid timeout
+            batch_size = 5
+            for i in range(0, len(essential_packages), batch_size):
+                batch = essential_packages[i:i+batch_size]
+                print(f"Installing batch: {', '.join(batch)}")
+                
+                cmd = [str(tlmgr_path), "install"] + batch
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                
+                if result.returncode != 0:
+                    print(f"Warning: Some packages in batch {batch} failed to install")
+                    print(f"Error: {result.stderr}")
+                else:
+                    print(f"✅ Installed: {', '.join(batch)}")
+                    
+        except subprocess.TimeoutExpired:
+            print("⚠️ Package installation timed out, but basic LaTeX should work")
+        except Exception as e:
+            print(f"⚠️ Error installing packages: {e}")
+    else:
+        print(f"⚠️ tlmgr not found at {tlmgr_path}")
+
+def build_standalone_with_full_latex_v2(jobs=None, priority="normal"):
+    """Enhanced standalone build with proper LaTeX bundling"""
+    
+    cpu_count = multiprocessing.cpu_count()
+    if jobs is None:
+        jobs = max(1, cpu_count - 1)
+
+    print(f"🔬 Building standalone with ENHANCED LaTeX support using {jobs} CPU threads...")
+
+    # Step 1: Download and setup TinyTeX
+    print("=" * 60)
+    print("📦 Step 1: Setting up LaTeX environment...")
+    
+    latex_success = download_tinytex_portable()
+    
+    if not latex_success:
+        print("⚠️ TinyTeX download failed, using option 6 instead...")
+        # Fallback to option 6
+        return build_standalone_with_full_latex(jobs=jobs, priority=priority)
+
+    # Continue with regular standalone build...
+    return build_standalone_version(jobs=jobs, priority=priority)
 def main():
     """Main function with enhanced build options including improved LaTeX support"""
     import sys  # Explicitly import here to fix scope issue
@@ -5661,728 +3586,5 @@ def main():
         else:
             print("❌ Build failed!")
         sys.exit(1)
-
 if __name__ == "__main__":
-    main()"
-    
-    # Set process priority if on Windows
-    process_priority = 0  # Normal priority by default
-    if priority == "high" and sys.platform == "win32":
-        if USE_ASCII_ONLY:
-            print("Setting HIGH process priority for maximum CPU utilization")
-        else:
-            print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080  # HIGH_PRIORITY_CLASS
-    
-    # IMPORTANT: Use standard subprocess directly to ensure output is visible
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,  # Line buffered output
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-    
-    # Display CPU info
-    if USE_ASCII_ONLY:
-        print(f"CPU Info: {cpu_count} logical cores available")
-        print(f"Using {jobs} compilation threads")
-        print(f"Included {len(included_packages)} packages")
-    else:
-        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-        print(f"⚙️ Using {jobs} compilation threads")
-        print(f"📦 Included {len(included_packages)} packages")
-    
-    # Print output in real-time
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-    
-    return_code = process.poll()
-    
-    if return_code == 0:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("NO-CONSOLE build successful!")
-        else:
-            print("✅ NO-CONSOLE build successful!")
-        
-        # Find executable
-        exe_path = find_executable()
-        
-        if exe_path:
-            size_mb = exe_path.stat().st_size / (1024 * 1024)
-            if USE_ASCII_ONLY:
-                print(f"Executable: {exe_path} ({size_mb:.1f} MB)")
-                print(f"\nSUCCESS! Silent executable ready!")
-                print(f"Run: {exe_path}")
-                print(f"\nGUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
-            else:
-                print(f"📁 Executable: {exe_path} ({size_mb:.1f} MB)")
-                print(f"\n🎉 SUCCESS! Silent executable ready!")
-                print(f"🚀 Run: {exe_path}")
-                print(f"\n🔇 GUARANTEED: NO CONSOLE WINDOWS WILL APPEAR")
-            
-            # Create a launcher script
-            create_launcher_script(exe_path)
-            
-            return exe_path
-        else:
-            if USE_ASCII_ONLY:
-                print("Executable not found")
-            else:
-                print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Build failed!")
-        else:
-            print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_version(jobs=None, priority="normal"):
-    """Build standalone version (directory-based, not onefile) with complete LaTeX support"""
-
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    if USE_ASCII_ONLY:
-        print(f"Building STANDALONE version (directory-based) with {jobs} CPU threads...")
-    else:
-        print(f"🐍 Building STANDALONE version (directory-based) with {jobs} CPU threads...")
-
-    # Clean previous builds
-    if Path("build").exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning build directory...")
-        else:
-            print("🧹 Cleaning build directory...")
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        if USE_ASCII_ONLY:
-            print("Cleaning dist directory...")
-        else:
-            print("🧹 Cleaning dist directory...")
-        shutil.rmtree("dist")
-
-    # Create assets directory if it doesn't exist
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-    create_manim_safe_config()
-
-    # Check system prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed" if not USE_ASCII_ONLY else "ERROR: System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    if USE_ASCII_ONLY:
-        print(f"Detected Nuitka version: {nuitka_version}")
-    else:
-        print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    # Basic command structure
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-    ]
-
-    # Enhanced console hiding - use both methods for maximum compatibility
-    cmd.append("--windows-console-mode=disable")
-    cmd.append("--windows-disable-console")
-
-    # Enable GUI toolkit support
-    cmd.append("--enable-plugin=tk-inter")
-
-    # CRITICAL: Disable LTO to prevent zstandard linking issues
-    cmd.append("--lto=no")
-
-    # Exclude problematic modules that cause build issues - COMPREHENSIVE LIST
-    problematic_modules = [
-        "zstandard", "zstandard.backend_cffi", "setuptools",
-        "test.support", "_distutils_hack", "distutils",
-        "numpy.distutils", "setuptools_scm",
-        # Exclude ALL test modules to speed up compilation
-        "sympy.*.tests.*", "sympy.*.test_*", "sympy.tests.*",
-        "sympy.polys.benchmarks.*", "sympy.physics.quantum.tests.*",
-        "sympy.solvers.ode.tests.*", "sympy.polys.tests.*",
-        "sympy.geometry.tests.*", "sympy.core.tests.*",
-        "sympy.functions.tests.*", "sympy.matrices.tests.*",
-        "sympy.plotting.tests.*", "sympy.printing.tests.*",
-        "sympy.simplify.tests.*", "sympy.stats.tests.*",
-        "sympy.tensor.tests.*", "sympy.utilities.tests.*",
-        # Exclude the specific problematic modules from the error
-        "sympy.polys.benchmarks.bench_solvers",
-        "sympy.physics.quantum.tests.test_spin",
-        "sympy.solvers.ode.tests.test_systems",
-        "sympy.polys.polyquinticconst",
-        # Exclude benchmark modules
-        "*.benchmarks.*", "*.test_*", "*.tests.*",
-        # Exclude other problematic modules
-        "matplotlib.tests.*", "numpy.tests.*", "PIL.tests.*",
-        "cv2.tests.*", "jedi.test.*", "pytest.*",
-    ]
-
-    for module in problematic_modules:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Progress and optimization flags with faster compilation
-    cmd.extend([
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-        "--onefile-tempdir-spec=CACHE",  # Use cache for temp files
-    ])
-
-    # Essential packages - check availability before including (SELECTIVE APPROACH)
-    essential_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil"
-    ]
-
-    included_packages = []
-    for package in essential_packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                included_packages.append(correct_name)
-                cmd.append(f"--include-package={correct_name}")
-                if USE_ASCII_ONLY:
-                    print(f"Including package: {correct_name}")
-                else:
-                    print(f"✅ Including package: {correct_name}")
-        else:
-            if USE_ASCII_ONLY:
-                print(f"Skipping unavailable package: {package}")
-            else:
-                print(f"⚠️ Skipping unavailable package: {package}")
-
-    # Handle manim separately with more control
-    if is_package_importable("manim"):
-        cmd.append("--include-package=manim")
-        cmd.append("--include-package-data=manim")
-        # Exclude manim tests
-        cmd.append("--nofollow-import-to=manim.*.tests")
-        cmd.append("--nofollow-import-to=manim.test.*")
-        included_packages.append("manim")
-        if USE_ASCII_ONLY:
-            print("Including manim (excluding tests)")
-        else:
-            print("✅ Including manim (excluding tests)")
-
-    # Handle sympy with minimal inclusion for LaTeX support but avoid problematic modules
-    if is_package_importable("sympy"):
-        # Only include essential sympy modules for LaTeX
-        essential_sympy_modules = [
-            "sympy.core", "sympy.printing.latex", "sympy.printing.mathml",
-            "sympy.parsing", "sympy.functions.elementary", 
-            "sympy.utilities.lambdify", "sympy.simplify.simplify"
-        ]
-        
-        for module in essential_sympy_modules:
-            cmd.append(f"--include-module={module}")
-        
-        # Exclude ALL problematic sympy subpackages
-        sympy_exclusions = [
-            "sympy.polys", "sympy.physics", "sympy.geometry",
-            "sympy.matrices", "sympy.stats", "sympy.tensor",
-            "sympy.*.tests", "sympy.*.benchmarks", "sympy.plotting",
-            "sympy.solvers.ode", "sympy.polys.benchmarks"
-        ]
-        
-        for exclusion in sympy_exclusions:
-            cmd.append(f"--nofollow-import-to={exclusion}")
-        
-        included_packages.append("sympy (minimal LaTeX)")
-        if USE_ASCII_ONLY:
-            print("Including minimal sympy for LaTeX (excluding problematic modules)")
-        else:
-            print("✅ Including minimal sympy for LaTeX (excluding problematic modules)")
-
-    # Include additional LaTeX support packages if available
-    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour"]
-    
-    for package in latex_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package={package}")
-            included_packages.append(package)
-            if USE_ASCII_ONLY:
-                print(f"Including LaTeX support: {package}")
-            else:
-                print(f"📦 Including LaTeX support: {package}")
-
-    # Critical system modules
-    essential_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy", "manim_safe_config"
-    ]
-
-    for module in essential_modules:
-        cmd.append(f"--include-module={module}")
-
-    # LaTeX and mathematical expression support data (selective)
-    latex_data_packages = ["manim", "matplotlib", "numpy"]
-
-    for package in latex_data_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package-data={package}")
-            if USE_ASCII_ONLY:
-                print(f"Including data for: {package}")
-            else:
-                print(f"📦 Including data for: {package}")
-
-    # Include LaTeX-specific modules (minimal set)
-    latex_modules = [
-        "sympy.printing.latex", "sympy.printing.mathml", 
-        "sympy.core.basic", "sympy.core.expr"
-    ]
-
-    for module in latex_modules:
-        if is_package_importable(module.split('.')[0]):
-            cmd.append(f"--include-module={module}")
-
-    # Manim-specific data inclusion (but exclude tests)
-    if is_package_importable("manim"):
-        cmd.extend([
-            "--include-package-data=manim",
-            "--include-package-data=manim.mobject",
-            "--include-package-data=manim.scene",
-            "--include-package-data=manim.animation",
-            "--include-package-data=manim.utils",
-        ])
-        # But exclude test data
-        cmd.extend([
-            "--nofollow-import-to=manim.*.tests.*",
-            "--nofollow-import-to=manim.test.*"
-        ])
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-    ])
-
-    # Icon (if available)
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-        if USE_ASCII_ONLY:
-            print("Using custom icon")
-        else:
-            print("🎨 Using custom icon")
-
-    # Include data directories and assets
-    data_dirs = ["assets=assets"]
-
-    # Try to include matplotlib data if available (but not tests)
-    try:
-        import matplotlib
-        mpl_data = Path(matplotlib.get_data_path())
-        if mpl_data.exists():
-            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
-            if USE_ASCII_ONLY:
-                print("Including matplotlib data")
-            else:
-                print("📊 Including matplotlib data")
-    except ImportError:
-        pass
-
-    for data_dir in data_dirs:
-        cmd.append(f"--include-data-dir={data_dir}")
-
-    # Performance optimization
-    cmd.append(f"--jobs={jobs}")
-
-    # Final target
-    cmd.append("app.py")
-
-    if USE_ASCII_ONLY:
-        print("Building standalone executable with LaTeX support...")
-    else:
-        print("🔨 Building standalone executable with LaTeX support...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment variables for compilation
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto"
-
-    # Disable problematic optimizations
-    env["NUITKA_DISABLE_CCACHE"] = "1"
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-
-    # Set process priority for faster compilation
-    process_priority = 0
-    if priority == "high" and sys.platform == "win32":
-        if USE_ASCII_ONLY:
-            print("Setting HIGH process priority for maximum CPU utilization")
-        else:
-            print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080
-
-    # Start compilation process
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-
-    # Display CPU and build info
-    if USE_ASCII_ONLY:
-        print(f"CPU Info: {cpu_count} logical cores available")
-        print(f"Using {jobs} compilation threads")
-        print(f"Included {len(included_packages)} packages")
-    else:
-        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-        print(f"⚙️ Using {jobs} compilation threads")
-        print(f"📦 Included {len(included_packages)} packages")
-
-    # Stream compilation output in real-time
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-
-    return_code = process.poll()
-
-    if return_code == 0:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Standalone build successful!")
-        else:
-            print("✅ Standalone build successful!")
-
-        # Find the executable
-        exe_path = find_standalone_executable()
-        if exe_path:
-            if USE_ASCII_ONLY:
-                print(f"Executable: {exe_path}")
-                print(f"Distribution folder: {exe_path.parent}")
-                print(f"\nSUCCESS! Standalone version ready with LaTeX support!")
-                print(f"Features included:")
-                print(f"  - Mathematical expression rendering")
-                print(f"  - Basic LaTeX formula support")
-                print(f"  - Professional animation engine")
-                print(f"  - No console windows")
-            else:
-                print(f"📁 Executable: {exe_path}")
-                print(f"📁 Distribution folder: {exe_path.parent}")
-                print(f"\n🎉 SUCCESS! Standalone version ready with LaTeX support!")
-                print(f"🧮 Features included:")
-                print(f"  ✅ Mathematical expression rendering")
-                print(f"  ✅ Basic LaTeX formula support")
-                print(f"  ✅ Professional animation engine")
-                print(f"  ✅ No console windows")
-
-            # Create configuration file for LaTeX
-            create_latex_config(exe_path.parent)
-
-            # Create launcher scripts
-            create_launcher_script(exe_path)
-
-            return exe_path
-        else:
-            if USE_ASCII_ONLY:
-                print("Executable not found")
-            else:
-                print("❌ Executable not found")
-            list_contents()
-            return None
-    else:
-        print("=" * 60)
-        if USE_ASCII_ONLY:
-            print("Build failed!")
-        else:
-            print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        return None
-
-def build_standalone_with_full_latex(jobs=None, priority="normal"):
-    """Build standalone version with complete LaTeX support bundled"""
-    
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
-
-    if USE_ASCII_ONLY:
-        print(f"Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
-    else:
-        print(f"🔬 Building STANDALONE with FULL LaTeX support using {jobs} CPU threads...")
-
-    # First, create LaTeX bundle
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 1: Creating LaTeX bundle...")
-    else:
-        print("📦 Step 1: Creating LaTeX bundle...")
-    
-    # Create and run LaTeX bundler
-    create_latex_bundle_script()
-    
-    try:
-        # Run the bundler
-        result = run_hidden_process([sys.executable, "latex_bundler.py"], capture_output=True, text=True)
-        if result.returncode == 0:
-            if USE_ASCII_ONLY:
-                print("LaTeX bundle created successfully")
-            else:
-                print("✅ LaTeX bundle created successfully")
-        else:
-            if USE_ASCII_ONLY:
-                print("Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
-                print(result.stderr)
-            else:
-                print("⚠️ Warning: LaTeX bundling failed, proceeding without bundled LaTeX")
-                print(result.stderr)
-    except Exception as e:
-        if USE_ASCII_ONLY:
-            print(f"Warning: Could not create LaTeX bundle: {e}")
-        else:
-            print(f"⚠️ Warning: Could not create LaTeX bundle: {e}")
-
-    # Clean previous builds
-    if Path("build").exists():
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        shutil.rmtree("dist")
-
-    # Create assets directory
-    assets_dir = Path("assets")
-    assets_dir.mkdir(exist_ok=True)
-
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 2: Creating build configuration...")
-    else:
-        print("🔧 Step 2: Creating build configuration...")
-
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
-    create_full_latex_manim_config()  # Full LaTeX config instead of safe config
-
-    # Check prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed")
-        return None
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    if USE_ASCII_ONLY:
-        print(f"Detected Nuitka version: {nuitka_version}")
-    else:
-        print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    print("=" * 60)
-    if USE_ASCII_ONLY:
-        print("Step 3: Building with full LaTeX support...")
-    else:
-        print("🔨 Step 3: Building with full LaTeX support...")
-
-    # Basic command structure
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--standalone",
-        "--windows-console-mode=disable",
-        "--windows-disable-console",
-        "--enable-plugin=tk-inter",
-        "--lto=no",
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--disable-ccache",
-        "--show-memory",
-        "--disable-dll-dependency-cache",
-    ]
-
-    # MINIMAL exclusions - only exclude test modules but keep LaTeX functionality
-    minimal_exclusions = [
-        # Only exclude test modules, keep all LaTeX functionality
-        "*.tests.*", "*.test_*", "test.*",
-        "pytest.*", "*.benchmarks.*",
-        # Still exclude problematic modules that cause build issues
-        "zstandard.*", "setuptools.*", "_distutils_hack.*",
-        # Exclude only specific problematic SymPy test modules (from your original error)
-        "sympy.polys.benchmarks.bench_solvers",
-        "sympy.physics.quantum.tests.test_spin", 
-        "sympy.solvers.ode.tests.test_systems",
-        "sympy.polys.polyquinticconst",
-        # Keep all other SymPy modules including LaTeX ones
-    ]
-
-    for module in minimal_exclusions:
-        cmd.append(f"--nofollow-import-to={module}")
-
-    # Include ALL packages including LaTeX support
-    comprehensive_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil", "manim"
-    ]
-
-    included_packages = []
-    for package in comprehensive_packages:
-        if is_package_importable(package):
-            correct_name = get_correct_package_name(package)
-            if correct_name:
-                included_packages.append(correct_name)
-                cmd.append(f"--include-package={correct_name}")
-                # Include package data for complete functionality
-                cmd.append(f"--include-package-data={correct_name}")
-                if USE_ASCII_ONLY:
-                    print(f"Including full package: {correct_name}")
-                else:
-                    print(f"📦 Including full package: {correct_name}")
-
-    # Include SymPy with FULL LaTeX support (opposite of previous approach)
-    if is_package_importable("sympy"):
-        # Include ALL SymPy modules except the problematic test ones
-        cmd.append("--include-package=sympy")
-        cmd.append("--include-package-data=sympy")
-        
-        # Only exclude the specific problematic modules from the build error
-        sympy_test_exclusions = [
-            "sympy.polys.benchmarks.bench_solvers",
-            "sympy.physics.quantum.tests.test_spin",
-            "sympy.solvers.ode.tests.test_systems", 
-            "sympy.polys.polyquinticconst",
-            # General test exclusions but keep LaTeX modules
-            "sympy.*.tests.*", "sympy.*.test_*"
-        ]
-        
-        for exclusion in sympy_test_exclusions:
-            cmd.append(f"--nofollow-import-to={exclusion}")
-        
-        included_packages.append("sympy (full LaTeX support)")
-        if USE_ASCII_ONLY:
-            print("Including SymPy with FULL LaTeX support")
-        else:
-            print("🧮 Including SymPy with FULL LaTeX support")
-
-    # Include LaTeX support packages if available
-    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour", "jinja2"]
-    
-    for package in latex_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package={package}")
-            cmd.append(f"--include-package-data={package}")
-            included_packages.append(package)
-            if USE_ASCII_ONLY:
-                print(f"Including LaTeX support package: {package}")
-            else:
-                print(f"📚 Including LaTeX support package: {package}")
-
-    # Include comprehensive system modules for LaTeX
-    comprehensive_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy",
-        "manim_latex_config",  # Our full LaTeX config
-        "latex_bundler",       # LaTeX bundler
-        # Additional modules for LaTeX support
-        "xml", "xml.etree", "xml.etree.ElementTree",
-        "urllib", "urllib.request", "urllib.parse",
-        "zipfile", "tarfile", "gzip", "bz2",
-        "hashlib", "hmac", "ssl", "socket"
-    ]
-
-    for module in comprehensive_modules:
-        cmd.append(f"--include-module={module}")
-
-    # Include LaTeX bundle directory if it exists
-    if Path("latex_bundle").exists():
-        cmd.append("--include-data-dir=latex_bundle=latex_bundle")
-        if USE_ASCII_ONLY:
-            print("Including bundled LaTeX installation")
-        else:
-            print("📦 Including bundled LaTeX installation")
-
-    # Include comprehensive data for LaTeX support
-    data_packages = ["manim", "matplotlib", "numpy", "sympy"]
-
-    for package in data_packages:
-        if is_package_importable(package):
-            cmd.append(f"--include-package-data={package}")
-            if USE_ASCII_ONLY:
-                print(f"Including comprehensive data for: {package}")
-            else:
-                print(f"📊 Including comprehensive data for: {package}")
-
-    # Output configuration
-    cmd.extend([
-        "--output-dir=dist",
-        f"--jobs={jobs}",
-    ])
-
-    # Icon if available
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
-
-    # Include all data directories
-    data_dirs = ["assets=assets"]
-    
-    # Try to include matplotlib data
-    try:
-        import matplotlib
-        mpl_data = Path(matplotlib.get_data_path())
-        if mpl_data.exists():
-            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
-            if USE_ASCII_ONLY:
-                print("Including matplotlib data directory")
-            else:
-                print("📊 Including matplotlib data directory")
-    except ImportError:
-        pass
-
-    for data_dir in data_dirs:
-        cmd.append(f"--include-data-dir={data_dir}")
-
-    # Final target
-    cmd.append("app.py")
-
-    print("Building standalone executable with COMPLETE LaTeX support...")
-    print("Command:", " ".join(cmd))
-    print("=" * 60)
-
-    # Environment setup for LaTeX support
-    env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto
+    main()
