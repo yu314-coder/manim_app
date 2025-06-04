@@ -2,18 +2,6 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, colorchooser
-import tkinter.scrolledtext as st
-import sys
-import pyte
-
-if sys.platform == "win32":
-    try:
-        from pywinpty import PtyProcess
-    except Exception:
-        PtyProcess = None
-else:
-    import pty
-    import select
 import tempfile
 import os
 import logging
@@ -905,111 +893,6 @@ Keyboard Shortcuts:
             self.show_prompt()
             if on_complete:
                 on_complete(False, -1)
-
-
-# ---------------------------------------------------------------------------
-# Experimental PTY based terminal similar to VS Code's integrated terminal
-# ---------------------------------------------------------------------------
-class TerminalFrame(tk.Frame):
-    """Minimal pseudo terminal implementation using ``pty``/``pywinpty`` and ``pyte``."""
-
-    def __init__(self, master=None, shell_cmd=None):
-        super().__init__(master)
-        self.pack(fill="both", expand=True)
-
-        if shell_cmd is None:
-            shell_cmd = "cmd.exe" if os.name == "nt" else "/bin/bash"
-
-        self.text = st.ScrolledText(self, wrap="none", font=("Consolas", 12))
-        self.text.pack(fill="both", expand=True)
-        self.text.configure(state="disabled")
-        self.text.bind("<Key>", self.on_key)
-        self.text.bind("<Button-1>", lambda e: "break")
-
-        self.screen = pyte.Screen(80, 24)
-        self.stream = pyte.Stream(self.screen)
-
-        self.is_windows = os.name == "nt"
-        if self.is_windows:
-            if PtyProcess is None:
-                raise RuntimeError("pywinpty is required on Windows for TerminalFrame")
-            self.proc = PtyProcess.spawn(shell_cmd)
-            threading.Thread(target=self._read_loop_windows, daemon=True).start()
-        else:
-            self.pid, self.master_fd = pty.fork()
-            if self.pid == 0:
-                os.execvp(shell_cmd, [shell_cmd])
-            else:
-                threading.Thread(target=self._read_loop_unix, daemon=True).start()
-
-        self.insert_index = "1.0"
-
-    def _read_loop_unix(self):
-        while True:
-            r, _, _ = select.select([self.master_fd], [], [], 0.1)
-            if self.master_fd in r:
-                try:
-                    data = os.read(self.master_fd, 1024)
-                except OSError:
-                    break
-                if not data:
-                    break
-                self.stream.feed(data.decode(errors="ignore"))
-                self._render_screen()
-
-    def _read_loop_windows(self):
-        while True:
-            try:
-                data = self.proc.read(1024)
-            except Exception:
-                break
-            if not data:
-                break
-            self.stream.feed(data.decode(errors="ignore"))
-            self._render_screen()
-
-    def _render_screen(self):
-        def redraw():
-            self.text.configure(state="normal")
-            self.text.delete("1.0", tk.END)
-            for lineno in range(self.screen.lines):
-                line = "".join(self.screen.display[lineno])
-                self.text.insert(tk.END, line + "\n")
-            cursor = self.screen.cursor
-            tk_row = cursor.y + 1
-            tk_col = cursor.x
-            self.insert_index = f"{tk_row}.{tk_col}"
-            self.text.mark_set("insert", self.insert_index)
-            self.text.see(self.insert_index)
-            self.text.configure(state="disabled")
-
-        self.text.after(0, redraw)
-
-    def on_key(self, event):
-        seq = None
-        if event.keysym == "Return":
-            seq = "\r"
-        elif event.keysym == "BackSpace":
-            seq = "\x7f"
-        elif event.keysym == "Left":
-            seq = "\x1b[D"
-        elif event.keysym == "Right":
-            seq = "\x1b[C"
-        elif event.keysym == "Up":
-            seq = "\x1b[A"
-        elif event.keysym == "Down":
-            seq = "\x1b[B"
-        elif event.char and ord(event.char) >= 32:
-            seq = event.char
-        if seq:
-            try:
-                if self.is_windows:
-                    self.proc.write(seq)
-                else:
-                    os.write(self.master_fd, seq.encode())
-            except Exception:
-                pass
-        return "break"
 
 @dataclass
 class PackageCategory:
@@ -1936,7 +1819,7 @@ All packages will be installed in an isolated environment that won't affect your
                 
             # Execute pip install with CPU control
             result = run_original(
-                [self.venv_manager.python_path, "-m", "pip", "install", package],
+                [self.venv_manager.pip_path, "install", package],
                 capture_output=True,
                 text=True,
                 env=env,
@@ -3170,7 +3053,7 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             self.update_status("Upgrading pip...", 0.15)
             self.log("Upgrading pip...")
             
-            result = self.run_command([python_path, "-m", "pip", "install", "--upgrade", "pip"])
+            result = self.run_command([pip_path, "install", "--upgrade", "pip"])
             if result.returncode != 0:
                 self.log(f"WARNING: Failed to upgrade pip: {result.stderr}")
             else:
@@ -3186,7 +3069,7 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
                     self.update_status(f"Installing {package}...", progress)
                     
                     self.log(f"Installing {package}...")
-                    result = self.run_command([python_path, "-m", "pip", "install", package])
+                    result = self.run_command([pip_path, "install", package])
                     
                     if result.returncode == 0:
                         self.log(f"✓ Successfully installed {package}")
@@ -4296,7 +4179,7 @@ print('ALL_OK')
                         # Install packages using system terminal
                         if hasattr(self.parent_app, 'terminal') and essential_packages:
                             for pkg in essential_packages:
-                                self.run_command_with_threading_fix([self.python_path, "-m", "pip", "install", pkg])
+                                self.run_command_with_threading_fix([self.pip_path, "install", pkg])
                 except Exception as e:
                     self.logger.error(f"Error reading or processing manifest: {e}")
         
@@ -4705,7 +4588,7 @@ else:
                     if log_callback:
                         log_callback(f"Installing {package} ({i+1}/{len(packages)})...")
                         
-                    install_cmd = [python_path, "-m", "pip", "install", package]
+                    install_cmd = [pip_path, "install", package]
                     result = self.run_hidden_subprocess_nuitka_safe(
                         install_cmd, 
                         capture_output=True, 
@@ -4985,7 +4868,7 @@ else:
                 callback(success, stdout, stderr)
         
         self.run_command_with_threading_fix(
-            [self.python_path, "-m", "pip", "install", package_name],
+            [self.pip_path, "install", package_name],
             on_complete=on_install_complete
         )
         
@@ -5005,7 +4888,7 @@ else:
                 callback(success, stdout, stderr)
         
         self.run_command_with_threading_fix(
-            [self.python_path, "-m", "pip", "uninstall", "-y", package_name],
+            [self.pip_path, "uninstall", "-y", package_name],
             on_complete=on_uninstall_complete
         )
         
@@ -5022,7 +4905,7 @@ else:
             try:
                 # Execute pip list directly
                 result = self.run_hidden_subprocess_nuitka_safe(
-                    [self.python_path, "-m", "pip", "list", "--format=json"],
+                    [self.pip_path, "list", "--format=json"],
                     capture_output=True,
                     text=True,
                     timeout=30
@@ -8545,17 +8428,9 @@ class ManimStudioApp:
             fg_color=VSCODE_COLORS["success"]
         )
         execute_btn.grid(row=0, column=1, padx=(5, 10), pady=7)
-
+        
         # Initialize system terminal manager
         self.terminal = SystemTerminalManager(self)
-
-        # Experimental embedded terminal using PTY
-        try:
-            self.embedded_terminal = TerminalFrame(output_frame)
-            output_frame.grid_rowconfigure(3, weight=1)
-            self.embedded_terminal.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
-        except Exception as e:
-            print(f"Embedded terminal failed to start: {e}")
         
     def create_status_bar(self):
         """Create status bar"""
@@ -9835,7 +9710,7 @@ else:
                 install_package(index + 1)
             
             self.terminal.run_command_redirected(
-                [self.venv_manager.python_path, "-m", "pip", "install", package],
+                [self.venv_manager.pip_path, "install", package],
                 on_complete=on_install_complete
             )
         
