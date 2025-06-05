@@ -3254,17 +3254,33 @@ def download_tinytex_portable():
     
     print("📦 Downloading TinyTeX portable for Manim...")
     
-    # TinyTeX download URLs
+    # CORRECTED TinyTeX download URLs - using GitHub releases with proper filenames
     system = platform.system().lower()
+    
+    # Use latest version (you can update this as needed)
+    version = "2025.05"  # Current latest version
+    
     if system == "windows":
-        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/tinitex.zip"
-        tinytex_file = "TinyTeX.zip"
+        # CORRECT: Use proper GitHub releases URL with correct filename
+        tinytex_url = f"https://github.com/rstudio/tinytex-releases/releases/download/v{version}/TinyTeX-1-v{version}.zip"
+        tinytex_file = f"TinyTeX-1-v{version}.zip"
+        tlmgr_paths = [
+            "bin/windows/tlmgr.bat",    # Modern TinyTeX structure (2023+)
+            "bin/win32/tlmgr.bat"       # Legacy TinyTeX structure (pre-2023)
+        ]
     elif system == "darwin":  # macOS
-        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/TinyTeX-v2024.06.tgz"
-        tinytex_file = "TinyTeX.tgz"
+        tinytex_url = f"https://github.com/rstudio/tinytex-releases/releases/download/v{version}/TinyTeX-1-v{version}.tgz"
+        tinytex_file = f"TinyTeX-1-v{version}.tgz"
+        tlmgr_paths = [
+            "bin/universal-darwin/tlmgr",
+            "bin/x86_64-darwin/tlmgr"
+        ]
     else:  # Linux
-        tinytex_url = "https://github.com/rstudio/tinytex-releases/releases/latest/download/TinyTeX-v2024.06.tar.gz"
-        tinytex_file = "TinyTeX.tar.gz"
+        tinytex_url = f"https://github.com/rstudio/tinytex-releases/releases/download/v{version}/TinyTeX-1-v{version}.tar.gz"
+        tinytex_file = f"TinyTeX-1-v{version}.tar.gz"
+        tlmgr_paths = [
+            "bin/x86_64-linux/tlmgr"
+        ]
     
     try:
         # Download TinyTeX
@@ -3273,6 +3289,8 @@ def download_tinytex_portable():
         
         # Extract TinyTeX
         latex_bundle_dir = Path("latex_bundle")
+        if latex_bundle_dir.exists():
+            shutil.rmtree(latex_bundle_dir)  # Clean existing
         latex_bundle_dir.mkdir(exist_ok=True)
         
         if system == "windows":
@@ -3280,14 +3298,47 @@ def download_tinytex_portable():
                 zip_ref.extractall(latex_bundle_dir)
         else:
             import tarfile
-            with tarfile.open(tinytex_file, 'r:gz') as tar_ref:
+            mode = 'r:gz' if tinytex_file.endswith('.tar.gz') else 'r:*'
+            with tarfile.open(tinytex_file, mode) as tar_ref:
                 tar_ref.extractall(latex_bundle_dir)
         
-        # Install essential Manim packages
-        install_manim_latex_packages(latex_bundle_dir)
+        # Find the actual TinyTeX directory (should be extracted as "TinyTeX")
+        tinytex_dir = latex_bundle_dir / "TinyTeX"
+        
+        if not tinytex_dir.exists():
+            # Look for any subdirectory that might be the TinyTeX installation
+            subdirs = [d for d in latex_bundle_dir.iterdir() if d.is_dir()]
+            if subdirs:
+                tinytex_dir = subdirs[0]
+                if tinytex_dir.name != "TinyTeX":
+                    # Rename to standard name
+                    temp_dir = latex_bundle_dir / "TinyTeX_temp" 
+                    tinytex_dir.rename(temp_dir)
+                    temp_dir.rename(latex_bundle_dir / "TinyTeX")
+                    tinytex_dir = latex_bundle_dir / "TinyTeX"
+        
+        # Verify tlmgr exists in one of the expected locations
+        tlmgr_found = False
+        for tlmgr_path in tlmgr_paths:
+            full_tlmgr_path = tinytex_dir / tlmgr_path
+            if full_tlmgr_path.exists():
+                print(f"✅ Found tlmgr at: {full_tlmgr_path}")
+                tlmgr_found = True
+                
+                # Install essential Manim packages
+                install_manim_latex_packages_fixed(tinytex_dir, tlmgr_path)
+                break
+        
+        if not tlmgr_found:
+            print(f"⚠️ tlmgr not found in expected locations: {tlmgr_paths}")
+            print("Available directories in TinyTeX:")
+            if tinytex_dir.exists():
+                for item in tinytex_dir.rglob("*tlmgr*"):
+                    print(f"  {item}")
         
         # Cleanup
-        os.remove(tinytex_file)
+        if Path(tinytex_file).exists():
+            os.remove(tinytex_file)
         
         print("✅ TinyTeX portable setup complete!")
         return True
@@ -3296,56 +3347,52 @@ def download_tinytex_portable():
         print(f"❌ Error downloading TinyTeX: {e}")
         print("Falling back to minimal LaTeX setup...")
         return False
-
-def install_manim_latex_packages(latex_dir):
-    """Install essential LaTeX packages for Manim"""
+def install_manim_latex_packages_fixed(latex_dir, tlmgr_relative_path):
+    """Install essential LaTeX packages for Manim with proper error handling"""
     
-    # Essential packages for Manim (from the manim-latex chocolatey package)
+    # Essential packages for Manim
     essential_packages = [
-        "amsmath", "babel-english", "cbfonts-fd", "cm-super", 
-        "count1to", "ctex", "doublestroke", "dvisvgm", "everysel", 
-        "fontspec", "frcursive", "fundus-calligra", "gnu-freefont", 
-        "jknapltx", "latex-bin", "mathastext", "microtype", "multitoc", 
-        "physics", "preview", "prelim2e", "ragged2e", "relsize", 
-        "rsfs", "setspace", "standalone", "tipa", "wasy", "wasysym", 
-        "xcolor", "xetex", "xkeyval"
+        "amsmath", "amsfonts", "amssymb", "geometry", "xcolor",
+        "physics", "setspace", "microtype", "standalone", "preview"
     ]
     
     # Find tlmgr executable
-    if sys.platform == "win32":
-        tlmgr_path = latex_dir / "bin" / "windows" / "tlmgr.bat"
-    else:
-        tlmgr_path = latex_dir / "bin" / "universal-darwin" / "tlmgr" if sys.platform == "darwin" else latex_dir / "bin" / "x86_64-linux" / "tlmgr"
+    tlmgr_path = latex_dir / tlmgr_relative_path
     
     if tlmgr_path.exists():
         print("Installing essential Manim LaTeX packages...")
         try:
-            # Update tlmgr first
-            subprocess.run([str(tlmgr_path), "update", "--self"], 
-                         capture_output=True, text=True, timeout=300)
+            # Update tlmgr first (with timeout)
+            print("Updating tlmgr...")
+            result = subprocess.run([str(tlmgr_path), "update", "--self"], 
+                                  capture_output=True, text=True, timeout=180)
             
-            # Install packages in batches to avoid timeout
-            batch_size = 5
+            if result.returncode == 0:
+                print("✅ tlmgr updated successfully")
+            else:
+                print(f"⚠️ tlmgr update warning: {result.stderr}")
+            
+            # Install packages in small batches to avoid timeout
+            batch_size = 3
             for i in range(0, len(essential_packages), batch_size):
                 batch = essential_packages[i:i+batch_size]
                 print(f"Installing batch: {', '.join(batch)}")
                 
                 cmd = [str(tlmgr_path), "install"] + batch
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
                 
-                if result.returncode != 0:
-                    print(f"Warning: Some packages in batch {batch} failed to install")
-                    print(f"Error: {result.stderr}")
-                else:
+                if result.returncode == 0:
                     print(f"✅ Installed: {', '.join(batch)}")
+                else:
+                    print(f"⚠️ Some packages in batch {batch} may have failed")
+                    print(f"Error: {result.stderr}")
                     
         except subprocess.TimeoutExpired:
-            print("⚠️ Package installation timed out, but basic LaTeX should work")
+            print("⚠️ Package installation timed out, but basic TinyTeX should work")
         except Exception as e:
             print(f"⚠️ Error installing packages: {e}")
     else:
         print(f"⚠️ tlmgr not found at {tlmgr_path}")
-
 def build_standalone_with_full_latex_v2(jobs=None, priority="normal"):
     """Enhanced standalone build with proper LaTeX bundling"""
     
