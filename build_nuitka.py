@@ -3366,8 +3366,395 @@ def build_standalone_with_full_latex_v2(jobs=None, priority="normal"):
         # Fallback to option 6
         return build_standalone_with_full_latex(jobs=jobs, priority=priority)
 
-    # Continue with regular standalone build...
-    return build_standalone_version(jobs=jobs, priority=priority)
+    # Clean previous builds
+    if Path("build").exists():
+        shutil.rmtree("build")
+    if Path("dist").exists():
+        shutil.rmtree("dist")
+
+    # Create assets directory
+    assets_dir = Path("assets")
+    assets_dir.mkdir(exist_ok=True)
+
+    print("=" * 60)
+    print("🔧 Step 2: Creating enhanced build configuration...")
+
+    # Create enhanced patches and helpers - IMPORTANT: Use FULL LaTeX config, not safe config
+    create_no_console_patch()
+    create_fixes_module()
+    create_subprocess_helper()
+    create_full_latex_manim_config()  # Use FULL LaTeX config instead of safe config
+
+    # Check prerequisites
+    if not check_system_prerequisites():
+        print("❌ System prerequisites check failed")
+        return None
+
+    # Get Nuitka version
+    nuitka_version = get_nuitka_version()
+    print(f"📊 Detected Nuitka version: {nuitka_version}")
+
+    print("=" * 60)
+    print("🔨 Step 3: Building with enhanced LaTeX support...")
+
+    # Basic command structure - same as build_standalone_with_full_latex
+    cmd = [
+        sys.executable, "-m", "nuitka",
+        "--standalone",
+        "--windows-console-mode=disable",
+        "--windows-disable-console",
+        "--enable-plugin=tk-inter",
+        "--lto=no",
+        "--show-progress",
+        "--remove-output",
+        "--assume-yes-for-downloads",
+        "--mingw64",
+        "--disable-ccache",
+        "--show-memory",
+        "--disable-dll-dependency-cache",
+    ]
+
+    # MINIMAL exclusions - only exclude test modules but keep LaTeX functionality
+    minimal_exclusions = [
+        # Only exclude test modules, keep all LaTeX functionality
+        "*.tests.*", "*.test_*", "test.*",
+        "pytest.*", "*.benchmarks.*",
+        # Still exclude problematic modules that cause build issues
+        "zstandard.*", "setuptools.*", "_distutils_hack.*",
+        # Exclude only specific problematic SymPy test modules (from your original error)
+        "sympy.polys.benchmarks.bench_solvers",
+        "sympy.physics.quantum.tests.test_spin", 
+        "sympy.solvers.ode.tests.test_systems",
+        "sympy.polys.polyquinticconst",
+        # Keep all other SymPy modules including LaTeX ones
+    ]
+
+    for module in minimal_exclusions:
+        cmd.append(f"--nofollow-import-to={module}")
+
+    # Include ALL packages including LaTeX support
+    comprehensive_packages = [
+        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
+        "matplotlib", "jedi", "psutil", "manim"
+    ]
+
+    included_packages = []
+    for package in comprehensive_packages:
+        if is_package_importable(package):
+            correct_name = get_correct_package_name(package)
+            if correct_name:
+                included_packages.append(correct_name)
+                cmd.append(f"--include-package={correct_name}")
+                # Include package data for complete functionality
+                cmd.append(f"--include-package-data={correct_name}")
+                print(f"📦 Including full package: {correct_name}")
+
+    # Include SymPy with FULL LaTeX support (opposite of previous approach)
+    if is_package_importable("sympy"):
+        # Include ALL SymPy modules except the problematic test ones
+        cmd.append("--include-package=sympy")
+        cmd.append("--include-package-data=sympy")
+        
+        # Only exclude the specific problematic modules from the build error
+        sympy_test_exclusions = [
+            "sympy.polys.benchmarks.bench_solvers",
+            "sympy.physics.quantum.tests.test_spin",
+            "sympy.solvers.ode.tests.test_systems", 
+            "sympy.polys.polyquinticconst",
+            # General test exclusions but keep LaTeX modules
+            "sympy.*.tests.*", "sympy.*.test_*"
+        ]
+        
+        for exclusion in sympy_test_exclusions:
+            cmd.append(f"--nofollow-import-to={exclusion}")
+        
+        included_packages.append("sympy (full LaTeX support)")
+        print("🧮 Including SymPy with FULL LaTeX support")
+
+    # Include LaTeX support packages if available
+    latex_packages = ["latex2mathml", "antlr4", "pygments", "colour", "jinja2"]
+    
+    for package in latex_packages:
+        if is_package_importable(package):
+            cmd.append(f"--include-package={package}")
+            cmd.append(f"--include-package-data={package}")
+            included_packages.append(package)
+            print(f"📚 Including LaTeX support package: {package}")
+
+    # Include comprehensive system modules for LaTeX
+    comprehensive_modules = [
+        "json", "tempfile", "threading", "subprocess",
+        "os", "sys", "ctypes", "venv", "fixes", "psutil",
+        "process_utils", "logging", "pathlib", "shutil",
+        "glob", "re", "time", "datetime", "uuid", "base64",
+        "io", "codecs", "platform", "getpass", "signal",
+        "atexit", "queue", "math", "random", "collections",
+        "itertools", "functools", "operator", "copy",
+        "manim_latex_config",  # Our full LaTeX config
+        "latex_bundler",       # LaTeX bundler
+        # Additional modules for LaTeX support
+        "xml", "xml.etree", "xml.etree.ElementTree",
+        "urllib", "urllib.request", "urllib.parse",
+        "zipfile", "tarfile", "gzip", "bz2",
+        "hashlib", "hmac", "ssl", "socket"
+    ]
+
+    for module in comprehensive_modules:
+        cmd.append(f"--include-module={module}")
+
+    # Include TinyTeX bundle directory if it exists
+    if Path("latex_bundle").exists():
+        cmd.append("--include-data-dir=latex_bundle=latex_bundle")
+        print("📦 Including bundled TinyTeX installation")
+
+    # Include comprehensive data for LaTeX support
+    data_packages = ["manim", "matplotlib", "numpy", "sympy"]
+
+    for package in data_packages:
+        if is_package_importable(package):
+            cmd.append(f"--include-package-data={package}")
+            print(f"📊 Including comprehensive data for: {package}")
+
+    # Output configuration
+    cmd.extend([
+        "--output-dir=dist",
+        f"--jobs={jobs}",
+    ])
+
+    # Icon if available
+    if Path("assets/icon.ico").exists():
+        cmd.append("--windows-icon-from-ico=assets/icon.ico")
+
+    # Include all data directories
+    data_dirs = ["assets=assets"]
+    
+    # Try to include matplotlib data
+    try:
+        import matplotlib
+        mpl_data = Path(matplotlib.get_data_path())
+        if mpl_data.exists():
+            data_dirs.append(f"{mpl_data}=matplotlib/mpl-data")
+            print("📊 Including matplotlib data directory")
+    except ImportError:
+        pass
+
+    for data_dir in data_dirs:
+        cmd.append(f"--include-data-dir={data_dir}")
+
+    # Final target
+    cmd.append("app.py")
+
+    print("Building standalone executable with ENHANCED TinyTeX support...")
+    print("Command:", " ".join(cmd))
+    print("=" * 60)
+
+    # Environment setup for LaTeX support
+    env = os.environ.copy()
+    env["GCC_LTO"] = "0"
+    env["NUITKA_DISABLE_LTO"] = "1"
+    env["GCC_COMPILE_ARGS"] = "-fno-lto"
+
+    # Set process priority
+    process_priority = 0
+    if priority == "high" and sys.platform == "win32":
+        print("🔥 Setting HIGH process priority for maximum CPU utilization")
+        process_priority = 0x00000080
+
+    # Run the build
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        universal_newlines=True,
+        env=env,
+        creationflags=process_priority if sys.platform == "win32" else 0
+    )
+
+    # Display build info
+    print(f"🖥️ CPU Info: {cpu_count} logical cores available")
+    print(f"⚙️ Using {jobs} compilation threads")
+    print(f"📦 Included {len(included_packages)} packages with ENHANCED LaTeX support")
+
+    # Stream compilation output
+    while True:
+        line = process.stdout.readline()
+        if not line and process.poll() is not None:
+            break
+        if line:
+            print(line.strip())
+
+    return_code = process.poll()
+
+    if return_code == 0:
+        print("=" * 60)
+        print("✅ Enhanced LaTeX build successful!")
+
+        exe_path = find_standalone_executable()
+        if exe_path:
+            # Create enhanced LaTeX setup with TinyTeX integration
+            create_enhanced_tinytex_setup(exe_path.parent)
+            create_launcher_script(exe_path)
+            
+            print(f"📁 Executable: {exe_path}")
+            print("🎉 ENHANCED LaTeX FEATURES:")
+            print("  ✅ Bundled TinyTeX LaTeX distribution")
+            print("  ✅ Full SymPy LaTeX rendering")
+            print("  ✅ Complete manim TeX support")
+            print("  ✅ Portable LaTeX installation")
+            print("  ✅ Mathematical typesetting")
+            print("  ✅ Professional equation rendering")
+            print("  ✅ No external LaTeX dependencies")
+            print("  ✅ No console windows")
+
+            return exe_path
+        else:
+            print("❌ Executable not found")
+            list_contents()
+            return None
+    else:
+        print("=" * 60)
+        print("❌ Enhanced LaTeX build failed!")
+        print(f"Return code: {return_code}")
+        return None
+def create_enhanced_tinytex_setup(dist_dir):
+    """Create enhanced TinyTeX setup for the built application"""
+    try:
+        # Create TinyTeX initialization script
+        tinytex_init = f"""# tinytex_initialization.py
+# Enhanced TinyTeX initialization for standalone build
+
+import os
+import sys
+from pathlib import Path
+
+def initialize_tinytex_environment():
+    \"\"\"Initialize TinyTeX environment for standalone build\"\"\"
+    print("🔧 Initializing TinyTeX LaTeX environment...")
+    
+    # Find the application directory
+    if hasattr(sys, '_MEIPASS'):
+        # Nuitka onefile
+        app_dir = Path(sys._MEIPASS)
+    elif hasattr(sys, 'executable') and sys.executable:
+        # Nuitka standalone
+        app_dir = Path(sys.executable).parent
+    else:
+        app_dir = Path('.')
+    
+    # Look for TinyTeX bundle
+    latex_bundle = app_dir / "latex_bundle"
+    
+    if latex_bundle.exists():
+        print(f"✅ Found TinyTeX bundle at: {{latex_bundle}}")
+        
+        # Set up environment variables for TinyTeX
+        if sys.platform == "win32":
+            latex_bin = latex_bundle / "bin" / "windows"
+        elif sys.platform == "darwin":
+            latex_bin = latex_bundle / "bin" / "universal-darwin"
+        else:
+            latex_bin = latex_bundle / "bin" / "x86_64-linux"
+        
+        if latex_bin.exists():
+            # Add to PATH
+            current_path = os.environ.get("PATH", "")
+            if str(latex_bin) not in current_path:
+                os.environ["PATH"] = str(latex_bin) + os.pathsep + current_path
+            
+            # Set TEXMF environment variables
+            os.environ["TEXMFHOME"] = str(latex_bundle / "texmf-dist")
+            os.environ["TEXMFVAR"] = str(latex_bundle / "texmf-var")
+            os.environ["TEXMFLOCAL"] = str(latex_bundle / "texmf-local")
+            os.environ["TEXMFCACHE"] = str(latex_bundle / "texmf-var")
+            
+            # Set additional LaTeX paths
+            os.environ["TEXINPUTS"] = str(latex_bundle / "texmf-dist" / "tex") + "//:."
+            os.environ["BIBINPUTS"] = str(latex_bundle / "texmf-dist" / "bibtex") + "//:."
+            
+            print("✅ TinyTeX environment configured")
+            
+            # Test LaTeX availability
+            try:
+                import subprocess
+                result = subprocess.run([str(latex_bin / "latex"), "--version"], 
+                                     capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    print("✅ LaTeX executable test successful")
+                    return True
+                else:
+                    print(f"⚠️ LaTeX test failed: {{result.stderr}}")
+            except Exception as e:
+                print(f"⚠️ LaTeX test error: {{e}}")
+    else:
+        print("❌ TinyTeX bundle not found")
+    
+    return False
+
+def configure_manim_for_tinytex():
+    \"\"\"Configure manim to use TinyTeX\"\"\"
+    try:
+        import manim
+        
+        # Enable LaTeX in manim config
+        if hasattr(manim, 'config'):
+            manim.config.tex_template = None  # Use default template
+            manim.config.preview = False
+            
+            # Create a custom TeX template that works with TinyTeX
+            from manim.utils.tex_templates import TexTemplate
+            
+            custom_template = TexTemplate(
+                documentclass="article",
+                geometry_options={{"margin": "1in"}},
+                fontsize="11pt",
+                tex_compiler="latex",
+                output_format=".dvi",
+                preamble=r\"\"\"
+                \\usepackage{{amsmath}}
+                \\usepackage{{amsfonts}}
+                \\usepackage{{amssymb}}
+                \\usepackage{{dsfont}}
+                \\usepackage{{setspace}}
+                \\usepackage{{relsize}}
+                \\usepackage{{textcomp}}
+                \\usepackage{{mathrsfs}}
+                \\usepackage{{calligra}}
+                \\usepackage{{wasysym}}
+                \\usepackage{{ragged2e}}
+                \\usepackage{{physics}}
+                \\usepackage{{xcolor}}
+                \\usepackage{{microtype}}
+                \\DisableLigatures{{encoding = *, family = *}}
+                \\linespread{{1}}
+                \"\"\"
+            )
+            
+            manim.config.tex_template = custom_template
+            print("✅ Configured manim with TinyTeX template")
+            
+    except ImportError:
+        print("⚠️ Manim not available for TinyTeX configuration")
+    except Exception as e:
+        print(f"⚠️ Error configuring manim for TinyTeX: {{e}}")
+
+# Auto-initialize on import
+if initialize_tinytex_environment():
+    configure_manim_for_tinytex()
+    print("🎉 TinyTeX initialization complete!")
+else:
+    print("⚠️ TinyTeX initialization failed - falling back to system LaTeX")
+"""
+
+        init_path = Path(dist_dir) / "tinytex_initialization.py"
+        with open(init_path, "w", encoding="utf-8") as f:
+            f.write(tinytex_init)
+
+        print(f"🔬 Created enhanced TinyTeX setup in {dist_dir}")
+
+    except Exception as e:
+        print(f"⚠️ Warning: Could not create enhanced TinyTeX setup: {e}")
 def main():
     """Main function with enhanced build options including improved LaTeX support"""
     import sys  # Explicitly import here to fix scope issue
