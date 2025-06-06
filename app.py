@@ -53,6 +53,15 @@ import queue
 import atexit
 from tkinter import filedialog, messagebox
 
+# Try to import advanced LaTeX configuration generated during the
+# Nuitka build.  This module sets up the bundled LaTeX environment when
+# imported.  If it is missing (e.g. when running from source), we simply
+# continue without it.
+try:
+    import advanced_latex_config  # noqa: F401
+except Exception as e:  # pragma: no cover - optional dependency
+    print(f"Warning: Advanced LaTeX configuration not available ({e})")
+
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
