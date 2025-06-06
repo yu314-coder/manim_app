@@ -59,8 +59,53 @@ from tkinter import filedialog, messagebox
 # continue without it.
 try:
     import advanced_latex_config  # noqa: F401
+    _ADV_LATEX_OK = True
+except SystemExit as e:  # pragma: no cover - optional dependency
+    # Some versions of the bundled LaTeX setup exit the interpreter on
+    # failure which would prevent the application from starting.  Catch
+    # the exit and warn the user instead so the rest of the program can
+    # continue to run.
+    print(f"Warning: Advanced LaTeX configuration failed (exit code {e.code})")
+    _ADV_LATEX_OK = False
 except Exception as e:  # pragma: no cover - optional dependency
     print(f"Warning: Advanced LaTeX configuration not available ({e})")
+    _ADV_LATEX_OK = False
+
+if not _ADV_LATEX_OK:
+    from pathlib import Path
+
+    def _configure_local_latex():
+        """Fallback detection of a bundled LaTeX distribution"""
+        possible_locations = [
+            Path(__file__).resolve().parent / "latex_bundle",
+            Path(__file__).resolve().parent.parent / "latex_bundle",
+        ]
+
+        if getattr(sys, "frozen", False):
+            possible_locations.append(Path(sys.executable).parent / "latex_bundle")
+
+        if "NUITKA_ONEFILE_PARENT" in os.environ:
+            app_dir = Path(os.environ["NUITKA_ONEFILE_PARENT"]).parent
+            possible_locations.append(app_dir / "latex_bundle")
+
+        for loc in possible_locations:
+            existing = loc / "existing_latex"
+            if existing.exists():
+                for bin_dir in existing.rglob("bin"):
+                    if (bin_dir / "latex.exe").exists() or (bin_dir / "latex").exists():
+                        cur = os.environ.get("PATH", "")
+                        if str(bin_dir) not in cur:
+                            os.environ["PATH"] = str(bin_dir) + os.pathsep + cur
+                        os.environ["LATEX_ROOT"] = str(existing)
+                        texmf = list(existing.rglob("*texmf*"))
+                        if texmf:
+                            os.environ["TEXMFHOME"] = str(texmf[0])
+                        print(f"Configured local LaTeX from {existing}")
+                        return True
+        return False
+
+    if not _configure_local_latex():
+        print("No bundled LaTeX distribution found")
 
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
