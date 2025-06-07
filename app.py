@@ -108,6 +108,20 @@ if not _ADV_LATEX_OK:
                             os.environ["TEXMFHOME"] = str(texmf[0])
                         print(f"Configured local LaTeX from {existing}")
                         return True
+                # Fallback search when no 'bin' directory is present
+                for sub in existing.rglob("*"):
+                    if not sub.is_dir():
+                        continue
+                    if (sub / "latex.exe").exists() or (sub / "latex").exists():
+                        cur = os.environ.get("PATH", "")
+                        if str(sub) not in cur:
+                            os.environ["PATH"] = str(sub) + os.pathsep + cur
+                        os.environ["LATEX_ROOT"] = str(existing)
+                        texmf = list(existing.rglob("*texmf*"))
+                        if texmf:
+                            os.environ["TEXMFHOME"] = str(texmf[0])
+                        print(f"Configured local LaTeX from {existing}")
+                        return True
         return False
 
     if not _configure_local_latex():
