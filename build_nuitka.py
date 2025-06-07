@@ -817,9 +817,12 @@ import os
 import sys
 from pathlib import Path
 
+LATEX_BUNDLE_DIR = Path(sys.executable).parent / "latex_bundle" if getattr(sys, "frozen", False) else Path(__file__).resolve().parent / "latex_bundle"
+
 def find_latex_distribution():
     """Find any available LaTeX distribution"""
     possible_locations = [
+        LATEX_BUNDLE_DIR,
         Path("latex_bundle"),
         Path("./latex_bundle"),
         Path("../latex_bundle"),
@@ -1774,6 +1777,21 @@ def find_standalone_executable():
 
     return None
 
+def copy_latex_bundle_to_dist(exe_path):
+    """Copy the prepared LaTeX bundle next to the executable"""
+    src = Path("latex_bundle")
+    if not src.exists():
+        print("⚠️  LaTeX bundle not found; skipping copy to dist")
+        return
+
+    dest = Path(exe_path).parent / "latex_bundle"
+    if dest.exists():
+        shutil.rmtree(dest)
+
+    print(f"📋 Copying LaTeX bundle to {dest}...")
+    shutil.copytree(src, dest)
+    print("✅ LaTeX bundle copied to dist")
+
 def list_contents():
     """List contents of build directories"""
     for dir_name in ["dist", "build"]:
@@ -2067,6 +2085,7 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal"):
         if exe_path:
             # Create launcher scripts
             create_launcher_script(exe_path)
+            copy_latex_bundle_to_dist(exe_path)
             
             print(f"📁 Executable: {exe_path}")
             print("🎉 ADVANCED LATEX FEATURES:")
