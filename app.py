@@ -53,6 +53,12 @@ import queue
 import atexit
 from tkinter import filedialog, messagebox
 
+# Location of the bundled LaTeX distribution
+if getattr(sys, "frozen", False):
+    LATEX_BUNDLE_DIR = Path(sys.executable).parent / "latex_bundle"
+else:
+    LATEX_BUNDLE_DIR = Path(__file__).resolve().parent / "latex_bundle"
+
 # Try to import advanced LaTeX configuration generated during the
 # Nuitka build.  This module sets up the bundled LaTeX environment when
 # imported.  If it is missing (e.g. when running from source), we simply
@@ -77,7 +83,7 @@ if not _ADV_LATEX_OK:
     def _configure_local_latex():
         """Fallback detection of a bundled LaTeX distribution"""
         possible_locations = [
-            Path(__file__).resolve().parent / "latex_bundle",
+            LATEX_BUNDLE_DIR,
             Path(__file__).resolve().parent.parent / "latex_bundle",
         ]
 
