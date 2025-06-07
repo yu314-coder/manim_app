@@ -262,35 +262,22 @@ def detect_and_use_existing_latex(latex_bundle_dir):
     return False
 
 def create_symlink_installation(source_path, target_dir):
-    """Create a symlink-based installation for existing LaTeX"""
+    """Copy the entire LaTeX installation rather than linking it"""
     try:
-        # Create a symbolic link to the existing installation
         target_path = target_dir / "existing_latex"
-        
-        # On Windows, try to create a junction/symlink
-        if sys.platform == "win32":
-            try:
-                # Try creating a junction first (doesn't require admin rights)
-                subprocess.run(["mklink", "/J", str(target_path), str(source_path)],
-                             shell=True, check=True, capture_output=True)
-                print(f"✅ Created junction link: {target_path} -> {source_path}")
-            except Exception:
-                # If junction fails, fall back to copying the entire tree
-                print("⚠️  Junction creation failed, copying LaTeX installation. This may take some time...")
-                shutil.copytree(source_path, target_path, dirs_exist_ok=True)
-                print(f"✅ Copied LaTeX installation to: {target_path}")
-        else:
-            # On Unix systems, create a symbolic link
-            os.symlink(source_path, target_path)
-            print(f"✅ Created symbolic link: {target_path} -> {source_path}")
 
-        # Create environment setup for existing installation
+        # Always copy the full installation to ensure portability
+        print("📋 Copying LaTeX installation. This may take some time...")
+        shutil.copytree(source_path, target_path, dirs_exist_ok=True)
+        print(f"✅ Copied LaTeX installation to: {target_path}")
+
+        # Create environment setup for the copied installation
         create_existing_latex_environment_setup(target_path)
-        
+
         return verify_latex_installation(target_dir)
-        
+
     except Exception as e:
-        print(f"❌ Failed to create symlink installation: {e}")
+        print(f"❌ Failed to copy LaTeX installation: {e}")
         return False
 
 def show_manual_installation_instructions():
