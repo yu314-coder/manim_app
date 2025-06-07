@@ -75,7 +75,7 @@ def detect_and_use_existing_miktex(latex_bundle_dir):
             miktex_exe_path = result.stdout.strip().split('\n')[0]
             miktex_root = Path(miktex_exe_path).parent.parent
             print(f"✅ Found MiKTeX in PATH: {miktex_exe_path}")
-            return create_symlink_installation(miktex_root, latex_bundle_dir)
+            return copy_existing_latex_installation(miktex_root, latex_bundle_dir)
     except:
         pass
     
@@ -96,14 +96,14 @@ def detect_and_use_existing_miktex(latex_bundle_dir):
                 miktex_exe = path / indicator
                 if miktex_exe.exists():
                     print(f"✅ Found MiKTeX installation: {path}")
-                    return create_symlink_installation(path, latex_bundle_dir)
+                    return copy_existing_latex_installation(path, latex_bundle_dir)
             
             # Also check for miktex.exe specifically
             miktex_dirs = list(path.rglob("miktex.exe"))
             if miktex_dirs:
                 miktex_root = miktex_dirs[0].parent.parent
                 print(f"✅ Found MiKTeX installation via miktex.exe: {miktex_root}")
-                return create_symlink_installation(miktex_root, latex_bundle_dir)
+                return copy_existing_latex_installation(miktex_root, latex_bundle_dir)
     
     print("❌ No existing MiKTeX installation found")
     return False
@@ -242,7 +242,7 @@ def detect_and_use_existing_latex(latex_bundle_dir):
             latex_exe_path = result.stdout.strip().split('\n')[0]
             latex_root = Path(latex_exe_path).parent.parent
             print(f"✅ Found LaTeX in PATH: {latex_exe_path}")
-            return create_symlink_installation(latex_root, latex_bundle_dir)
+            return copy_existing_latex_installation(latex_root, latex_bundle_dir)
     except:
         pass
     
@@ -256,41 +256,31 @@ def detect_and_use_existing_latex(latex_bundle_dir):
                 latex_exe = bin_dir / "latex.exe"
                 if latex_exe.exists():
                     print(f"✅ Found LaTeX installation: {path}")
-                    return create_symlink_installation(path, latex_bundle_dir)
+                    return copy_existing_latex_installation(path, latex_bundle_dir)
     
     print("❌ No existing LaTeX installation found")
     return False
 
-def create_symlink_installation(source_path, target_dir):
-    """Create a symlink-based installation for existing LaTeX"""
+def copy_existing_latex_installation(source_path, target_dir):
+    """Copy the entire LaTeX installation into the build bundle"""
     try:
-        # Create a symbolic link to the existing installation
         target_path = target_dir / "existing_latex"
-        
-        # On Windows, try to create a junction/symlink
-        if sys.platform == "win32":
-            try:
-                # Try creating a junction first (doesn't require admin rights)
-                subprocess.run(["mklink", "/J", str(target_path), str(source_path)],
-                             shell=True, check=True, capture_output=True)
-                print(f"✅ Created junction link: {target_path} -> {source_path}")
-            except Exception:
-                # If junction fails, fall back to copying the entire tree
-                print("⚠️  Junction creation failed, copying LaTeX installation. This may take some time...")
-                shutil.copytree(source_path, target_path, dirs_exist_ok=True)
-                print(f"✅ Copied LaTeX installation to: {target_path}")
-        else:
-            # On Unix systems, create a symbolic link
-            os.symlink(source_path, target_path)
-            print(f"✅ Created symbolic link: {target_path} -> {source_path}")
 
-        # Create environment setup for existing installation
+        # Clean target if it already exists to avoid nested copies
+        if target_path.exists():
+            shutil.rmtree(target_path)
+
+        print("📋 Copying LaTeX installation. This may take some time...")
+        shutil.copytree(source_path, target_path)
+        print(f"✅ Copied LaTeX installation to: {target_path}")
+
+        # Create environment setup for the copied installation
         create_existing_latex_environment_setup(target_path)
-        
+
         return verify_latex_installation(target_dir)
-        
+
     except Exception as e:
-        print(f"❌ Failed to create symlink installation: {e}")
+        print(f"❌ Failed to copy LaTeX installation: {e}")
         return False
 
 def show_manual_installation_instructions():
