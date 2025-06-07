@@ -271,27 +271,21 @@ def create_symlink_installation(source_path, target_dir):
         if sys.platform == "win32":
             try:
                 # Try creating a junction first (doesn't require admin rights)
-                subprocess.run(["mklink", "/J", str(target_path), str(source_path)], 
+                subprocess.run(["mklink", "/J", str(target_path), str(source_path)],
                              shell=True, check=True, capture_output=True)
                 print(f"✅ Created junction link: {target_path} -> {source_path}")
-            except:
-                # If junction fails, copy the bin directory only
-                bin_dirs = list(source_path.rglob("bin"))
-                if bin_dirs:
-                    target_bin = target_path / "bin"
-                    target_bin.mkdir(parents=True, exist_ok=True)
-                    import shutil
-                    for item in bin_dirs[0].iterdir():
-                        if item.suffix.lower() == '.exe':
-                            shutil.copy2(item, target_bin)
-                    print(f"✅ Copied LaTeX binaries to: {target_bin}")
+            except Exception:
+                # If junction fails, fall back to copying the entire tree
+                print("⚠️  Junction creation failed, copying LaTeX installation. This may take some time...")
+                shutil.copytree(source_path, target_path, dirs_exist_ok=True)
+                print(f"✅ Copied LaTeX installation to: {target_path}")
         else:
             # On Unix systems, create a symbolic link
             os.symlink(source_path, target_path)
             print(f"✅ Created symbolic link: {target_path} -> {source_path}")
-        
+
         # Create environment setup for existing installation
-        create_existing_latex_environment_setup(source_path)
+        create_existing_latex_environment_setup(target_path)
         
         return verify_latex_installation(target_dir)
         
