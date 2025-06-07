@@ -42,121 +42,79 @@ PROBLEMATIC_MODULES = [
     "sympy.polys.polyquinticconst", "sympy.polys.benchmarks.bench_solvers",
     "sympy.physics.quantum.tests.test_spin", "sympy.solvers.ode.tests.test_systems"
 ]
-def detect_and_use_existing_miktex(latex_bundle_dir):
-    """Detect existing MiKTeX installations specifically"""
+def detect_and_use_existing_tectonic(latex_bundle_dir):
+    """Detect existing Tectonic installations"""
     import subprocess
     import os
-    
-    print("🔍 Scanning specifically for MiKTeX installations...")
-    
-    # MiKTeX-specific paths
-    miktex_paths = [
-        # Standard MiKTeX installation paths
-        r"C:\Program Files\MiKTeX",
-        r"C:\Program Files (x86)\MiKTeX",
-        r"C:\Users\Public\MiKTeX",
-        r"C:\MiKTeX",
-        os.path.expanduser(r"~\AppData\Local\Programs\MiKTeX"),
-        os.path.expanduser(r"~\AppData\Roaming\MiKTeX"),
-        # Custom MiKTeX paths - ADD YOUR CUSTOM MIKTEX PATH HERE
-        r"D:\LaTeX\MiKTeX",
-        r"C:\Tools\MiKTeX",
-        r"E:\MiKTeX",
-        # Portable MiKTeX installations
-        "./miktex_portable",
-        "./MiKTeX",
-        "../MiKTeX",
+
+    print("🔍 Scanning for Tectonic installations...")
+
+    tectonic_paths = [
+        r'C:\Program Files\Tectonic',
+        r'C:\Tectonic',
+        os.path.expanduser(r'~\AppData\Local\Tectonic'),
+        './tectonic',
+        '../tectonic',
     ]
-    
-    # Try to find miktex.exe or latex.exe specifically in MiKTeX structure
+
     try:
-        result = subprocess.run(["where", "miktex"], capture_output=True, text=True, shell=True)
+        result = subprocess.run(['where', 'tectonic'], capture_output=True, text=True, shell=True)
         if result.returncode == 0:
-            miktex_exe_path = result.stdout.strip().split('\n')[0]
-            miktex_root = Path(miktex_exe_path).parent.parent
-            print(f"✅ Found MiKTeX in PATH: {miktex_exe_path}")
-            return copy_existing_latex_installation(miktex_root, latex_bundle_dir)
-    except:
+            exe_path = result.stdout.strip().split('\n')[0]
+            root = Path(exe_path).parent
+            print(f'✅ Found Tectonic in PATH: {exe_path}')
+            return copy_existing_latex_installation(root, latex_bundle_dir)
+    except Exception:
         pass
-    
-    # Check MiKTeX-specific paths
-    for path_str in miktex_paths:
+
+    for path_str in tectonic_paths:
         path = Path(path_str)
         if path.exists():
-            # Look for MiKTeX-specific structure
-            miktex_indicators = [
-                "miktex/bin/latex.exe",
-                "texmfs/install/miktex/bin/latex.exe",
-                "texmfs/install/miktex/bin/x64/latex.exe",
-                "bin/latex.exe",
-                "bin/x64/latex.exe"
-            ]
-            
-            for indicator in miktex_indicators:
-                miktex_exe = path / indicator
-                if miktex_exe.exists():
-                    print(f"✅ Found MiKTeX installation: {path}")
-                    return copy_existing_latex_installation(path, latex_bundle_dir)
-            
-            # Also check for miktex.exe specifically
-            miktex_dirs = list(path.rglob("miktex.exe"))
-            if miktex_dirs:
-                miktex_root = miktex_dirs[0].parent.parent
-                print(f"✅ Found MiKTeX installation via miktex.exe: {miktex_root}")
-                return copy_existing_latex_installation(miktex_root, latex_bundle_dir)
-    
-    print("❌ No existing MiKTeX installation found")
+            exe = path / 'tectonic.exe'
+            if exe.exists():
+                print(f'✅ Found Tectonic installation: {path}')
+                return copy_existing_latex_installation(path, latex_bundle_dir)
+
+    print('❌ No existing Tectonic installation found')
     return False
-def show_manual_miktex_installation_instructions():
-    """Show detailed manual MiKTeX installation instructions"""
+def show_manual_tectonic_installation_instructions():
+    """Show detailed manual Tectonic installation instructions"""
     print("\n" + "="*80)
-    print("🔧 MANUAL MIKTEX INSTALLATION INSTRUCTIONS")
+    print("🔧 MANUAL TECTONIC INSTALLATION INSTRUCTIONS")
     print("="*80)
-    print("\n📋 RECOMMENDED: MiKTeX (Best LaTeX distribution)")
-    print("   1. Go to: https://miktex.org/download")
-    print("   2. Download: 'MiKTeX Installer' for Windows")
-    print("   3. Run the installer with these EXACT settings:")
-    print("      ✅ Install for: 'Anyone who uses this computer'")
-    print("      ✅ Preferred paper: A4 or Letter")
-    print("      ✅ Install missing packages: 'Yes' (IMPORTANT!)")
-    print("      ✅ Check 'Always install missing packages on-the-fly'")
-    print("   4. Wait for installation to complete (~10-15 minutes)")
-    print("   5. After installation, verify by opening Command Prompt:")
-    print("      > latex --version")
-    print("      > miktex --version")
-    print("   6. Re-run this build script - it will auto-detect MiKTeX!")
+    print("\n📋 RECOMMENDED: Tectonic (Lightweight LaTeX engine)")
+    print("   1. Go to: https://tectonic-typesetting.github.io/")
+    print("   2. Download the latest Tectonic release for Windows")
+    print("   3. Extract the archive anywhere and add the folder to PATH")
+    print("   4. Verify by running: > tectonic --help")
+    print("   5. Re-run this build script - it will auto-detect Tectonic!")
     
-    print("\n📋 ALTERNATIVE: MiKTeX Portable (Manual)")
-    print("   1. Download MiKTeX Portable from:")
-    print("      https://miktex.org/portable")
-    print("   2. Extract to: 'miktex_portable' folder next to this script")
+    print("\n📋 ALTERNATIVE: TeX Live (Manual)")
+    print("   1. Download TeX Live from https://www.tug.org/texlive/")
+    print("   2. Run the installer and follow the instructions")
     print("   3. Re-run this build script")
     
-    print("\n🔧 CUSTOM MIKTEX PATH:")
-    print("   If you have MiKTeX installed in a custom location:")
+    print("\n🔧 CUSTOM TECTONIC PATH:")
+    print("   If you have Tectonic installed in a custom location:")
     print("   1. Edit this script (build_nuitka.py)")
-    print("   2. Find the 'miktex_paths' list in detect_and_use_existing_miktex()")
-    print("   3. Add your custom path to the list")
-    print("   4. Example: r'D:\\MyPrograms\\MiKTeX'")
+    print("   2. Add your custom Tectonic path to the search list")
     
     print("\n⚡ VERIFICATION:")
     print("   After installation, run these commands:")
-    print("   > miktex --version")
-    print("   > latex --version")
-    print("   > pdflatex --version")
+    print("   > tectonic --version")
     print("   All should work without errors.")
     
     print("\n🎯 GUARANTEE:")
-    print("   This script is optimized for MiKTeX and will work best with it!")
+    print("   This script is optimized for Tectonic and will work best with it!")
     print("="*80)
 def download_advanced_latex_distribution():
-    """Download MiKTeX first, with fallbacks only if MiKTeX fails"""
+    """Download Tectonic first, with fallbacks only if Tectonic fails"""
     import urllib.request
     import zipfile
     import tempfile
     import tarfile
     
-    print("🚀 Prioritizing MiKTeX LaTeX Distribution...")
+    print("🚀 Prioritizing Tectonic LaTeX Distribution...")
     
     # Create latex_bundle directory
     latex_bundle_dir = Path("latex_bundle")
@@ -164,27 +122,27 @@ def download_advanced_latex_distribution():
         shutil.rmtree(latex_bundle_dir)
     latex_bundle_dir.mkdir(exist_ok=True)
     
-    # FIRST: Try to detect existing MiKTeX installations specifically
-    print("🔍 Checking for existing MiKTeX installations...")
-    if detect_and_use_existing_miktex(latex_bundle_dir):
-        print("✅ Found and configured existing MiKTeX installation!")
+    # FIRST: Try to detect existing Tectonic installations
+    print("🔍 Checking for existing Tectonic installations...")
+    if detect_and_use_existing_tectonic(latex_bundle_dir):
+        print("✅ Found and configured existing Tectonic installation!")
         return True
-    
-    # SECOND: Download MiKTeX Portable (Primary choice)
-    print("📦 Primary Option: Downloading MiKTeX Portable...")
-    if download_miktex_portable(latex_bundle_dir):
-        print("✅ MiKTeX Portable downloaded successfully!")
+
+    # SECOND: Download Tectonic (Primary choice)
+    print("📦 Primary Option: Downloading Tectonic...")
+    if download_tectonic(latex_bundle_dir):
+        print("✅ Tectonic downloaded successfully!")
         return True
-    
-    # If MiKTeX fails, ask user if they want to try alternatives
-    print("❌ MiKTeX download failed!")
-    print("🤔 MiKTeX is the preferred LaTeX distribution but failed to download.")
+
+    # If Tectonic fails, ask user if they want to try alternatives
+    print("❌ Tectonic download failed!")
+    print("🤔 Tectonic is the preferred LaTeX distribution but failed to download.")
     
     try_alternatives = input("Would you like to try alternative LaTeX distributions? (y/N): ").strip().lower()
     if try_alternatives not in ['y', 'yes']:
-        print("❌ Build cancelled - MiKTeX required but not available")
-        print("💡 You can manually install MiKTeX and re-run this script")
-        show_manual_miktex_installation_instructions()
+        print("❌ Build cancelled - Tectonic required but not available")
+        print("💡 You can manually install Tectonic and re-run this script")
+        show_manual_tectonic_installation_instructions()
         sys.exit(1)
     
     # Fallback options (only if user agrees)
@@ -206,7 +164,7 @@ def download_advanced_latex_distribution():
     # All options failed
     print("❌ CRITICAL ERROR: All LaTeX distribution downloads failed")
     print("🚫 BUILD CANNOT CONTINUE WITHOUT LATEX")
-    show_manual_miktex_installation_instructions()
+    show_manual_tectonic_installation_instructions()
     sys.exit(1)
 def detect_and_use_existing_latex(latex_bundle_dir):
     """Detect existing LaTeX installations on the system"""
@@ -217,20 +175,19 @@ def detect_and_use_existing_latex(latex_bundle_dir):
     
     # Common LaTeX installation paths
     common_paths = [
-        # MiKTeX paths
-        r"C:\Program Files\MiKTeX",
-        r"C:\Users\Public\MiKTeX",
-        r"C:\MiKTeX",
-        os.path.expanduser(r"~\AppData\Local\Programs\MiKTeX"),
+        # Tectonic paths
+        r"C:\\Program Files\\Tectonic",
+        r"C:\\Tectonic",
+        os.path.expanduser(r"~\\AppData\\Local\\Tectonic"),
         # TeX Live paths
         r"C:\texlive",
         r"C:\Program Files\texlive",
         # Custom paths - ADD YOUR LATEX PATH HERE IF NEEDED
-        r"D:\LaTeX\MiKTeX",  # Example custom path
-        r"C:\Tools\MiKTeX",  # Example custom path
+        r"D:\\LaTeX\\Tectonic",  # Example custom path
+        r"C:\\Tools\\Tectonic",  # Example custom path
         # ADD MORE PATHS HERE AS NEEDED
         # Portable installations
-        "./miktex_portable",
+        "./tectonic",
         "./texlive_portable",
         "./latex_portable"
     ]
@@ -288,15 +245,12 @@ def show_manual_installation_instructions():
     print("\n" + "="*80)
     print("🔧 MANUAL LATEX INSTALLATION INSTRUCTIONS")
     print("="*80)
-    print("\n📋 OPTION 1: MiKTeX (Recommended - Easiest)")
-    print("   1. Go to: https://miktex.org/download")
-    print("   2. Download: 'MiKTeX Installer' for Windows")
-    print("   3. Run the installer with these settings:")
-    print("      ✅ Install for: 'Anyone who uses this computer'")
-    print("      ✅ Preferred paper: A4 or Letter")
-    print("      ✅ Install missing packages: 'Yes'")
-    print("   4. Wait for installation to complete (~10-15 minutes)")
-    print("   5. Re-run this build script - it will auto-detect MiKTeX!")
+    print("\n📋 OPTION 1: Tectonic (Recommended - Easiest)")
+    print("   1. Go to: https://tectonic-typesetting.github.io/")
+    print("   2. Download the latest Tectonic release")
+    print("   3. Add Tectonic to your PATH")
+    print("   4. Verify with 'tectonic --version'")
+    print("   5. Re-run this build script - it will auto-detect Tectonic!")
     
     print("\n📋 OPTION 2: TeX Live (More comprehensive)")
     print("   1. Go to: https://www.tug.org/texlive/windows.html")
@@ -305,10 +259,9 @@ def show_manual_installation_instructions():
     print("   4. Wait for installation (~45-60 minutes)")
     print("   5. Re-run this build script - it will auto-detect TeX Live!")
     
-    print("\n📋 OPTION 3: Portable MiKTeX (Manual)")
-    print("   1. Download MiKTeX Portable from:")
-    print("      https://miktex.org/portable")
-    print("   2. Extract to: 'miktex_portable' folder next to this script")
+    print("\n📋 OPTION 3: Portable TeX Live (Manual)")
+    print("   1. Download TeX Live installer")
+    print("   2. Install with the 'portable' option")
     print("   3. Re-run this build script")
     
     print("\n🔧 VERIFICATION:")
@@ -321,68 +274,40 @@ def show_manual_installation_instructions():
     print("   It will automatically detect and use your installation!")
     print("="*80)
 
-def download_miktex_portable(latex_bundle_dir):
-    """Download MiKTeX Portable (~800MB) - Most reliable option"""
+def download_tectonic(latex_bundle_dir):
+    """Download Tectonic distribution"""
     import urllib.request
+    import zipfile
     import tempfile
     import os
     try:
-        print("📥 Downloading MiKTeX Portable (Advanced LaTeX, ~800MB)...")
-        
-        # MiKTeX Portable download URLs (updated for latest versions)
-        miktex_urls = [
-            "https://miktex.org/download/ctan/systems/win32/miktex/setup/windows-x64/miktexsetup-5.5.0+1763023f-x64.exe",
-            "https://mirrors.ctan.org/systems/win32/miktex/setup/windows-x64/miktexsetup-5.5.0+1763023f-x64.exe",
-            "https://mirror.ctan.org/systems/win32/miktex/setup/windows-x64/miktexsetup-5.5.0+1763023f-x64.exe"
-        ]
-        
-        for url in miktex_urls:
-            try:
-                print(f"📥 Trying: {url}")
-                
-                with tempfile.NamedTemporaryFile(suffix='.exe', delete=False) as temp_file:
-                    # Download with progress
-                    urllib.request.urlretrieve(url, temp_file.name, reporthook=download_progress)
-                    setup_exe = temp_file.name
-                
-                print("✅ MiKTeX setup downloaded")
-                
-                # Create a portable installation
-                portable_dir = latex_bundle_dir / "miktex_portable"
-                portable_dir.mkdir(exist_ok=True)
-                
-                print("🔧 Creating MiKTeX portable installation...")
-                
-                # Run MiKTeX setup in portable mode
-                setup_cmd = [
-                    setup_exe,
-                    "--portable", str(portable_dir),
-                    "--package-set=basic",
-                    "--auto-install=yes",
-                    "--quiet"
-                ]
-                
-                result = run_hidden_process(setup_cmd, timeout=1800)  # 30 minutes timeout
-                
-                # Clean up setup file
-                os.unlink(setup_exe)
-                
-                if result.returncode == 0 and verify_latex_installation(portable_dir):
-                    print("✅ MiKTeX Portable installation successful")
-                    create_miktex_environment_setup(portable_dir)
-                    return True
-                else:
-                    print(f"❌ MiKTeX setup failed with return code: {result.returncode}")
-                    
-            except Exception as e:
-                print(f"⚠️ Failed to download from {url}: {e}")
-                continue
-        
-        return False
-        
+        print("📥 Downloading Tectonic (Lightweight LaTeX)...")
+
+        tectonic_url = "https://github.com/tectonic-typesetting/tectonic/releases/latest/download/tectonic-x86_64-pc-windows-msvc.zip"
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_file:
+            urllib.request.urlretrieve(tectonic_url, temp_file.name, reporthook=download_progress)
+            package_file = temp_file.name
+
+        print("✅ Tectonic package downloaded")
+
+        tectonic_dir = latex_bundle_dir / "tectonic"
+        tectonic_dir.mkdir(exist_ok=True)
+
+        with zipfile.ZipFile(package_file, 'r') as zip_ref:
+            zip_ref.extractall(tectonic_dir)
+
+        os.unlink(package_file)
+
+        if verify_latex_installation(tectonic_dir):
+            print("✅ Tectonic installation successful")
+            create_tectonic_environment_setup(tectonic_dir)
+            return True
+        else:
+            print("❌ Tectonic verification failed")
     except Exception as e:
-        print(f"❌ MiKTeX Portable download failed: {e}")
-        return False
+        print(f"❌ Tectonic download failed: {e}")
+    return False
+
 
 def download_texlive_basic(latex_bundle_dir):
     """Download TeX Live Basic (~1.5GB) - Comprehensive option"""
@@ -652,6 +577,39 @@ setup_miktex_environment()
     with open("miktex_env_setup.py", "w", encoding="utf-8") as f:
         f.write(setup_script)
 
+def create_tectonic_environment_setup(tectonic_dir):
+    """Create environment setup for Tectonic"""
+    setup_script = f'''# Tectonic Environment Setup
+import os
+import sys
+from pathlib import Path
+
+def setup_tectonic_environment():
+    """Set up Tectonic environment"""
+    tectonic_dir = Path("{tectonic_dir}")
+
+    bin_dir = tectonic_dir
+    if (tectonic_dir / "tectonic").is_dir():
+        bin_dir = tectonic_dir / "tectonic"
+
+    if bin_dir.exists():
+        current_path = os.environ.get("PATH", "")
+        if str(bin_dir) not in current_path:
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + current_path
+
+        os.environ["TECTONIC_ROOT"] = str(tectonic_dir)
+        print("✅ Tectonic environment configured")
+        return True
+
+    return False
+
+# Auto-setup on import
+setup_tectonic_environment()
+'''
+
+    with open("tectonic_env_setup.py", "w", encoding="utf-8") as f:
+        f.write(setup_script)
+
 def create_texlive_environment_setup(texlive_dir):
     """Create environment setup for TeX Live"""
     setup_script = f'''# TeX Live Environment Setup
@@ -849,9 +807,9 @@ def detect_latex_distribution_type(latex_dir):
     if (latex_dir / "existing_latex").exists():
         return "existing", latex_dir / "existing_latex"
     
-    # Check for MiKTeX
-    if (latex_dir / "miktex_portable").exists():
-        return "miktex", latex_dir / "miktex_portable"
+    # Check for Tectonic
+    if (latex_dir / "tectonic").exists():
+        return "tectonic", latex_dir / "tectonic"
     
     # Check for TeX Live
     if (latex_dir / "texlive_basic").exists():
@@ -880,8 +838,8 @@ def setup_latex_environment():
     
     if dist_type == "existing":
         return setup_existing_latex_environment_from_bundle(latex_dir)
-    elif dist_type == "miktex":
-        return setup_miktex_environment(latex_dir)
+    elif dist_type == "tectonic":
+        return setup_tectonic_environment(latex_dir)
     elif dist_type == "texlive":
         return setup_texlive_environment(latex_dir)
     elif dist_type == "w32tex":
@@ -1042,7 +1000,7 @@ def configure_manim_for_advanced_latex():
                     documentclass="standalone",
                     geometry_options={"margin": "0mm"},
                     fontsize="12pt",
-                    tex_compiler="latex",
+                    tex_compiler="tectonic",
                     output_format=".dvi",
                     preamble=r"""
                     \usepackage[english]{babel}
@@ -2090,7 +2048,7 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal"):
             print(f"📁 Executable: {exe_path}")
             print("🎉 ADVANCED LATEX FEATURES:")
             print("  ✅ Multi-distribution LaTeX support (<2GB)")
-            print("  ✅ MiKTeX Portable / TeX Live Basic / W32TeX / ProTeXt")
+            print("  ✅ Tectonic / TeX Live Basic / W32TeX / ProTeXt")
             print("  ✅ Automatic fallback between distributions")
             print("  ✅ Complete LaTeX rendering support")
             print("  ✅ Professional mathematical typesetting")
@@ -2113,17 +2071,17 @@ def main():
     """Main function - MiKTeX-prioritized LaTeX build option"""
     import sys  # Explicitly import here to fix scope issue
     
-    print("🚀 Manim Studio - MiKTeX-Prioritized LaTeX Builder (<2GB)")
+    print("🚀 Manim Studio - Tectonic-Prioritized LaTeX Builder (<2GB)")
     print("=" * 50)
     
     # Set up command line arguments
-    parser = argparse.ArgumentParser(description="Build Manim Studio with MiKTeX-Prioritized LaTeX (<2GB)")
+    parser = argparse.ArgumentParser(description="Build Manim Studio with Tectonic-Prioritized LaTeX (<2GB)")
     parser.add_argument("--jobs", type=int, help="Number of CPU threads to use (default: CPU count - 1)")
     parser.add_argument("--max-cpu", action="store_true", help="Use all available CPU cores with oversubscription")
     parser.add_argument("--turbo", action="store_true", help="Use turbo mode - maximum CPU with high priority")
     parser.add_argument("--ascii", action="store_true", help="Use ASCII output instead of Unicode symbols")
-    parser.add_argument("--miktex-only", action="store_true", help="Force MiKTeX-only mode (no fallbacks)")
-    parser.add_argument("--check-miktex", action="store_true", help="Only check for existing MiKTeX installation and exit")
+    parser.add_argument("--tectonic-only", action="store_true", help="Force Tectonic-only mode (no fallbacks)")
+    parser.add_argument("--check-tectonic", action="store_true", help="Only check for existing Tectonic installation and exit")
     
     # Parse args but keep default behavior if not specified
     args, remaining_args = parser.parse_known_args()
@@ -2133,17 +2091,17 @@ def main():
     if args.ascii:
         USE_ASCII_ONLY = True
     
-    # Handle MiKTeX check mode
-    if args.check_miktex:
-        print("🔍 Checking for existing MiKTeX installations...")
+    # Handle Tectonic check mode
+    if args.check_tectonic:
+        print("🔍 Checking for existing Tectonic installations...")
         latex_bundle_dir = Path("temp_check")
         latex_bundle_dir.mkdir(exist_ok=True)
-        
-        if detect_and_use_existing_miktex(latex_bundle_dir):
-            print("✅ MiKTeX found and ready!")
+
+        if detect_and_use_existing_tectonic(latex_bundle_dir):
+            print("✅ Tectonic found and ready!")
         else:
-            print("❌ No MiKTeX installation detected")
-            show_manual_miktex_installation_instructions()
+            print("❌ No Tectonic installation detected")
+            show_manual_tectonic_installation_instructions()
         
         # Clean up temp directory
         if latex_bundle_dir.exists():
@@ -2151,8 +2109,8 @@ def main():
         sys.exit(0)
     
     # Store MiKTeX-only preference globally or pass it down
-    global FORCE_MIKTEX_ONLY
-    FORCE_MIKTEX_ONLY = args.miktex_only
+    global FORCE_TECTONIC_ONLY
+    FORCE_TECTONIC_ONLY = args.tectonic_only
     
     # Determine job count
     cpu_count = multiprocessing.cpu_count()
@@ -2190,25 +2148,25 @@ def main():
         ]
     )
     
-    logging.info("Building with MiKTeX-prioritized LaTeX distribution support")
+    logging.info("Building with Tectonic-prioritized LaTeX distribution support")
     
     # Display build information based on mode
-    if args.miktex_only:
-        print("\n🎯 Building with MiKTeX-ONLY Mode...")
+    if args.tectonic_only:
+        print("\n🎯 Building with Tectonic-ONLY Mode...")
         print("📋 This build includes:")
-        print("  🎯 MiKTeX detection and installation ONLY")
-        print("  ✅ MiKTeX Portable (~800MB) if not found")
+        print("  🎯 Tectonic detection and installation ONLY")
+        print("  ✅ Tectonic package will be downloaded if not found")
         print("  🚫 NO fallback distributions")
         print("  ✅ Complete LaTeX rendering support")
         print("  ✅ Professional mathematical typesetting")
         print("  ✅ Portable MiKTeX installation")
         print("  ✅ No console windows")
-        print("  ⚠️  Build will FAIL if MiKTeX cannot be obtained")
+        print("  ⚠️  Build will FAIL if Tectonic cannot be obtained")
     else:
-        print("\n🎯 Building with MiKTeX-Prioritized LaTeX Distribution...")
+        print("\n🎯 Building with Tectonic-Prioritized LaTeX Distribution...")
         print("📋 This build includes:")
-        print("  🥇 PRIMARY: MiKTeX detection and Portable (~800MB)")
-        print("  🥈 FALLBACK OPTIONS (if MiKTeX fails):")
+        print("  🥇 PRIMARY: Tectonic")
+        print("  🥈 FALLBACK OPTIONS (if Tectonic fails):")
         print("      🔸 TeX Live Basic (~1.5GB)")
         print("      🔸 W32TeX (~600MB)")
         print("      🔸 ProTeXt Basic (~900MB)")
@@ -2219,26 +2177,26 @@ def main():
         print("  ✅ No console windows")
     
     # Show what we'll check for first
-    print(f"\n🔍 Pre-build MiKTeX detection:")
-    print("  📂 Checking standard MiKTeX installation paths...")
-    print("  📂 Checking PATH for MiKTeX executables...")
-    print("  📂 Checking portable MiKTeX locations...")
+    print(f"\n🔍 Pre-build Tectonic detection:")
+    print("  📂 Checking standard Tectonic installation paths...")
+    print("  📂 Checking PATH for Tectonic executables...")
+    print("  📂 Checking portable Tectonic locations...")
     
     # Perform a quick pre-check to inform the user
-    print("\n🔍 Performing quick MiKTeX detection...")
-    temp_check_dir = Path("temp_miktex_check")
+    print("\n🔍 Performing quick Tectonic detection...")
+    temp_check_dir = Path("temp_tectonic_check")
     temp_check_dir.mkdir(exist_ok=True)
-    
+
     try:
-        if detect_and_use_existing_miktex(temp_check_dir):
-            print("✅ Existing MiKTeX installation detected!")
-            print("   📁 Your existing MiKTeX will be used for the build")
+        if detect_and_use_existing_tectonic(temp_check_dir):
+            print("✅ Existing Tectonic installation detected!")
+            print("   📁 Your existing Tectonic will be used for the build")
         else:
-            print("❌ No existing MiKTeX found")
-            if args.miktex_only:
-                print("   📥 MiKTeX Portable will be downloaded during build")
+            print("❌ No existing Tectonic found")
+            if args.tectonic_only:
+                print("   📥 Tectonic will be downloaded during build")
             else:
-                print("   📥 MiKTeX Portable will be tried first, with fallbacks available")
+                print("   📥 Tectonic will be tried first, with fallbacks available")
     except Exception as e:
         print(f"⚠️ Detection check failed: {e}")
         print("   🔄 Full detection will be performed during build")
@@ -2248,26 +2206,26 @@ def main():
             shutil.rmtree(temp_check_dir)
     
     # Confirmation
-    mode_text = "MiKTeX-ONLY" if args.miktex_only else "MiKTeX-Prioritized"
+    mode_text = "Tectonic-ONLY" if args.tectonic_only else "Tectonic-Prioritized"
     confirm = input(f"\n🚀 Proceed with {mode_text} LaTeX build? (y/N): ").strip().lower()
     if confirm not in ['y', 'yes']:
         print("❌ Build cancelled by user")
         sys.exit(0)
     
     # Show additional information for MiKTeX-only mode
-    if args.miktex_only:
-        print("\n⚠️  MiKTeX-ONLY Mode Active:")
-        print("   🎯 Only MiKTeX will be considered")
-        print("   📥 If no existing MiKTeX found, MiKTeX Portable will be downloaded")
-        print("   🚫 Build will FAIL if MiKTeX cannot be obtained")
+    if args.tectonic_only:
+        print("\n⚠️  Tectonic-ONLY Mode Active:")
+        print("   🎯 Only Tectonic will be considered")
+        print("   📥 If no existing Tectonic found, it will be downloaded")
+        print("   🚫 Build will FAIL if Tectonic cannot be obtained")
         print("   💡 If build fails, you can:")
-        print("      1. Install MiKTeX manually from https://miktex.org/download")
-        print("      2. Re-run without --miktex-only for fallback options")
+        print("      1. Install Tectonic manually from https://tectonic-typesetting.github.io/")
+        print("      2. Re-run without --tectonic-only for fallback options")
         
-        final_confirm = input("Continue with MiKTeX-ONLY mode? (y/N): ").strip().lower()
+        final_confirm = input("Continue with Tectonic-ONLY mode? (y/N): ").strip().lower()
         if final_confirm not in ['y', 'yes']:
             print("❌ Build cancelled by user")
-            print("💡 Tip: Run without --miktex-only for fallback options")
+            print("💡 Tip: Run without --tectonic-only for fallback options")
             sys.exit(0)
     
     # Execute the build
@@ -2278,19 +2236,19 @@ def main():
     print("\n" + "=" * 60)
     if success:
         print("🎉 Build completed successfully!")
-        if args.miktex_only:
-            print("🚀 MIKTEX-ONLY BUILD: Optimized for MiKTeX!")
+        if args.tectonic_only:
+            print("🚀 TECTONIC-ONLY BUILD: Optimized for Tectonic!")
             print("   🆕 FEATURES:")
-            print("   ✅ MiKTeX-exclusive LaTeX support")
-            print("   ✅ Optimized for MiKTeX performance")
-            print("   ✅ Guaranteed MiKTeX compatibility")
-            print("   ✅ Smaller build size (MiKTeX optimized)")
-            print("   🎯 Pure MiKTeX distribution used")
+            print("   ✅ Tectonic-exclusive LaTeX support")
+            print("   ✅ Optimized for Tectonic performance")
+            print("   ✅ Guaranteed Tectonic compatibility")
+            print("   ✅ Smaller build size (Tectonic optimized)")
+            print("   🎯 Pure Tectonic distribution used")
         else:
-            print("🚀 MIKTEX-PRIORITIZED BUILD: Best of both worlds!")
+            print("🚀 TECTONIC-PRIORITIZED BUILD: Best of both worlds!")
             print("   🆕 FEATURES:")
-            print("   🥇 MiKTeX-first with smart fallbacks")
-            print("   ✅ MiKTeX Portable / TeX Live Basic / W32TeX / ProTeXt support")
+            print("   🥇 Tectonic-first with smart fallbacks")
+            print("   ✅ Tectonic / TeX Live Basic / W32TeX / ProTeXt support")
             print("   ✅ Intelligent distribution selection")
             print("   ✅ Enhanced error handling with fallbacks")
         
@@ -2299,7 +2257,7 @@ def main():
         print("   ✅ Advanced LaTeX packages included")
         print("   ✅ Portable LaTeX installation")
         print("   ✅ No console windows")
-        print("   🎯 OPTIMIZED: Best MiKTeX integration!")
+        print("   🎯 OPTIMIZED: Best Tectonic integration!")
         print("🚀 Professional desktop application ready!")
         
         # Show usage instructions
@@ -2307,18 +2265,18 @@ def main():
         print(f"   📁 Executable location: {exe_path}")
         print("   🚀 Run the .exe file to start Manim Studio")
         print("   🎯 LaTeX rendering is fully configured and ready")
-        if args.miktex_only:
-            print("   ✅ MiKTeX-optimized build for best performance")
+        if args.tectonic_only:
+            print("   ✅ Tectonic-optimized build for best performance")
         else:
             print("   ✅ Multi-distribution LaTeX support included")
         
     else:
         print("❌ Build failed!")
-        if args.miktex_only:
-            print("💡 MiKTeX-ONLY mode failed. You can:")
-            print("   1. Install MiKTeX manually: https://miktex.org/download")
-            print("   2. Try again without --miktex-only for fallback options")
-            print("   3. Use --check-miktex to verify MiKTeX installation")
+        if args.tectonic_only:
+            print("💡 Tectonic-ONLY mode failed. You can:")
+            print("   1. Install Tectonic manually: https://tectonic-typesetting.github.io/")
+            print("   2. Try again without --tectonic-only for fallback options")
+            print("   3. Use --check-tectonic to verify Tectonic installation")
         else:
             print("💡 Build failed even with fallback options. Check the logs above.")
             print("   📄 Check build.log for detailed error information")

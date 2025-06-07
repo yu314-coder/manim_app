@@ -108,6 +108,18 @@ if not _ADV_LATEX_OK:
                             os.environ["TEXMFHOME"] = str(texmf[0])
                         print(f"Configured local LaTeX from {existing}")
                         return True
+
+            tectonic = loc / "tectonic"
+            if tectonic.exists():
+                bin_dir = tectonic / "tectonic" if (tectonic / "tectonic").is_dir() else tectonic
+                exe = bin_dir / ("tectonic.exe" if os.name == "nt" else "tectonic")
+                if exe.exists():
+                    cur = os.environ.get("PATH", "")
+                    if str(bin_dir) not in cur:
+                        os.environ["PATH"] = str(bin_dir) + os.pathsep + cur
+                    os.environ["TECTONIC_ROOT"] = str(tectonic)
+                    print(f"Configured local Tectonic from {tectonic}")
+                    return True
         return False
 
     if not _configure_local_latex():
