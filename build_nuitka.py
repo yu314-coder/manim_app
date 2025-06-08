@@ -816,8 +816,32 @@ def create_advanced_latex_config():
 import os
 import sys
 from pathlib import Path
+import tempfile
+import shutil
 
 LATEX_BUNDLE_DIR = Path(sys.executable).parent / "latex_bundle" if getattr(sys, "frozen", False) else Path(__file__).resolve().parent / "latex_bundle"
+
+def get_safe_media_directory():
+    """Get a safe media directory without spaces or special characters"""
+    if getattr(sys, "frozen", False):
+        # For frozen apps, use a safe temp directory in user's home
+        import tempfile
+        import os
+        
+        # Create a safe directory in user's home folder to avoid path issues
+        user_home = Path.home()
+        safe_dir = user_home / "ManimStudio_Media"
+        safe_dir.mkdir(exist_ok=True)
+        
+        # Create subdirectories
+        (safe_dir / "Tex").mkdir(exist_ok=True)
+        (safe_dir / "videos").mkdir(exist_ok=True)
+        (safe_dir / "images").mkdir(exist_ok=True)
+        
+        return safe_dir
+    else:
+        # For development, use relative path
+        return Path("./media")
 
 def find_latex_distribution():
     """Find any available LaTeX distribution"""
@@ -845,9 +869,14 @@ def find_latex_distribution():
 
 def detect_latex_distribution_type(latex_dir):
     """Detect the type of LaTeX distribution"""
-    # Check for existing LaTeX installation
+    # Check for existing LaTeX installation (CRITICAL FIX: Look for x64 subdirectory)
     if (latex_dir / "existing_latex").exists():
-        return "existing", latex_dir / "existing_latex"
+        existing_path = latex_dir / "existing_latex"
+        # Check if this has the x64 structure we saw in the directory listing
+        if (existing_path / "x64").exists():
+            return "existing", existing_path
+        else:
+            return "existing", existing_path
     
     # Check for MiKTeX
     if (latex_dir / "miktex_portable").exists():
@@ -892,9 +921,35 @@ def setup_latex_environment():
         return setup_generic_environment(latex_dir)
 
 def setup_existing_latex_environment_from_bundle(latex_dir):
-    """Set up existing LaTeX environment from bundle"""
-    # The actual LaTeX installation is linked/copied to existing_latex
-    existing_dir = latex_dir / "existing_latex"
+    """Set up existing LaTeX environment from bundle - FIXED for x64 structure"""
+    
+    # CRITICAL FIX: Check for x64 subdirectory structure first
+    x64_bin_dir = latex_dir / "x64"
+    if x64_bin_dir.exists() and (x64_bin_dir / "latex.exe").exists():
+        # This matches the structure we saw in the directory listing
+        current_path = os.environ.get("PATH", "")
+        if str(x64_bin_dir) not in current_path:
+            os.environ["PATH"] = str(x64_bin_dir) + os.pathsep + current_path
+
+        os.environ["LATEX_ROOT"] = str(latex_dir)
+        os.environ["MIKTEX_ROOT"] = str(latex_dir)
+        
+        # Set MiKTeX environment variables to handle path issues
+        os.environ["MIKTEX_ALLOW_UNSAFE_INPUT_FILES"] = "1"
+        os.environ["MIKTEX_ALLOWUNSAFEINPUTFILES"] = "1"
+        os.environ["openin_any"] = "a"
+        os.environ["openout_any"] = "a"
+
+        # Try to find TEXMF directories
+        texmf_dirs = list(latex_dir.rglob("*texmf*"))
+        if texmf_dirs:
+            os.environ["TEXMFHOME"] = str(texmf_dirs[0])
+
+        print(f"✅ Existing LaTeX environment configured (x64 structure): {x64_bin_dir}")
+        return True
+    
+    # Fallback: Original logic for other structures
+    existing_dir = latex_dir
     if existing_dir.exists():
         # Find bin directories in the existing installation
         bin_dirs = list(existing_dir.rglob("bin"))
@@ -906,6 +961,12 @@ def setup_existing_latex_environment_from_bundle(latex_dir):
                     os.environ["PATH"] = str(bin_dir) + os.pathsep + current_path
 
                 os.environ["LATEX_ROOT"] = str(existing_dir)
+                
+                # Set environment variables to handle path issues
+                os.environ["MIKTEX_ALLOW_UNSAFE_INPUT_FILES"] = "1"
+                os.environ["MIKTEX_ALLOWUNSAFEINPUTFILES"] = "1"
+                os.environ["openin_any"] = "a"
+                os.environ["openout_any"] = "a"
 
                 # Set TEXMF variables if found
                 texmf_dirs = list(existing_dir.rglob("*texmf*"))
@@ -924,6 +985,12 @@ def setup_existing_latex_environment_from_bundle(latex_dir):
                         os.environ["PATH"] = str(sub) + os.pathsep + current_path
 
                     os.environ["LATEX_ROOT"] = str(existing_dir)
+                    
+                    # Set environment variables to handle path issues
+                    os.environ["MIKTEX_ALLOW_UNSAFE_INPUT_FILES"] = "1"
+                    os.environ["MIKTEX_ALLOWUNSAFEINPUTFILES"] = "1"
+                    os.environ["openin_any"] = "a"
+                    os.environ["openout_any"] = "a"
 
                     texmf_dirs = list(existing_dir.rglob("*texmf*"))
                     if texmf_dirs:
@@ -951,6 +1018,13 @@ def setup_miktex_environment(miktex_dir):
             
             os.environ["MIKTEX_ROOT"] = str(miktex_dir)
             os.environ["TEXMFHOME"] = str(miktex_dir / "texmf")
+            
+            # CRITICAL FIX: Set MiKTeX to work with spaces in paths
+            os.environ["MIKTEX_ALLOW_UNSAFE_INPUT_FILES"] = "1"
+            os.environ["MIKTEX_ALLOWUNSAFEINPUTFILES"] = "1"
+            os.environ["openin_any"] = "a"
+            os.environ["openout_any"] = "a"
+            
             print("✅ MiKTeX environment configured")
             return True
     
@@ -974,6 +1048,11 @@ def setup_texlive_environment(texlive_dir):
             os.environ["TEXLIVE_ROOT"] = str(texlive_dir)
             os.environ["TEXMFHOME"] = str(texlive_dir / "texmf-home")
             os.environ["TEXMFLOCAL"] = str(texlive_dir / "texmf-local")
+            
+            # FIX: Allow TeX Live to work with spaces in paths
+            os.environ["openin_any"] = "a"
+            os.environ["openout_any"] = "a"
+            
             print("✅ TeX Live environment configured")
             return True
     
@@ -1055,6 +1134,17 @@ def configure_manim_for_advanced_latex():
             try:
                 from manim.utils.tex_templates import TexTemplate
                 
+                # Get safe media directory
+                safe_media_dir = get_safe_media_directory()
+                
+                # Set manim to use safe media directory
+                manim.config.media_dir = str(safe_media_dir)
+                manim.config.tex_dir = str(safe_media_dir / "Tex")
+                
+                # Ensure directories exist
+                safe_media_dir.mkdir(exist_ok=True)
+                (safe_media_dir / "Tex").mkdir(exist_ok=True)
+                
                 advanced_latex_template = TexTemplate(
                     documentclass="standalone",
                     geometry_options={"margin": "0mm"},
@@ -1089,7 +1179,8 @@ def configure_manim_for_advanced_latex():
                 
                 manim.config.tex_template = advanced_latex_template
                 manim.config.preview = False
-                print("✅ Manim configured with advanced LaTeX template")
+                
+                print(f"✅ Manim configured with safe media directory: {safe_media_dir}")
                 
             except Exception as e:
                 print(f"❌ CRITICAL: Could not set LaTeX template: {e}")
@@ -1125,7 +1216,7 @@ if __name__ != "__main__":
     with open("advanced_latex_config.py", "w", encoding="utf-8") as f:
         f.write(config_content)
     
-    print("📄 Created Advanced LaTeX configuration")
+    print("📄 Created Advanced LaTeX configuration with x64 path fixes")
 
 def create_subprocess_helper():
     """Create a unified helper module for subprocess handling"""
@@ -2342,5 +2433,6 @@ def main():
             print("💡 Build failed even with fallback options. Check the logs above.")
             print("   📄 Check build.log for detailed error information")
         sys.exit(1)
+
 if __name__ == "__main__":
     main()
