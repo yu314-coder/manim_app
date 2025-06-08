@@ -60,8 +60,8 @@ def fix_manim_config():
     and a minimal TeX template that does not rely on the ``standalone``
     LaTeX class.  The template is written to ``tex_template.tex`` in the
     same directory as ``default.cfg`` and the path is exposed via the
-    ``MANIM_TEX_TEMPLATE_PATH`` environment variable so that Manim can
-    pick it up at runtime.
+    ``MANIM_TEX_TEMPLATE`` environment variable so that Manim can pick it
+    up at runtime.
     """
     try:
         # For packaged app - find the temp directory where files are extracted
@@ -97,7 +97,7 @@ def fix_manim_config():
                 return False
 
             # Expose the template path so other modules can use it
-            os.environ['MANIM_TEX_TEMPLATE_PATH'] = template_path
+            os.environ['MANIM_TEX_TEMPLATE'] = template_path
 
             print(f"Created manim config at: {default_cfg_path}")
             return True
@@ -232,7 +232,7 @@ def patch_subprocess():
 def patch_manim_latex():
     """Apply custom LaTeX template if available."""
     try:
-        template_path = os.environ.get('MANIM_TEX_TEMPLATE_PATH')
+        template_path = os.environ.get('MANIM_TEX_TEMPLATE')
         if not template_path or not os.path.exists(template_path):
             return False
 
