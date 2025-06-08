@@ -60,6 +60,13 @@ else:
     LATEX_BUNDLE_DIR = Path(__file__).resolve().parent / "latex_bundle"
 
 
+def get_log_file_path():
+    """Return the unified log file path."""
+    log_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+    os.makedirs(log_dir, exist_ok=True)
+    return os.path.join(log_dir, "manim_studio.log")
+
+
 def _configure_local_latex():
     """Fallback detection of a bundled LaTeX distribution"""
     possible_locations = [
@@ -130,6 +137,10 @@ if not _ADV_LATEX_OK:
     if not _configure_local_latex():
         print("No bundled LaTeX distribution found")
 
+# Warn user if no LaTeX executable is available
+if shutil.which("latex") is None and shutil.which("pdflatex") is None:
+    print("⚠️  No LaTeX installation detected. Install MiKTeX or TeX Live for full functionality.")
+
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
@@ -182,15 +193,17 @@ except ImportError:
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-# Set up logging
+# Set up logging using a unified location
+log_file = get_log_file_path()
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('manim_studio.log'),
+        logging.FileHandler(log_file, encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
+print(f"Logging to: {os.path.abspath(log_file)}")
 logger = logging.getLogger(__name__)
 
 # Application constants
@@ -1894,21 +1907,28 @@ All packages will be installed in an isolated environment that won't affect your
                 startupinfo.wShowWindow = subprocess.SW_HIDE
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
-            # Execute pip install with CPU control
-            result = run_original(
+            # Execute pip install with streaming output so UI stays responsive
+            process = popen_original(
                 [self.venv_manager.pip_path, "install", package],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
                 env=env,
                 startupinfo=startupinfo,
                 creationflags=creationflags
             )
-            
-            if result.returncode == 0:
+
+            for line in process.stdout:
+                if line.strip():
+                    log_callback(line.strip())
+
+            return_code = process.wait()
+
+            if return_code == 0:
                 log_callback(f"Successfully installed {package}")
                 return True
             else:
-                log_callback(f"Failed to install {package}: {result.stderr}")
+                log_callback(f"Failed to install {package} (code {return_code})")
                 return False
                 
         except Exception as e:
@@ -10404,16 +10424,18 @@ def main():
         except Exception:
             pass
         
-        # Set up logging
-        log_file = os.path.join(app_dir, "manim_studio.log")
+        # Set up logging using the same unified location
+        log_file = get_log_file_path()
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler(log_file, encoding='utf-8'),
                 logging.StreamHandler()
-            ]
+            ],
+            force=True
         )
+        print(f"Logging to: {os.path.abspath(log_file)}")
         
         # Check for Jedi availability
         if not JEDI_AVAILABLE:

@@ -1853,14 +1853,15 @@ def check_requirements():
     print("✅ All requirements met!")
     return True
 
-def build_standalone_with_advanced_latex(jobs=None, priority="normal"):
-    """Build standalone version with advanced LaTeX distribution (<2GB)"""
+def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=False):
+    """Build executable with advanced LaTeX distribution (<2GB)."""
     
     cpu_count = multiprocessing.cpu_count()
     if jobs is None:
         jobs = max(1, cpu_count - 1)
 
-    print(f"🚀 Building STANDALONE with Advanced LaTeX (<2GB) using {jobs} CPU threads...")
+    mode = "ONEFILE" if onefile else "STANDALONE"
+    print(f"🚀 Building {mode} with Advanced LaTeX (<2GB) using {jobs} CPU threads...")
 
     # STEP 1: CRITICAL - Download and setup Advanced LaTeX Distribution
     print("=" * 60)
@@ -1908,7 +1909,7 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal"):
     # Basic command structure
     cmd = [
         sys.executable, "-m", "nuitka",
-        "--standalone",
+        "--onefile" if onefile else "--standalone",
         "--windows-console-mode=disable",
         "--windows-disable-console",
         "--enable-plugin=tk-inter",
@@ -2051,7 +2052,7 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal"):
     # Final target
     cmd.append("app.py")
 
-    print("Building standalone executable with Advanced LaTeX support...")
+    print("Building executable with Advanced LaTeX support...")
     print("Command:", " ".join(cmd))
     print("=" * 60)
 
@@ -2141,6 +2142,7 @@ def main():
     parser.add_argument("--ascii", action="store_true", help="Use ASCII output instead of Unicode symbols")
     parser.add_argument("--miktex-only", action="store_true", help="Force MiKTeX-only mode (no fallbacks)")
     parser.add_argument("--check-miktex", action="store_true", help="Only check for existing MiKTeX installation and exit")
+    parser.add_argument("--onefile", action="store_true", help="Build single file executable")
     
     # Parse args but keep default behavior if not specified
     args, remaining_args = parser.parse_known_args()
@@ -2289,7 +2291,7 @@ def main():
     
     # Execute the build
     print(f"\n🚀 Starting {mode_text} build process...")
-    exe_path = build_standalone_with_advanced_latex(jobs=jobs, priority=process_priority)
+    exe_path = build_standalone_with_advanced_latex(jobs=jobs, priority=process_priority, onefile=args.onefile)
     success = exe_path is not None
     
     print("\n" + "=" * 60)
