@@ -97,7 +97,7 @@ def fix_manim_config():
                 return False
 
             # Expose the template path so other modules can use it
-            os.environ['MANIM_TEX_TEMPLATE_PATH'] = template_path
+            os.environ['MANIM_TEX_TEMPLATE'] = template_path
 
             print(f"Created manim config at: {default_cfg_path}")
             return True
