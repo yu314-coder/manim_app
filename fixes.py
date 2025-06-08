@@ -78,8 +78,12 @@ def fix_manim_config():
 
             # Create a basic default.cfg file
             default_cfg_path = os.path.join(manim_config_dir, 'default.cfg')
-            with open(default_cfg_path, 'w') as f:
+            with open(default_cfg_path, 'w', encoding='utf-8') as f:
                 f.write(DEFAULT_MANIM_CONFIG)
+
+            if not os.path.exists(default_cfg_path) or os.path.getsize(default_cfg_path) == 0:
+                print(f"Warning: failed to write {default_cfg_path}")
+                return False
 
             # Write minimal LaTeX template that works without the
             # ``standalone`` package.  This prevents the common
@@ -87,6 +91,10 @@ def fix_manim_config():
             template_path = os.path.join(manim_config_dir, 'tex_template.tex')
             with open(template_path, 'w', encoding='utf-8') as f:
                 f.write(BASIC_TEX_TEMPLATE)
+
+            if not os.path.exists(template_path) or os.path.getsize(template_path) == 0:
+                print(f"Warning: failed to write {template_path}")
+                return False
 
             # Expose the template path so other modules can use it
             os.environ['MANIM_TEX_TEMPLATE_PATH'] = template_path
@@ -149,7 +157,8 @@ YourTextHere
 # Add this to app.py's main() at the start
 def apply_fixes():
     """Apply all fixes at startup"""
-    fix_manim_config()
+    if not fix_manim_config():
+        print("Warning: Manim config setup failed")
     patch_subprocess()
     patch_manim_latex()
 
