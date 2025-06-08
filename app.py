@@ -59,6 +59,51 @@ if getattr(sys, "frozen", False):
 else:
     LATEX_BUNDLE_DIR = Path(__file__).resolve().parent / "latex_bundle"
 
+
+def _configure_local_latex():
+    """Fallback detection of a bundled LaTeX distribution"""
+    possible_locations = [
+        LATEX_BUNDLE_DIR,
+        Path(__file__).resolve().parent.parent / "latex_bundle",
+    ]
+
+    if getattr(sys, "frozen", False):
+        possible_locations.append(Path(sys.executable).parent / "latex_bundle")
+
+    if "NUITKA_ONEFILE_PARENT" in os.environ:
+        app_dir = Path(os.environ["NUITKA_ONEFILE_PARENT"]).parent
+        possible_locations.append(app_dir / "latex_bundle")
+
+    for loc in possible_locations:
+        existing = loc / "existing_latex"
+        if existing.exists():
+            for bin_dir in existing.rglob("bin"):
+                if (bin_dir / "latex.exe").exists() or (bin_dir / "latex").exists():
+                    cur = os.environ.get("PATH", "")
+                    if str(bin_dir) not in cur:
+                        os.environ["PATH"] = str(bin_dir) + os.pathsep + cur
+                    os.environ["LATEX_ROOT"] = str(existing)
+                    texmf = list(existing.rglob("*texmf*"))
+                    if texmf:
+                        os.environ["TEXMFHOME"] = str(texmf[0])
+                    print(f"Configured local LaTeX from {existing}")
+                    return True
+            # Fallback search when no 'bin' directory is present
+            for sub in existing.rglob("*"):
+                if not sub.is_dir():
+                    continue
+                if (sub / "latex.exe").exists() or (sub / "latex").exists():
+                    cur = os.environ.get("PATH", "")
+                    if str(sub) not in cur:
+                        os.environ["PATH"] = str(sub) + os.pathsep + cur
+                    os.environ["LATEX_ROOT"] = str(existing)
+                    texmf = list(existing.rglob("*texmf*"))
+                    if texmf:
+                        os.environ["TEXMFHOME"] = str(texmf[0])
+                    print(f"Configured local LaTeX from {existing}")
+                    return True
+    return False
+
 # Try to import advanced LaTeX configuration generated during the
 # Nuitka build.  This module sets up the bundled LaTeX environment when
 # imported.  If it is missing (e.g. when running from source), we simply
@@ -77,53 +122,11 @@ except Exception as e:  # pragma: no cover - optional dependency
     print(f"Warning: Advanced LaTeX configuration not available ({e})")
     _ADV_LATEX_OK = False
 
+latex_root = os.environ.get("LATEX_ROOT")
+if _ADV_LATEX_OK and (not latex_root or not Path(latex_root).exists()):
+    _configure_local_latex()
+
 if not _ADV_LATEX_OK:
-    from pathlib import Path
-
-    def _configure_local_latex():
-        """Fallback detection of a bundled LaTeX distribution"""
-        possible_locations = [
-            LATEX_BUNDLE_DIR,
-            Path(__file__).resolve().parent.parent / "latex_bundle",
-        ]
-
-        if getattr(sys, "frozen", False):
-            possible_locations.append(Path(sys.executable).parent / "latex_bundle")
-
-        if "NUITKA_ONEFILE_PARENT" in os.environ:
-            app_dir = Path(os.environ["NUITKA_ONEFILE_PARENT"]).parent
-            possible_locations.append(app_dir / "latex_bundle")
-
-        for loc in possible_locations:
-            existing = loc / "existing_latex"
-            if existing.exists():
-                for bin_dir in existing.rglob("bin"):
-                    if (bin_dir / "latex.exe").exists() or (bin_dir / "latex").exists():
-                        cur = os.environ.get("PATH", "")
-                        if str(bin_dir) not in cur:
-                            os.environ["PATH"] = str(bin_dir) + os.pathsep + cur
-                        os.environ["LATEX_ROOT"] = str(existing)
-                        texmf = list(existing.rglob("*texmf*"))
-                        if texmf:
-                            os.environ["TEXMFHOME"] = str(texmf[0])
-                        print(f"Configured local LaTeX from {existing}")
-                        return True
-                # Fallback search when no 'bin' directory is present
-                for sub in existing.rglob("*"):
-                    if not sub.is_dir():
-                        continue
-                    if (sub / "latex.exe").exists() or (sub / "latex").exists():
-                        cur = os.environ.get("PATH", "")
-                        if str(sub) not in cur:
-                            os.environ["PATH"] = str(sub) + os.pathsep + cur
-                        os.environ["LATEX_ROOT"] = str(existing)
-                        texmf = list(existing.rglob("*texmf*"))
-                        if texmf:
-                            os.environ["TEXMFHOME"] = str(texmf[0])
-                        print(f"Configured local LaTeX from {existing}")
-                        return True
-        return False
-
     if not _configure_local_latex():
         print("No bundled LaTeX distribution found")
 
