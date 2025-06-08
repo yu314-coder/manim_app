@@ -904,16 +904,33 @@ def setup_existing_latex_environment_from_bundle(latex_dir):
                 current_path = os.environ.get("PATH", "")
                 if str(bin_dir) not in current_path:
                     os.environ["PATH"] = str(bin_dir) + os.pathsep + current_path
-                
+
                 os.environ["LATEX_ROOT"] = str(existing_dir)
-                
+
                 # Set TEXMF variables if found
                 texmf_dirs = list(existing_dir.rglob("*texmf*"))
                 if texmf_dirs:
                     os.environ["TEXMFHOME"] = str(texmf_dirs[0])
-                
+
                 print(f"✅ Existing LaTeX environment configured from bundle")
                 return True
+
+        # Fallback: search for latex executable anywhere under existing_dir
+        for sub in existing_dir.rglob("*"):
+            if sub.is_dir():
+                if (sub / "latex.exe").exists() or (sub / "latex").exists():
+                    current_path = os.environ.get("PATH", "")
+                    if str(sub) not in current_path:
+                        os.environ["PATH"] = str(sub) + os.pathsep + current_path
+
+                    os.environ["LATEX_ROOT"] = str(existing_dir)
+
+                    texmf_dirs = list(existing_dir.rglob("*texmf*"))
+                    if texmf_dirs:
+                        os.environ["TEXMFHOME"] = str(texmf_dirs[0])
+
+                    print(f"✅ Existing LaTeX environment configured from bundle (fallback)")
+                    return True
     
     return False
 
