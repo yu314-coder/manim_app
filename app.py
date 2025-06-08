@@ -9245,10 +9245,17 @@ class MyScene(Scene):
             
             # Use environment Python
             python_exe = self.venv_manager.python_path
-            
+
             # Get the number of cores to use
             num_cores = self.get_render_cores()
-                
+
+            # Check generated LaTeX files before running Manim
+            if not self.verify_tex_files():
+                self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                self.is_previewing = False
+                self.update_status("LaTeX file error")
+                return
+
             # Build manim command
             command = [
                 python_exe, "-m", "manim",
@@ -9291,7 +9298,12 @@ class MyScene(Scene):
                     # Reset UI state first
                     self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
                     self.is_previewing = False
-                    
+
+                    # Inspect generated TeX files for debugging
+                    tex_ok = self.verify_tex_files()
+                    if not tex_ok:
+                        success = False
+
                     if success:
                         self.append_terminal_output(f"\n✅ Preview generation completed successfully!\n")
                         
@@ -9450,10 +9462,17 @@ class MyScene(Scene):
             
             # Use environment Python
             python_exe = self.venv_manager.python_path
-            
+
             # Get the number of cores to use
             num_cores = self.get_render_cores()
-                
+
+            # Verify LaTeX files before running Manim
+            if not self.verify_tex_files():
+                self.render_button.configure(text="🚀 Render Animation", state="normal")
+                self.is_rendering = False
+                self.update_status("LaTeX file error")
+                return
+
             # Build manim command
             command = [
                 python_exe, "-m", "manim",
@@ -9488,7 +9507,11 @@ class MyScene(Scene):
             def on_render_complete(success, return_code):
                 # Find output file
                 output_file = self.find_output_file(temp_dir, scene_class, format_ext)
-                
+
+                tex_ok = self.verify_tex_files()
+                if not tex_ok:
+                    success = False
+
                 # Reset UI state
                 self.render_button.configure(text="🚀 Render Animation", state="normal")
                 self.is_rendering = False
@@ -9633,6 +9656,35 @@ class MyScene(Scene):
         """Update status bar"""
         self.status_label.configure(text=message)
         self.root.update_idletasks()
+
+    def verify_tex_files(self):
+        """Inspect generated LaTeX files for common issues"""
+        tex_dir = os.path.join(MEDIA_DIR, "Tex")
+        if not os.path.isdir(tex_dir):
+            return True
+
+        tex_files = [os.path.join(tex_dir, f) for f in os.listdir(tex_dir) if f.endswith('.tex')]
+        if not tex_files:
+            return True
+
+        for tex_file in tex_files:
+            try:
+                if os.path.getsize(tex_file) == 0:
+                    self.append_terminal_output(f"❌ Error: LaTeX file empty: {tex_file}\n")
+                    return False
+            except OSError as e:
+                self.append_terminal_output(f"❌ Error reading {tex_file}: {e}\n")
+                return False
+
+        # Show preview of first file for debugging
+        preview_file = tex_files[0]
+        try:
+            with open(preview_file, 'r', encoding='utf-8', errors='ignore') as f:
+                preview_lines = ''.join([f.readline() for _ in range(3)])
+            self.append_terminal_output(f"Preview of {os.path.basename(preview_file)}:\n{preview_lines}\n")
+        except Exception as e:
+            self.append_terminal_output(f"Warning: Could not preview {preview_file}: {e}\n")
+        return True
         
     def start_background_tasks(self):
         """Start background tasks"""
