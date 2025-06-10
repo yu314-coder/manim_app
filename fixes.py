@@ -64,43 +64,48 @@ def fix_manim_config():
     pick it up at runtime.
     """
     try:
-        # For packaged app - find the temp directory where files are extracted
-        temp_base = None
-        for path in sys.path:
-            if 'onefile_' in path and 'Temp' in path:
-                temp_base = path
-                break
-                
-        if temp_base:
-            # Create manim config directory
-            manim_config_dir = os.path.join(temp_base, 'manim', '_config')
-            os.makedirs(manim_config_dir, exist_ok=True)
+        # Determine a persistent base directory. When running from a
+        # packaged executable we want this to live alongside the exe
+        # rather than inside the temporary ``onefile`` extraction
+        # directory.  Falling back to the directory of this file when
+        # running from source.
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
 
-            # Create a basic default.cfg file
-            default_cfg_path = os.path.join(manim_config_dir, 'default.cfg')
-            with open(default_cfg_path, 'w', encoding='utf-8') as f:
-                f.write(DEFAULT_MANIM_CONFIG)
+        # Create manim config directory next to the executable
+        manim_config_dir = os.path.join(base_dir, 'manim', '_config')
+        os.makedirs(manim_config_dir, exist_ok=True)
 
-            if not os.path.exists(default_cfg_path) or os.path.getsize(default_cfg_path) == 0:
-                print(f"Warning: failed to write {default_cfg_path}")
-                return False
+        # Create a basic default.cfg file
+        default_cfg_path = os.path.join(manim_config_dir, 'default.cfg')
+        with open(default_cfg_path, 'w', encoding='utf-8') as f:
+            f.write(DEFAULT_MANIM_CONFIG)
 
-            # Write minimal LaTeX template that works without the
-            # ``standalone`` package.  This prevents the common
-            # "standalone not found" error when LaTeX is incomplete.
-            template_path = os.path.join(manim_config_dir, 'tex_template.tex')
-            with open(template_path, 'w', encoding='utf-8') as f:
-                f.write(BASIC_TEX_TEMPLATE)
+        if not os.path.exists(default_cfg_path) or os.path.getsize(default_cfg_path) == 0:
+            print(f"Warning: failed to write {default_cfg_path}")
+            return False
 
-            if not os.path.exists(template_path) or os.path.getsize(template_path) == 0:
-                print(f"Warning: failed to write {template_path}")
-                return False
+        # Inform Manim of the custom configuration location
+        os.environ['MANIM_CONFIG_FILE'] = default_cfg_path
 
-            # Expose the template path so other modules can use it
-            os.environ['MANIM_TEX_TEMPLATE'] = template_path
+        # Write minimal LaTeX template that works without the
+        # ``standalone`` package.  This prevents the common
+        # "standalone not found" error when LaTeX is incomplete.
+        template_path = os.path.join(manim_config_dir, 'tex_template.tex')
+        with open(template_path, 'w', encoding='utf-8') as f:
+            f.write(BASIC_TEX_TEMPLATE)
 
-            print(f"Created manim config at: {default_cfg_path}")
-            return True
+        if not os.path.exists(template_path) or os.path.getsize(template_path) == 0:
+            print(f"Warning: failed to write {template_path}")
+            return False
+
+        # Expose the template path so other modules can use it
+        os.environ['MANIM_TEX_TEMPLATE'] = template_path
+
+        print(f"Created manim config at: {default_cfg_path}")
+        return True
     except Exception as e:
         print(f"Error fixing manim config: {e}")
     return False
