@@ -350,6 +350,26 @@ SYNTAX_COLORS = {
     "parameter": "#9CDCFE",       # Light blue - Function parameters
 }
 
+# Runtime check for LaTeX availability
+def check_latex_installation():
+    """Return True if a LaTeX executable is available."""
+    latex_path = shutil.which("latex") or shutil.which("pdflatex")
+    if latex_path:
+        logging.info("LaTeX found: %s", latex_path)
+        print(f"LaTeX found: {latex_path}")
+        return True
+
+    warning = (
+        "LaTeX not found. Install MiKTeX or TeX Live and ensure 'latex' is in PATH."
+    )
+    logging.warning(warning)
+    try:
+        from tkinter import messagebox
+        messagebox.showwarning("LaTeX not found", warning)
+    except Exception:
+        print(warning)
+    return False
+
 @dataclass
 class PackageInfo:
     """Data class for package information"""
@@ -10337,12 +10357,15 @@ def main():
                 logging.StreamHandler()
             ]
         )
-        
+
         # Check for Jedi availability
         if not JEDI_AVAILABLE:
             print("Warning: Jedi not available. IntelliSense features will be limited.")
             print("Install Jedi with: pip install jedi")
-        
+
+        # Check LaTeX availability
+        check_latex_installation()
+
         # Create and run application
         app = ManimStudioApp()
         

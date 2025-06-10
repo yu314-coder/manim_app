@@ -14,7 +14,17 @@ import time
 import threading
 import io
 import codecs
-import tqdm 
+import tqdm
+
+# Simple LaTeX detection
+def check_latex_installed():
+    """Return True if a system LaTeX executable can be found."""
+    path = shutil.which("latex") or shutil.which("pdflatex")
+    if path:
+        print(f"✅ LaTeX detected at: {path}")
+        return True
+    print("❌ LaTeX executable not found in PATH. Please install MiKTeX or TeX Live and ensure 'latex' is available.")
+    return False
 
 # Global flag to use ASCII instead of Unicode symbols
 USE_ASCII_ONLY = True
@@ -1945,26 +1955,17 @@ def check_requirements():
     return True
 
 def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=False):
-    """Build executable with advanced LaTeX distribution (<2GB)."""
+    """Build executable assuming LaTeX is installed on the system."""
     
     cpu_count = multiprocessing.cpu_count()
     if jobs is None:
         jobs = max(1, cpu_count - 1)
 
     mode = "ONEFILE" if onefile else "STANDALONE"
-    print(f"🚀 Building {mode} with Advanced LaTeX (<2GB) using {jobs} CPU threads...")
+    print(f"🚀 Building {mode} using {jobs} CPU threads...")
 
-    # STEP 1: CRITICAL - Download and setup Advanced LaTeX Distribution
-    print("=" * 60)
-    print("📦 Step 1: Downloading Advanced LaTeX Distribution (<2GB)...")
-    
-    # Download the advanced LaTeX distribution - THIS MUST SUCCEED
-    latex_success = download_advanced_latex_distribution()
-    
-    if not latex_success:
-        print("❌ CRITICAL FAILURE: Could not download Advanced LaTeX Distribution")
-        print("🚫 Build cannot continue without LaTeX support")
-        sys.exit(1)
+    if not check_latex_installed():
+        return None
 
     # Clean previous builds
     if Path("build").exists():
@@ -1977,13 +1978,12 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=F
     assets_dir.mkdir(exist_ok=True)
 
     print("=" * 60)
-    print("🔧 Step 2: Creating enhanced build configuration...")
+    print("🔧 Creating build configuration...")
 
     # Create enhanced patches and helpers
     create_no_console_patch()
     create_fixes_module()
     create_subprocess_helper()
-    create_advanced_latex_config()  # Use the new advanced LaTeX config
 
     # Check prerequisites
     if not check_system_prerequisites():
@@ -1995,7 +1995,7 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=F
     print(f"📊 Detected Nuitka version: {nuitka_version}")
 
     print("=" * 60)
-    print("🔨 Step 3: Building with Advanced LaTeX support...")
+    print("🔨 Building executable...")
 
     # Basic command structure
     cmd = [
@@ -2090,7 +2090,6 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=F
         "io", "codecs", "platform", "getpass", "signal",
         "atexit", "queue", "math", "random", "collections",
         "itertools", "functools", "operator", "copy",
-        "advanced_latex_config",  # Our Advanced LaTeX config
         # Additional modules for LaTeX support
         "xml", "xml.etree", "xml.etree.ElementTree",
         "urllib", "urllib.request", "urllib.parse",
@@ -2101,10 +2100,7 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=F
     for module in comprehensive_modules:
         cmd.append(f"--include-module={module}")
 
-    # Include Advanced LaTeX bundle directory if it exists
-    if Path("latex_bundle").exists():
-        cmd.append("--include-data-dir=latex_bundle=latex_bundle")
-        print("📦 Including Advanced LaTeX bundle")
+
 
     # Include comprehensive data for LaTeX support
     data_packages = ["manim", "matplotlib", "numpy", "sympy"]
@@ -2143,7 +2139,7 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=F
     # Final target
     cmd.append("app.py")
 
-    print("Building executable with Advanced LaTeX support...")
+    print("Building executable...")
     print("Command:", " ".join(cmd))
     print("=" * 60)
 
@@ -2188,24 +2184,13 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=F
 
     if return_code == 0:
         print("=" * 60)
-        print("✅ Advanced LaTeX build successful!")
+        print("✅ Build successful!")
 
         exe_path = find_standalone_executable()
         if exe_path:
             # Create launcher scripts
             create_launcher_script(exe_path)
-            copy_latex_bundle_to_dist(exe_path)
-            
             print(f"📁 Executable: {exe_path}")
-            print("🎉 ADVANCED LATEX FEATURES:")
-            print("  ✅ Multi-distribution LaTeX support (<2GB)")
-            print("  ✅ MiKTeX Portable / TeX Live Basic / W32TeX / ProTeXt")
-            print("  ✅ Automatic fallback between distributions")
-            print("  ✅ Complete LaTeX rendering support")
-            print("  ✅ Professional mathematical typesetting")
-            print("  ✅ Advanced LaTeX packages included")
-            print("  ✅ Portable LaTeX installation")
-            print("  ✅ No console windows")
 
             return exe_path
         else:
@@ -2214,7 +2199,7 @@ def build_standalone_with_advanced_latex(jobs=None, priority="normal", onefile=F
             return None
     else:
         print("=" * 60)
-        print("❌ Advanced LaTeX build failed!")
+        print("❌ Build failed!")
         print(f"Return code: {return_code}")
         sys.exit(1)
 
@@ -2231,8 +2216,6 @@ def main():
     parser.add_argument("--max-cpu", action="store_true", help="Use all available CPU cores with oversubscription")
     parser.add_argument("--turbo", action="store_true", help="Use turbo mode - maximum CPU with high priority")
     parser.add_argument("--ascii", action="store_true", help="Use ASCII output instead of Unicode symbols")
-    parser.add_argument("--miktex-only", action="store_true", help="Force MiKTeX-only mode (no fallbacks)")
-    parser.add_argument("--check-miktex", action="store_true", help="Only check for existing MiKTeX installation and exit")
     parser.add_argument("--onefile", action="store_true", help="Build single file executable")
     
     # Parse args but keep default behavior if not specified
@@ -2243,26 +2226,6 @@ def main():
     if args.ascii:
         USE_ASCII_ONLY = True
     
-    # Handle MiKTeX check mode
-    if args.check_miktex:
-        print("🔍 Checking for existing MiKTeX installations...")
-        latex_bundle_dir = Path("temp_check")
-        latex_bundle_dir.mkdir(exist_ok=True)
-        
-        if detect_and_use_existing_miktex(latex_bundle_dir):
-            print("✅ MiKTeX found and ready!")
-        else:
-            print("❌ No MiKTeX installation detected")
-            show_manual_miktex_installation_instructions()
-        
-        # Clean up temp directory
-        if latex_bundle_dir.exists():
-            shutil.rmtree(latex_bundle_dir)
-        sys.exit(0)
-    
-    # Store MiKTeX-only preference globally or pass it down
-    global FORCE_MIKTEX_ONLY
-    FORCE_MIKTEX_ONLY = args.miktex_only
     
     # Determine job count
     cpu_count = multiprocessing.cpu_count()
@@ -2300,138 +2263,17 @@ def main():
         ]
     )
     
-    logging.info("Building with MiKTeX-prioritized LaTeX distribution support")
-    
-    # Display build information based on mode
-    if args.miktex_only:
-        print("\n🎯 Building with MiKTeX-ONLY Mode...")
-        print("📋 This build includes:")
-        print("  🎯 MiKTeX detection and installation ONLY")
-        print("  ✅ MiKTeX Portable (~800MB) if not found")
-        print("  🚫 NO fallback distributions")
-        print("  ✅ Complete LaTeX rendering support")
-        print("  ✅ Professional mathematical typesetting")
-        print("  ✅ Portable MiKTeX installation")
-        print("  ✅ No console windows")
-        print("  ⚠️  Build will FAIL if MiKTeX cannot be obtained")
-    else:
-        print("\n🎯 Building with MiKTeX-Prioritized LaTeX Distribution...")
-        print("📋 This build includes:")
-        print("  🥇 PRIMARY: MiKTeX detection and Portable (~800MB)")
-        print("  🥈 FALLBACK OPTIONS (if MiKTeX fails):")
-        print("      🔸 TeX Live Basic (~1.5GB)")
-        print("      🔸 W32TeX (~600MB)")
-        print("      🔸 ProTeXt Basic (~900MB)")
-        print("  ✅ Automatic fallback between distributions")
-        print("  ✅ Complete LaTeX rendering support")
-        print("  ✅ Professional mathematical typesetting")
-        print("  ✅ Portable LaTeX installation")
-        print("  ✅ No console windows")
-    
-    # Show what we'll check for first
-    print(f"\n🔍 Pre-build MiKTeX detection:")
-    print("  📂 Checking standard MiKTeX installation paths...")
-    print("  📂 Checking PATH for MiKTeX executables...")
-    print("  📂 Checking portable MiKTeX locations...")
-    
-    # Perform a quick pre-check to inform the user
-    print("\n🔍 Performing quick MiKTeX detection...")
-    temp_check_dir = Path("temp_miktex_check")
-    temp_check_dir.mkdir(exist_ok=True)
-    
-    try:
-        if detect_and_use_existing_miktex(temp_check_dir):
-            print("✅ Existing MiKTeX installation detected!")
-            print("   📁 Your existing MiKTeX will be used for the build")
-        else:
-            print("❌ No existing MiKTeX found")
-            if args.miktex_only:
-                print("   📥 MiKTeX Portable will be downloaded during build")
-            else:
-                print("   📥 MiKTeX Portable will be tried first, with fallbacks available")
-    except Exception as e:
-        print(f"⚠️ Detection check failed: {e}")
-        print("   🔄 Full detection will be performed during build")
-    finally:
-        # Clean up temp directory
-        if temp_check_dir.exists():
-            shutil.rmtree(temp_check_dir)
-    
-    # Confirmation
-    mode_text = "MiKTeX-ONLY" if args.miktex_only else "MiKTeX-Prioritized"
-    confirm = input(f"\n🚀 Proceed with {mode_text} LaTeX build? (y/N): ").strip().lower()
-    if confirm not in ['y', 'yes']:
-        print("❌ Build cancelled by user")
-        sys.exit(0)
-    
-    # Show additional information for MiKTeX-only mode
-    if args.miktex_only:
-        print("\n⚠️  MiKTeX-ONLY Mode Active:")
-        print("   🎯 Only MiKTeX will be considered")
-        print("   📥 If no existing MiKTeX found, MiKTeX Portable will be downloaded")
-        print("   🚫 Build will FAIL if MiKTeX cannot be obtained")
-        print("   💡 If build fails, you can:")
-        print("      1. Install MiKTeX manually from https://miktex.org/download")
-        print("      2. Re-run without --miktex-only for fallback options")
-        
-        final_confirm = input("Continue with MiKTeX-ONLY mode? (y/N): ").strip().lower()
-        if final_confirm not in ['y', 'yes']:
-            print("❌ Build cancelled by user")
-            print("💡 Tip: Run without --miktex-only for fallback options")
-            sys.exit(0)
-    
-    # Execute the build
-    print(f"\n🚀 Starting {mode_text} build process...")
-    exe_path = build_standalone_with_advanced_latex(jobs=jobs, priority=process_priority, onefile=args.onefile)
-    success = exe_path is not None
-    
-    print("\n" + "=" * 60)
-    if success:
+    logging.info("Building executable")
+
+    exe_path = build_standalone_with_advanced_latex(
+        jobs=jobs, priority=process_priority, onefile=args.onefile
+    )
+    if exe_path:
+        print("\n" + "=" * 60)
         print("🎉 Build completed successfully!")
-        if args.miktex_only:
-            print("🚀 MIKTEX-ONLY BUILD: Optimized for MiKTeX!")
-            print("   🆕 FEATURES:")
-            print("   ✅ MiKTeX-exclusive LaTeX support")
-            print("   ✅ Optimized for MiKTeX performance")
-            print("   ✅ Guaranteed MiKTeX compatibility")
-            print("   ✅ Smaller build size (MiKTeX optimized)")
-            print("   🎯 Pure MiKTeX distribution used")
-        else:
-            print("🚀 MIKTEX-PRIORITIZED BUILD: Best of both worlds!")
-            print("   🆕 FEATURES:")
-            print("   🥇 MiKTeX-first with smart fallbacks")
-            print("   ✅ MiKTeX Portable / TeX Live Basic / W32TeX / ProTeXt support")
-            print("   ✅ Intelligent distribution selection")
-            print("   ✅ Enhanced error handling with fallbacks")
-        
-        print("   ✅ Complete LaTeX rendering support")
-        print("   ✅ Professional mathematical typesetting")
-        print("   ✅ Advanced LaTeX packages included")
-        print("   ✅ Portable LaTeX installation")
-        print("   ✅ No console windows")
-        print("   🎯 OPTIMIZED: Best MiKTeX integration!")
-        print("🚀 Professional desktop application ready!")
-        
-        # Show usage instructions
-        print("\n📋 USAGE INSTRUCTIONS:")
-        print(f"   📁 Executable location: {exe_path}")
-        print("   🚀 Run the .exe file to start Manim Studio")
-        print("   🎯 LaTeX rendering is fully configured and ready")
-        if args.miktex_only:
-            print("   ✅ MiKTeX-optimized build for best performance")
-        else:
-            print("   ✅ Multi-distribution LaTeX support included")
-        
+        print(f"Executable location: {exe_path}")
     else:
-        print("❌ Build failed!")
-        if args.miktex_only:
-            print("💡 MiKTeX-ONLY mode failed. You can:")
-            print("   1. Install MiKTeX manually: https://miktex.org/download")
-            print("   2. Try again without --miktex-only for fallback options")
-            print("   3. Use --check-miktex to verify MiKTeX installation")
-        else:
-            print("💡 Build failed even with fallback options. Check the logs above.")
-            print("   📄 Check build.log for detailed error information")
+        print("\n❌ Build failed")
         sys.exit(1)
 
 if __name__ == "__main__":
