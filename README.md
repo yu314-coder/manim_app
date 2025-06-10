@@ -20,3 +20,8 @@ shown with installation instructions.
 
 After installation verify that running `latex --version` in a terminal works
 before launching the application.
+
+## Building
+Run `python build_nuitka.py` to create a single-file executable. The script
+checks for LaTeX and required Python packages before starting and prints the
+path to the generated executable when finished.

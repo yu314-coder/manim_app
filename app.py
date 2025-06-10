@@ -351,24 +351,31 @@ SYNTAX_COLORS = {
 }
 
 # Runtime check for LaTeX availability
-def check_latex_installation():
-    """Return True if a LaTeX executable is available."""
+def check_latex_installation() -> bool:
+    """Check that a LaTeX executable is available and working."""
     latex_path = shutil.which("latex") or shutil.which("pdflatex")
-    if latex_path:
-        logging.info("LaTeX found: %s", latex_path)
-        print(f"LaTeX found: {latex_path}")
-        return True
+    if not latex_path:
+        warning = (
+            "LaTeX not found. Install MiKTeX or TeX Live and ensure 'latex' is in PATH."
+        )
+        logging.warning(warning)
+        try:
+            from tkinter import messagebox
+            messagebox.showwarning("LaTeX not found", warning)
+        except Exception:
+            print(warning)
+        return False
 
-    warning = (
-        "LaTeX not found. Install MiKTeX or TeX Live and ensure 'latex' is in PATH."
-    )
-    logging.warning(warning)
     try:
-        from tkinter import messagebox
-        messagebox.showwarning("LaTeX not found", warning)
-    except Exception:
-        print(warning)
-    return False
+        subprocess.run([latex_path, "--version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except Exception as exc:
+        logging.warning("LaTeX check failed: %s", exc)
+        print(f"LaTeX found at {latex_path} but running it failed: {exc}")
+        return False
+
+    logging.info("LaTeX found: %s", latex_path)
+    print(f"LaTeX found: {latex_path}")
+    return True
 
 @dataclass
 class PackageInfo:
