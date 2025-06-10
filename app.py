@@ -53,94 +53,6 @@ import queue
 import atexit
 from tkinter import filedialog, messagebox
 
-# Location of the bundled LaTeX distribution
-if getattr(sys, "frozen", False):
-    LATEX_BUNDLE_DIR = Path(sys.executable).parent / "latex_bundle"
-else:
-    LATEX_BUNDLE_DIR = Path(__file__).resolve().parent / "latex_bundle"
-
-
-def get_log_file_path():
-    """Return the unified log file path."""
-    log_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
-    os.makedirs(log_dir, exist_ok=True)
-    return os.path.join(log_dir, "manim_studio.log")
-
-
-def _configure_local_latex():
-    """Fallback detection of a bundled LaTeX distribution"""
-    possible_locations = [
-        LATEX_BUNDLE_DIR,
-        Path(__file__).resolve().parent.parent / "latex_bundle",
-    ]
-
-    if getattr(sys, "frozen", False):
-        possible_locations.append(Path(sys.executable).parent / "latex_bundle")
-
-    if "NUITKA_ONEFILE_PARENT" in os.environ:
-        app_dir = Path(os.environ["NUITKA_ONEFILE_PARENT"]).parent
-        possible_locations.append(app_dir / "latex_bundle")
-
-    for loc in possible_locations:
-        existing = loc / "existing_latex"
-        if existing.exists():
-            for bin_dir in existing.rglob("bin"):
-                if (bin_dir / "latex.exe").exists() or (bin_dir / "latex").exists():
-                    cur = os.environ.get("PATH", "")
-                    if str(bin_dir) not in cur:
-                        os.environ["PATH"] = str(bin_dir) + os.pathsep + cur
-                    os.environ["LATEX_ROOT"] = str(existing)
-                    texmf = list(existing.rglob("*texmf*"))
-                    if texmf:
-                        os.environ["TEXMFHOME"] = str(texmf[0])
-                    print(f"Configured local LaTeX from {existing}")
-                    return True
-            # Fallback search when no 'bin' directory is present
-            for sub in existing.rglob("*"):
-                if not sub.is_dir():
-                    continue
-                if (sub / "latex.exe").exists() or (sub / "latex").exists():
-                    cur = os.environ.get("PATH", "")
-                    if str(sub) not in cur:
-                        os.environ["PATH"] = str(sub) + os.pathsep + cur
-                    os.environ["LATEX_ROOT"] = str(existing)
-                    texmf = list(existing.rglob("*texmf*"))
-                    if texmf:
-                        os.environ["TEXMFHOME"] = str(texmf[0])
-                    print(f"Configured local LaTeX from {existing}")
-                    return True
-    return False
-
-# Try to import advanced LaTeX configuration generated during the
-# Nuitka build.  This module sets up the bundled LaTeX environment when
-# imported.  If it is missing (e.g. when running from source), we simply
-# continue without it.
-try:
-    import advanced_latex_config  # noqa: F401
-    _ADV_LATEX_OK = True
-except SystemExit as e:  # pragma: no cover - optional dependency
-    # Some versions of the bundled LaTeX setup exit the interpreter on
-    # failure which would prevent the application from starting.  Catch
-    # the exit and warn the user instead so the rest of the program can
-    # continue to run.
-    print(f"Warning: Advanced LaTeX configuration failed (exit code {e.code})")
-    _ADV_LATEX_OK = False
-except Exception as e:  # pragma: no cover - optional dependency
-    print(f"Warning: Advanced LaTeX configuration not available ({e})")
-    _ADV_LATEX_OK = False
-
-latex_root = os.environ.get("LATEX_ROOT")
-if _ADV_LATEX_OK and (not latex_root or not Path(latex_root).exists()):
-    _configure_local_latex()
-
-if not _ADV_LATEX_OK:
-    if not _configure_local_latex():
-        print("No bundled LaTeX distribution found")
-
-# Warn user if no LaTeX executable is available
-if shutil.which("latex") is None and shutil.which("pdflatex") is None:
-    print("⚠️  No LaTeX installation detected. Install MiKTeX or TeX Live for full functionality.")
-
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
@@ -193,17 +105,15 @@ except ImportError:
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-# Set up logging using a unified location
-log_file = get_log_file_path()
+# Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_file, encoding='utf-8'),
+        logging.FileHandler('manim_studio.log'),
         logging.StreamHandler()
     ]
 )
-print(f"Logging to: {os.path.abspath(log_file)}")
 logger = logging.getLogger(__name__)
 
 # Application constants
@@ -1907,28 +1817,21 @@ All packages will be installed in an isolated environment that won't affect your
                 startupinfo.wShowWindow = subprocess.SW_HIDE
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
-            # Execute pip install with streaming output so UI stays responsive
-            process = popen_original(
+            # Execute pip install with CPU control
+            result = run_original(
                 [self.venv_manager.pip_path, "install", package],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                capture_output=True,
                 text=True,
                 env=env,
                 startupinfo=startupinfo,
                 creationflags=creationflags
             )
-
-            for line in process.stdout:
-                if line.strip():
-                    log_callback(line.strip())
-
-            return_code = process.wait()
-
-            if return_code == 0:
+            
+            if result.returncode == 0:
                 log_callback(f"Successfully installed {package}")
                 return True
             else:
-                log_callback(f"Failed to install {package} (code {return_code})")
+                log_callback(f"Failed to install {package}: {result.stderr}")
                 return False
                 
         except Exception as e:
@@ -9245,17 +9148,10 @@ class MyScene(Scene):
             
             # Use environment Python
             python_exe = self.venv_manager.python_path
-
+            
             # Get the number of cores to use
             num_cores = self.get_render_cores()
-
-            # Check generated LaTeX files before running Manim
-            if not self.verify_tex_files():
-                self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
-                self.is_previewing = False
-                self.update_status("LaTeX file error")
-                return
-
+                
             # Build manim command
             command = [
                 python_exe, "-m", "manim",
@@ -9298,12 +9194,7 @@ class MyScene(Scene):
                     # Reset UI state first
                     self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
                     self.is_previewing = False
-
-                    # Inspect generated TeX files for debugging
-                    tex_ok = self.verify_tex_files()
-                    if not tex_ok:
-                        success = False
-
+                    
                     if success:
                         self.append_terminal_output(f"\n✅ Preview generation completed successfully!\n")
                         
@@ -9462,17 +9353,10 @@ class MyScene(Scene):
             
             # Use environment Python
             python_exe = self.venv_manager.python_path
-
+            
             # Get the number of cores to use
             num_cores = self.get_render_cores()
-
-            # Verify LaTeX files before running Manim
-            if not self.verify_tex_files():
-                self.render_button.configure(text="🚀 Render Animation", state="normal")
-                self.is_rendering = False
-                self.update_status("LaTeX file error")
-                return
-
+                
             # Build manim command
             command = [
                 python_exe, "-m", "manim",
@@ -9507,11 +9391,7 @@ class MyScene(Scene):
             def on_render_complete(success, return_code):
                 # Find output file
                 output_file = self.find_output_file(temp_dir, scene_class, format_ext)
-
-                tex_ok = self.verify_tex_files()
-                if not tex_ok:
-                    success = False
-
+                
                 # Reset UI state
                 self.render_button.configure(text="🚀 Render Animation", state="normal")
                 self.is_rendering = False
@@ -9656,35 +9536,6 @@ class MyScene(Scene):
         """Update status bar"""
         self.status_label.configure(text=message)
         self.root.update_idletasks()
-
-    def verify_tex_files(self):
-        """Inspect generated LaTeX files for common issues"""
-        tex_dir = os.path.join(MEDIA_DIR, "Tex")
-        if not os.path.isdir(tex_dir):
-            return True
-
-        tex_files = [os.path.join(tex_dir, f) for f in os.listdir(tex_dir) if f.endswith('.tex')]
-        if not tex_files:
-            return True
-
-        for tex_file in tex_files:
-            try:
-                if os.path.getsize(tex_file) == 0:
-                    self.append_terminal_output(f"❌ Error: LaTeX file empty: {tex_file}\n")
-                    return False
-            except OSError as e:
-                self.append_terminal_output(f"❌ Error reading {tex_file}: {e}\n")
-                return False
-
-        # Show preview of first file for debugging
-        preview_file = tex_files[0]
-        try:
-            with open(preview_file, 'r', encoding='utf-8', errors='ignore') as f:
-                preview_lines = ''.join([f.readline() for _ in range(3)])
-            self.append_terminal_output(f"Preview of {os.path.basename(preview_file)}:\n{preview_lines}\n")
-        except Exception as e:
-            self.append_terminal_output(f"Warning: Could not preview {preview_file}: {e}\n")
-        return True
         
     def start_background_tasks(self):
         """Start background tasks"""
@@ -10476,18 +10327,16 @@ def main():
         except Exception:
             pass
         
-        # Set up logging using the same unified location
-        log_file = get_log_file_path()
+        # Set up logging
+        log_file = os.path.join(app_dir, "manim_studio.log")
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler(log_file, encoding='utf-8'),
                 logging.StreamHandler()
-            ],
-            force=True
+            ]
         )
-        print(f"Logging to: {os.path.abspath(log_file)}")
         
         # Check for Jedi availability
         if not JEDI_AVAILABLE:
