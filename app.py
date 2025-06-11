@@ -352,12 +352,26 @@ SYNTAX_COLORS = {
 
 # Runtime check for LaTeX availability
 def check_latex_installation() -> bool:
-    """Check that a LaTeX executable is available and working."""
+    """Check that a LaTeX executable is available and working.
+
+    If no LaTeX command can be located, a detailed set of instructions is
+    presented to the user so they can install an appropriate distribution.
+    """
+
     latex_path = shutil.which("latex") or shutil.which("pdflatex")
     if not latex_path:
-        warning = (
-            "LaTeX not found. Install MiKTeX or TeX Live and ensure 'latex' is in PATH."
-        )
+        warning_lines = [
+            "LaTeX was not found on this system.",
+            "Please install a LaTeX distribution and ensure the 'latex'",
+            "or 'pdflatex' command is available in your PATH.",
+            "",
+            "Windows: install MiKTeX from https://miktex.org/",        
+            "macOS: install MacTeX from https://www.tug.org/mactex/",   
+            "Linux: install TeX Live using your package manager, e.g.",
+            "  sudo apt install texlive-full",
+            "After installation restart the application." 
+        ]
+        warning = "\n".join(warning_lines)
         logging.warning(warning)
         try:
             from tkinter import messagebox
@@ -7348,7 +7362,7 @@ class PyPISearchEngine:
         return POPULAR_PACKAGES
 
 class ManimStudioApp:
-    def __init__(self):
+    def __init__(self, latex_installed: bool = True):
         # Initialize main window
         self.root = ctk.CTk()
         self.root.title(f"{APP_NAME} - Professional Edition v{APP_VERSION}")
@@ -7363,6 +7377,9 @@ class ManimStudioApp:
         except:
             pass
             
+        # LaTeX availability flag
+        self.latex_installed = latex_installed
+
         # Initialize virtual environment manager
         self.venv_manager = VirtualEnvironmentManager(self)
         
@@ -8492,7 +8509,18 @@ class ManimStudioApp:
         # Right side - Info
         status_right = ctk.CTkFrame(self.status_bar, fg_color="transparent")
         status_right.grid(row=0, column=2, sticky="e", padx=15, pady=5)
-        
+
+        # LaTeX detection status
+        latex_color = VSCODE_COLORS["success"] if self.latex_installed else VSCODE_COLORS["error"]
+        latex_text = "LaTeX: Installed" if self.latex_installed else "LaTeX: Missing"
+        self.latex_status_label = ctk.CTkLabel(
+            status_right,
+            text=latex_text,
+            font=ctk.CTkFont(size=12),
+            text_color=latex_color,
+        )
+        self.latex_status_label.pack(side="right", padx=(0, 10))
+
         # Current time
         self.time_label = ctk.CTkLabel(
             status_right,
@@ -10370,11 +10398,11 @@ def main():
             print("Warning: Jedi not available. IntelliSense features will be limited.")
             print("Install Jedi with: pip install jedi")
 
-        # Check LaTeX availability
-        check_latex_installation()
+        # Check LaTeX availability and pass result to UI
+        latex_ok = check_latex_installation()
 
         # Create and run application
-        app = ManimStudioApp()
+        app = ManimStudioApp(latex_installed=latex_ok)
         
         # Show getting started on first run
         settings_file = os.path.join(app_dir, "settings.json")
