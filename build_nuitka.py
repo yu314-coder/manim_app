@@ -77,6 +77,15 @@ def build(onefile: bool = True, jobs: int | None = None) -> Path | None:
         "--onefile" if onefile else "--standalone",
         "--windows-disable-console",
         "--enable-plugin=tk-inter",
+    ]
+
+    if onefile:
+        cmd.extend([
+            "--onefile-tempdir-spec=%PROGRAM_DIR%/unpacked",
+            "--onefile-cache-mode=cached",
+        ])
+
+    cmd += [
         f"--output-dir={output_dir}",
         f"--jobs={jobs}",
         "app.py",
