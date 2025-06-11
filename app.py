@@ -351,12 +351,8 @@ SYNTAX_COLORS = {
 }
 
 # Runtime check for LaTeX availability
-def check_latex_installation() -> bool:
-    """Check that a LaTeX executable is available and working.
-
-    If no LaTeX command can be located, a detailed set of instructions is
-    presented to the user so they can install an appropriate distribution.
-    """
+def check_latex_installation() -> Optional[str]:
+    """Return the path to a working LaTeX executable, or ``None`` if not found."""
 
     latex_path = shutil.which("latex") or shutil.which("pdflatex")
     if not latex_path:
@@ -365,11 +361,11 @@ def check_latex_installation() -> bool:
             "Please install a LaTeX distribution and ensure the 'latex'",
             "or 'pdflatex' command is available in your PATH.",
             "",
-            "Windows: install MiKTeX from https://miktex.org/",        
-            "macOS: install MacTeX from https://www.tug.org/mactex/",   
+            "Windows: install MiKTeX from https://miktex.org/",
+            "macOS: install MacTeX from https://www.tug.org/mactex/",
             "Linux: install TeX Live using your package manager, e.g.",
             "  sudo apt install texlive-full",
-            "After installation restart the application." 
+            "After installation restart the application."
         ]
         warning = "\n".join(warning_lines)
         logging.warning(warning)
@@ -378,18 +374,18 @@ def check_latex_installation() -> bool:
             messagebox.showwarning("LaTeX not found", warning)
         except Exception:
             print(warning)
-        return False
+        return None
 
     try:
         subprocess.run([latex_path, "--version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except Exception as exc:
         logging.warning("LaTeX check failed: %s", exc)
         print(f"LaTeX found at {latex_path} but running it failed: {exc}")
-        return False
+        return None
 
     logging.info("LaTeX found: %s", latex_path)
     print(f"LaTeX found: {latex_path}")
-    return True
+    return latex_path
 
 @dataclass
 class PackageInfo:
@@ -7362,7 +7358,7 @@ class PyPISearchEngine:
         return POPULAR_PACKAGES
 
 class ManimStudioApp:
-    def __init__(self, latex_installed: bool = True):
+    def __init__(self, latex_path: Optional[str] = None):
         # Initialize main window
         self.root = ctk.CTk()
         self.root.title(f"{APP_NAME} - Professional Edition v{APP_VERSION}")
@@ -7377,8 +7373,9 @@ class ManimStudioApp:
         except:
             pass
             
-        # LaTeX availability flag
-        self.latex_installed = latex_installed
+        # Store LaTeX path (``None`` if not found)
+        self.latex_path = latex_path
+        self.latex_installed = bool(latex_path)
 
         # Initialize virtual environment manager
         self.venv_manager = VirtualEnvironmentManager(self)
@@ -8512,7 +8509,9 @@ class ManimStudioApp:
 
         # LaTeX detection status
         latex_color = VSCODE_COLORS["success"] if self.latex_installed else VSCODE_COLORS["error"]
-        latex_text = "LaTeX: Installed" if self.latex_installed else "LaTeX: Missing"
+        latex_text = (
+            f"LaTeX: {self.latex_path}" if self.latex_installed else "LaTeX: Missing"
+        )
         self.latex_status_label = ctk.CTkLabel(
             status_right,
             text=latex_text,
@@ -10399,10 +10398,10 @@ def main():
             print("Install Jedi with: pip install jedi")
 
         # Check LaTeX availability and pass result to UI
-        latex_ok = check_latex_installation()
+        latex_path = check_latex_installation()
 
         # Create and run application
-        app = ManimStudioApp(latex_installed=latex_ok)
+        app = ManimStudioApp(latex_path=latex_path)
         
         # Show getting started on first run
         settings_file = os.path.join(app_dir, "settings.json")
