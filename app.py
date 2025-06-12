@@ -1854,21 +1854,29 @@ All packages will be installed in an isolated environment that won't affect your
                 startupinfo.wShowWindow = subprocess.SW_HIDE
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
-            # Execute pip install with CPU control
-            result = run_original(
+            # Execute pip install with CPU control and stream output
+            process = popen_original(
                 [self.venv_manager.pip_path, "install", package],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
                 env=env,
                 startupinfo=startupinfo,
-                creationflags=creationflags
+                creationflags=creationflags,
             )
-            
-            if result.returncode == 0:
+
+            # Stream pip output line by line to the logger
+            for line in iter(process.stdout.readline, ""):
+                if line:
+                    log_callback(line.rstrip())
+            process.stdout.close()
+            exit_code = process.wait()
+
+            if exit_code == 0:
                 log_callback(f"Successfully installed {package}")
                 return True
             else:
-                log_callback(f"Failed to install {package}: {result.stderr}")
+                log_callback(f"Failed to install {package}")
                 return False
                 
         except Exception as e:
@@ -10497,4 +10505,4 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
             )
 
 if __name__ == "__main__":
-    main()
+    main()    
