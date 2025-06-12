@@ -1,776 +1,1526 @@
+Starting preview generation...
+Scene class: MyScene
+Quality: 854x480 @ 24fps
+Using 4 CPU cores
+Command: C:\Users\euler\OneDrive\桌面\temp_unpack\venvs\manim_studio_default\Scripts\python.exe -m manim C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py MyScene -ql --format=mp4 --fps=24 --disable_caching --media_dir=C:\Users\euler\OneDrive\桌面\temp_unpack\media --renderer=cairo --verbosity=INFO
 
-(venv) D:\manim_app\dist\app.dist\latex_bundle\existing_latex\x64\internal>dir
- 磁碟區 D 中的磁碟是 DATA
- 磁碟區序號:  5ADB-9560
+Manim Community v0.19.0
 
- D:\manim_app\dist\app.dist\latex_bundle\existing_latex\x64\internal 的目錄
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 13, in construct
+    equation = MathTex(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\mobject\text\tex_mobject.py", line 277, in __init__
+    super().__init__(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\mobject\text\tex_mobject.py", line 80, in __init__
+    file_name = tex_to_svg_file(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\utils\tex_file_writing.py", line 58, in tex_to_svg_file
+    tex_file = generate_tex_file(expression, environment, tex_template)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\utils\tex_file_writing.py", line 111, in generate_tex_file
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Writing %(expression)s to %(path)s'
+Arguments: {'expression': '\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}', 'path': 'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\Tex\\be21e60c5bff76da.tex'}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 29, in construct
+    self.play(Write(title))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
 
-2025/06/06  上午 09:41    <DIR>          .
-2025/06/06  上午 09:41    <DIR>          ..
-2024/01/27  下午 08:54            70,144 runbat.exe
-2024/01/27  下午 08:54            70,144 runexe.exe
-2024/01/27  下午 08:54            70,144 runjava.exe
-2024/01/27  下午 08:54            70,144 runperl.exe
-2024/01/27  下午 08:54            70,144 runpython.exe
-2024/01/27  下午 09:03         6,512,640 runtexlua.exe
-2024/01/27  下午 08:58            94,720 tex2xindy.exe
-2014/09/15  下午 09:41         2,715,648 xindy-lisp.exe
-2014/09/15  下午 09:41         2,403,868 xindy.mem
-               9 個檔案      12,077,596 位元組
-               2 個目錄  8,724,283,084,800 位元組可用
+Animation 0: Write(Text('Manim Animation Studio')):   0%|          | 0/48 [00:00<?, ?it/s]
+Animation 0: Write(Text('Manim Animation Studio')):  23%|##2       | 11/48 [00:00<00:00, 104.67it/s]
+Animation 0: Write(Text('Manim Animation Studio')):  46%|####5     | 22/48 [00:00<00:00, 85.04it/s] 
+Animation 0: Write(Text('Manim Animation Studio')):  65%|######4   | 31/48 [00:00<00:00, 72.54it/s]
+Animation 0: Write(Text('Manim Animation Studio')):  81%|########1 | 39/48 [00:00<00:00, 64.51it/s]
+Animation 0: Write(Text('Manim Animation Studio')):  96%|#########5| 46/48 [00:00<00:00, 57.39it/s]
+                                                                                                   
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 29, in construct
+    self.play(Write(title))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 0 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00000.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 30, in construct
+    self.wait(0.5)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1168, in wait
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 30, in construct
+    self.wait(0.5)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1168, in wait
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 1 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00001.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 32, in construct
+    self.play(Create(equation))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
 
-(venv) D:\manim_app\dist\app.dist\latex_bundle\existing_latex\x64\internal>cd ..
+Animation 2: Create(MathTex('\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}')):   0%|          | 0/24 [00:00<?, ?it/s]
+Animation 2: Create(MathTex('\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}')):  50%|#####     | 12/24 [00:00<00:00, 111.58it/s]
+Animation 2: Create(MathTex('\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}')): 100%|##########| 24/24 [00:00<00:00, 96.86it/s] 
+                                                                                                                                         
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 32, in construct
+    self.play(Create(equation))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 2 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00002.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 33, in construct
+    self.wait(0.5)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1168, in wait
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 33, in construct
+    self.wait(0.5)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1168, in wait
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 3 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00003.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 35, in construct
+    self.play(Create(shapes))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
 
-(venv) D:\manim_app\dist\app.dist\latex_bundle\existing_latex\x64>dir
- 磁碟區 D 中的磁碟是 DATA
- 磁碟區序號:  5ADB-9560
+Animation 4: Create(VGroup of 3 submobjects):   0%|          | 0/24 [00:00<?, ?it/s]
+Animation 4: Create(VGroup of 3 submobjects):  58%|#####8    | 14/24 [00:00<00:00, 135.64it/s]
+                                                                                              
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 35, in construct
+    self.play(Create(shapes))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 4 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00004.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 36, in construct
+    self.wait(0.5)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1168, in wait
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 36, in construct
+    self.wait(0.5)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1168, in wait
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 5 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00005.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 39, in construct
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
 
- D:\manim_app\dist\app.dist\latex_bundle\existing_latex\x64 的目錄
+Animation 6: Transform(Circle), etc.:   0%|          | 0/24 [00:00<?, ?it/s]
+Animation 6: Transform(Circle), etc.:  46%|####5     | 11/24 [00:00<00:00, 107.91it/s]
+Animation 6: Transform(Circle), etc.:  92%|#########1| 22/24 [00:00<00:00, 93.83it/s] 
+                                                                                     
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 39, in construct
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 6 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00006.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 45, in construct
+    self.wait(2)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1168, in wait
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 45, in construct
+    self.wait(2)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1168, in wait
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 7 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00007.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 48, in construct
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 79, in play
+    logger.info("Caching disabled.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Caching disabled.'
+Arguments: ()
 
-2025/06/06  上午 09:41    <DIR>          .
-2025/06/06  上午 09:41    <DIR>          ..
-2024/01/27  下午 08:54            70,144 a2ping.exe
-2024/01/27  下午 09:03         6,512,640 a5toa4.exe
-2024/01/27  下午 08:54            70,144 abs2rel.exe
-2024/01/27  下午 08:54            70,144 afm2afm.exe
-2024/01/27  下午 08:54           118,272 afm2tfm.exe
-2024/01/27  下午 08:54            70,144 albatross.exe
-2024/01/27  下午 09:01         2,726,912 amstex.exe
-2021/09/12  上午 03:05            20,944 api-ms-win-core-console-l1-1-0.dll
-2021/09/12  上午 03:05            20,960 api-ms-win-core-console-l1-2-0.dll
-2021/09/12  上午 03:05            20,952 api-ms-win-core-datetime-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-debug-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-errorhandling-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-fibers-l1-1-0.dll
-2021/09/12  上午 03:05            25,048 api-ms-win-core-file-l1-1-0.dll
-2021/09/12  上午 03:05            20,960 api-ms-win-core-file-l1-2-0.dll
-2021/09/12  上午 03:05            20,960 api-ms-win-core-file-l2-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-handle-l1-1-0.dll
-2021/09/12  上午 03:05            20,960 api-ms-win-core-heap-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-interlocked-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-libraryloader-l1-1-0.dll
-2021/09/12  上午 03:05            20,960 api-ms-win-core-localization-l1-2-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-memory-l1-1-0.dll
-2021/09/12  上午 03:05            20,960 api-ms-win-core-namedpipe-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-processenvironment-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-processthreads-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-processthreads-l1-1-1.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-profile-l1-1-0.dll
-2021/09/12  上午 03:05            20,960 api-ms-win-core-rtlsupport-l1-1-0.dll
-2021/09/12  上午 03:05            20,960 api-ms-win-core-string-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-synch-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-synch-l1-2-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-sysinfo-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-timezone-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-core-util-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-crt-conio-l1-1-0.dll
-2021/09/12  上午 03:05            25,056 api-ms-win-crt-convert-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-crt-environment-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-crt-filesystem-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-crt-heap-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-crt-locale-l1-1-0.dll
-2021/09/12  上午 03:05            29,144 api-ms-win-crt-math-l1-1-0.dll
-2021/09/12  上午 03:05            29,136 api-ms-win-crt-multibyte-l1-1-0.dll
-2021/09/12  上午 03:05            74,192 api-ms-win-crt-private-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-crt-process-l1-1-0.dll
-2021/09/12  上午 03:05            25,040 api-ms-win-crt-runtime-l1-1-0.dll
-2021/09/12  上午 03:05            25,040 api-ms-win-crt-stdio-l1-1-0.dll
-2021/09/12  上午 03:05            25,040 api-ms-win-crt-string-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-crt-time-l1-1-0.dll
-2021/09/12  上午 03:05            20,944 api-ms-win-crt-utility-l1-1-0.dll
-2024/01/27  下午 08:54            70,144 arara.exe
-2024/01/27  下午 08:58           161,280 arctrl.exe
-2024/01/27  下午 08:54            70,144 arlatex.exe
-2024/01/27  下午 08:54         5,515,264 asy.exe
-2024/01/27  下午 08:54            70,144 authorindex.exe
-2024/01/27  下午 08:54            70,144 autoinst.exe
-2024/01/27  下午 08:45            84,992 autosp.exe
-2024/01/27  下午 08:54           150,016 axohelp.exe
-2024/01/27  下午 09:01         2,726,912 bagpipe.exe
-2024/01/27  下午 09:01         2,726,912 bagpipex.exe
-2024/01/27  下午 08:58            38,912 bg5conv.exe
-2024/01/27  下午 08:54           126,464 bg5latex.exe
-2024/01/27  下午 08:54           126,464 bg5pdflatex.exe
-2024/01/27  下午 08:54           126,464 bg5platex.exe
-2024/01/27  下午 08:54           126,464 bg5pluslatex.exe
-2024/01/27  下午 08:54           126,464 bg5pluspdflatex.exe
-2024/01/27  下午 08:54           126,464 bg5ppdflatex.exe
-2024/01/27  下午 08:54            70,144 bib2gls.exe
-2024/01/27  下午 08:54            70,144 bib2xhtml.exe
-2024/01/27  下午 08:54            70,144 bibcop.exe
-2024/01/27  下午 08:54            70,144 bibdoiadd.exe
-2024/01/27  下午 08:54            70,144 biber-ms.exe
-2024/01/27  下午 08:54            70,144 biber.exe
-2024/01/27  下午 08:54            70,144 bibhtml.exe
-2024/01/27  下午 08:54           266,240 bibsort.exe
-2024/01/27  下午 09:00           325,120 bibtex.exe
-2024/01/27  下午 08:54           228,864 bibtex8.exe
-2024/01/27  下午 08:54           243,200 bibtexu.exe
-2024/01/27  下午 08:54            70,144 bibzbladd.exe
-2024/01/27  下午 08:54            70,144 biokey2html.exe
-2024/01/27  下午 08:54            70,144 birm.exe
-2024/01/27  下午 08:54            70,144 bmeditor.exe
-2024/01/27  下午 09:01         2,726,912 bplain.exe
-2024/01/27  下午 08:54            70,144 bundledoc.exe
-2024/01/27  下午 08:58            42,496 cef5conv.exe
-2024/01/27  下午 08:54           126,464 cef5latex.exe
-2024/01/27  下午 08:54           126,464 cef5pdflatex.exe
-2024/01/27  下午 08:58            42,496 cefconv.exe
-2024/01/27  下午 08:54           126,464 ceflatex.exe
-2024/01/27  下午 08:54           126,464 cefpdflatex.exe
-2024/01/27  下午 08:58            42,496 cefsconv.exe
-2024/01/27  下午 08:54           126,464 cefslatex.exe
-2024/01/27  下午 08:54           126,464 cefspdflatex.exe
-2024/01/27  下午 08:54           504,320 cfftot1.exe
-2024/01/27  下午 09:03         6,512,640 checkcites.exe
-2024/01/27  下午 08:54            70,144 chklref.exe
-2024/01/27  下午 08:54           158,208 chktex.exe
-2024/01/27  下午 09:03         6,512,640 citeproc.exe
-2024/01/27  下午 08:54            70,144 cjk-gs-integrate.exe
-2024/01/27  下午 08:54           126,464 cjklatex.exe
-2024/01/27  下午 09:03         6,512,640 cluttex.exe
-2021/12/02  下午 07:32           315,784 concrt140.dll
-2024/01/27  下午 08:54            70,144 convertgls2bib.exe
-2024/01/27  下午 08:54            70,144 creatdtx.exe
-2024/01/27  下午 09:01         2,726,912 cslatex.exe
-2024/01/27  下午 09:01         2,726,912 csplain.exe
-2024/01/27  下午 08:54            70,144 csvtools.exe
-2024/01/27  下午 08:54            70,144 ctan-o-mat.exe
-2024/01/27  下午 09:03         6,512,640 ctanbib.exe
-2024/01/27  下午 08:58           137,216 ctangle.exe
-2024/01/27  下午 08:54            70,144 ctanify.exe
-2024/01/27  下午 08:54            70,144 ctanupload.exe
-2024/01/27  下午 08:58            82,432 ctwill-refsort.exe
-2024/01/27  下午 08:58            84,992 ctwill-twinx.exe
-2024/01/27  下午 08:58           187,904 ctwill.exe
-2024/01/27  下午 08:58           178,176 cweave.exe
-2024/01/27  下午 08:54            70,144 dad-to-utf8.exe
-2024/01/27  下午 08:54            70,144 de-macro.exe
-2024/01/27  下午 08:54            70,144 depythontex.exe
-2024/01/27  下午 08:54           117,248 devnag.exe
-2024/01/27  下午 09:03         6,512,640 digestif.exe
-2024/01/27  下午 08:54            70,144 dosepsbin.exe
-2024/01/27  下午 08:54            70,144 dumphint.exe
-2024/01/27  下午 08:54            70,144 dviasm.exe
-2024/01/27  下午 08:59           222,720 dvicopy.exe
-2024/01/27  下午 08:54            70,144 dviinfox.exe
-2024/01/27  下午 09:01         2,726,912 dvilollipop.exe
-2024/01/27  下午 09:03         6,509,568 dvilualatex-dev.exe
-2024/01/27  下午 09:03         6,509,568 dvilualatex.exe
-2024/01/27  下午 09:03         6,509,568 dvilualollipop.exe
-2024/01/27  下午 09:03         6,509,568 dviluatex.exe
-2024/01/27  下午 08:54         1,018,368 dvipdfm.exe
-2024/01/27  下午 08:54         1,018,368 dvipdfmx.exe
-2024/01/27  下午 08:54            97,792 dvipdft.exe
-2024/01/27  下午 08:58           174,080 dvipng.exe
-2024/01/27  下午 08:54           356,352 dvips.exe
-2024/01/27  下午 08:54         8,048,128 dvisvgm.exe
-2024/01/27  下午 09:03           176,640 dvitomp.exe
-2024/01/27  下午 09:01           206,336 dvitype.exe
-2024/01/27  下午 08:54         1,018,368 ebb.exe
-2024/01/27  下午 08:54            70,144 edtx2dtx.exe
-2024/01/27  下午 08:54            70,144 emo.exe
-2024/01/27  下午 08:54            70,144 eps2eps.exe
-2024/01/27  下午 08:54           101,888 epsffit.exe
-2024/01/27  下午 09:03         6,512,640 epspdf.exe
-2024/01/27  下午 08:54           435,200 epstopdf.exe
-2024/01/27  下午 09:01           868,864 eptex.exe
-2024/01/27  下午 09:01         2,726,912 etex.exe
-2024/01/27  下午 08:54            70,144 etexdef.exe
-2024/01/27  下午 09:01           876,032 euptex.exe
-2024/01/27  下午 08:54            70,144 exceltex.exe
-2024/01/27  下午 08:58            38,912 extconv.exe
-2024/01/27  下午 08:54         1,018,368 extractbb.exe
-2024/01/27  下午 08:54            70,144 extractres.exe
-2024/01/27  下午 08:55            88,064 fc-cache.exe
-2024/01/27  下午 08:55            85,504 fc-cat.exe
-2024/01/27  下午 08:55            81,408 fc-conflist.exe
-2024/01/27  下午 08:55            83,456 fc-list.exe
-2024/01/27  下午 08:55            84,992 fc-match.exe
-2024/01/27  下午 08:55            82,944 fc-pattern.exe
-2024/01/27  下午 08:55            82,944 fc-query.exe
-2024/01/27  下午 08:55            82,944 fc-scan.exe
-2024/01/27  下午 08:55            83,968 fc-validate.exe
-2024/01/27  下午 08:54            70,144 feynmf.exe
-2024/01/27  下午 08:54            70,144 fig4latex.exe
-2024/01/27  下午 08:54            70,144 findhyph.exe
-2024/01/27  下午 08:54           130,560 findtexmf.exe
-2024/01/27  下午 08:54            70,144 font2c.exe
-2024/01/27  下午 08:37           146,432 fribidixetex.exe
-2024/01/27  下午 08:54            70,144 fullref.exe
-2024/01/27  下午 08:54           126,464 gbklatex.exe
-2024/01/27  下午 08:54           126,464 gbkpdflatex.exe
-2024/01/27  下午 09:03         6,512,640 getmapdl.exe
-2024/01/27  下午 08:54            70,144 gfi-run.exe
-2024/01/27  下午 09:00           205,312 gftodvi.exe
-2024/01/27  下午 09:00           159,744 gftopk.exe
-2024/01/27  下午 09:00           194,048 gftype.exe
-2024/01/27  下午 08:54           901,120 gregorio.exe
-2024/01/27  下午 08:54            70,144 gsbj.exe
-2024/01/27  下午 08:54            70,144 gsdj.exe
-2024/01/27  下午 08:54            70,144 gsdj500.exe
-2024/01/27  下午 08:54           184,320 gsf2pk.exe
-2024/01/27  下午 08:54            70,144 gslj.exe
-2024/01/27  下午 08:54            70,144 gslp.exe
-2024/01/27  下午 08:54            70,144 gsnd.exe
-2024/01/27  下午 08:54            70,144 gsndt.exe
-2024/01/27  下午 08:54            70,144 gssetgs.exe
-2024/01/27  下午 08:54            70,144 gst.exe
-2024/01/27  下午 08:54            70,144 gstt.exe
-2024/01/27  下午 08:58           115,200 hbf2gf.exe
-2024/01/27  下午 08:59           501,248 hilatex-dev.exe
-2024/01/27  下午 08:59           501,248 hilatex.exe
-2024/01/27  下午 08:59           186,368 hishrink.exe
-2024/01/27  下午 08:59           224,768 histretch.exe
-2024/01/27  下午 08:59           501,248 hitex.exe
-2024/01/27  下午 08:54            70,144 ht.exe
-2024/01/27  下午 08:54            70,144 htcontext.exe
-2024/01/27  下午 08:54            70,144 htcopy.exe
-2024/01/27  下午 08:54            70,144 htlatex.exe
-2024/01/27  下午 08:54            70,144 htmex.exe
-2024/01/27  下午 08:54            70,144 htmove.exe
-2024/01/27  下午 08:54            70,144 httex.exe
-2024/01/27  下午 08:54            70,144 httexi.exe
-2024/01/27  下午 08:54            70,144 htxelatex.exe
-2024/01/27  下午 08:54            70,144 htxetex.exe
-2024/01/27  下午 08:54            70,144 ibyhyph.exe
-2023/12/09  上午 10:42        30,786,048 icudt74.dll
-2023/12/09  上午 10:34         3,104,768 icuin74.dll
-2023/12/09  上午 10:33         2,345,984 icuuc74.dll
-2024/01/27  下午 09:00           865,280 inimf.exe
-2024/01/27  下午 09:02           643,072 initex.exe
-2024/01/27  下午 08:54           335,360 initexmf.exe
-2025/06/06  上午 09:41    <DIR>          internal
-2024/01/27  下午 08:54            70,144 isi2bibtex.exe
-2024/01/27  下午 09:01         2,726,912 jadetex.exe
-2024/01/27  下午 08:54            70,144 jamo-normalize.exe
-2024/01/27  下午 08:54            70,144 jfmutil.exe
-2024/01/27  下午 08:54            70,144 kanji-config-updmap-sys.exe
-2024/01/27  下午 08:54            70,144 kanji-config-updmap-user.exe
-2024/01/27  下午 08:54            70,144 kanji-config-updmap.exe
-2024/01/27  下午 08:54            70,144 kanji-fontmap-creator.exe
-2024/01/27  下午 08:54            70,144 ketcindy.exe
-2024/01/27  下午 08:54            70,144 komkindex.exe
-2024/01/27  下午 08:54            96,768 kpsewhich.exe
-2024/01/27  下午 09:03         6,512,640 l3build.exe
-2024/01/27  下午 08:54           140,800 lacheck.exe
-2024/01/27  下午 09:01         2,726,912 latex-dev.exe
-2024/01/27  下午 08:54            70,144 latex-git-log.exe
-2024/01/27  下午 08:54            70,144 latex-papersize.exe
-2024/01/27  下午 09:01         2,726,912 latex.exe
-2024/01/27  下午 08:54            70,144 latex2man.exe
-2024/01/27  下午 08:54            70,144 latex2nemeth.exe
-2024/01/27  下午 08:54            70,144 latexdef.exe
-2024/01/27  下午 08:54            70,144 latexdiff-fast.exe
-2024/01/27  下午 08:54            70,144 latexdiff-so.exe
-2024/01/27  下午 08:54            70,144 latexdiff-vc.exe
-2024/01/27  下午 08:54            70,144 latexdiff.exe
-2024/01/27  下午 08:54            70,144 latexindent.exe
-2024/01/27  下午 08:54            70,144 latexmk.exe
-2024/01/27  下午 08:54            70,144 latexpand.exe
-2024/01/27  下午 08:54            70,144 latexrevise.exe
-2024/01/27  下午 09:03         6,512,640 llmk.exe
-2024/01/27  下午 09:01         2,726,912 lollipop.exe
-2024/01/27  下午 08:54            70,144 lp386.exe
-2024/01/27  下午 08:54            70,144 lp386r2.exe
-2024/01/27  下午 08:54            70,144 lpgs.exe
-2024/01/27  下午 08:54            70,144 lpr2.exe
-2024/01/27  下午 08:54            70,144 ltx2crossrefxml.exe
-2024/01/27  下午 08:54            70,144 ltximg.exe
-2024/01/27  下午 09:03         6,512,640 luacolor.exe
-2024/01/27  下午 09:03         6,512,640 luafindfont.exe
-2024/01/27  下午 09:03         6,552,064 luahblatex-dev.exe
-2024/01/27  下午 09:03         6,552,064 luahblatex.exe
-2024/01/27  下午 09:03         6,552,064 luahbtex.exe
-2024/01/27  下午 09:03         6,552,064 lualatex-dev.exe
-2024/01/27  下午 09:03         6,552,064 lualatex.exe
-2024/01/27  下午 08:54            70,144 lualatexdef.exe
-2024/01/27  下午 09:03         6,509,568 lualollipop.exe
-2024/01/27  下午 09:03         6,512,640 luamesh.exe
-2024/01/27  下午 09:03         6,512,640 luaotfload-tool.exe
-2024/01/27  下午 09:03         6,509,568 luatex.exe
-2024/01/27  下午 08:54            70,144 luatexdef.exe
-2024/01/27  下午 09:03         6,512,640 lwarpmk.exe
-2024/01/27  下午 09:03         6,512,640 lyluatex.exe
-2024/01/27  下午 09:03         6,512,640 m-tx.exe
-2024/01/27  下午 09:03         6,512,640 magicnum.exe
-2024/01/27  下午 09:03         6,512,640 make4ht.exe
-2024/01/27  下午 08:54           179,712 makebase.exe
-2024/01/27  下午 08:54            70,144 makedtx.exe
-2024/01/27  下午 08:54           241,152 makefmt.exe
-2024/01/27  下午 09:03         6,512,640 makeglossaries-lite.exe
-2024/01/27  下午 08:54            70,144 makeglossaries.exe
-2024/01/27  下午 08:54           168,960 makeindex.exe
-2024/01/27  下午 08:54            70,144 makejmlrbook.exe
-2024/01/27  下午 08:54           230,912 makepk.exe
-2024/01/27  下午 08:54           206,848 maketfm.exe
-2024/01/27  下午 09:03         6,512,640 markdown-cli.exe
-2024/01/27  下午 08:54            70,144 mathspic.exe
-2024/01/27  下午 08:54            70,144 mathspic113.exe
-2024/01/27  下午 08:54            70,144 memoize-clean.pl.exe
-2024/01/27  下午 08:54            70,144 memoize-clean.py.exe
-2024/01/27  下午 08:54            70,144 memoize-extract.pl.exe
-2024/01/27  下午 08:54            70,144 memoize-extract.py.exe
-2024/01/27  下午 08:54            70,144 merge-tex.exe
-2024/01/27  下午 09:00           865,280 mf.exe
-2024/01/27  下午 08:54            70,144 mf2pt1.exe
-2021/12/02  下午 07:36         5,618,576 mfc140.dll
-2021/12/02  下午 07:36            39,824 mfc140chs.dll
-2021/12/02  下午 07:36            39,824 mfc140cht.dll
-2021/12/02  下午 07:36            68,496 mfc140deu.dll
-2021/12/02  下午 07:36            58,760 mfc140enu.dll
-2021/12/02  下午 07:36            67,472 mfc140esn.dll
-2021/12/02  下午 07:36            68,488 mfc140fra.dll
-2021/12/02  下午 07:36            66,440 mfc140ita.dll
-2021/12/02  下午 07:36            48,008 mfc140jpn.dll
-2021/12/02  下午 07:36            46,992 mfc140kor.dll
-2021/12/02  下午 07:36            64,400 mfc140rus.dll
-2021/12/02  下午 07:36         5,653,904 mfc140u.dll
-2021/12/02  下午 07:36            84,864 mfcm140.dll
-2021/12/02  下午 07:36            84,872 mfcm140u.dll
-2024/01/27  下午 08:54            70,144 mfirstuc.exe
-2024/01/27  下午 09:00           179,200 mft.exe
-2024/01/27  下午 08:54            70,144 mgetmref.exe
-2018/09/26  上午 12:19           222,208 mgs.exe
-2018/09/26  上午 12:19        18,396,160 mgsdll64.dll
-2024/01/27  下午 08:54           118,272 miktex-afm2tfm.exe
-2024/01/27  下午 08:54         5,515,264 miktex-asy.exe
-2024/01/27  下午 08:45            84,992 miktex-autosp.exe
-2024/01/27  下午 08:54           150,016 miktex-axohelp.exe
-2024/01/27  下午 08:58            38,912 miktex-bg5conv.exe
-2024/01/27  下午 08:54           266,240 miktex-bibsort.exe
-2024/01/27  下午 09:00           325,120 miktex-bibtex.exe
-2024/01/27  下午 08:54           228,864 miktex-bibtex8.exe
-2024/01/27  下午 08:54           243,200 miktex-bibtexu.exe
-2024/01/27  下午 08:58            42,496 miktex-cef5conv.exe
-2024/01/27  下午 08:58            42,496 miktex-cefconv.exe
-2024/01/27  下午 08:58            42,496 miktex-cefsconv.exe
-2024/01/27  下午 08:54           504,320 miktex-cfftot1.exe
-2024/01/27  下午 08:54           158,208 miktex-chktex.exe
-2024/01/27  下午 09:04         1,121,280 miktex-console.exe
-2024/01/27  下午 09:06         1,121,280 miktex-console_admin.exe
-2024/01/27  下午 08:58           137,216 miktex-ctangle.exe
-2024/01/27  下午 08:58            82,432 miktex-ctwill-refsort.exe
-2024/01/27  下午 08:58            84,992 miktex-ctwill-twinx.exe
-2024/01/27  下午 08:58           187,904 miktex-ctwill.exe
-2024/01/27  下午 08:58           178,176 miktex-cweave.exe
-2024/01/27  下午 08:54           117,248 miktex-devnag.exe
-2024/01/27  下午 08:59           222,720 miktex-dvicopy.exe
-2024/01/27  下午 08:54         1,018,368 miktex-dvipdfmx.exe
-2024/01/27  下午 08:54            97,792 miktex-dvipdft.exe
-2024/01/27  下午 08:58           174,080 miktex-dvipng.exe
-2024/01/27  下午 08:54           356,352 miktex-dvips.exe
-2024/01/27  下午 08:54         8,048,128 miktex-dvisvgm.exe
-2024/01/27  下午 09:01           206,336 miktex-dvitype.exe
-2024/01/27  下午 08:54           101,888 miktex-epsffit.exe
-2024/01/27  下午 08:54           435,200 miktex-epstopdf-unrestricted.exe
-2024/01/27  下午 08:54           435,200 miktex-epstopdf.exe
-2024/01/27  下午 09:01           868,864 miktex-eptex.exe
-2024/01/27  下午 09:01           876,032 miktex-euptex.exe
-2024/01/27  下午 08:58            38,912 miktex-extconv.exe
-2024/01/27  下午 08:55            88,064 miktex-fc-cache.exe
-2024/01/27  下午 08:55            85,504 miktex-fc-cat.exe
-2024/01/27  下午 08:55            81,408 miktex-fc-conflist.exe
-2024/01/27  下午 08:55            83,456 miktex-fc-list.exe
-2024/01/27  下午 08:55            84,992 miktex-fc-match.exe
-2024/01/27  下午 08:55            82,944 miktex-fc-pattern.exe
-2024/01/27  下午 08:55            82,944 miktex-fc-query.exe
-2024/01/27  下午 08:55            82,944 miktex-fc-scan.exe
-2024/01/27  下午 08:55            83,968 miktex-fc-validate.exe
-2024/01/27  下午 08:37           146,432 miktex-fribidixetex.exe
-2024/01/27  下午 09:00           205,312 miktex-gftodvi.exe
-2024/01/27  下午 09:00           159,744 miktex-gftopk.exe
-2024/01/27  下午 09:00           194,048 miktex-gftype.exe
-2024/01/27  下午 08:54           901,120 miktex-gregorio.exe
-2024/01/27  下午 08:58           115,200 miktex-hbf2gf.exe
-2024/01/27  下午 08:59           186,368 miktex-hishrink.exe
-2024/01/27  下午 08:59           224,768 miktex-histretch.exe
-2024/01/27  下午 08:59           501,248 miktex-hitex.exe
-2024/01/27  下午 08:54            96,768 miktex-kpsewhich.exe
-2024/01/27  下午 08:54           140,800 miktex-lacheck.exe
-2024/01/27  下午 09:01         2,726,912 miktex-latex.exe
-2024/01/27  下午 08:45            50,176 miktex-lua.exe
-2024/01/27  下午 08:45            50,688 miktex-luac.exe
-2024/01/27  下午 09:03         6,552,064 miktex-luahbtex.exe
-2024/01/27  下午 09:03         6,552,064 miktex-lualatex.exe
-2024/01/27  下午 09:03         6,509,568 miktex-luatex.exe
-2024/01/27  下午 08:54           179,712 miktex-makebase.exe
-2024/01/27  下午 08:54           241,152 miktex-makefmt.exe
-2024/01/27  下午 08:54           168,960 miktex-makeindex.exe
-2024/01/27  下午 08:54           180,224 miktex-makemf.exe
-2024/01/27  下午 08:54           230,912 miktex-makepk.exe
-2024/01/27  下午 08:54           206,848 miktex-maketfm.exe
-2024/01/27  下午 09:00           865,280 miktex-mf.exe
-2024/01/27  下午 09:00           179,200 miktex-mft.exe
-2024/01/27  下午 08:54            79,360 miktex-mkocp.exe
-2024/01/27  下午 08:54           350,208 miktex-mmafm.exe
-2024/01/27  下午 08:54           426,496 miktex-mmpfb.exe
-2024/01/27  下午 09:03           176,640 miktex-mpost.exe
-2024/01/27  下午 09:00           220,160 miktex-odvicopy.exe
-2024/01/27  下午 09:00           234,496 miktex-ofm2opl.exe
-2024/01/27  下午 09:00           245,248 miktex-opl2ofm.exe
-2024/01/27  下午 08:54           619,008 miktex-otfinfo.exe
-2024/01/27  下午 08:54           928,768 miktex-otftotfm.exe
-2024/01/27  下午 08:58           102,400 miktex-otp2ocp.exe
-2024/01/27  下午 08:54            82,432 miktex-outocp.exe
-2024/01/27  下午 09:00           268,800 miktex-ovf2ovp.exe
-2024/01/27  下午 09:00           267,264 miktex-ovp2ovf.exe
-2024/01/27  下午 09:00           182,784 miktex-patgen.exe
-2024/01/27  下午 08:57            87,040 miktex-pdfattach.exe
-2024/01/27  下午 08:57            98,816 miktex-pdfdetach.exe
-2024/01/27  下午 08:57            91,648 miktex-pdffonts.exe
-2024/01/27  下午 08:57           116,224 miktex-pdfimages.exe
-2024/01/27  下午 08:57           177,152 miktex-pdfinfo.exe
-2024/01/27  下午 09:01         2,726,912 miktex-pdflatex.exe
-2024/01/27  下午 08:57            89,600 miktex-pdfseparate.exe
-2024/01/27  下午 09:01         2,726,912 miktex-pdftex.exe
-2024/01/27  下午 08:57           380,928 miktex-pdftocairo.exe
-2024/01/27  下午 08:58           235,008 miktex-pdftohtml.exe
-2024/01/27  下午 08:57           114,688 miktex-pdftoppm.exe
-2024/01/27  下午 08:57           113,664 miktex-pdftops.exe
-2024/01/27  下午 08:58         1,551,872 miktex-pdftosrc.exe
-2024/01/27  下午 08:57           143,360 miktex-pdftotext.exe
-2024/01/27  下午 08:57           119,808 miktex-pdfunite.exe
-2024/01/27  下午 08:58            85,504 miktex-pk2bm.exe
-2024/01/27  下午 09:01           193,536 miktex-pltotf.exe
-2024/01/27  下午 08:45           653,312 miktex-pmxab.exe
-2024/01/27  下午 09:01           141,312 miktex-pooltype.exe
-2024/01/27  下午 08:37           195,584 miktex-prepmx.exe
-2024/01/27  下午 08:58           222,720 miktex-ps2pk.exe
-2024/01/27  下午 08:54            99,328 miktex-psbook.exe
-2024/01/27  下午 08:54           109,056 miktex-psnup.exe
-2024/01/27  下午 08:54           107,008 miktex-psresize.exe
-2024/01/27  下午 08:54           100,864 miktex-psselect.exe
-2024/01/27  下午 08:54           107,520 miktex-pstops.exe
-2024/01/27  下午 08:45            48,128 miktex-rebar.exe
-2024/01/27  下午 08:54            70,144 miktex-rungs.exe
-2024/01/27  下午 08:45           126,464 miktex-scor2prt.exe
-2024/01/27  下午 08:58            38,912 miktex-sjisconv.exe
-2024/01/27  下午 08:58           224,256 miktex-synctex.exe
-2024/01/27  下午 08:54           423,424 miktex-t1dotlessj.exe
-2024/01/27  下午 08:54           374,784 miktex-t1lint.exe
-2024/01/27  下午 08:54           380,928 miktex-t1rawafm.exe
-2024/01/27  下午 08:54           415,744 miktex-t1reencode.exe
-2024/01/27  下午 08:54           395,264 miktex-t1testpage.exe
-2024/01/27  下午 08:58           112,128 miktex-t4ht.exe
-2024/01/27  下午 08:59           184,832 miktex-tangle.exe
-2024/01/27  下午 09:04         1,121,280 miktex-taskbar-icon.exe
-2024/01/27  下午 09:02           643,072 miktex-tex.exe
-2024/01/27  下午 08:45            49,664 miktex-tex2aspc.exe
-2024/01/27  下午 08:58           189,952 miktex-tex4ht.exe
-2024/01/27  下午 09:03         6,509,568 miktex-texlua.exe
-2024/01/27  下午 09:03         6,509,568 miktex-texluac.exe
-2024/01/27  下午 09:06         7,934,976 miktex-texworks.exe
-2024/01/27  下午 09:01           195,072 miktex-tftopl.exe
-2024/01/27  下午 08:58           118,272 miktex-ttf2afm.exe
-2024/01/27  下午 08:58           166,912 miktex-ttf2pk.exe
-2024/01/27  下午 08:58           190,464 miktex-ttf2tfm.exe
-2024/01/27  下午 08:54           445,440 miktex-ttftotype42.exe
-2024/01/27  下午 09:01           339,968 miktex-upbibtex.exe
-2024/01/27  下午 09:04         1,121,280 miktex-update.exe
-2024/01/27  下午 09:06         1,121,280 miktex-update_admin.exe
-2024/01/27  下午 09:01           220,160 miktex-updvitype.exe
-2024/01/27  下午 08:58           241,664 miktex-upmendex.exe
-2024/01/27  下午 09:01           217,600 miktex-uppltotf.exe
-2024/01/27  下午 09:01           214,528 miktex-uptftopl.exe
-2024/01/27  下午 09:02           222,208 miktex-vftovp.exe
-2024/01/27  下午 09:02           209,920 miktex-vptovf.exe
-2024/01/27  下午 09:02           215,552 miktex-weave.exe
-2024/01/27  下午 08:54         1,018,368 miktex-xdvipdfmx.exe
-2024/01/27  下午 09:02         1,277,952 miktex-xelatex.exe
-2024/01/27  下午 09:02         1,277,952 miktex-xetex.exe
-2024/01/27  下午 08:54           218,112 miktex-xml2pmx.exe
-2010/09/23  下午 08:21           356,864 miktex-zip.exe
-2024/01/27  下午 08:45         1,050,112 miktex.exe
-2024/01/27  下午 08:54           324,096 MiKTeX240100-app.dll
-2024/01/27  下午 08:31           275,968 MiKTeX240100-apr.dll
-2024/01/27  下午 08:32           205,312 MiKTeX240100-aprutil.dll
-2024/01/27  下午 08:45           105,984 MiKTeX240100-bzip2.dll
-2024/01/27  下午 08:55         1,214,464 MiKTeX240100-cairo.dll
-2024/01/27  下午 08:39            43,520 MiKTeX240100-core-PS.dll
-2024/01/27  下午 08:45         2,699,776 MiKTeX240100-core.dll
-2024/01/27  下午 08:31           705,536 MiKTeX240100-curl.dll
-2024/01/27  下午 08:45            83,968 MiKTeX240100-dib.dll
-2024/01/27  下午 08:58           908,288 MiKTeX240100-dvi.dll
-2024/01/27  下午 08:32           179,200 MiKTeX240100-expat.dll
-2024/01/27  下午 08:45           152,576 MiKTeX240100-extractor.dll
-2024/01/27  下午 08:32           331,264 MiKTeX240100-fmt.dll
-2024/01/27  下午 08:55           388,096 MiKTeX240100-fontconfig.dll
-2024/01/27  下午 08:45           351,232 MiKTeX240100-freeglut.dll
-2024/01/27  下午 08:45           843,776 MiKTeX240100-freetype2.dll
-2024/01/27  下午 08:55           460,288 MiKTeX240100-gd.dll
-2024/01/27  下午 08:45            41,984 MiKTeX240100-getopt.dll
-2024/01/27  下午 08:32           235,520 MiKTeX240100-graphite2.dll
-2024/01/27  下午 08:33         5,432,320 MiKTeX240100-harfbuzz.dll
-2024/01/27  下午 08:45         1,139,712 MiKTeX240100-hunspell.dll
-2024/01/27  下午 08:32           363,008 MiKTeX240100-jpeg.dll
-2024/01/27  下午 08:54           178,176 MiKTeX240100-kpathsea.dll
-2024/01/27  下午 08:36         2,043,392 MiKTeX240100-libressl-crypto.dll
-2024/01/27  下午 08:43           764,928 MiKTeX240100-loc.dll
-2024/01/27  下午 08:34         2,532,352 MiKTeX240100-log4cxx.dll
-2024/01/27  下午 08:45           285,184 MiKTeX240100-lua53.dll
-2024/01/27  下午 08:34           237,056 MiKTeX240100-lzma2.dll
-2024/01/27  下午 08:37            40,960 MiKTeX240100-md5.dll
-2024/01/27  下午 09:03           924,672 MiKTeX240100-metapost.dll
-2024/01/27  下午 08:35           509,440 MiKTeX240100-mpfr.dll
-2024/01/27  下午 08:35           118,272 MiKTeX240100-mspack.dll
-2024/01/27  下午 08:45            47,616 MiKTeX240100-packagemanager-PS.dll
-2024/01/27  下午 08:45         1,323,520 MiKTeX240100-packagemanager.dll
-2024/01/27  下午 08:31           889,344 MiKTeX240100-pixman.dll
-2024/01/27  下午 08:45           263,168 MiKTeX240100-png.dll
-2024/01/27  下午 08:58         1,063,424 MiKTeX240100-poppler-Qt.dll
-2024/01/27  下午 08:57         6,457,344 MiKTeX240100-poppler.dll
-2024/01/27  下午 08:45            82,432 MiKTeX240100-popt.dll
-2024/01/27  下午 08:58            82,944 MiKTeX240100-ptexenc.dll
-2024/01/27  下午 08:45           102,400 MiKTeX240100-regex.dll
-2024/01/27  下午 08:42            59,392 MiKTeX240100-res.dll
-2024/01/27  下午 08:45           911,872 MiKTeX240100-setup.dll
-2024/01/27  下午 08:45           273,408 MiKTeX240100-teckit.dll
-2024/01/27  下午 08:54           600,576 MiKTeX240100-texmf.dll
-2024/01/27  下午 08:43           161,280 MiKTeX240100-trace.dll
-2024/01/27  下午 08:54           501,248 MiKTeX240100-ui-Qt.dll
-2024/01/27  下午 08:45            69,632 MiKTeX240100-unxemu.dll
-2024/01/27  下午 08:37           127,488 MiKTeX240100-uriparser.dll
-2024/01/27  下午 08:45            98,816 MiKTeX240100-utf8wrap.dll
-2024/01/27  下午 08:43           214,528 MiKTeX240100-util.dll
-2024/01/27  下午 08:58           124,928 MiKTeX240100-web2c.dll
-2024/01/27  下午 08:45           131,584 MiKTeX240100-zlib.dll
-2024/01/27  下午 08:45            57,856 MiKTeX240100-zzip.dll
-2024/01/27  下午 08:45           157,696 miktexsetup.exe
-2024/01/27  下午 08:54            70,144 mk4ht.exe
-2024/01/27  下午 09:03         6,512,640 mkcharacters.exe
-2024/01/27  下午 08:45         1,050,112 mkfntmap.exe
-2024/01/27  下午 09:03         6,512,640 mkglyphlist.exe
-2024/01/27  下午 08:54            70,144 mkjobtexmf.exe
-2024/01/27  下午 09:03         6,512,640 mkluatexfontdb.exe
-2024/01/27  下午 08:54            79,360 mkocp.exe
-2024/01/27  下午 08:54            70,144 mkt1font.exe
-2024/01/27  下午 08:45         1,050,112 mktexlsr.exe
-2024/01/27  下午 09:01         2,726,912 mllatex.exe
-2024/01/27  下午 09:01         2,726,912 mltex.exe
-2024/01/27  下午 08:54           350,208 mmafm.exe
-2024/01/27  下午 08:54           426,496 mmpfb.exe
-2024/01/27  下午 08:45           248,832 mpm.exe
-2024/01/27  下午 09:03           176,640 mpost.exe
-2024/01/27  下午 08:54            70,144 mptopdf.exe
-2021/12/02  下午 07:32           567,688 msvcp140.dll
-2021/12/02  下午 07:32            23,952 msvcp140_1.dll
-2021/12/02  下午 07:32           185,744 msvcp140_2.dll
-2021/12/02  下午 07:32            56,200 msvcp140_atomic_wait.dll
-2021/12/02  下午 07:32            20,368 msvcp140_codecvt_ids.dll
-2024/01/27  下午 08:58           186,880 mthelp.exe
-2024/01/27  下午 09:01           207,360 mtprint.exe
-2024/01/27  下午 09:03         6,512,640 musixflx.exe
-2024/01/27  下午 09:03         6,512,640 musixtex.exe
-2024/01/27  下午 09:00           220,160 odvicopy.exe
-2024/01/27  下午 09:00           234,496 ofm2opl.exe
-2024/01/27  下午 08:54            70,144 OOopict.exe
-2024/01/27  下午 09:00           245,248 opl2ofm.exe
-2024/01/27  下午 09:03         6,509,568 optex.exe
-2024/01/27  下午 08:54            70,144 optexcount.exe
-2024/01/27  下午 08:54            70,144 orderrefs.exe
-2024/01/27  下午 08:54            70,144 ot2kpx.exe
-2024/01/27  下午 08:54           619,008 otfinfo.exe
-2024/01/27  下午 08:54           928,768 otftotfm.exe
-2024/01/27  下午 08:58           102,400 otp2ocp.exe
-2024/01/27  下午 08:54            82,432 outocp.exe
-2024/01/27  下午 09:00           268,800 ovf2ovp.exe
-2024/01/27  下午 09:00           267,264 ovp2ovf.exe
-2024/01/27  下午 09:00           182,784 patgen.exe
-2024/01/27  下午 09:01           339,968 pbibtex.exe
-2024/01/27  下午 08:54            70,144 pdf2dsc.exe
-2024/01/27  下午 08:54            70,144 pdf2ps.exe
-2024/01/27  下午 08:54            70,144 pdfatfi.exe
-2024/01/27  下午 08:57            87,040 pdfattach.exe
-2024/01/27  下午 08:54            70,144 pdfbook2.exe
-2024/01/27  下午 08:58           161,280 pdfclose.exe
-2024/01/27  下午 08:54            70,144 pdfcrop.exe
-2024/01/27  下午 09:01         2,726,912 pdfcslatex.exe
-2024/01/27  下午 09:01         2,726,912 pdfcsplain.exe
-2024/01/27  下午 08:58           161,280 pdfdde.exe
-2024/01/27  下午 08:57            98,816 pdfdetach.exe
-2024/01/27  下午 09:01         2,726,912 pdfetex.exe
-2024/01/27  下午 08:57            91,648 pdffonts.exe
-2024/01/27  下午 08:57           116,224 pdfimages.exe
-2024/01/27  下午 08:57           177,152 pdfinfo.exe
-2024/01/27  下午 09:01         2,726,912 pdfjadetex.exe
-2024/01/27  下午 09:01         2,726,912 pdflatex-dev.exe
-2024/01/27  下午 09:01         2,726,912 pdflatex.exe
-2024/01/27  下午 08:54            70,144 pdflatexdef.exe
-2024/01/27  下午 08:54            70,144 pdflatexpicscale.exe
-2024/01/27  下午 08:58           161,280 pdfopen.exe
-2024/01/27  下午 08:54            70,144 pdfopt.exe
-2024/01/27  下午 08:57            89,600 pdfseparate.exe
-2024/01/27  下午 09:01         2,726,912 pdftex.exe
-2024/01/27  下午 08:54            70,144 pdftexdef.exe
-2024/01/27  下午 08:57           380,928 pdftocairo.exe
-2024/01/27  下午 08:58           235,008 pdftohtml.exe
-2024/01/27  下午 08:57           114,688 pdftoppm.exe
-2024/01/27  下午 08:57           113,664 pdftops.exe
-2024/01/27  下午 08:58         1,551,872 pdftosrc.exe
-2024/01/27  下午 08:57           143,360 pdftotext.exe
-2024/01/27  下午 08:57           119,808 pdfunite.exe
-2024/01/27  下午 09:01         2,726,912 pdfxmltex.exe
-2024/01/27  下午 09:01           220,160 pdvitype.exe
-2024/01/27  下午 08:54            70,144 pedigree.exe
-2024/01/27  下午 08:54            70,144 perltex.exe
-2024/01/27  下午 08:54            70,144 pf2afm.exe
-2024/01/27  下午 09:03         6,512,640 pfarrei.exe
-2024/01/27  下午 08:54            70,144 pfbtopfa.exe
-2024/01/27  下午 08:54            70,144 pftogsf.exe
-2024/01/27  下午 08:54            70,144 pgfplots.exe
-2024/01/27  下午 08:58            85,504 pk2bm.exe
-2024/01/27  下午 08:54            70,144 pkfix-helper.exe
-2024/01/27  下午 08:54            70,144 pkfix.exe
-2024/01/27  下午 09:01           868,864 platex-dev.exe
-2024/01/27  下午 09:01           868,864 platex.exe
-2025/06/06  上午 09:41    <DIR>          platforms
-2024/01/27  下午 09:01           193,536 pltotf.exe
-2024/01/27  下午 08:45           653,312 pmxab.exe
-2024/01/27  下午 08:54            70,144 pn2pdf.exe
-2024/01/27  下午 09:01           141,312 pooltype.exe
-2024/01/27  下午 09:01           217,600 ppltotf.exe
-2024/01/27  下午 09:03         6,512,640 ppmcheck.exe
-2024/01/27  下午 08:37           195,584 prepmx.exe
-2024/01/27  下午 08:54            70,144 ps2ascii.exe
-2024/01/27  下午 08:54            70,144 ps2epsi.exe
-2024/01/27  下午 08:54            70,144 ps2pdf.exe
-2024/01/27  下午 08:54            70,144 ps2pdf12.exe
-2024/01/27  下午 08:54            70,144 ps2pdf13.exe
-2024/01/27  下午 08:54            70,144 ps2pdf14.exe
-2024/01/27  下午 08:54            70,144 ps2pdfxx.exe
-2024/01/27  下午 08:58           222,720 ps2pk.exe
-2024/01/27  下午 08:54            70,144 ps2ps.exe
-2024/01/27  下午 08:54            70,144 ps2ps2.exe
-2024/01/27  下午 08:54            70,144 ps4pdf.exe
-2024/01/27  下午 08:54            99,328 psbook.exe
-2024/01/27  下午 08:54            70,144 psjoin.exe
-2024/01/27  下午 08:54            70,144 pslatex.exe
-2024/01/27  下午 08:54           109,056 psnup.exe
-2024/01/27  下午 08:54           107,008 psresize.exe
-2024/01/27  下午 08:54           100,864 psselect.exe
-2024/01/27  下午 08:54            70,144 pst2pdf.exe
-2024/01/27  下午 08:54           107,520 pstops.exe
-2024/01/27  下午 09:01           868,864 ptex.exe
-2024/01/27  下午 09:03         6,512,640 ptex2pdf.exe
-2024/01/27  下午 09:01           214,528 ptftopl.exe
-2024/01/27  下午 08:54            70,144 pygmentex.exe
-2024/01/27  下午 08:54            70,144 pypostproc.exe
-2024/01/27  下午 08:54            70,144 pypreproc.exe
-2024/01/27  下午 08:54            70,144 pythontex.exe
-2023/09/22  下午 02:35            35,472 Qt6Concurrent.dll
-2023/09/22  下午 02:35         5,793,424 Qt6Core.dll
-2023/09/24  下午 06:02           833,680 Qt6Core5Compat.dll
-2023/09/22  下午 02:35         8,071,824 Qt6Gui.dll
-2023/09/22  下午 02:35         1,373,328 Qt6Network.dll
-2023/09/22  下午 02:35         1,925,264 Qt6OpenGL.dll
-2023/09/22  下午 02:35            60,048 Qt6OpenGLWidgets.dll
-2023/09/24  下午 03:56         4,625,040 Qt6Qml.dll
-2023/09/24  下午 06:02           704,144 Qt6UiTools.dll
-2023/09/22  下午 02:36         6,026,384 Qt6Widgets.dll
-2024/01/27  下午 08:54            70,144 rcsinfo.exe
-2024/01/27  下午 08:45            48,128 rebar.exe
-2024/01/27  下午 08:54           435,200 repstopdf.exe
-2024/01/27  下午 08:54            70,144 rubikrotation.exe
-2024/01/27  下午 08:54            70,144 rungs.exe
-2024/01/27  下午 09:03         6,512,640 runtexshebang.exe
-2024/01/27  下午 08:45           126,464 scor2prt.exe
-2024/01/27  下午 08:58            38,912 sjisconv.exe
-2024/01/27  下午 08:54           126,464 sjislatex.exe
-2024/01/27  下午 08:54           126,464 sjispdflatex.exe
-2024/01/27  下午 08:54            70,144 song2tex.exe
-2024/01/27  下午 09:03         6,512,640 songidx.exe
-2024/01/27  下午 08:54            70,144 spix.exe
-2024/01/27  下午 08:54            70,144 splitindex.exe
-2024/01/27  下午 08:54            70,144 srcredact.exe
-2024/01/27  下午 08:54            70,144 sty2dtx.exe
-2025/06/06  上午 09:41    <DIR>          styles
-2024/01/27  下午 08:54            70,144 svn-multi.exe
-2024/01/27  下午 08:58           224,256 synctex.exe
-2024/01/27  下午 08:54           423,424 t1dotlessj.exe
-2024/01/27  下午 08:54           374,784 t1lint.exe
-2024/01/27  下午 08:54           380,928 t1rawafm.exe
-2024/01/27  下午 08:54           415,744 t1reencode.exe
-2024/01/27  下午 08:54           395,264 t1testpage.exe
-2024/01/27  下午 08:58           112,128 t4ht.exe
-2024/01/27  下午 08:59           184,832 tangle.exe
-2024/01/27  下午 08:54           274,944 tdsutil.exe
-2024/01/27  下午 09:02           643,072 tex.exe
-2024/01/27  下午 08:45            49,664 tex2aspc.exe
-2024/01/27  下午 09:03         6,512,640 tex4ebook.exe
-2024/01/27  下午 08:58           189,952 tex4ht.exe
-2024/01/27  下午 09:03         6,512,640 texblend.exe
-2024/01/27  下午 08:54            70,144 texcount.exe
-2024/01/27  下午 08:54            70,144 texdef.exe
-2024/01/27  下午 08:54            70,144 texdiff.exe
-2024/01/27  下午 08:54            70,144 texdirflatten.exe
-2024/01/27  下午 08:58           186,880 texdoc.exe
-2024/01/27  下午 09:03         6,512,640 texfindpkg.exe
-2024/01/27  下午 08:54            70,144 texfot.exe
-2024/01/27  下午 08:45         1,050,112 texhash.exe
-2024/01/27  下午 08:58           291,840 texify.exe
-2024/01/27  下午 08:54            70,144 texindy.exe
-2024/01/27  下午 08:45         1,050,112 texlinks.exe
-2024/01/27  下午 08:54            70,144 texloganalyser.exe
-2024/01/27  下午 08:54            70,144 texlogfilter.exe
-2024/01/27  下午 09:03         6,512,640 texlogsieve.exe
-2024/01/27  下午 09:03         6,509,568 texlua.exe
-2024/01/27  下午 09:03         6,509,568 texluac.exe
-2024/01/27  下午 08:54            70,144 texosquery-jre5.exe
-2024/01/27  下午 08:54            70,144 texosquery-jre8.exe
-2024/01/27  下午 08:54            70,144 texosquery.exe
-2024/01/27  下午 08:54            70,144 texplate.exe
-2024/01/27  下午 09:06         7,934,976 texworks.exe
-2024/01/27  下午 09:01           195,072 tftopl.exe
-2024/01/27  下午 08:54            70,144 thumbpdf.exe
-2024/01/27  下午 09:03         6,512,640 tinyyaml.exe
-2024/01/27  下午 08:58           118,272 ttf2afm.exe
-2024/01/27  下午 08:54            70,144 ttf2kotexfont.exe
-2024/01/27  下午 08:58           166,912 ttf2pk.exe
-2024/01/27  下午 08:58           190,464 ttf2tfm.exe
-2024/01/27  下午 08:54           445,440 ttftotype42.exe
-2024/01/27  下午 08:54            70,144 txt2qq.exe
-2021/09/12  上午 03:05         1,122,768 ucrtbase.dll
-2024/01/27  下午 09:01           339,968 upbibtex.exe
-2024/01/27  下午 08:45         1,050,112 updmap.exe
-2024/01/27  下午 09:01           220,160 updvitype.exe
-2024/01/27  下午 09:01           876,032 uplatex-dev.exe
-2024/01/27  下午 09:01           876,032 uplatex.exe
-2024/01/27  下午 08:58           241,664 upmendex.exe
-2024/01/27  下午 09:01           217,600 uppltotf.exe
-2024/01/27  下午 09:01           876,032 uptex.exe
-2024/01/27  下午 09:01           214,528 uptftopl.exe
-2024/01/27  下午 08:54            70,144 urlbst.exe
-2024/01/27  下午 08:54            70,144 utf8-to-dad.exe
-2024/01/27  下午 09:01         2,726,912 utf8mex.exe
-2021/12/02  下午 07:32           335,240 vccorlib140.dll
-2021/12/02  下午 07:32            97,168 vcruntime140.dll
-2021/12/02  下午 07:32            37,264 vcruntime140_1.dll
-2024/01/27  下午 09:02           222,208 vftovp.exe
-2024/01/27  下午 09:00           865,280 virmf.exe
-2024/01/27  下午 09:02           643,072 virtex.exe
-2024/01/27  下午 08:54            70,144 vpe.exe
-2024/01/27  下午 08:54            70,144 vpl2ovp.exe
-2024/01/27  下午 08:54            70,144 vpl2vpl.exe
-2024/01/27  下午 09:02           209,920 vptovf.exe
-2024/01/27  下午 09:02           215,552 weave.exe
-2024/01/27  下午 08:54            70,144 webquiz.exe
-2024/01/27  下午 08:54            70,144 wmakebat.exe
-2024/01/27  下午 08:54         1,018,368 xbb.exe
-2024/01/27  下午 08:54            70,144 xdv2pdf_mergemarks.exe
-2024/01/27  下午 08:54         1,018,368 xdvipdfmx.exe
-2024/01/27  下午 09:02         1,277,952 xelatex-dev.exe
-2024/01/27  下午 09:02         1,277,952 xelatex.exe
-2024/01/27  下午 08:54            70,144 xelatexdef.exe
-2024/01/27  下午 09:02         1,277,952 xetex.exe
-2024/01/27  下午 08:54            70,144 xetexdef.exe
-2024/01/27  下午 09:03         6,512,640 xindex.exe
-2024/01/27  下午 08:54            70,144 xindy.exe
-2024/01/27  下午 08:54           218,112 xml2pmx.exe
-2024/01/27  下午 09:01         2,726,912 xmltex.exe
-2024/01/27  下午 09:01         1,496,576 yap.exe
-2010/09/23  下午 08:21           356,864 zip.exe
-             738 個檔案     734,847,440 位元組
-               5 個目錄  8,724,283,084,800 位元組可用
+Animation 8: FadeOut(Text('Manim Animation Studio')), etc.:   0%|          | 0/24 [00:00<?, ?it/s]
+Animation 8: FadeOut(Text('Manim Animation Studio')), etc.:  17%|#6        | 4/24 [00:00<00:00, 32.51it/s]
+Animation 8: FadeOut(Text('Manim Animation Studio')), etc.:  33%|###3      | 8/24 [00:00<00:00, 32.05it/s]
+Animation 8: FadeOut(Text('Manim Animation Studio')), etc.:  50%|#####     | 12/24 [00:00<00:00, 33.89it/s]
+Animation 8: FadeOut(Text('Manim Animation Studio')), etc.:  67%|######6   | 16/24 [00:00<00:00, 34.91it/s]
+Animation 8: FadeOut(Text('Manim Animation Studio')), etc.:  83%|########3 | 20/24 [00:00<00:00, 35.48it/s]
+Animation 8: FadeOut(Text('Manim Animation Studio')), etc.: 100%|##########| 24/24 [00:00<00:00, 33.76it/s]
+                                                                                                           
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 237, in render
+    self.construct()
+  File "C:\Users\euler\AppData\Local\Temp\manim_preview_357009b8_i7wae0al\scene.py", line 48, in construct
+    self.play(
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 1125, in play
+    self.renderer.play(self, *args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 116, in play
+    self.file_writer.end_animation(not self.skip_animations)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 413, in end_animation
+    self.close_partial_movie_stream()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 588, in close_partial_movie_stream
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Animation 8 : Partial movie file written in %(path)s'
+Arguments: {'path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\partial_movie_files\\MyScene\\uncached_00008.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 247, in render
+    self.renderer.scene_finished(self)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 269, in scene_finished
+    self.file_writer.finish()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 514, in finish
+    self.combine_to_movie()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 739, in combine_to_movie
+    logger.info("Combining to Movie file.")
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Combining to Movie file.'
+Arguments: ()
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 247, in render
+    self.renderer.scene_finished(self)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\renderer\cairo_renderer.py", line 269, in scene_finished
+    self.file_writer.finish()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 514, in finish
+    self.combine_to_movie()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 817, in combine_to_movie
+    self.print_file_ready_message(str(movie_file_path))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene_file_writer.py", line 886, in print_file_ready_message
+    logger.info("\nFile ready at %(file_path)s\n", {"file_path": f"'{file_path}'"})
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: '\nFile ready at %(file_path)s\n'
+Arguments: {'file_path': "'C:\\Users\\euler\\OneDrive\\\u684c\u9762\\temp_unpack\\media\\videos\\scene\\480p24\\MyScene.mp4'"}
+[06/12/25 09:07:42] INFO     Writing                    tex_file_writing.py:111
+                             \sum_{n=1}^{\infty}                               
+                             \frac{1}{n^2} =                                   
+                             \frac{\pi^2}{6} to                                
+                             --- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 178, in emit
+    self.console.print(log_renderable)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 1692, in print
+    with self:
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 866, in __exit__
+    self._exit_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 824, in _exit_buffer
+    self._check_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2033, in _check_buffer
+    self._write_buffer()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\console.py", line 2069, in _write_buffer
+    legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_windows_renderer.py", line 19, in legacy_windows_render
+    term.write_text(text)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\_win32_console.py", line 402, in write_text
+    self.write(text)
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u684c' in position 24: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\__main__.py", line 101, in <module>
+    main()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1442, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1363, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1830, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 1226, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\click\core.py", line 794, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\cli\render\commands.py", line 125, in render
+    scene.render()
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\manim\scene\scene.py", line 255, in render
+    logger.info(
+  File "C:\Python312\Lib\logging\__init__.py", line 1539, in info
+    self._log(INFO, msg, args, **kwargs)
+  File "C:\Python312\Lib\logging\__init__.py", line 1684, in _log
+    self.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1700, in handle
+    self.callHandlers(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1762, in callHandlers
+    hdlr.handle(record)
+  File "C:\Python312\Lib\logging\__init__.py", line 1028, in handle
+    self.emit(record)
+  File "C:\Users\euler\OneDrive\\u684c\u9762\temp_unpack\venvs\manim_studio_default\Lib\site-packages\rich\logging.py", line 180, in emit
+    self.handleError(record)
+Message: 'Rendered MyScene\nPlayed 9 animations'
+Arguments: ()
 
-(venv) D:\manim_app\dist\app.dist\latex_bundle\existing_latex\x64>
+✅ Preview generation completed successfully!
+Found output file: C:\Users\euler\OneDrive\桌面\temp_unpack\media\videos\scene\480p24\MyScene.mp4
+Cached preview to: C:\Users\euler\OneDrive\桌面\temp_unpack\.preview_cache\preview_MyScene.mp4
+Cleaned up temporary directory
