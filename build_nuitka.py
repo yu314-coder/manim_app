@@ -697,9 +697,10 @@ def build_onefile_executable(jobs=None, priority="normal"):
         sys.executable, "-m", "nuitka",
         "--onefile",
         "--onefile-tempdir-spec={PROGRAM_DIR}/temp_unpack",  # Latest: unpack next to exe
-        "--onefile-cache-mode=auto",  # Latest: smart caching
-        # TEMPORARILY ENABLE CONSOLE FOR DEBUGGING
-        "--windows-console-mode=force",  # Show console to see errors
+        "--onefile-cache-mode=cached",  # Force persistent caching - NEVER delete
+        # DISABLE CONSOLE - NO WINDOWS
+        "--windows-console-mode=disable",
+        "--windows-disable-console",
         "--enable-plugin=tk-inter",
         "--lto=no",
         "--show-progress",
@@ -709,9 +710,6 @@ def build_onefile_executable(jobs=None, priority="normal"):
         "--disable-ccache",
         "--show-memory",
         "--disable-dll-dependency-cache",
-        # Add debugging options
-        "--debug",
-        "--show-modules",
     ]
 
     # MINIMAL exclusions - only exclude test modules
