@@ -352,7 +352,10 @@ SYNTAX_COLORS = {
 
 # Runtime check for LaTeX availability
 def check_latex_installation() -> Optional[str]:
-    """Return the path to a working LaTeX executable, or ``None`` if not found."""
+    """Return the path to a working LaTeX executable, or ``None`` if not found.
+
+    The detected LaTeX directory is prepended to ``PATH`` so bundled
+    environments can access the system installation."""
 
     latex_path = shutil.which("latex") or shutil.which("pdflatex")
     if not latex_path:
@@ -377,11 +380,21 @@ def check_latex_installation() -> Optional[str]:
         return None
 
     try:
-        subprocess.run([latex_path, "--version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(
+            [latex_path, "--version"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
     except Exception as exc:
         logging.warning("LaTeX check failed: %s", exc)
         print(f"LaTeX found at {latex_path} but running it failed: {exc}")
         return None
+
+    latex_dir = os.path.dirname(latex_path)
+    current_path = os.environ.get("PATH", "")
+    if latex_dir not in current_path.split(os.pathsep):
+        os.environ["PATH"] = latex_dir + os.pathsep + current_path
 
     logging.info("LaTeX found: %s", latex_path)
     print(f"LaTeX found: {latex_path}")
@@ -1855,21 +1868,22 @@ All packages will be installed in an isolated environment that won't affect your
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
             # Execute pip install with CPU control and stream output
+            env["PYTHONUNBUFFERED"] = "1"  # ensure real-time pip output
             process = popen_original(
                 [self.venv_manager.pip_path, "install", package],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                bufsize=1,
                 env=env,
                 startupinfo=startupinfo,
                 creationflags=creationflags,
             )
 
             # Stream pip output line by line to the logger
-            for line in iter(process.stdout.readline, ""):
+            for line in process.stdout:
                 if line:
                     log_callback(line.rstrip())
-            process.stdout.close()
             exit_code = process.wait()
 
             if exit_code == 0:
@@ -10505,4 +10519,4 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
             )
 
 if __name__ == "__main__":
-    main()    
+    main()
