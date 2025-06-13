@@ -712,7 +712,8 @@ def build_onefile_executable(jobs=None, priority="normal"):
         "--disable-dll-dependency-cache",
         "--windows-force-stdout-spec=nul",
         "--windows-force-stderr-spec=nul",
-        "--windows-onefile-tempdir-spec=CACHE",
+        # '--windows-onefile-tempdir-spec' is not recognized on older Nuitka
+        # versions, so only use the generic option that works cross-platform
         "--onefile-tempdir-spec={TEMP}\\nuitka-onefile-{PID}",
     ]
 
