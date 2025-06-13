@@ -3237,10 +3237,14 @@ class VirtualEnvironmentManager:
         self.parent_app = parent_app
         self.current_venv = None
         
-        # Use application directory so environments live alongside the executable
-        base_dir = BASE_DIR
-        self.venv_dir = os.path.join(base_dir, "venvs")
-        os.makedirs(self.venv_dir, exist_ok=True)
+        # Use persistent directory under user's home for virtual environments
+        persistent_venv_dir = os.path.join(
+            os.path.expanduser("~"),
+            ".manim_studio",
+            "venvs"
+        )
+        os.makedirs(persistent_venv_dir, exist_ok=True)
+        self.venv_dir = persistent_venv_dir
         
         # CRITICAL: Enhanced frozen detection
         self.is_frozen = self._detect_if_frozen()
@@ -3328,37 +3332,39 @@ class VirtualEnvironmentManager:
         # Configure for Windows console hiding
         startupinfo = None
         creationflags = 0
-        
+
         if sys.platform == "win32":
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
-            
-            # Critical flags for Nuitka onefile
-            creationflags = (
-                subprocess.CREATE_NO_WINDOW |
-                subprocess.DETACHED_PROCESS |
-                subprocess.CREATE_NEW_PROCESS_GROUP
-            )
-            
+
+            # Use minimal flags to avoid access violations
+            creationflags = subprocess.CREATE_NO_WINDOW
+
             kwargs['startupinfo'] = startupinfo
             kwargs['creationflags'] = creationflags
-        
-        # Set working directory to user temp, not executable temp
+
+        # Ensure we use the system temp directory
+        system_temp = os.environ.get('TEMP', tempfile.gettempdir())
         if 'cwd' not in kwargs:
-            kwargs['cwd'] = self.temp_dir
-        
-        # Ensure proper timeout
-        if 'timeout' not in kwargs:
-            kwargs['timeout'] = 300  # 5 minutes default
-        
+            kwargs['cwd'] = system_temp
+
+        # Merge environment variables
+        env = kwargs.get('env', os.environ.copy())
+        env.update({
+            'PYTHONDONTWRITEBYTECODE': '1',
+            'PYTHONUNBUFFERED': '1',
+            'TEMP': system_temp,
+            'TMP': system_temp
+        })
+        kwargs['env'] = env
+
         try:
             return subprocess.run(command, **kwargs)
         except subprocess.TimeoutExpired:
             self.logger.error(f"Command timed out: {command}")
             raise
         except FileNotFoundError:
-            # Log missing commands only at debug level to avoid confusing errors
             self.logger.debug(f"Command not found: {command}")
             raise
         except Exception as e:
@@ -4045,6 +4051,25 @@ print('ALL_OK')
     def detect_existing_environment(self):
         """Detect existing suitable environment or use bundled one"""
         self.logger.info("Detecting existing environments...")
+
+        # First check persistent location in user's home directory
+        persistent_venv_dir = os.path.join(
+            os.path.expanduser("~"),
+            ".manim_studio",
+            "venvs"
+        )
+        if os.path.exists(persistent_venv_dir):
+            for env_name in os.listdir(persistent_venv_dir):
+                env_path = os.path.join(persistent_venv_dir, env_name)
+                if os.name == 'nt':
+                    python_path = os.path.join(env_path, "Scripts", "python.exe")
+                else:
+                    python_path = os.path.join(env_path, "bin", "python")
+
+                if os.path.exists(python_path):
+                    self.current_venv = env_path
+                    self.python_path = python_path
+                    return True
         
         # CRITICAL: Never consider our own executable as a Python environment
         if self.is_frozen:
@@ -4492,11 +4517,40 @@ else:
     def create_default_environment(self, log_callback=None):
         """Create the default ManimStudio environment using unified method"""
         return self.create_environment_unified(
-            name="manim_studio_default", 
+            name="manim_studio_default",
             location=self.venv_dir,
             packages=ESSENTIAL_PACKAGES[:8],  # Core packages only
             log_callback=log_callback
         )
+
+    def create_virtual_environment(self, name, log_callback=None):
+        """Create a virtual environment in the persistent location"""
+        persistent_venv_dir = os.path.join(
+            os.path.expanduser("~"),
+            ".manim_studio",
+            "venvs"
+        )
+        os.makedirs(persistent_venv_dir, exist_ok=True)
+        env_path = os.path.join(persistent_venv_dir, name)
+
+        python_exe = self.find_system_python()
+        if not python_exe:
+            raise Exception("No system Python found")
+
+        create_cmd = [python_exe, "-m", "venv", env_path]
+        result = subprocess.run(
+            create_cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=os.path.expanduser("~"),
+            env=os.environ.copy()
+        )
+
+        if result.returncode != 0:
+            raise Exception(f"Failed to create venv: {result.stderr}")
+
+        return env_path
 
     def create_environment_unified(self, name, location, packages=None, log_callback=None):
         """Unified environment creation with correct venv command and path handling"""
