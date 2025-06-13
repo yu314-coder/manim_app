@@ -710,6 +710,10 @@ def build_onefile_executable(jobs=None, priority="normal"):
         "--disable-ccache",
         "--show-memory",
         "--disable-dll-dependency-cache",
+        "--windows-force-stdout-spec=nul",
+        "--windows-force-stderr-spec=nul",
+        "--windows-onefile-tempdir-spec=CACHE",
+        "--onefile-tempdir-spec={TEMP}\\nuitka-onefile-{PID}",
     ]
 
     # MINIMAL exclusions - only exclude test modules
@@ -728,6 +732,14 @@ def build_onefile_executable(jobs=None, priority="normal"):
 
     for module in minimal_exclusions:
         cmd.append(f"--nofollow-import-to={module}")
+
+    # Ensure subprocess related modules are included for onefile safety
+    cmd.extend([
+        "--include-module=subprocess",
+        "--include-module=threading",
+        "--include-module=tempfile",
+        "--include-module=os",
+    ])
 
     # Include ALL packages
     comprehensive_packages = [
