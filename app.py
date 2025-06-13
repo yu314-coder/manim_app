@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, colorchooser
 import tempfile
 import os
+import ctypes
 import logging
 import json
 import subprocess
@@ -59,8 +60,28 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Global media directory alongside the application
-MEDIA_DIR = os.path.join(BASE_DIR, "media")
+# Helper to convert Windows short paths to long form
+def get_long_path(path: str) -> str:
+    """Return the long form of a Windows path if possible."""
+    if os.name == "nt":
+        GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW
+        GetLongPathNameW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+        buffer = ctypes.create_unicode_buffer(260)
+        result = GetLongPathNameW(path, buffer, len(buffer))
+        if result:
+            return buffer.value
+    return path
+
+# Global media directory
+#
+# Some TeX distributions on Windows fail when paths contain spaces or
+# non-ASCII characters.  When the application is located in such a
+# directory the generated TeX files may end up with short (8.3) paths
+# which causes ``pdflatex`` to stop with an "Emergency stop" error.
+# To avoid this we place the media directory inside the system's
+# temporary directory where ASCII paths are guaranteed. We convert the
+# resulting path to its long form on Windows to avoid 8.3 short paths.
+MEDIA_DIR = get_long_path(os.path.join(tempfile.gettempdir(), "manim_media"))
 os.makedirs(MEDIA_DIR, exist_ok=True)
 # Try to import Jedi for IntelliSense
 try:
@@ -9194,6 +9215,7 @@ class MyScene(Scene):
             import uuid
             temp_suffix = str(uuid.uuid4())[:8]
             temp_dir = tempfile.mkdtemp(prefix=f"manim_preview_{temp_suffix}_")
+            temp_dir = get_long_path(temp_dir)
             
             # Extract scene class name
             scene_class = self.extract_scene_class_name(self.current_code)
@@ -9413,6 +9435,7 @@ class MyScene(Scene):
         try:
             # Create temporary directory
             temp_dir = tempfile.mkdtemp(prefix="manim_render_")
+            temp_dir = get_long_path(temp_dir)
             
             # Extract scene class name
             scene_class = self.extract_scene_class_name(self.current_code)
@@ -9510,8 +9533,8 @@ class MyScene(Scene):
         """Find rendered output file"""
         # Common output directories
         search_dirs = [
-            os.path.join(BASE_DIR, "media", "videos", "scene"),
-            os.path.join(BASE_DIR, "media", "videos", scene_class)
+            os.path.join(MEDIA_DIR, "videos", "scene"),
+            os.path.join(MEDIA_DIR, "videos", scene_class)
         ]
         
         # Add quality-specific directories
