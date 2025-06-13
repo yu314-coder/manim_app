@@ -156,6 +156,8 @@ ESSENTIAL_PACKAGES = [
     "opencv-python>=4.6.0",
     "imageio>=2.19.0",
     "moviepy>=1.0.3",
+    "imageio-ffmpeg",
+    "av",
     
     # Development tools
     "jedi>=0.18.0",  # IntelliSense
@@ -889,81 +891,84 @@ Keyboard Shortcuts:
         self.show_prompt()
         
     def run_command_redirected(self, command, on_complete=None, env=None):
-        """Run command with output redirection and completion callback"""
+        """Run command with improved file handling"""
         if isinstance(command, list):
             cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in command)
         else:
             cmd_str = command
-            
+
         # Show command being executed
         self.insert("end", f"\n$ {cmd_str}\n", "command")
-        
-        try:
-            env_vars = self.env.copy()
-            if env:
-                env_vars.update(env)
 
-            process = popen_original(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                universal_newlines=True,
-                env=env_vars,
-                cwd=self.cwd
-            )
-            
-            self.process = process
-            self.command_running = True
-            
-            def read_output():
+        def execute_with_retry():
+            max_retries = 3
+            for attempt in range(max_retries):
                 try:
+                    if isinstance(command, list) and len(command) > 2:
+                        potential_file = command[2]
+                        if potential_file.endswith('.py') and not os.path.exists(potential_file):
+                            if attempt < max_retries - 1:
+                                self.insert("end", f"⚠️ File not found, retrying in 0.2s... (attempt {attempt + 1})\n", "warning")
+                                time.sleep(0.2)
+                                continue
+                            else:
+                                raise FileNotFoundError(f"Scene file not found after {max_retries} attempts: {potential_file}")
+
+                    env_vars = self.env.copy()
+                    if env:
+                        env_vars.update(env)
+
+                    process = popen_original(
+                        command,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        universal_newlines=True,
+                        env=env_vars,
+                        cwd=self.cwd,
+                        bufsize=1
+                    )
+
+                    self.process = process
+                    self.command_running = True
+
                     for line in process.stdout:
                         if line:
-                            # Enhanced output coloring
                             line_lower = line.lower()
-                            if any(word in line_lower for word in ["error", "failed", "exception"]):
+                            if any(word in line_lower for word in ["error", "failed", "exception", "traceback"]):
                                 tag = "error"
                             elif any(word in line_lower for word in ["warning", "warn"]):
                                 tag = "warning"
-                            elif any(word in line_lower for word in ["success", "completed", "installed", "created"]):
+                            elif any(word in line_lower for word in ["success", "complete", "done"]):
                                 tag = "success"
-                            elif line.startswith("[") or "INFO" in line:
-                                tag = "info"
                             else:
                                 tag = "output"
-                                
                             self.insert("end", line, tag)
                             self.see("end")
-                            
+
                     return_code = process.wait()
-                    
-                    # Show completion status
-                    if return_code == 0:
-                        self.insert("end", f"[✓ Command completed successfully]\n", "success")
-                    else:
-                        self.insert("end", f"[✗ Command failed with exit code {return_code}]\n", "error")
-                    
                     if on_complete:
                         on_complete(return_code == 0, return_code)
-                        
+                    return return_code == 0
+
+                except FileNotFoundError as e:
+                    if attempt == max_retries - 1:
+                        self.insert("end", f"\n❌ File not found: {str(e)}\n", "error")
+                        if on_complete:
+                            on_complete(False, -1)
+                        return False
                 except Exception as e:
-                    self.insert("end", f"Error reading output: {str(e)}\n", "error")
-                    if on_complete:
-                        on_complete(False, -1)
+                    if attempt == max_retries - 1:
+                        self.insert("end", f"\n❌ Command failed: {str(e)}\n", "error")
+                        if on_complete:
+                            on_complete(False, -1)
+                        return False
                 finally:
                     self.process = None
                     self.command_running = False
                     self.show_prompt()
-                    
-            threading.Thread(target=read_output, daemon=True).start()
-            
-        except Exception as e:
-            self.insert("end", f"Error executing command: {str(e)}\n", "error")
-            self.command_running = False
-            self.show_prompt()
-            if on_complete:
-                on_complete(False, -1)
+
+        threading.Thread(target=execute_with_retry, daemon=True).start()
 
 @dataclass
 class PackageCategory:
@@ -4519,7 +4524,7 @@ else:
         return self.create_environment_unified(
             name="manim_studio_default",
             location=self.venv_dir,
-            packages=ESSENTIAL_PACKAGES[:8],  # Core packages only
+            packages=ESSENTIAL_PACKAGES[:10],  # Core packages only
             log_callback=log_callback
         )
 
@@ -9270,14 +9275,33 @@ class MyScene(Scene):
             temp_suffix = str(uuid.uuid4())[:8]
             temp_dir = tempfile.mkdtemp(prefix=f"manim_preview_{temp_suffix}_")
             temp_dir = get_long_path(temp_dir)
-            
+
             # Extract scene class name
             scene_class = self.extract_scene_class_name(self.current_code)
-            
-            # Write code to file
+
+            # Write code to file with verification
             scene_file = os.path.join(temp_dir, "scene.py")
-            with open(scene_file, "w", encoding="utf-8") as f:
-                f.write(self.current_code)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    with open(scene_file, "w", encoding="utf-8") as f:
+                        f.write(self.current_code)
+                        f.flush()
+                        os.fsync(f.fileno())
+
+                    if os.path.exists(scene_file):
+                        with open(scene_file, "r", encoding="utf-8") as f_verify:
+                            content = f_verify.read()
+                            if content:
+                                break
+
+                    raise Exception("File verification failed")
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise Exception(f"Failed to create scene file after {max_retries} attempts: {e}")
+                    else:
+                        self.append_terminal_output(f"⚠️ Retry {attempt + 1}: {e}\n")
+                        time.sleep(0.1)
                 
             # Get preview settings - use custom resolution if selected
             if self.quality_var.get() == "Custom":
@@ -9332,6 +9356,10 @@ class MyScene(Scene):
                 "MKL_NUM_THREADS": str(num_cores),
                 "NUMEXPR_NUM_THREADS": str(num_cores)
             }
+
+            # Store paths so cleanup happens after completion
+            self.current_temp_dir = temp_dir
+            self.current_scene_file = scene_file
             
             # Enhanced logging
             self.append_terminal_output(f"Starting preview generation...\n")
@@ -9411,21 +9439,21 @@ class MyScene(Scene):
                     self.update_status("Preview completion error")
                     
                 finally:
-                    # Always cleanup temp directory
-                    try:
-                        if os.path.exists(temp_dir):
-                            shutil.rmtree(temp_dir)
-                            self.append_terminal_output(f"Cleaned up temporary directory\n")
-                    except Exception as e:
-                        self.append_terminal_output(f"Warning: Could not clean up temp directory: {e}\n")
+                    self.cleanup_temp_directory()
             
-            # Run command using system terminal with enhanced output
-            if hasattr(self, 'terminal') and self.terminal:
-                self.terminal.run_command_redirected(command, on_preview_complete, env)
-            else:
-                # Fallback to direct execution
-                def run_preview():
-                    try:
+            def verified_command_runner():
+                try:
+                    if not os.path.exists(self.current_scene_file):
+                        raise Exception(f"Scene file disappeared before execution: {self.current_scene_file}")
+                    with open(self.current_scene_file, "r", encoding="utf-8") as f_verify:
+                        if len(f_verify.read()) == 0:
+                            raise Exception("Scene file is empty!")
+
+                    self.append_terminal_output("✅ Final verification passed, executing command...\n")
+
+                    if hasattr(self, 'terminal') and self.terminal:
+                        self.terminal.run_command_redirected(command, on_preview_complete, env)
+                    else:
                         result = self.run_hidden_subprocess_nuitka_safe(
                             command,
                             capture_output=True,
@@ -9433,27 +9461,39 @@ class MyScene(Scene):
                             env={**os.environ, **env},
                             cwd=temp_dir
                         )
-                        
-                        # Output the result
                         if result.stdout:
                             self.root.after(0, lambda: self.append_terminal_output(result.stdout))
                         if result.stderr:
                             self.root.after(0, lambda: self.append_terminal_output(result.stderr))
-                        
-                        # Call completion handler
                         self.root.after(0, lambda: on_preview_complete(result.returncode == 0, result.returncode))
-                        
-                    except Exception as e:
-                        self.root.after(0, lambda: self.append_terminal_output(f"Error running preview: {e}\n"))
-                        self.root.after(0, lambda: on_preview_complete(False, -1))
-                        
-                threading.Thread(target=run_preview, daemon=True).start()
+
+                except Exception as e:
+                    self.root.after(0, lambda: self.append_terminal_output(f"❌ Command execution failed: {e}\n"))
+                    self.root.after(0, lambda: on_preview_complete(False, -1))
+
+            threading.Thread(target=verified_command_runner, daemon=True).start()
                 
         except Exception as e:
             self.update_status(f"Preview error: {e}")
             self.append_terminal_output(f"Preview error: {e}\n")
             self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
             self.is_previewing = False
+
+    def cleanup_temp_directory(self):
+        """Clean up temporary directory used for preview"""
+        if getattr(self, 'current_temp_dir', None):
+            try:
+                if os.path.exists(self.current_temp_dir):
+                    time.sleep(0.5)
+                    import gc
+                    gc.collect()
+                    shutil.rmtree(self.current_temp_dir)
+                    self.append_terminal_output(f"Cleaned up: {self.current_temp_dir}\n")
+            except Exception as e:
+                self.append_terminal_output(f"Warning: Cleanup failed: {e}\n")
+            finally:
+                self.current_temp_dir = None
+                self.current_scene_file = None
 
     def render_animation(self):
         """Render high-quality animation using system terminal"""
