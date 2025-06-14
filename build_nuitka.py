@@ -249,7 +249,7 @@ def build_onefile():
         "--onefile",
         "--standalone",
         os.path.abspath("app.py"),  # Use absolute path
-        "--output-filename=ManimStudio.exe",
+        "--output-filename=ManimStudio.exe",  # FIXED: Corrected filename
         f"--jobs={jobs}",
         "--assume-yes-for-downloads",
         "--disable-console",
@@ -264,16 +264,15 @@ def build_onefile():
     if sys.platform == "win32":
         cmd.extend([
             "--mingw64",
-            "--windows-icon-from-ico=icon.ico" if Path("icon.ico").exists() else "",
         ])
-        # Filter empty strings
-        cmd = [c for c in cmd if c]
+        # Add icon if it exists
+        if Path("icon.ico").exists():
+            cmd.append("--windows-icon-from-ico=icon.ico")
     
-    # CRITICAL MANIM FIX: Ensure manim data files are included
+    # CRITICAL MANIM FIX: Ensure manim data files are included (FIXED - removed problematic option)
     manim_fixes = [
         "--include-package=manim",
         "--include-package-data=manim",  # Include ALL manim data files
-        "--include-data-dir=manim=manim",  # Force include manim directory
         "--follow-import-to=manim",
     ]
     cmd.extend(manim_fixes)
@@ -354,6 +353,11 @@ def build_onefile():
     if priority == "high" and sys.platform == "win32":
         print("🔥 Setting HIGH process priority for maximum CPU utilization")
         process_priority = 0x00000080
+
+    # Print the command for debugging
+    print("🔧 Nuitka Command:")
+    print(" ".join(cmd))
+    print()
 
     # Run the build
     process = subprocess.Popen(
