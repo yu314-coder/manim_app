@@ -150,6 +150,9 @@ ESSENTIAL_PACKAGES = [
     "numpy>=1.22.0",
     "matplotlib>=3.5.0",
     "scipy>=1.8.0",
+    "mapbox_earcut==1.0.1",  # FIXED: Specific working version
+    "pycairo>=1.20.0",       # Required for cairo renderer
+    "manimpango>=0.4.0",     # Required for text rendering
     
     # Image/Video processing
     "Pillow>=9.0.0",
@@ -764,6 +767,82 @@ class PackageInstallationProgressDialog(ctk.CTkToplevel):
             self.after(100, self.destroy)
         else:
             self.destroy()
+    def install_packages_worker(self):
+        """Worker thread for installing packages"""
+        try:
+            self.log_message("Starting package installation...")
+            
+            # Check if we have a valid Python environment
+            if not self.venv_manager.python_path:
+                self.log_message("ERROR: No valid Python environment found!")
+                self.installation_failed("No Python environment available")
+                return
+            
+            # Install each package
+            for i, package in enumerate(self.packages):
+                if self.installation_cancelled:
+                    self.log_message("Installation cancelled by user")
+                    return
+                
+                self.current_package_index = i
+                overall_progress = i / self.total_packages
+                
+                # Update UI
+                self.update_overall_progress(
+                    overall_progress,
+                    f"Installing package {i+1} of {self.total_packages}"
+                )
+                
+                self.update_package_progress(0, f"Installing {package}...")
+                self.log_message(f"Installing {package}...")
+                
+                # Install the package
+                success = self.install_single_package(package)
+                
+                if not success and not self.installation_cancelled:
+                    self.log_message(f"ERROR: Failed to install {package}")
+                    self.installation_failed(f"Failed to install {package}")
+                    return
+                
+                # Update progress
+                self.update_package_progress(1.0, f"✓ {package} installed")
+                self.log_message(f"✓ Successfully installed {package}")
+            
+            # CRITICAL FIX: Handle mapbox_earcut DLL issues
+            self.log_message("Checking for DLL issues...")
+            self.update_overall_progress(0.9, "Fixing DLL dependencies...")
+            
+            # Test manim import
+            test_cmd = [
+                self.venv_manager.python_path, "-c", 
+                "import manim; print('Manim import successful')"
+            ]
+            
+            test_result = subprocess.run(
+                test_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=tempfile.gettempdir()
+            )
+            
+            if test_result.returncode != 0 and "mapbox_earcut" in test_result.stderr:
+                self.log_message("Detected mapbox_earcut DLL issue, applying fix...")
+                fix_success = self.venv_manager.fix_mapbox_earcut_issue()
+                if fix_success:
+                    self.log_message("✓ Fixed mapbox_earcut DLL issues")
+                else:
+                    self.log_message("⚠️ Could not fix mapbox_earcut, but continuing...")
+            
+            # Installation completed
+            if not self.installation_cancelled:
+                self.update_overall_progress(1.0, "Installation completed successfully!")
+                self.log_message("🎉 All packages installed successfully!")
+                self.installation_completed()
+                
+        except Exception as e:
+            self.log_message(f"ERROR: Installation failed with exception: {e}")
+            self.installation_failed(str(e))
 # Terminal emulation in Tkinter
 class TkTerminal(tk.Text):
     """A Tkinter-based terminal emulator widget with realistic appearance"""
@@ -4724,6 +4803,66 @@ class VirtualEnvironmentManager:
             
         except Exception as e:
             self.logger.error(f"Error restoring environment {env_name}: {e}")
+            return False
+    def fix_mapbox_earcut_issue(self):
+        """Fix mapbox_earcut DLL loading issues"""
+        self.logger.info("Fixing mapbox_earcut DLL issues...")
+        
+        try:
+            # First, uninstall the problematic package
+            uninstall_cmd = self.get_pip_command()
+            uninstall_cmd.extend(["uninstall", "mapbox_earcut", "-y"])
+            
+            result = subprocess.run(
+                uninstall_cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=tempfile.gettempdir()
+            )
+            
+            self.logger.info("Uninstalled mapbox_earcut")
+            
+            # Install specific working version with no-cache to force recompilation
+            install_cmd = self.get_pip_command()
+            install_cmd.extend([
+                "install", 
+                "mapbox_earcut==1.0.1",  # Known working version
+                "--no-cache-dir",
+                "--force-reinstall",
+                "--no-deps"  # Install without dependencies first
+            ])
+            
+            result = subprocess.run(
+                install_cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=tempfile.gettempdir()
+            )
+            
+            if result.returncode == 0:
+                self.logger.info("Successfully reinstalled mapbox_earcut")
+                
+                # Now install dependencies
+                deps_cmd = self.get_pip_command()
+                deps_cmd.extend(["install", "numpy"])
+                
+                subprocess.run(
+                    deps_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    cwd=tempfile.gettempdir()
+                )
+                
+                return True
+            else:
+                self.logger.error(f"Failed to reinstall mapbox_earcut: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error fixing mapbox_earcut: {e}")
             return False
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
@@ -9593,7 +9732,41 @@ Licensed under MIT License"""
         except Exception as e:
             logger.error(f"Application error: {e}")
             messagebox.showerror("Error", f"Application error: {e}")
-
+    def fix_manim_dependencies(self):
+        """Fix common Manim dependency issues"""
+        try:
+            import tkinter.messagebox as messagebox
+            # Show progress dialog
+            progress_dialog = messagebox.askquestion(
+                "Fix Dependencies", 
+                "This will reinstall problematic Manim dependencies.\n"
+                "This may take a few minutes. Continue?"
+            )
+            
+            if progress_dialog == 'yes':
+                # Fix mapbox_earcut
+                success = self.venv_manager.fix_mapbox_earcut_issue()
+                
+                if success:
+                    messagebox.showinfo(
+                        "Fix Complete",
+                        "Dependencies have been fixed!\n"
+                        "Try running your animation again."
+                    )
+                else:
+                    messagebox.showerror(
+                        "Fix Failed",
+                        "Could not fix all dependencies.\n"
+                        "You may need to reinstall the environment."
+                    )
+                    
+        except Exception as e:
+            self.logger.error(f"Error fixing dependencies: {e}")
+            import tkinter.messagebox as messagebox
+            messagebox.showerror(
+                "Error",
+                f"An error occurred while fixing dependencies: {e}"
+            )
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
     
@@ -9614,48 +9787,279 @@ class GettingStartedDialog(ctk.CTkToplevel):
         self.setup_ui()
         
     def setup_ui(self):
-        """Setup the getting started UI"""
-        # Create notebook for steps
-        self.notebook = ctk.CTkTabview(self)
-        self.notebook.pack(fill="both", expand=True, padx=20, pady=20)
+        """Setup the main UI"""
+        # Create main frame
+        main_frame = ctk.CTkFrame(self.root)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        # Step 1: Setup
-        self.step1 = self.notebook.add("1. Setup")
-        self.create_setup_tab()
+        # Title
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text="Manim Studio",
+            font=ctk.CTkFont(size=24, weight="bold")
+        )
+        title_label.pack(pady=20)
         
-        # Step 2: First Animation
-        self.step2 = self.notebook.add("2. First Animation")
-        self.create_first_animation_tab()
+        # Environment status frame
+        status_frame = ctk.CTkFrame(main_frame)
+        status_frame.pack(fill="x", padx=10, pady=5)
         
-        # Step 3: Advanced Features
-        self.step3 = self.notebook.add("3. Advanced Features")
-        self.create_advanced_tab()
+        # Environment status
+        self.env_status_label = ctk.CTkLabel(
+            status_frame,
+            text="Checking environment...",
+            font=ctk.CTkFont(size=12)
+        )
+        self.env_status_label.pack(pady=10)
         
-        # Navigation buttons
-        nav_frame = ctk.CTkFrame(self)
-        nav_frame.pack(fill="x", padx=20, pady=(0, 20))
+        # Button frame
+        button_frame = ctk.CTkFrame(main_frame)
+        button_frame.pack(fill="x", padx=10, pady=10)
         
-        ctk.CTkButton(
-            nav_frame,
-            text="Previous",
-            command=self.previous_step,
+        # Setup button
+        self.setup_button = ctk.CTkButton(
+            button_frame,
+            text="Setup Environment",
+            command=self.setup_environment,
+            state="disabled",
+            width=200
+        )
+        self.setup_button.pack(side="left", padx=5, pady=10)
+        
+        # Fix dependencies button
+        self.fix_button = ctk.CTkButton(
+            button_frame,
+            text="Fix Manim Dependencies",
+            command=self.fix_manim_dependencies,
+            fg_color="orange",
+            hover_color="darkorange",
+            width=200
+        )
+        self.fix_button.pack(side="left", padx=5, pady=10)
+        
+        # Environment management button
+        self.manage_button = ctk.CTkButton(
+            button_frame,
+            text="Manage Environments",
+            command=self.manage_environments,
+            fg_color="purple",
+            hover_color="darkviolet",
+            width=200
+        )
+        self.manage_button.pack(side="left", padx=5, pady=10)
+        
+        # Main content area
+        content_frame = ctk.CTkFrame(main_frame)
+        content_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Create tabview for different sections
+        self.tabview = ctk.CTkTabview(content_frame)
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Code Editor Tab
+        self.editor_tab = self.tabview.add("Code Editor")
+        self.setup_editor_tab()
+        
+        # Preview Tab
+        self.preview_tab = self.tabview.add("Preview")
+        self.setup_preview_tab()
+        
+        # Settings Tab
+        self.settings_tab = self.tabview.add("Settings")
+        self.setup_settings_tab()
+        
+        # Log Tab
+        self.log_tab = self.tabview.add("Logs")
+        self.setup_log_tab()
+        
+        # Status bar
+        self.status_bar = ctk.CTkLabel(
+            main_frame,
+            text="Ready",
+            font=ctk.CTkFont(size=10),
+            fg_color="gray20",
+            corner_radius=5
+        )
+        self.status_bar.pack(fill="x", padx=10, pady=(0, 10))
+
+    def setup_editor_tab(self):
+        """Setup the code editor tab"""
+        # Code editor frame
+        editor_frame = ctk.CTkFrame(self.editor_tab)
+        editor_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Editor toolbar
+        toolbar_frame = ctk.CTkFrame(editor_frame)
+        toolbar_frame.pack(fill="x", padx=5, pady=5)
+        
+        # Toolbar buttons
+        new_button = ctk.CTkButton(
+            toolbar_frame,
+            text="New",
+            command=self.new_file,
+            width=80
+        )
+        new_button.pack(side="left", padx=5)
+        
+        open_button = ctk.CTkButton(
+            toolbar_frame,
+            text="Open",
+            command=self.open_file,
+            width=80
+        )
+        open_button.pack(side="left", padx=5)
+        
+        save_button = ctk.CTkButton(
+            toolbar_frame,
+            text="Save",
+            command=self.save_file,
+            width=80
+        )
+        save_button.pack(side="left", padx=5)
+        
+        run_button = ctk.CTkButton(
+            toolbar_frame,
+            text="Run Animation",
+            command=self.run_animation,
+            fg_color="green",
+            hover_color="darkgreen",
+            width=120
+        )
+        run_button.pack(side="right", padx=5)
+        
+        # Text editor
+        self.text_editor = ctk.CTkTextbox(
+            editor_frame,
+            font=ctk.CTkFont(family="Consolas", size=12)
+        )
+        self.text_editor.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Insert default Manim code
+        default_code = '''from manim import *
+
+class MyScene(Scene):
+    def construct(self):
+        # Create a circle
+        circle = Circle()
+        circle.set_fill(BLUE, opacity=0.5)
+        circle.set_stroke(BLUE_C, width=4)
+        
+        # Create text
+        text = Text("Hello, Manim!")
+        text.next_to(circle, DOWN)
+        
+        # Animate
+        self.play(Create(circle))
+        self.play(Write(text))
+        self.wait(2)
+'''
+        self.text_editor.insert("0.0", default_code)
+
+    def setup_preview_tab(self):
+        """Setup the preview tab"""
+        # Preview frame
+        preview_frame = ctk.CTkFrame(self.preview_tab)
+        preview_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Preview controls
+        controls_frame = ctk.CTkFrame(preview_frame)
+        controls_frame.pack(fill="x", padx=5, pady=5)
+        
+        # Quality selection
+        quality_label = ctk.CTkLabel(controls_frame, text="Quality:")
+        quality_label.pack(side="left", padx=5)
+        
+        self.quality_var = ctk.StringVar(value="480p")
+        quality_menu = ctk.CTkOptionMenu(
+            controls_frame,
+            variable=self.quality_var,
+            values=["480p", "720p", "1080p", "1440p", "2160p"]
+        )
+        quality_menu.pack(side="left", padx=5)
+        
+        # Generate preview button
+        preview_button = ctk.CTkButton(
+            controls_frame,
+            text="Generate Preview",
+            command=self.generate_preview,
+            fg_color="blue",
+            hover_color="darkblue"
+        )
+        preview_button.pack(side="right", padx=5)
+        
+        # Preview display area
+        self.preview_display = ctk.CTkLabel(
+            preview_frame,
+            text="Preview will appear here",
+            font=ctk.CTkFont(size=16)
+        )
+        self.preview_display.pack(fill="both", expand=True, padx=5, pady=5)
+
+    def setup_settings_tab(self):
+        """Setup the settings tab"""
+        # Settings frame
+        settings_frame = ctk.CTkFrame(self.settings_tab)
+        settings_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Environment settings
+        env_frame = ctk.CTkFrame(settings_frame)
+        env_frame.pack(fill="x", padx=10, pady=10)
+        
+        env_title = ctk.CTkLabel(
+            env_frame,
+            text="Environment Settings",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        env_title.pack(pady=10)
+        
+        # Current environment display
+        self.current_env_label = ctk.CTkLabel(
+            env_frame,
+            text=f"Current: {self.venv_manager.current_venv or 'None'}",
+            font=ctk.CTkFont(size=12)
+        )
+        self.current_env_label.pack(pady=5)
+        
+        # Python path display
+        self.python_path_label = ctk.CTkLabel(
+            env_frame,
+            text=f"Python: {self.venv_manager.python_path or 'None'}",
+            font=ctk.CTkFont(size=10)
+        )
+        self.python_path_label.pack(pady=5)
+
+    def setup_log_tab(self):
+        """Setup the log tab"""
+        # Log frame
+        log_frame = ctk.CTkFrame(self.log_tab)
+        log_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Log controls
+        log_controls = ctk.CTkFrame(log_frame)
+        log_controls.pack(fill="x", padx=5, pady=5)
+        
+        clear_button = ctk.CTkButton(
+            log_controls,
+            text="Clear Logs",
+            command=self.clear_logs,
             width=100
-        ).pack(side="left", padx=10)
+        )
+        clear_button.pack(side="left", padx=5)
         
-        ctk.CTkButton(
-            nav_frame,
-            text="Next",
-            command=self.next_step,
+        refresh_button = ctk.CTkButton(
+            log_controls,
+            text="Refresh",
+            command=self.refresh_logs,
             width=100
-        ).pack(side="right", padx=10)
+        )
+        refresh_button.pack(side="left", padx=5)
         
-        ctk.CTkButton(
-            nav_frame,
-            text="Close",
-            command=self.destroy,
-            width=100
-        ).pack(side="right")
-        
+        # Log display
+        self.log_display = ctk.CTkTextbox(
+            log_frame,
+            font=ctk.CTkFont(family="Consolas", size=10)
+        )
+        self.log_display.pack(fill="both", expand=True, padx=5, pady=5)
     def create_setup_tab(self):
         """Create setup tab content"""
         content = ctk.CTkScrollableFrame(self.step1)
