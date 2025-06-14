@@ -445,7 +445,325 @@ class PackageInfo:
     def __post_init__(self):
         if self.dependencies is None:
             self.dependencies = []
-
+class PackageInstallationProgressDialog(ctk.CTkToplevel):
+    """Advanced progress dialog for Python package installation with real-time feedback"""
+    
+    def __init__(self, parent, packages, venv_manager):
+        super().__init__(parent)
+        
+        self.packages = packages
+        self.venv_manager = venv_manager
+        self.current_package_index = 0
+        self.total_packages = len(packages)
+        self.installation_cancelled = False
+        self.installation_thread = None
+        
+        # Configure window
+        self.title("Installing Python Libraries")
+        self.geometry("500x350")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center on parent
+        self.center_on_parent(parent)
+        
+        # Setup UI
+        self.setup_ui()
+        
+        # Start installation
+        self.start_installation()
+    
+    def center_on_parent(self, parent):
+        """Center this dialog on the parent window"""
+        self.update_idletasks()
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_width = parent.winfo_width()
+        parent_height = parent.winfo_height()
+        
+        x = parent_x + (parent_width // 2) - (500 // 2)
+        y = parent_y + (parent_height // 2) - (350 // 2)
+        
+        self.geometry(f"500x350+{x}+{y}")
+    
+    def setup_ui(self):
+        """Setup the progress dialog UI"""
+        # Main frame
+        main_frame = ctk.CTkFrame(self)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            main_frame, 
+            text="Installing Python Libraries",
+            font=ctk.CTkFont(size=18, weight="bold")
+        )
+        title_label.pack(pady=(0, 15))
+        
+        # Overall progress section
+        overall_frame = ctk.CTkFrame(main_frame)
+        overall_frame.pack(fill="x", pady=(0, 15))
+        
+        self.overall_label = ctk.CTkLabel(
+            overall_frame,
+            text="Preparing installation...",
+            font=ctk.CTkFont(size=12)
+        )
+        self.overall_label.pack(pady=(10, 5))
+        
+        self.overall_progress = ctk.CTkProgressBar(overall_frame)
+        self.overall_progress.pack(fill="x", padx=15, pady=(0, 10))
+        self.overall_progress.set(0)
+        
+        # Current package section
+        package_frame = ctk.CTkFrame(main_frame)
+        package_frame.pack(fill="x", pady=(0, 15))
+        
+        self.package_label = ctk.CTkLabel(
+            package_frame,
+            text="Waiting to start...",
+            font=ctk.CTkFont(size=11)
+        )
+        self.package_label.pack(pady=(10, 5))
+        
+        self.package_progress = ctk.CTkProgressBar(package_frame)
+        self.package_progress.pack(fill="x", padx=15, pady=(0, 10))
+        self.package_progress.set(0)
+        
+        # Status/log section
+        log_frame = ctk.CTkFrame(main_frame)
+        log_frame.pack(fill="both", expand=True, pady=(0, 15))
+        
+        log_title = ctk.CTkLabel(
+            log_frame,
+            text="Installation Log:",
+            font=ctk.CTkFont(size=11, weight="bold")
+        )
+        log_title.pack(anchor="w", padx=10, pady=(10, 5))
+        
+        self.log_text = ctk.CTkTextbox(
+            log_frame,
+            height=100,
+            font=ctk.CTkFont(family="Consolas", size=10)
+        )
+        self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(main_frame)
+        button_frame.pack(fill="x")
+        
+        self.cancel_button = ctk.CTkButton(
+            button_frame,
+            text="Cancel",
+            command=self.cancel_installation,
+            fg_color="red",
+            hover_color="darkred"
+        )
+        self.cancel_button.pack(side="right", padx=(5, 10), pady=10)
+        
+        self.close_button = ctk.CTkButton(
+            button_frame,
+            text="Close",
+            command=self.close_dialog,
+            state="disabled"
+        )
+        self.close_button.pack(side="right", pady=10)
+    
+    def log_message(self, message):
+        """Add a message to the log with timestamp"""
+        timestamp = time.strftime("%H:%M:%S")
+        formatted_message = f"[{timestamp}] {message}\n"
+        
+        # Thread-safe UI update
+        self.after(0, lambda: self._update_log(formatted_message))
+    
+    def _update_log(self, message):
+        """Update log text widget (must be called from main thread)"""
+        self.log_text.insert("end", message)
+        self.log_text.see("end")  # Auto-scroll
+    
+    def update_overall_progress(self, progress, text):
+        """Update overall progress bar and text"""
+        def update():
+            self.overall_progress.set(progress)
+            self.overall_label.configure(text=text)
+        
+        self.after(0, update)
+    
+    def update_package_progress(self, progress, text):
+        """Update current package progress bar and text"""
+        def update():
+            self.package_progress.set(progress)
+            self.package_label.configure(text=text)
+        
+        self.after(0, update)
+    
+    def start_installation(self):
+        """Start the installation process in a separate thread"""
+        self.installation_thread = threading.Thread(
+            target=self.install_packages_worker,
+            daemon=True
+        )
+        self.installation_thread.start()
+    
+    def install_packages_worker(self):
+        """Worker thread for installing packages"""
+        try:
+            self.log_message("Starting package installation...")
+            
+            # Check if we have a valid Python environment
+            if not self.venv_manager.python_path:
+                self.log_message("ERROR: No valid Python environment found!")
+                self.installation_failed("No Python environment available")
+                return
+            
+            # Install each package
+            for i, package in enumerate(self.packages):
+                if self.installation_cancelled:
+                    self.log_message("Installation cancelled by user")
+                    return
+                
+                self.current_package_index = i
+                overall_progress = i / self.total_packages
+                
+                # Update UI
+                self.update_overall_progress(
+                    overall_progress,
+                    f"Installing package {i+1} of {self.total_packages}"
+                )
+                
+                self.update_package_progress(0, f"Installing {package}...")
+                self.log_message(f"Installing {package}...")
+                
+                # Install the package
+                success = self.install_single_package(package)
+                
+                if not success and not self.installation_cancelled:
+                    self.log_message(f"ERROR: Failed to install {package}")
+                    self.installation_failed(f"Failed to install {package}")
+                    return
+                
+                # Update progress
+                self.update_package_progress(1.0, f"✓ {package} installed")
+                self.log_message(f"✓ Successfully installed {package}")
+            
+            # Installation completed
+            if not self.installation_cancelled:
+                self.update_overall_progress(1.0, "Installation completed successfully!")
+                self.log_message("🎉 All packages installed successfully!")
+                self.installation_completed()
+                
+        except Exception as e:
+            self.log_message(f"ERROR: Installation failed with exception: {e}")
+            self.installation_failed(str(e))
+    
+    def install_single_package(self, package):
+        """Install a single package using pip"""
+        try:
+            # Determine pip path
+            if self.venv_manager.pip_path and os.path.exists(self.venv_manager.pip_path):
+                pip_executable = self.venv_manager.pip_path
+            else:
+                # Fallback to python -m pip
+                pip_executable = self.venv_manager.python_path
+                pip_cmd = [pip_executable, "-m", "pip", "install", package, "--no-warn-script-location"]
+            
+            if pip_executable == self.venv_manager.pip_path:
+                pip_cmd = [pip_executable, "install", package, "--no-warn-script-location"]
+            
+            # Run pip install with progress monitoring
+            process = subprocess.Popen(
+                pip_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                universal_newlines=True,
+                cwd=tempfile.gettempdir()  # Use temp dir to avoid path issues
+            )
+            
+            # Monitor output for progress
+            output_lines = []
+            while True:
+                if self.installation_cancelled:
+                    process.terminate()
+                    return False
+                
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+                
+                if line:
+                    line = line.strip()
+                    output_lines.append(line)
+                    
+                    # Update progress based on pip output
+                    if "Downloading" in line:
+                        self.update_package_progress(0.3, f"Downloading {package}...")
+                    elif "Installing" in line:
+                        self.update_package_progress(0.7, f"Installing {package}...")
+                    elif "Successfully installed" in line:
+                        self.update_package_progress(1.0, f"✓ {package} installed")
+                    
+                    # Log important messages
+                    if any(keyword in line.lower() for keyword in ["error", "warning", "successfully"]):
+                        self.log_message(line)
+            
+            return_code = process.poll()
+            
+            if return_code == 0:
+                return True
+            else:
+                self.log_message(f"Pip install failed with return code {return_code}")
+                self.log_message("Output: " + "\n".join(output_lines[-5:]))  # Show last 5 lines
+                return False
+                
+        except Exception as e:
+            self.log_message(f"Exception during package installation: {e}")
+            return False
+    
+    def installation_completed(self):
+        """Handle successful installation completion"""
+        def update_ui():
+            self.cancel_button.configure(state="disabled")
+            self.close_button.configure(state="normal")
+            
+            # Show success message
+            self.overall_label.configure(text="🎉 Installation completed successfully!")
+            
+        self.after(0, update_ui)
+    
+    def installation_failed(self, error_message):
+        """Handle installation failure"""
+        def update_ui():
+            self.cancel_button.configure(state="disabled")
+            self.close_button.configure(state="normal")
+            
+            self.overall_label.configure(text=f"❌ Installation failed: {error_message}")
+            self.package_label.configure(text="Installation stopped")
+            
+        self.after(0, update_ui)
+    
+    def cancel_installation(self):
+        """Cancel the ongoing installation"""
+        self.installation_cancelled = True
+        self.log_message("Cancelling installation...")
+        
+        def update_ui():
+            self.cancel_button.configure(state="disabled")
+            self.close_button.configure(state="normal")
+            self.overall_label.configure(text="Installation cancelled")
+            
+        self.after(0, update_ui)
+    
+    def close_dialog(self):
+        """Close the dialog"""
+        if self.installation_thread and self.installation_thread.is_alive():
+            self.installation_cancelled = True
+            # Give thread a moment to finish
+            self.after(100, self.destroy)
+        else:
+            self.destroy()
 # Terminal emulation in Tkinter
 class TkTerminal(tk.Text):
     """A Tkinter-based terminal emulator widget with realistic appearance"""
@@ -3237,7 +3555,38 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
 
 class VirtualEnvironmentManager:
     """Enhanced virtual environment manager with Nuitka onefile compatibility and comprehensive Python discovery"""
-    
+    def show_setup_dialog_with_progress(self):
+        """Show enhanced setup dialog with progress tracking"""
+        if not self.parent_app:
+            self.logger.error("No parent app available for setup dialog")
+            return
+        
+        # Show installation progress dialog
+        try:
+            dialog = PackageInstallationProgressDialog(
+                self.parent_app.root,
+                ESSENTIAL_PACKAGES,
+                self
+            )
+            
+            # Wait for dialog to complete
+            self.parent_app.root.wait_window(dialog)
+            
+            # After installation, try to activate the environment
+            default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+            if os.path.exists(default_venv_path):
+                if self.verify_environment_packages(default_venv_path):
+                    self.activate_venv("manim_studio_default")
+                    self.needs_setup = False
+                    self.logger.info("Environment setup completed successfully")
+                    return True
+            
+        except Exception as e:
+            self.logger.error(f"Error in setup dialog: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        return False
     def __init__(self, parent_app):
         self.parent_app = parent_app
         self.current_venv = None
