@@ -3572,11 +3572,15 @@ class VirtualEnvironmentManager:
         )
         os.makedirs(self.venv_dir, exist_ok=True)
         
-        # Detect if running as frozen executable
-        self.is_frozen = hasattr(sys, 'frozen') or (
-            hasattr(sys, '_MEIPASS') or 
+        # FIXED: Better frozen detection - detects when running as compiled .exe
+        self.is_frozen = (
+            hasattr(sys, 'frozen') or 
+            hasattr(sys, '_MEIPASS') or
             'onefile' in str(sys.executable).lower() or
-            'temp' in str(sys.executable).lower()
+            'temp' in str(sys.executable).lower() or
+            (sys.executable.endswith('.exe') and 
+             not sys.executable.lower().endswith('python.exe') and
+             not sys.executable.lower().endswith('pythonw.exe'))
         )
         
         # Initialize logging
@@ -3708,25 +3712,41 @@ class VirtualEnvironmentManager:
         for location_pattern in possible_locations:
             for python_path in glob.glob(location_pattern):
                 if os.path.isfile(python_path) and os.access(python_path, os.X_OK):
-                    self.python_installations.append(python_path)
+                    # CRITICAL: Never add our own executable as Python
+                    if not python_path.lower().endswith('manimstudio.exe'):
+                        self.python_installations.append(python_path)
         
-        # Always include current Python if not frozen
-        if not self.is_frozen and sys.executable not in self.python_installations:
+        # CRITICAL FIX: Only include current Python if not frozen AND it's actually python.exe
+        if (not self.is_frozen and 
+            sys.executable not in self.python_installations and 
+            'python.exe' in sys.executable.lower()):
             self.python_installations.append(sys.executable)
         
         self.logger.info(f"Found {len(self.python_installations)} Python installations")
+        for installation in self.python_installations:
+            self.logger.info(f"  - {installation}")
 
     def find_system_python(self):
         """Find the best system Python installation"""
         if not self.python_installations:
+            self.logger.error("No Python installations found!")
             return None
         
-        # Prefer the current Python if not frozen
-        if not self.is_frozen:
-            return sys.executable
-        
-        # For frozen apps, use the first available Python
-        return self.python_installations[0] if self.python_installations else None
+        # CRITICAL: When frozen, NEVER use sys.executable (it's our .exe)
+        if self.is_frozen:
+            self.logger.info("Running as frozen executable - using external Python")
+            # Use the first available Python (not our executable)
+            for python_path in self.python_installations:
+                if 'python.exe' in python_path.lower() and 'manimstudio.exe' not in python_path.lower():
+                    self.logger.info(f"Selected Python: {python_path}")
+                    return python_path
+            return None
+        else:
+            # When not frozen, prefer current Python if it's valid
+            if 'python.exe' in sys.executable.lower():
+                return sys.executable
+            # Otherwise use first available
+            return self.python_installations[0] if self.python_installations else None
 
     def ensure_pip_path(self):
         """Ensure pip_path is properly set based on current environment"""
@@ -3773,13 +3793,8 @@ class VirtualEnvironmentManager:
         """Detect if there's already a suitable environment"""
         # CRITICAL: Never use our own executable as Python when frozen
         if self.is_frozen:
-            # We are running as a compiled executable.
-            # DO NOT use sys.executable as a Python interpreter because
-            # This caused additional instances of the application to spawn
-            # and appear briefly to the user.  The check is unnecessary
-            # because we already know the path points back to our bundled
-            # executable, so simply skip launching it.
-            self.logger.info("Running as frozen executable - skipping sys.executable check")
+            self.logger.info("Running as frozen executable - will NOT use sys.executable as Python")
+            # Skip any checks that would use sys.executable
         
         # Check for local environment alongside the application
         if self.check_local_directory_venv():
@@ -3800,11 +3815,13 @@ class VirtualEnvironmentManager:
             else:
                 self.logger.warning("Default environment structure is invalid")
                 
-        # CRITICAL: Don't check current virtual environment when frozen
-        # because sys.executable points to our .exe file
+        # ONLY check current virtual environment when NOT frozen
         if not self.is_frozen:
             # Only check if we're in a virtual environment when running as script
-            if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
+            if (hasattr(sys, 'base_prefix') and 
+                sys.base_prefix != sys.prefix and 
+                'python.exe' in sys.executable.lower()):
+                
                 venv_name = os.path.basename(sys.prefix)
                 self.current_venv = f"current_{venv_name}"
                 self.python_path = sys.executable
@@ -4029,15 +4046,6 @@ class VirtualEnvironmentManager:
     def show_setup_dialog(self):
         """Show the environment setup dialog"""
         self.logger.info("Showing environment setup dialog")
-        # First try system Python fallback if we're in a difficult situation
-        if self.needs_setup and not hasattr(self, 'bundled_venv_dir') and not self.using_fallback:
-            self.logger.info("Trying system Python fallback before showing dialog")
-            success = self.use_system_python_fallback()
-            if success:
-                self.logger.info("Using system Python fallback, no need for setup dialog")
-                return
-            else:
-                self.logger.info("System Python fallback failed, will show setup dialog")
         
         # Make sure the parent window is raised and visible
         if hasattr(self.parent_app, 'root'):
@@ -4046,60 +4054,37 @@ class VirtualEnvironmentManager:
             self.parent_app.root.focus_force()
             self.parent_app.root.update()
         
-        # If we have a bundled environment, extract it silently instead
-        if hasattr(self, 'bundled_venv_dir'):
-            # Show a simple messagebox and extract in background
-            try:
-                import tkinter.messagebox as messagebox
-                messagebox.showinfo(
-                    "Setting Up Environment",
-                    "ManimStudio is setting up the required environment.\n"
-                    "This will take a moment."
-                )
-                
-                # Extract bundled environment
-                success = self.extract_bundled_environment()
-                if success:
-                    messagebox.showinfo(
-                        "Setup Complete",
-                        "Environment setup completed successfully!"
-                    )
-                else:
-                    messagebox.showerror(
-                        "Setup Failed", 
-                        "Environment setup failed. Using system Python as fallback."
-                    )
-                    self.use_system_python_fallback()
-                return
-                
-            except Exception as e:
-                self.logger.error(f"Error extracting bundled environment: {e}")
-        
-        # Show the full setup dialog
         try:
-            # Try to create default environment
+            # First try to create default environment
+            self.logger.info("Creating default environment...")
             success = self.create_default_environment()
+            
             if success:
-                import tkinter.messagebox as messagebox
-                messagebox.showinfo(
-                    "Setup Complete",
-                    "Environment setup completed successfully!"
-                )
+                self.logger.info("Environment created, now installing packages...")
+                # Show the progress dialog for package installation
+                return self.show_setup_dialog_with_progress()
             else:
+                self.logger.error("Failed to create environment")
                 import tkinter.messagebox as messagebox
                 messagebox.showerror(
                     "Setup Failed", 
-                    "Environment setup failed. Using system Python as fallback."
+                    "Failed to create virtual environment.\n"
+                    "Please ensure Python is properly installed."
                 )
-                self.use_system_python_fallback()
+                return False
+                
         except Exception as e:
-            self.logger.error(f"Error showing environment setup dialog: {e}")
+            self.logger.error(f"Error in setup dialog: {e}")
             import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             
-            # Last resort fallback - use system Python
-            self.logger.info("Trying system Python as last resort")
-            self.use_system_python_fallback()
+            import tkinter.messagebox as messagebox
+            messagebox.showerror(
+                "Setup Error",
+                f"Environment setup failed: {e}\n\n"
+                "Please check the logs for more details."
+            )
+            return False
 
     def create_default_environment(self, log_callback=None):
         """Create the default ManimStudio environment using unified method"""
@@ -4423,6 +4408,32 @@ class VirtualEnvironmentManager:
         
         return environments
 
+    def list_venvs(self):
+        """List all available virtual environments (alias for list_environments)"""
+        return self.list_environments()
+
+    def get_venvs(self):
+        """Get all available virtual environments (alias for list_environments)"""
+        return self.list_environments()
+
+    def get_available_environments(self):
+        """Get all available virtual environments with detailed info"""
+        environments = []
+        
+        if os.path.exists(self.venv_dir):
+            for item in os.listdir(self.venv_dir):
+                env_path = os.path.join(self.venv_dir, item)
+                if os.path.isdir(env_path) and self.is_valid_venv(env_path):
+                    env_info = {
+                        'name': item,
+                        'path': env_path,
+                        'is_current': item == self.current_venv,
+                        'has_packages': self.verify_environment_packages(env_path)
+                    }
+                    environments.append(env_info)
+        
+        return environments
+
     def delete_environment(self, env_name):
         """Delete a virtual environment"""
         try:
@@ -4438,6 +4449,10 @@ class VirtualEnvironmentManager:
             self.logger.error(f"Error deleting environment {env_name}: {e}")
             return False
 
+    def delete_venv(self, env_name):
+        """Delete a virtual environment (alias for delete_environment)"""
+        return self.delete_environment(env_name)
+
     def switch_environment(self, env_name):
         """Switch to a different environment"""
         try:
@@ -4452,6 +4467,10 @@ class VirtualEnvironmentManager:
         except Exception as e:
             self.logger.error(f"Error switching to environment {env_name}: {e}")
             return False
+
+    def switch_venv(self, env_name):
+        """Switch to a different environment (alias for switch_environment)"""
+        return self.switch_environment(env_name)
 
     def create_environment_from_requirements(self, env_name, requirements_file):
         """Create environment from requirements.txt file"""
@@ -4621,6 +4640,90 @@ class VirtualEnvironmentManager:
             
         except Exception as e:
             self.logger.error(f"Error cleaning up temp files: {e}")
+            return False
+
+    def refresh_environments(self):
+        """Refresh the list of available environments"""
+        try:
+            # Re-scan for environments
+            environments = self.list_environments()
+            self.logger.info(f"Found {len(environments)} environments: {environments}")
+            return environments
+        except Exception as e:
+            self.logger.error(f"Error refreshing environments: {e}")
+            return []
+
+    def get_current_environment(self):
+        """Get current environment name"""
+        return self.current_venv
+
+    def get_current_venv(self):
+        """Get current environment name (alias)"""
+        return self.current_venv
+
+    def is_environment_ready(self):
+        """Check if current environment is ready to use"""
+        return not self.needs_setup and self.current_venv is not None
+
+    def get_python_executable(self):
+        """Get the Python executable path for current environment"""
+        return self.python_path
+
+    def get_pip_executable(self):
+        """Get the pip executable path for current environment"""
+        return self.pip_path
+
+    def create_new_environment(self, name, packages=None):
+        """Create a new environment with optional packages"""
+        return self.create_environment_unified(
+            name=name,
+            location=self.venv_dir,
+            packages=packages or []
+        )
+
+    def recreate_environment(self, env_name):
+        """Recreate an existing environment"""
+        try:
+            # Delete existing environment
+            if self.delete_environment(env_name):
+                # Create new environment
+                return self.create_new_environment(env_name, ESSENTIAL_PACKAGES)
+            return False
+        except Exception as e:
+            self.logger.error(f"Error recreating environment {env_name}: {e}")
+            return False
+
+    def backup_environment(self, env_name, backup_path):
+        """Backup an environment to a specified path"""
+        try:
+            env_path = os.path.join(self.venv_dir, env_name)
+            if os.path.exists(env_path):
+                shutil.copytree(env_path, backup_path)
+                self.logger.info(f"Backed up environment {env_name} to {backup_path}")
+                return True
+            else:
+                self.logger.error(f"Environment {env_name} not found")
+                return False
+        except Exception as e:
+            self.logger.error(f"Error backing up environment {env_name}: {e}")
+            return False
+
+    def restore_environment(self, env_name, backup_path):
+        """Restore an environment from a backup"""
+        try:
+            env_path = os.path.join(self.venv_dir, env_name)
+            
+            # Remove existing environment if it exists
+            if os.path.exists(env_path):
+                shutil.rmtree(env_path)
+            
+            # Copy backup to environment location
+            shutil.copytree(backup_path, env_path)
+            self.logger.info(f"Restored environment {env_name} from {backup_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error restoring environment {env_name}: {e}")
             return False
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
