@@ -3555,38 +3555,6 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
 
 class VirtualEnvironmentManager:
     """Enhanced virtual environment manager with Nuitka onefile compatibility and comprehensive Python discovery"""
-    def show_setup_dialog_with_progress(self):
-        """Show enhanced setup dialog with progress tracking"""
-        if not self.parent_app:
-            self.logger.error("No parent app available for setup dialog")
-            return
-        
-        # Show installation progress dialog
-        try:
-            dialog = PackageInstallationProgressDialog(
-                self.parent_app.root,
-                ESSENTIAL_PACKAGES,
-                self
-            )
-            
-            # Wait for dialog to complete
-            self.parent_app.root.wait_window(dialog)
-            
-            # After installation, try to activate the environment
-            default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-            if os.path.exists(default_venv_path):
-                if self.verify_environment_packages(default_venv_path):
-                    self.activate_venv("manim_studio_default")
-                    self.needs_setup = False
-                    self.logger.info("Environment setup completed successfully")
-                    return True
-            
-        except Exception as e:
-            self.logger.error(f"Error in setup dialog: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        return False
     def __init__(self, parent_app):
         self.parent_app = parent_app
         self.current_venv = None
@@ -5522,6 +5490,38 @@ else:
         
         # Return at least 1KB to avoid showing 0
         return max(1024, total_size)
+    def show_setup_dialog_with_progress(self):
+        """Show enhanced setup dialog with progress tracking"""
+        if not self.parent_app:
+            self.logger.error("No parent app available for setup dialog")
+            return
+        
+        # Show installation progress dialog
+        try:
+            dialog = PackageInstallationProgressDialog(
+                self.parent_app.root,
+                ESSENTIAL_PACKAGES,
+                self
+            )
+            
+            # Wait for dialog to complete
+            self.parent_app.root.wait_window(dialog)
+            
+            # After installation, try to activate the environment
+            default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+            if os.path.exists(default_venv_path):
+                if self.verify_environment_packages(default_venv_path):
+                    self.activate_venv("manim_studio_default")
+                    self.needs_setup = False
+                    self.logger.info("Environment setup completed successfully")
+                    return True
+            
+        except Exception as e:
+            self.logger.error(f"Error in setup dialog: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        return False
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
