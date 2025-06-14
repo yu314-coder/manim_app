@@ -3611,7 +3611,6 @@ class VirtualEnvironmentManager:
 
     def fix_nuitka_onefile_issues(self):
         """Apply fixes specific to Nuitka onefile builds"""
-        
         # Detect if we're in a Nuitka onefile build
         is_nuitka_onefile = (
             hasattr(sys, 'frozen') and 
@@ -3634,7 +3633,6 @@ class VirtualEnvironmentManager:
 
     def run_hidden_subprocess_nuitka_safe(self, command, **kwargs):
         """Run subprocess safely for Nuitka onefile builds"""
-        
         # Configure for Windows console hiding
         startupinfo = None
         creationflags = 0
@@ -3738,7 +3736,16 @@ class VirtualEnvironmentManager:
                 self.pip_path = "pip"
             else:
                 # For virtual environments, construct the path
-                venv_path = os.path.join(self.venv_dir, self.current_venv)
+                if self.current_venv.startswith("current_") or self.current_venv.startswith("local_"):
+                    # Handle current or local environments
+                    if self.current_venv.startswith("current_"):
+                        venv_path = sys.prefix
+                    else:
+                        venv_name = self.current_venv.replace("local_", "")
+                        venv_path = venv_name
+                else:
+                    venv_path = os.path.join(self.venv_dir, self.current_venv)
+                
                 if sys.platform == "win32":
                     self.pip_path = os.path.join(venv_path, "Scripts", "pip.exe")
                 else:
@@ -3755,7 +3762,7 @@ class VirtualEnvironmentManager:
         
         if self.pip_path and os.path.exists(self.pip_path):
             return [self.pip_path]
-        elif self.python_path:
+        elif self.python_path and os.path.exists(self.python_path):
             # Fallback to python -m pip
             return [self.python_path, "-m", "pip"]
         else:
@@ -3772,6 +3779,7 @@ class VirtualEnvironmentManager:
             # and appear briefly to the user.  The check is unnecessary
             # because we already know the path points back to our bundled
             # executable, so simply skip launching it.
+            self.logger.info("Running as frozen executable - skipping sys.executable check")
         
         # Check for local environment alongside the application
         if self.check_local_directory_venv():
@@ -3783,9 +3791,9 @@ class VirtualEnvironmentManager:
             self.logger.info(f"Found default environment at: {default_venv_path}")
             if self.is_valid_venv(default_venv_path):
                 self.logger.info("Default environment structure is valid")
-                self.activate_venv("manim_studio_default")
                 if self.verify_environment_packages(default_venv_path):
                     self.logger.info("Default environment has all required packages")
+                    self.activate_venv("manim_studio_default")
                     return True
                 else:
                     self.logger.warning("Default environment missing required packages")
@@ -3989,7 +3997,7 @@ class VirtualEnvironmentManager:
         """Show enhanced setup dialog with progress tracking"""
         if not self.parent_app:
             self.logger.error("No parent app available for setup dialog")
-            return
+            return False
         
         # Show installation progress dialog
         try:
@@ -4072,11 +4080,13 @@ class VirtualEnvironmentManager:
             # Try to create default environment
             success = self.create_default_environment()
             if success:
+                import tkinter.messagebox as messagebox
                 messagebox.showinfo(
                     "Setup Complete",
                     "Environment setup completed successfully!"
                 )
             else:
+                import tkinter.messagebox as messagebox
                 messagebox.showerror(
                     "Setup Failed", 
                     "Environment setup failed. Using system Python as fallback."
@@ -4317,13 +4327,17 @@ class VirtualEnvironmentManager:
                     except Exception as e:
                         self.logger.error(f"Error reading or processing manifest: {e}")
         
-        # Verify installation
-        if self.verify_environment_packages(venv_path):
-            self.logger.info("Environment setup complete and verified")
-            self.needs_setup = False
-            return True
-        else:
-            self.logger.error("Environment verification failed after setup")
+            # Verify installation
+            if self.verify_environment_packages(venv_path):
+                self.logger.info("Environment setup complete and verified")
+                self.needs_setup = False
+                return True
+            else:
+                self.logger.error("Environment verification failed after setup")
+                return self.use_system_python_fallback()
+                
+        except Exception as e:
+            self.logger.error(f"Error in _setup_environment_after_creation: {e}")
             return self.use_system_python_fallback()
 
     def use_system_python_fallback(self):
@@ -4375,6 +4389,238 @@ class VirtualEnvironmentManager:
         except Exception as e:
             if log_callback:
                 log_callback(f"Warning: Exception upgrading pip: {e}")
+            return False
+
+    def log_message_threadsafe(self, message):
+        """Thread-safe logging method"""
+        if self.parent_app and hasattr(self.parent_app, 'root'):
+            self.parent_app.root.after(0, lambda: self.logger.info(message))
+        else:
+            self.logger.info(message)
+
+    def get_environment_info(self):
+        """Get information about the current environment"""
+        info = {
+            "current_venv": self.current_venv,
+            "python_path": self.python_path,
+            "pip_path": self.pip_path,
+            "needs_setup": self.needs_setup,
+            "using_fallback": self.using_fallback,
+            "is_frozen": self.is_frozen,
+            "venv_dir": self.venv_dir
+        }
+        return info
+
+    def list_environments(self):
+        """List all available virtual environments"""
+        environments = []
+        
+        if os.path.exists(self.venv_dir):
+            for item in os.listdir(self.venv_dir):
+                env_path = os.path.join(self.venv_dir, item)
+                if os.path.isdir(env_path) and self.is_valid_venv(env_path):
+                    environments.append(item)
+        
+        return environments
+
+    def delete_environment(self, env_name):
+        """Delete a virtual environment"""
+        try:
+            env_path = os.path.join(self.venv_dir, env_name)
+            if os.path.exists(env_path):
+                shutil.rmtree(env_path)
+                self.logger.info(f"Deleted environment: {env_name}")
+                return True
+            else:
+                self.logger.warning(f"Environment not found: {env_name}")
+                return False
+        except Exception as e:
+            self.logger.error(f"Error deleting environment {env_name}: {e}")
+            return False
+
+    def switch_environment(self, env_name):
+        """Switch to a different environment"""
+        try:
+            env_path = os.path.join(self.venv_dir, env_name)
+            if os.path.exists(env_path) and self.is_valid_venv(env_path):
+                self.activate_venv(env_name)
+                self.logger.info(f"Switched to environment: {env_name}")
+                return True
+            else:
+                self.logger.error(f"Invalid environment: {env_name}")
+                return False
+        except Exception as e:
+            self.logger.error(f"Error switching to environment {env_name}: {e}")
+            return False
+
+    def create_environment_from_requirements(self, env_name, requirements_file):
+        """Create environment from requirements.txt file"""
+        try:
+            # Create basic environment
+            success = self.create_environment_unified(
+                name=env_name,
+                location=self.venv_dir
+            )
+            
+            if success:
+                # Install from requirements file
+                old_venv = self.current_venv
+                self.activate_venv(env_name)
+                
+                pip_cmd = self.get_pip_command()
+                pip_cmd.extend(["install", "-r", requirements_file])
+                
+                result = subprocess.run(
+                    pip_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,  # 10 minute timeout for requirements
+                    cwd=tempfile.gettempdir()
+                )
+                
+                if result.returncode == 0:
+                    self.logger.info(f"Successfully created environment from requirements: {env_name}")
+                    return True
+                else:
+                    self.logger.error(f"Failed to install requirements: {result.stderr}")
+                    # Switch back to old environment
+                    if old_venv:
+                        self.activate_venv(old_venv)
+                    return False
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error creating environment from requirements: {e}")
+            return False
+
+    def export_environment_requirements(self, env_name, output_file):
+        """Export environment requirements to a file"""
+        try:
+            old_venv = self.current_venv
+            self.activate_venv(env_name)
+            
+            pip_cmd = self.get_pip_command()
+            pip_cmd.extend(["freeze"])
+            
+            result = subprocess.run(
+                pip_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=tempfile.gettempdir()
+            )
+            
+            if result.returncode == 0:
+                with open(output_file, 'w') as f:
+                    f.write(result.stdout)
+                
+                self.logger.info(f"Exported requirements to: {output_file}")
+                
+                # Switch back to old environment
+                if old_venv:
+                    self.activate_venv(old_venv)
+                
+                return True
+            else:
+                self.logger.error(f"Failed to export requirements: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error exporting requirements: {e}")
+            return False
+
+    def get_installed_packages(self):
+        """Get list of installed packages in current environment"""
+        try:
+            pip_cmd = self.get_pip_command()
+            pip_cmd.extend(["list", "--format=json"])
+            
+            result = subprocess.run(
+                pip_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=tempfile.gettempdir()
+            )
+            
+            if result.returncode == 0:
+                import json
+                packages = json.loads(result.stdout)
+                return packages
+            else:
+                self.logger.error(f"Failed to get package list: {result.stderr}")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error getting installed packages: {e}")
+            return []
+
+    def check_package_installed(self, package_name):
+        """Check if a specific package is installed"""
+        try:
+            pip_cmd = self.get_pip_command()
+            pip_cmd.extend(["show", package_name])
+            
+            result = subprocess.run(
+                pip_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=tempfile.gettempdir()
+            )
+            
+            return result.returncode == 0
+            
+        except Exception as e:
+            self.logger.error(f"Error checking package {package_name}: {e}")
+            return False
+
+    def uninstall_package(self, package_name):
+        """Uninstall a package"""
+        try:
+            pip_cmd = self.get_pip_command()
+            pip_cmd.extend(["uninstall", package_name, "-y"])
+            
+            result = subprocess.run(
+                pip_cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=tempfile.gettempdir()
+            )
+            
+            if result.returncode == 0:
+                self.logger.info(f"Successfully uninstalled {package_name}")
+                return True
+            else:
+                self.logger.error(f"Failed to uninstall {package_name}: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error uninstalling {package_name}: {e}")
+            return False
+
+    def cleanup_temp_files(self):
+        """Clean up temporary files and caches"""
+        try:
+            # Clean pip cache
+            pip_cmd = self.get_pip_command()
+            pip_cmd.extend(["cache", "purge"])
+            
+            subprocess.run(
+                pip_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=tempfile.gettempdir()
+            )
+            
+            self.logger.info("Cleaned up pip cache")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error cleaning up temp files: {e}")
             return False
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
