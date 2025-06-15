@@ -59,7 +59,27 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
+def check_dll_dependencies():
+        """Check if required DLLs are available at startup"""
+        if getattr(sys, 'frozen', False):
+            try:
+                import mapbox_earcut
+                print("✅ mapbox_earcut loaded successfully")
+                return True
+            except ImportError as e:
+                print(f"❌ mapbox_earcut import failed: {e}")
+                
+                # Try to provide helpful error message
+                if "DLL load failed" in str(e):
+                    messagebox.showerror(
+                        "Missing Dependencies",
+                        "The application requires Visual C++ Redistributable.\n\n"
+                        "Please install Microsoft Visual C++ 2015-2022 Redistributable (x64)\n"
+                        "from the Microsoft website and restart the application.\n\n"
+                        "Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe"
+                    )
+                return False
+        return True
 # Helper to convert Windows short paths to long form
 def get_long_path(path: str) -> str:
     """Return the long form of a Windows path if possible."""
@@ -375,7 +395,6 @@ SYNTAX_COLORS = {
     "self": "#569CD6",            # Blue - self keyword
     "parameter": "#9CDCFE",       # Light blue - Function parameters
 }
-
 # Runtime check for LaTeX availability
 def check_latex_installation() -> Optional[str]:
     """Return the path to a working LaTeX executable, or ``None`` if not found.
@@ -4951,6 +4970,51 @@ else:
         except Exception as e:
             self.logger.error(f"Error during environment fix: {e}")
             return False
+    def fix_nuitka_onefile_issues(self):
+        """Apply fixes specific to Nuitka onefile builds"""
+        
+        # Detect if we're in a Nuitka onefile build
+        is_nuitka_onefile = (
+            hasattr(sys, 'frozen') and 
+            ('onefile' in str(sys.executable) or 'temp' in str(sys.executable))
+        )
+        
+        if is_nuitka_onefile:
+            self.logger.info("Detected Nuitka onefile build - applying compatibility fixes")
+            
+            # Set environment variables to prevent subprocess issues
+            os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+            os.environ['PYTHONUNBUFFERED'] = '1'
+            
+            # CRITICAL: Fix DLL loading paths for mapbox_earcut
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            dll_dir = os.path.join(exe_dir, 'dlls')
+            
+            # Add DLL directory to PATH if it exists
+            if os.path.exists(dll_dir):
+                current_path = os.environ.get('PATH', '')
+                os.environ['PATH'] = dll_dir + os.pathsep + current_path
+                self.logger.info(f"Added DLL directory to PATH: {dll_dir}")
+            
+            # Ensure we use system temp directory for operations
+            self.temp_dir = tempfile.gettempdir()
+            
+            # Pre-load critical DLLs to avoid import issues
+            try:
+                import ctypes
+                dll_names = ['msvcp140.dll', 'vcruntime140.dll']
+                for dll_name in dll_names:
+                    try:
+                        ctypes.CDLL(dll_name)
+                        self.logger.info(f"Pre-loaded DLL: {dll_name}")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        else:
+            self.temp_dir = tempfile.gettempdir()
+        
+        return True
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
@@ -10446,6 +10510,10 @@ def main():
     """Application entry point"""
     import sys 
     try:
+        # CRITICAL: Check DLL dependencies FIRST before anything else
+        if not check_dll_dependencies():
+            sys.exit(1)
+        
         # Early console hiding for Windows
         if sys.platform == "win32":
             try:
@@ -10574,6 +10642,20 @@ def main():
             ]
         )
 
+        # Create logger instance
+        logger = logging.getLogger("ManimStudio")
+        logger.info("ManimStudio starting up...")
+        logger.info(f"Python version: {sys.version}")
+        logger.info(f"Platform: {platform.platform()}")
+        logger.info(f"Executable: {sys.executable}")
+        logger.info(f"Frozen: {getattr(sys, 'frozen', False)}")
+        logger.info(f"Base directory: {BASE_DIR}")
+        logger.info(f"App directory: {app_dir}")
+
+        # Set the appearance mode and theme
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
+
         # Check for Jedi availability
         if not JEDI_AVAILABLE:
             print("Warning: Jedi not available. IntelliSense features will be limited.")
@@ -10601,7 +10683,6 @@ def main():
             messagebox.showerror("Startup Error", f"Failed to start application: {e}")
         except:
             print(f"Failed to start application: {e}")
-
 class SimpleEnvironmentDialog(ctk.CTkToplevel):
     """Emergency fallback dialog if other dialogs fail"""
     
