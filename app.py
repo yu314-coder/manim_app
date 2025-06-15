@@ -451,165 +451,6 @@ class PackageInfo:
 class PackageInstallationProgressDialog(ctk.CTkToplevel):
     """Advanced progress dialog for Python package installation with real-time feedback"""
     
-    def __init__(self, parent, packages, venv_manager):
-        super().__init__(parent)
-        
-        self.packages = packages
-        self.venv_manager = venv_manager
-        self.current_package_index = 0
-        self.total_packages = len(packages)
-        self.installation_cancelled = False
-        self.installation_thread = None
-        
-        # Configure window
-        self.title("Installing Python Libraries")
-        self.geometry("500x350")
-        self.resizable(False, False)
-        self.transient(parent)
-        self.grab_set()
-        
-        # Center on parent
-        self.center_on_parent(parent)
-        
-        # Setup UI
-        self.setup_ui()
-        
-        # Start installation
-        self.start_installation()
-    
-    def center_on_parent(self, parent):
-        """Center this dialog on the parent window"""
-        self.update_idletasks()
-        parent_x = parent.winfo_rootx()
-        parent_y = parent.winfo_rooty()
-        parent_width = parent.winfo_width()
-        parent_height = parent.winfo_height()
-        
-        x = parent_x + (parent_width // 2) - (500 // 2)
-        y = parent_y + (parent_height // 2) - (350 // 2)
-        
-        self.geometry(f"500x350+{x}+{y}")
-    
-    def setup_ui(self):
-        """Setup the progress dialog UI"""
-        # Main frame
-        main_frame = ctk.CTkFrame(self)
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        
-        # Title
-        title_label = ctk.CTkLabel(
-            main_frame, 
-            text="Installing Python Libraries",
-            font=ctk.CTkFont(size=18, weight="bold")
-        )
-        title_label.pack(pady=(0, 15))
-        
-        # Overall progress section
-        overall_frame = ctk.CTkFrame(main_frame)
-        overall_frame.pack(fill="x", pady=(0, 15))
-        
-        self.overall_label = ctk.CTkLabel(
-            overall_frame,
-            text="Preparing installation...",
-            font=ctk.CTkFont(size=12)
-        )
-        self.overall_label.pack(pady=(10, 5))
-        
-        self.overall_progress = ctk.CTkProgressBar(overall_frame)
-        self.overall_progress.pack(fill="x", padx=15, pady=(0, 10))
-        self.overall_progress.set(0)
-        
-        # Current package section
-        package_frame = ctk.CTkFrame(main_frame)
-        package_frame.pack(fill="x", pady=(0, 15))
-        
-        self.package_label = ctk.CTkLabel(
-            package_frame,
-            text="Waiting to start...",
-            font=ctk.CTkFont(size=11)
-        )
-        self.package_label.pack(pady=(10, 5))
-        
-        self.package_progress = ctk.CTkProgressBar(package_frame)
-        self.package_progress.pack(fill="x", padx=15, pady=(0, 10))
-        self.package_progress.set(0)
-        
-        # Status/log section
-        log_frame = ctk.CTkFrame(main_frame)
-        log_frame.pack(fill="both", expand=True, pady=(0, 15))
-        
-        log_title = ctk.CTkLabel(
-            log_frame,
-            text="Installation Log:",
-            font=ctk.CTkFont(size=11, weight="bold")
-        )
-        log_title.pack(anchor="w", padx=10, pady=(10, 5))
-        
-        self.log_text = ctk.CTkTextbox(
-            log_frame,
-            height=100,
-            font=ctk.CTkFont(family="Consolas", size=10)
-        )
-        self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        
-        # Buttons
-        button_frame = ctk.CTkFrame(main_frame)
-        button_frame.pack(fill="x")
-        
-        self.cancel_button = ctk.CTkButton(
-            button_frame,
-            text="Cancel",
-            command=self.cancel_installation,
-            fg_color="red",
-            hover_color="darkred"
-        )
-        self.cancel_button.pack(side="right", padx=(5, 10), pady=10)
-        
-        self.close_button = ctk.CTkButton(
-            button_frame,
-            text="Close",
-            command=self.close_dialog,
-            state="disabled"
-        )
-        self.close_button.pack(side="right", pady=10)
-    
-    def log_message(self, message):
-        """Add a message to the log with timestamp"""
-        timestamp = time.strftime("%H:%M:%S")
-        formatted_message = f"[{timestamp}] {message}\n"
-        
-        # Thread-safe UI update
-        self.after(0, lambda: self._update_log(formatted_message))
-    
-    def _update_log(self, message):
-        """Update log text widget (must be called from main thread)"""
-        self.log_text.insert("end", message)
-        self.log_text.see("end")  # Auto-scroll
-    
-    def update_overall_progress(self, progress, text):
-        """Update overall progress bar and text"""
-        def update():
-            self.overall_progress.set(progress)
-            self.overall_label.configure(text=text)
-        
-        self.after(0, update)
-    
-    def update_package_progress(self, progress, text):
-        """Update current package progress bar and text"""
-        def update():
-            self.package_progress.set(progress)
-            self.package_label.configure(text=text)
-        
-        self.after(0, update)
-    
-    def start_installation(self):
-        """Start the installation process in a separate thread"""
-        self.installation_thread = threading.Thread(
-            target=self.install_packages_worker,
-            daemon=True
-        )
-        self.installation_thread.start()
-    
     def install_packages_worker(self):
         """Worker thread for installing packages"""
         try:
@@ -621,163 +462,20 @@ class PackageInstallationProgressDialog(ctk.CTkToplevel):
                 self.installation_failed("No Python environment available")
                 return
             
-            # Install each package
-            for i, package in enumerate(self.packages):
-                if self.installation_cancelled:
-                    self.log_message("Installation cancelled by user")
-                    return
-                
-                self.current_package_index = i
-                overall_progress = i / self.total_packages
-                
-                # Update UI
-                self.update_overall_progress(
-                    overall_progress,
-                    f"Installing package {i+1} of {self.total_packages}"
-                )
-                
-                self.update_package_progress(0, f"Installing {package}...")
-                self.log_message(f"Installing {package}...")
-                
-                # Install the package
-                success = self.install_single_package(package)
-                
-                if not success and not self.installation_cancelled:
-                    self.log_message(f"ERROR: Failed to install {package}")
-                    self.installation_failed(f"Failed to install {package}")
-                    return
-                
-                # Update progress
-                self.update_package_progress(1.0, f"✓ {package} installed")
-                self.log_message(f"✓ Successfully installed {package}")
+            # First upgrade pip and setuptools
+            self.log_message("Upgrading pip and setuptools...")
+            self.update_overall_progress(0.05, "Upgrading pip...")
+            pip_upgrade_cmd = self.venv_manager.get_pip_command()
+            pip_upgrade_cmd.extend(["install", "--upgrade", "pip", "setuptools", "wheel"])
             
-            # Installation completed
-            if not self.installation_cancelled:
-                self.update_overall_progress(1.0, "Installation completed successfully!")
-                self.log_message("🎉 All packages installed successfully!")
-                self.installation_completed()
-                
-        except Exception as e:
-            self.log_message(f"ERROR: Installation failed with exception: {e}")
-            self.installation_failed(str(e))
-    
-    def install_single_package(self, package):
-        """Install a single package using pip"""
-        try:
-            # Determine pip path
-            if self.venv_manager.pip_path and os.path.exists(self.venv_manager.pip_path):
-                pip_executable = self.venv_manager.pip_path
-            else:
-                # Fallback to python -m pip
-                pip_executable = self.venv_manager.python_path
-                pip_cmd = [pip_executable, "-m", "pip", "install", package, "--no-warn-script-location"]
-            
-            if pip_executable == self.venv_manager.pip_path:
-                pip_cmd = [pip_executable, "install", package, "--no-warn-script-location"]
-            
-            # Run pip install with progress monitoring
-            process = subprocess.Popen(
-                pip_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+            subprocess.run(
+                pip_upgrade_cmd,
+                capture_output=True,
                 text=True,
-                universal_newlines=True,
-                cwd=tempfile.gettempdir()  # Use temp dir to avoid path issues
+                timeout=180,
+                cwd=tempfile.gettempdir()
             )
             
-            # Monitor output for progress
-            output_lines = []
-            while True:
-                if self.installation_cancelled:
-                    process.terminate()
-                    return False
-                
-                line = process.stdout.readline()
-                if not line and process.poll() is not None:
-                    break
-                
-                if line:
-                    line = line.strip()
-                    output_lines.append(line)
-                    
-                    # Update progress based on pip output
-                    if "Downloading" in line:
-                        self.update_package_progress(0.3, f"Downloading {package}...")
-                    elif "Installing" in line:
-                        self.update_package_progress(0.7, f"Installing {package}...")
-                    elif "Successfully installed" in line:
-                        self.update_package_progress(1.0, f"✓ {package} installed")
-                    
-                    # Log important messages
-                    if any(keyword in line.lower() for keyword in ["error", "warning", "successfully"]):
-                        self.log_message(line)
-            
-            return_code = process.poll()
-            
-            if return_code == 0:
-                return True
-            else:
-                self.log_message(f"Pip install failed with return code {return_code}")
-                self.log_message("Output: " + "\n".join(output_lines[-5:]))  # Show last 5 lines
-                return False
-                
-        except Exception as e:
-            self.log_message(f"Exception during package installation: {e}")
-            return False
-    
-    def installation_completed(self):
-        """Handle successful installation completion"""
-        def update_ui():
-            self.cancel_button.configure(state="disabled")
-            self.close_button.configure(state="normal")
-            
-            # Show success message
-            self.overall_label.configure(text="🎉 Installation completed successfully!")
-            
-        self.after(0, update_ui)
-    
-    def installation_failed(self, error_message):
-        """Handle installation failure"""
-        def update_ui():
-            self.cancel_button.configure(state="disabled")
-            self.close_button.configure(state="normal")
-            
-            self.overall_label.configure(text=f"❌ Installation failed: {error_message}")
-            self.package_label.configure(text="Installation stopped")
-            
-        self.after(0, update_ui)
-    
-    def cancel_installation(self):
-        """Cancel the ongoing installation"""
-        self.installation_cancelled = True
-        self.log_message("Cancelling installation...")
-        
-        def update_ui():
-            self.cancel_button.configure(state="disabled")
-            self.close_button.configure(state="normal")
-            self.overall_label.configure(text="Installation cancelled")
-            
-        self.after(0, update_ui)
-    
-    def close_dialog(self):
-        """Close the dialog"""
-        if self.installation_thread and self.installation_thread.is_alive():
-            self.installation_cancelled = True
-            # Give thread a moment to finish
-            self.after(100, self.destroy)
-        else:
-            self.destroy()
-    def install_packages_worker(self):
-        """Worker thread for installing packages"""
-        try:
-            self.log_message("Starting package installation...")
-            
-            # Check if we have a valid Python environment
-            if not self.venv_manager.python_path:
-                self.log_message("ERROR: No valid Python environment found!")
-                self.installation_failed("No Python environment available")
-                return
-            
             # Install each package
             for i, package in enumerate(self.packages):
                 if self.installation_cancelled:
@@ -785,7 +483,7 @@ class PackageInstallationProgressDialog(ctk.CTkToplevel):
                     return
                 
                 self.current_package_index = i
-                overall_progress = i / self.total_packages
+                overall_progress = 0.1 + (i / self.total_packages * 0.8)  # 10% for pip upgrade, 80% for packages
                 
                 # Update UI
                 self.update_overall_progress(
@@ -801,12 +499,12 @@ class PackageInstallationProgressDialog(ctk.CTkToplevel):
                 
                 if not success and not self.installation_cancelled:
                     self.log_message(f"ERROR: Failed to install {package}")
-                    self.installation_failed(f"Failed to install {package}")
-                    return
+                    # Don't fail completely for single package failures
+                    self.log_message(f"Continuing with remaining packages...")
                 
                 # Update progress
-                self.update_package_progress(1.0, f"✓ {package} installed")
-                self.log_message(f"✓ Successfully installed {package}")
+                self.update_package_progress(1.0, f"✓ {package} processed")
+                self.log_message(f"✓ Processed {package}")
             
             # CRITICAL FIX: Handle mapbox_earcut DLL issues
             self.log_message("Checking for DLL issues...")
@@ -836,13 +534,71 @@ class PackageInstallationProgressDialog(ctk.CTkToplevel):
             
             # Installation completed
             if not self.installation_cancelled:
-                self.update_overall_progress(1.0, "Installation completed successfully!")
-                self.log_message("🎉 All packages installed successfully!")
+                self.update_overall_progress(1.0, "Installation completed!")
+                self.log_message("🎉 Package installation process completed!")
                 self.installation_completed()
                 
         except Exception as e:
             self.log_message(f"ERROR: Installation failed with exception: {e}")
             self.installation_failed(str(e))
+
+    def install_single_package(self, package):
+        """Install a single package using pip with enhanced progress monitoring"""
+        try:
+            # Get the proper pip command
+            pip_cmd = self.venv_manager.get_pip_command()
+            pip_cmd.extend(["install", package, "--no-warn-script-location", "--progress-bar", "off"])
+            
+            # Run pip install with progress monitoring
+            process = subprocess.Popen(
+                pip_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                universal_newlines=True,
+                cwd=tempfile.gettempdir()
+            )
+            
+            # Monitor output for progress with better parsing
+            output_lines = []
+            while True:
+                if self.installation_cancelled:
+                    process.terminate()
+                    return False
+                
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+                
+                if line:
+                    line = line.strip()
+                    output_lines.append(line)
+                    
+                    # Enhanced progress tracking
+                    if "Collecting" in line:
+                        self.update_package_progress(0.1, f"Collecting {package}...")
+                    elif "Downloading" in line:
+                        self.update_package_progress(0.3, f"Downloading {package}...")
+                    elif "Installing" in line or "Running setup.py" in line:
+                        self.update_package_progress(0.7, f"Installing {package}...")
+                    elif "Successfully installed" in line:
+                        self.update_package_progress(1.0, f"✓ {package} installed")
+                    
+                    # Log important messages
+                    if any(keyword in line.lower() for keyword in ["error", "warning", "successfully", "failed"]):
+                        self.log_message(f"  {line}")
+            
+            return_code = process.poll()
+            
+            if return_code == 0:
+                return True
+            else:
+                self.log_message(f"Package {package} installation had issues (code {return_code})")
+                return False
+                
+        except Exception as e:
+            self.log_message(f"Exception during {package} installation: {e}")
+            return False
 # Terminal emulation in Tkinter
 class TkTerminal(tk.Text):
     """A Tkinter-based terminal emulator widget with realistic appearance"""
@@ -4089,6 +3845,108 @@ class VirtualEnvironmentManager:
             self.logger.error(f"Exception while installing {package_name}: {e}")
             return False
 
+    def install_visual_cpp_redistributable(self):
+        """Check and prompt for Visual C++ Redistributable installation"""
+        try:
+            import winreg
+            # Check if Visual C++ Redistributable is installed
+            try:
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                    r"SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64")
+                winreg.CloseKey(key)
+                self.logger.info("Visual C++ Redistributable already installed")
+                return True
+            except FileNotFoundError:
+                # Not installed
+                import tkinter.messagebox as messagebox
+                result = messagebox.askyesno(
+                    "Missing Dependency",
+                    "Microsoft Visual C++ Redistributable is required for Manim.\n\n"
+                    "Would you like to download it now?\n\n"
+                    "This will open your web browser to the Microsoft download page."
+                )
+                
+                if result:
+                    import webbrowser
+                    webbrowser.open("https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist")
+                    messagebox.showinfo(
+                        "Please Install",
+                        "Please download and install the Visual C++ Redistributable,\n"
+                        "then restart ManimStudio to continue with package installation."
+                    )
+                
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error checking Visual C++ Redistributable: {e}")
+            return True  # Assume it's installed if we can't check
+
+    def fix_mapbox_earcut_issue(self):
+        """Fix mapbox_earcut DLL loading issues"""
+        self.logger.info("Fixing mapbox_earcut DLL issues...")
+        
+        try:
+            # First check for Visual C++ Redistributable
+            if sys.platform == "win32":
+                if not self.install_visual_cpp_redistributable():
+                    return False
+            
+            # First, uninstall the problematic package
+            uninstall_cmd = self.get_pip_command()
+            uninstall_cmd.extend(["uninstall", "mapbox_earcut", "-y"])
+            
+            result = subprocess.run(
+                uninstall_cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=tempfile.gettempdir()
+            )
+            
+            self.logger.info("Uninstalled mapbox_earcut")
+            
+            # Install specific working version with no-cache to force recompilation
+            install_cmd = self.get_pip_command()
+            install_cmd.extend([
+                "install", 
+                "mapbox_earcut==1.0.1",  # Known working version
+                "--no-cache-dir",
+                "--force-reinstall",
+                "--no-deps"  # Install without dependencies first
+            ])
+            
+            result = subprocess.run(
+                install_cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=tempfile.gettempdir()
+            )
+            
+            if result.returncode == 0:
+                self.logger.info("Successfully reinstalled mapbox_earcut")
+                
+                # Now install dependencies
+                deps_cmd = self.get_pip_command()
+                deps_cmd.extend(["install", "numpy"])
+                
+                subprocess.run(
+                    deps_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    cwd=tempfile.gettempdir()
+                )
+                
+                return True
+            else:
+                self.logger.error(f"Failed to reinstall mapbox_earcut: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error fixing mapbox_earcut: {e}")
+            return False
+
     def show_setup_dialog_with_progress(self):
         """Show enhanced setup dialog with progress tracking"""
         if not self.parent_app:
@@ -4097,9 +3955,28 @@ class VirtualEnvironmentManager:
         
         # Show installation progress dialog
         try:
+            # Updated package list with specific versions for Windows
+            windows_packages = [
+                "wheel>=0.37.0",
+                "setuptools>=60.0.0",
+                "numpy>=1.21.0,<1.25.0",  # Specific range for compatibility
+                "Pillow>=8.0.0",
+                "opencv-python>=4.5.0",
+                "matplotlib>=3.3.0",
+                "jedi>=0.18.0",
+                "psutil>=5.8.0",
+                "customtkinter>=5.0.0",
+                "pycairo>=1.20.0",
+                "manimpango>=0.4.0",
+                "mapbox_earcut==1.0.1",  # Specific version that works
+                "manim==0.18.0",
+                "sympy>=1.9.0",
+                "scipy>=1.7.0"
+            ]
+            
             dialog = PackageInstallationProgressDialog(
                 self.parent_app.root,
-                ESSENTIAL_PACKAGES,
+                windows_packages,
                 self
             )
             
@@ -4170,7 +4047,7 @@ class VirtualEnvironmentManager:
         return self.create_environment_unified(
             name="manim_studio_default",
             location=self.venv_dir,
-            packages=ESSENTIAL_PACKAGES[:10],  # Core packages only
+            packages=[],  # Don't install packages here, do it in progress dialog
             log_callback=log_callback
         )
 
@@ -4475,6 +4352,10 @@ class VirtualEnvironmentManager:
         }
         return info
 
+    def get_venv_info(self):
+        """Get virtual environment information (alias for get_environment_info)"""
+        return self.get_environment_info()
+
     def list_environments(self):
         """List all available virtual environments"""
         environments = []
@@ -4766,7 +4647,7 @@ class VirtualEnvironmentManager:
             # Delete existing environment
             if self.delete_environment(env_name):
                 # Create new environment
-                return self.create_new_environment(env_name, ESSENTIAL_PACKAGES)
+                return self.create_new_environment(env_name)
             return False
         except Exception as e:
             self.logger.error(f"Error recreating environment {env_name}: {e}")
@@ -4804,66 +4685,7 @@ class VirtualEnvironmentManager:
         except Exception as e:
             self.logger.error(f"Error restoring environment {env_name}: {e}")
             return False
-    def fix_mapbox_earcut_issue(self):
-        """Fix mapbox_earcut DLL loading issues"""
-        self.logger.info("Fixing mapbox_earcut DLL issues...")
-        
-        try:
-            # First, uninstall the problematic package
-            uninstall_cmd = self.get_pip_command()
-            uninstall_cmd.extend(["uninstall", "mapbox_earcut", "-y"])
-            
-            result = subprocess.run(
-                uninstall_cmd,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                cwd=tempfile.gettempdir()
-            )
-            
-            self.logger.info("Uninstalled mapbox_earcut")
-            
-            # Install specific working version with no-cache to force recompilation
-            install_cmd = self.get_pip_command()
-            install_cmd.extend([
-                "install", 
-                "mapbox_earcut==1.0.1",  # Known working version
-                "--no-cache-dir",
-                "--force-reinstall",
-                "--no-deps"  # Install without dependencies first
-            ])
-            
-            result = subprocess.run(
-                install_cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                cwd=tempfile.gettempdir()
-            )
-            
-            if result.returncode == 0:
-                self.logger.info("Successfully reinstalled mapbox_earcut")
-                
-                # Now install dependencies
-                deps_cmd = self.get_pip_command()
-                deps_cmd.extend(["install", "numpy"])
-                
-                subprocess.run(
-                    deps_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=180,
-                    cwd=tempfile.gettempdir()
-                )
-                
-                return True
-            else:
-                self.logger.error(f"Failed to reinstall mapbox_earcut: {result.stderr}")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"Error fixing mapbox_earcut: {e}")
-            return False
+
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
