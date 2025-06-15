@@ -3392,6 +3392,15 @@ class VirtualEnvironmentManager:
     """Enhanced virtual environment manager with Nuitka onefile compatibility and comprehensive Python discovery"""
     
     def __init__(self, parent_app):
+        # Import required modules
+        import time
+        import tempfile
+        import shutil
+        import logging
+        import threading
+        import subprocess
+        from pathlib import Path
+        
         self.parent_app = parent_app
         self.current_venv = None
         
@@ -3639,7 +3648,86 @@ class VirtualEnvironmentManager:
     def validate_python_installation(self, python_path):
         """Validate that a Python installation is usable"""
         if not python_path or not os.path.exists(python_path):
-            return False
+        def show_setup_dialog(self):
+        """Show setup dialog if needed, with Python 3.12 check"""
+        try:
+            from tkinter import messagebox
+            
+            # First check if Python 3.12 is available
+            if not self.check_python_312_availability():
+                # Python check failed, user was shown download dialog
+                self.logger.error("Python 3.12 check failed, cannot proceed with setup")
+                return
+            
+            # Show confirmation dialog
+            python_info = self.get_python_version_info()
+            setup_message = f"""ManimStudio Environment Setup
+
+Detected Python: {python_info}
+
+This will:
+• Create a dedicated virtual environment
+• Install Manim Community Edition  
+• Install required development tools (NumPy, Matplotlib, etc.)
+• Install UI and IntelliSense components
+
+⏱️ This may take 5-10 minutes depending on your internet connection.
+
+Continue with setup?"""
+            
+            if messagebox.askyesno(
+                "Environment Setup Required",
+                setup_message,
+                icon="question"
+            ):
+                # Try to create default environment
+                success = self.create_default_environment()
+                if success:
+                    messagebox.showinfo(
+                        "Setup Complete",
+                        "✅ Environment setup completed successfully!\n\n"
+                        "ManimStudio is now ready to create animations."
+                    )
+                else:
+                    messagebox.showerror(
+                        "Setup Failed", 
+                        "❌ Environment setup failed.\n\n"
+                        "ManimStudio will try to use system Python as fallback."
+                    )
+                    self.use_system_python_fallback()
+            else:
+                # User cancelled - use system Python fallback
+                self.logger.info("User cancelled setup, trying system Python fallback")
+                self.use_system_python_fallback()
+                
+        except Exception as e:
+            self.logger.error(f"Error showing environment setup dialog: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Last resort fallback - use system Python
+            self.logger.info("Trying system Python as last resort")
+            self.use_system_python_fallback()
+
+    def get_python_version_info(self):
+        """Get detailed Python version information"""
+        try:
+            python_exe = self.find_system_python()
+            if python_exe:
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [python_exe, "-c", "import sys; print(f'Python {sys.version.split()[0]} ({sys.platform})')"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.returncode == 0:
+                    return result.stdout.strip()
+                    
+        except Exception as e:
+            self.logger.error(f"Error getting Python version info: {e}")
+            
+        return "Python (version unknown)"
         
         # CRITICAL: Never use our own executable
         if self.is_frozen:
@@ -3678,15 +3766,20 @@ class VirtualEnvironmentManager:
         return False
 
     def find_system_python(self):
-        """Find the best system Python installation"""
+        """Find the best system Python installation, preferring Python 3.12"""
         valid_pythons = self.discover_all_python_installations()
         
         if not valid_pythons:
             self.logger.error("No valid Python installations found!")
+            self.show_python_download_dialog()
             return None
         
-        # Prefer Python 3.8+ installations
-        preferred_pythons = []
+        # Categorize Python installations by version
+        python_312 = []
+        python_311_plus = []
+        python_310_plus = []
+        python_39_plus = []
+        python_38_plus = []
         
         for python_path in valid_pythons:
             try:
@@ -3701,24 +3794,56 @@ class VirtualEnvironmentManager:
                     version_str = result.stdout.strip()
                     major, minor = map(int, version_str.split('.'))
                     
-                    # Prefer Python 3.8+
-                    if major == 3 and minor >= 8:
-                        preferred_pythons.append((python_path, major, minor))
+                    if major == 3:
+                        if minor == 12:
+                            python_312.append((python_path, major, minor))
+                        elif minor >= 11:
+                            python_311_plus.append((python_path, major, minor))
+                        elif minor >= 10:
+                            python_310_plus.append((python_path, major, minor))
+                        elif minor >= 9:
+                            python_39_plus.append((python_path, major, minor))
+                        elif minor >= 8:
+                            python_38_plus.append((python_path, major, minor))
                         
             except Exception as e:
                 self.logger.warning(f"Could not get version for {python_path}: {e}")
                 continue
         
-        if preferred_pythons:
-            # Sort by version (highest first)
-            preferred_pythons.sort(key=lambda x: (x[1], x[2]), reverse=True)
-            best_python = preferred_pythons[0][0]
-            self.logger.info(f"Selected Python: {best_python}")
+        # Priority: Python 3.12 > 3.11+ > 3.10+ > 3.9+ > 3.8+
+        if python_312:
+            best_python = python_312[0][0]
+            self.logger.info(f"✅ Found Python 3.12: {best_python}")
+            return best_python
+        elif python_311_plus:
+            best_python = python_311_plus[0][0]
+            version = python_311_plus[0][2]
+            self.logger.info(f"✅ Found Python 3.{version}: {best_python}")
+            self.show_python_312_recommendation(f"3.{version}")
+            return best_python
+        elif python_310_plus:
+            best_python = python_310_plus[0][0]
+            version = python_310_plus[0][2]
+            self.logger.info(f"⚠️ Found Python 3.{version}: {best_python}")
+            self.show_python_312_recommendation(f"3.{version}")
+            return best_python
+        elif python_39_plus:
+            best_python = python_39_plus[0][0]
+            version = python_39_plus[0][2]
+            self.logger.warning(f"⚠️ Found older Python 3.{version}: {best_python}")
+            self.show_python_312_recommendation(f"3.{version}")
+            return best_python
+        elif python_38_plus:
+            best_python = python_38_plus[0][0]
+            version = python_38_plus[0][2]
+            self.logger.warning(f"⚠️ Found older Python 3.{version}: {best_python}")
+            self.show_python_312_recommendation(f"3.{version}")
             return best_python
         
-        # Fallback to first valid Python
-        self.logger.warning("No Python 3.8+ found, using first available")
-        return valid_pythons[0]
+        # No suitable Python found
+        self.logger.error("No Python 3.8+ found!")
+        self.show_python_download_dialog()
+        return None
 
     def detect_existing_environment(self):
         """Detect if we have a usable environment available"""
@@ -3959,47 +4084,102 @@ else:
             self.logger.error(f"Error verifying environment: {e}")
             return False
 
-    def show_setup_dialog(self):
-        """Show setup dialog if needed"""
+    def show_python_download_dialog(self):
+        """Show dialog guiding user to download Python 3.12"""
         try:
             from tkinter import messagebox
+            import webbrowser
             
-            # Show confirmation dialog
-            if messagebox.askyesno(
-                "Environment Setup Required",
-                "ManimStudio needs to set up a Python environment with Manim and other dependencies.\n\n"
-                "This will:\n"
-                "• Create a dedicated virtual environment\n"
-                "• Install Manim Community Edition\n"
-                "• Install required development tools\n\n"
-                "This may take a few minutes. Continue?",
-                icon="question"
-            ):
-                # Try to create default environment
-                success = self.create_default_environment()
-                if success:
-                    messagebox.showinfo(
-                        "Setup Complete",
-                        "Environment setup completed successfully!"
-                    )
-                else:
-                    messagebox.showerror(
-                        "Setup Failed", 
-                        "Environment setup failed. Using system Python as fallback."
-                    )
-                    self.use_system_python_fallback()
-            else:
-                # User cancelled - use system Python fallback
-                self.use_system_python_fallback()
+            message = """❌ Python 3.12 Not Found!
+
+ManimStudio requires Python 3.12 for optimal performance and compatibility.
+
+Python 3.12 was not detected on your system. Please download and install it:
+
+🔗 Download Python 3.12 from: https://python.org/downloads/
+
+Installation Tips:
+• Choose "Add Python to PATH" during installation
+• Select "Install for all users" if you have admin rights
+• After installation, restart ManimStudio
+
+Would you like to open the Python download page now?"""
+            
+            result = messagebox.askyesno(
+                "Python 3.12 Required", 
+                message,
+                icon="warning"
+            )
+            
+            if result:
+                webbrowser.open("https://python.org/downloads/")
                 
         except Exception as e:
-            self.logger.error(f"Error showing environment setup dialog: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            self.logger.error(f"Error showing Python download dialog: {e}")
+
+    def show_python_312_recommendation(self, current_version):
+        """Show recommendation to upgrade to Python 3.12"""
+        try:
+            from tkinter import messagebox
+            import webbrowser
             
-            # Last resort fallback - use system Python
-            self.logger.info("Trying system Python as last resort")
-            self.use_system_python_fallback()
+            message = f"""⚠️ Python {current_version} Detected
+
+You have Python {current_version} installed, which will work with ManimStudio.
+
+However, we recommend upgrading to Python 3.12 for:
+• Better performance and stability
+• Latest features and bug fixes  
+• Optimal compatibility with Manim and dependencies
+
+Would you like to download Python 3.12?
+
+Note: You can continue with Python {current_version} by clicking 'No'."""
+            
+            result = messagebox.askyesno(
+                "Upgrade to Python 3.12 Recommended", 
+                message,
+                icon="info"
+            )
+            
+            if result:
+                webbrowser.open("https://python.org/downloads/")
+                
+        except Exception as e:
+            self.logger.error(f"Error showing Python 3.12 recommendation: {e}")
+
+    def check_python_312_availability(self):
+        """Check if Python 3.12 is available and show appropriate dialog"""
+        python_exe = self.find_system_python()
+        
+        if not python_exe:
+            # No Python found at all
+            return False
+            
+        try:
+            # Check the version of the selected Python
+            result = self.run_hidden_subprocess_nuitka_safe(
+                [python_exe, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                version_str = result.stdout.strip()
+                major, minor = map(int, version_str.split('.'))
+                
+                if major == 3 and minor == 12:
+                    self.logger.info("✅ Python 3.12 found and will be used")
+                    return True
+                else:
+                    self.logger.info(f"⚠️ Using Python {major}.{minor} (3.12 recommended)")
+                    return True
+                    
+        except Exception as e:
+            self.logger.error(f"Error checking Python version: {e}")
+            
+        return False
 
     def create_default_environment(self, log_callback=None):
         """Create the default ManimStudio environment using unified method"""
@@ -4024,16 +4204,38 @@ else:
         try:
             # Find the best Python installation
             if log_callback:
-                log_callback("Searching for Python installations...")
+                log_callback("🔍 Searching for Python installations...")
                 
             python_exe = self.find_system_python()
             if not python_exe:
-                error_msg = "❌ CRITICAL: No Python installation found!\n\n"
-                error_msg += "Please install Python from https://python.org and restart the application."
+                error_msg = "❌ CRITICAL: No suitable Python installation found!\n\n"
+                error_msg += "Please install Python 3.12 from https://python.org/downloads/\n"
+                error_msg += "and restart ManimStudio."
                 self.logger.error(error_msg)
                 if log_callback:
                     log_callback(error_msg)
                 return False
+
+            # Get and log Python version info
+            try:
+                version_result = self.run_hidden_subprocess_nuitka_safe(
+                    [python_exe, "-c", "import sys; print(f'Python {sys.version.split()[0]}')"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if version_result.returncode == 0:
+                    python_version = version_result.stdout.strip()
+                    self.logger.info(f"Using: {python_version}")
+                    if log_callback:
+                        log_callback(f"✅ Found: {python_version}")
+                else:
+                    if log_callback:
+                        log_callback("⚠️ Could not determine Python version")
+                        
+            except Exception as e:
+                self.logger.warning(f"Could not get Python version: {e}")
 
             # Log critical information
             self.logger.info("=" * 60)
@@ -4048,7 +4250,7 @@ else:
             # Remove any existing environment
             if os.path.exists(env_path):
                 if log_callback:
-                    log_callback("Removing existing environment...")
+                    log_callback("🗑️ Removing existing environment...")
                 shutil.rmtree(env_path)
 
             # Ensure parent directory exists
@@ -4056,7 +4258,7 @@ else:
 
             # Step 1: Create virtual environment using CORRECT venv syntax
             if log_callback:
-                log_callback("Creating virtual environment with external Python...")
+                log_callback("🏗️ Creating virtual environment...")
                 
             # FIXED: Use proper command with quoted paths to handle spaces
             create_cmd = [python_exe, "-m", "venv", env_path]
@@ -4080,12 +4282,13 @@ else:
                 error_details += f"Working directory: {self.temp_dir}"
                 self.logger.error(f"Venv creation failed:\n{error_details}")
                 if log_callback:
-                    log_callback(f"❌ Venv creation failed with exit code {result.returncode}")
+                    log_callback(f"❌ Virtual environment creation failed!")
                     log_callback(f"Error: {result.stderr}")
+                    log_callback("💡 Try installing/reinstalling Python 3.12 and restart ManimStudio")
                 raise Exception(f"Failed to create virtual environment:\n{result.stderr}")
                 
             if log_callback:
-                log_callback("✅ Virtual environment created with external Python!")
+                log_callback("✅ Virtual environment created successfully!")
 
             # Step 2: Set up environment paths
             if os.name == 'nt':
@@ -4103,7 +4306,7 @@ else:
 
             # Step 3: Upgrade pip first
             if log_callback:
-                log_callback("Upgrading pip...")
+                log_callback("⬆️ Upgrading pip to latest version...")
 
             upgrade_pip_cmd = [python_path, "-m", "pip", "install", "--upgrade", "pip"]
             result = self.run_hidden_subprocess_nuitka_safe(
@@ -4117,16 +4320,23 @@ else:
             if result.returncode != 0:
                 self.logger.warning(f"Pip upgrade failed: {result.stderr}")
                 if log_callback:
-                    log_callback("⚠️ Pip upgrade failed, continuing...")
+                    log_callback("⚠️ Pip upgrade failed, continuing with existing version...")
+            else:
+                if log_callback:
+                    log_callback("✅ Pip upgraded successfully!")
 
             # Step 4: Install packages if provided
             if packages:
+                total_packages = len(packages)
                 if log_callback:
-                    log_callback(f"Installing {len(packages)} essential packages...")
+                    log_callback(f"📦 Installing {total_packages} essential packages...")
+                    log_callback("This may take several minutes...")
 
+                failed_packages = []
+                
                 for i, package in enumerate(packages):
                     if log_callback:
-                        log_callback(f"Installing {package} ({i+1}/{len(packages)})...")
+                        log_callback(f"📥 Installing {package} ({i+1}/{total_packages})...")
 
                     install_cmd = [python_path, "-m", "pip", "install", package]
                     
@@ -4145,17 +4355,27 @@ else:
                                 log_callback(f"✅ {package} installed successfully")
                         else:
                             self.logger.error(f"❌ Failed to install {package}: {result.stderr}")
+                            failed_packages.append(package)
                             if log_callback:
                                 log_callback(f"❌ Failed to install {package}")
                                 
                     except subprocess.TimeoutExpired:
                         self.logger.error(f"❌ Timeout installing {package}")
+                        failed_packages.append(package)
                         if log_callback:
-                            log_callback(f"❌ Timeout installing {package}")
+                            log_callback(f"⏱️ Timeout installing {package}")
                     except Exception as e:
                         self.logger.error(f"❌ Error installing {package}: {e}")
+                        failed_packages.append(package)
                         if log_callback:
                             log_callback(f"❌ Error installing {package}")
+
+                # Report installation summary
+                successful_packages = total_packages - len(failed_packages)
+                if log_callback:
+                    log_callback(f"📊 Installation Summary: {successful_packages}/{total_packages} packages installed")
+                    if failed_packages:
+                        log_callback(f"⚠️ Failed packages: {', '.join(failed_packages)}")
 
             # Step 5: Activate the environment
             self.python_path = python_path
@@ -4165,17 +4385,19 @@ else:
 
             # Step 6: Verify installation
             if log_callback:
-                log_callback("Verifying installation...")
+                log_callback("🔍 Verifying installation...")
 
             if self.verify_environment_packages(env_path):
                 self.logger.info("✅ Environment created and verified successfully")
                 if log_callback:
                     log_callback("✅ Environment setup completed successfully!")
+                    log_callback("🎉 ManimStudio is ready to create animations!")
                 return True
             else:
                 self.logger.warning("⚠️ Environment created but package verification failed")
                 if log_callback:
                     log_callback("⚠️ Environment created but some packages may be missing")
+                    log_callback("💡 You can manually install missing packages later")
                 return True  # Still return True as environment was created
 
         except Exception as e:
@@ -4184,6 +4406,7 @@ else:
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             if log_callback:
                 log_callback(f"❌ Environment creation failed: {e}")
+                log_callback("💡 Try installing Python 3.12 from https://python.org/downloads/")
             return False
 
     def use_system_python_fallback(self):
