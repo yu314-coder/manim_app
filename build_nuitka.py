@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Enhanced Nuitka Build Script for Manim Studio
-Includes Visual C++ redistributable DLL bundling and mapbox_earcut fix
+Includes Visual C++ redistributable DLL bundling, mapbox_earcut fix, and debug capabilities
 """
 
 import os
@@ -28,6 +28,114 @@ def run_hidden_process(command, **kwargs):
         kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
     
     return subprocess.run(command, **kwargs)
+
+def create_debug_app():
+    """Create a debug version of app.py that shows startup progress"""
+    debug_content = '''
+import sys
+import os
+import traceback
+
+def debug_print(msg):
+    """Print debug message to both console and file"""
+    print(f"[DEBUG] {msg}")
+    try:
+        with open("debug_startup.log", "a", encoding="utf-8") as f:
+            f.write(f"[DEBUG] {msg}\\n")
+    except:
+        pass
+
+try:
+    debug_print("=== DEBUG STARTUP ===")
+    debug_print(f"Python executable: {sys.executable}")
+    debug_print(f"Python version: {sys.version}")
+    debug_print(f"Current working directory: {os.getcwd()}")
+    debug_print(f"Frozen: {getattr(sys, 'frozen', False)}")
+    debug_print(f"sys.argv: {sys.argv}")
+    
+    # Test basic imports
+    debug_print("Testing basic imports...")
+    
+    import tkinter
+    debug_print("✓ tkinter imported")
+    
+    import customtkinter
+    debug_print("✓ customtkinter imported")
+    
+    # Test the problematic import
+    debug_print("Testing mapbox_earcut import...")
+    try:
+        import mapbox_earcut
+        debug_print("✓ mapbox_earcut imported successfully")
+    except Exception as e:
+        debug_print(f"✗ mapbox_earcut import failed: {e}")
+        debug_print(f"Error type: {type(e)}")
+        debug_print(f"Error traceback: {traceback.format_exc()}")
+    
+    # Test other critical imports
+    try:
+        import numpy
+        debug_print("✓ numpy imported")
+    except Exception as e:
+        debug_print(f"✗ numpy import failed: {e}")
+    
+    try:
+        import PIL
+        debug_print("✓ PIL imported")
+    except Exception as e:
+        debug_print(f"✗ PIL import failed: {e}")
+    
+    try:
+        import cv2
+        debug_print("✓ cv2 imported")
+    except Exception as e:
+        debug_print(f"✗ cv2 import failed: {e}")
+    
+    try:
+        import matplotlib
+        debug_print("✓ matplotlib imported")
+    except Exception as e:
+        debug_print(f"✗ matplotlib import failed: {e}")
+    
+    debug_print("All imports tested, attempting to create simple window...")
+    
+    # Create a simple test window
+    import tkinter as tk
+    root = tk.Tk()
+    root.title("Debug Test Window")
+    root.geometry("400x300")
+    
+    label = tk.Label(root, text="DEBUG: App started successfully!\\nCheck debug_startup.log for details", 
+                     font=("Arial", 12), wraplength=350)
+    label.pack(expand=True)
+    
+    button = tk.Button(root, text="Close", command=root.destroy)
+    button.pack(pady=20)
+    
+    debug_print("Test window created, starting mainloop...")
+    root.mainloop()
+    debug_print("Window closed normally")
+    
+except Exception as e:
+    debug_print(f"CRITICAL ERROR: {e}")
+    debug_print(f"Error type: {type(e)}")
+    debug_print(f"Full traceback: {traceback.format_exc()}")
+    
+    # Try to show error in a message box
+    try:
+        import tkinter.messagebox as messagebox
+        messagebox.showerror("Debug Error", f"Critical startup error:\\n{e}\\n\\nCheck debug_startup.log for details")
+    except:
+        pass
+    
+    # Keep console open
+    input("Press Enter to exit...")
+'''
+    
+    with open("debug_app.py", "w", encoding="utf-8") as f:
+        f.write(debug_content)
+    
+    print("✅ Created debug_app.py")
 
 def create_no_console_patch():
     """Create patch to disable console windows"""
@@ -361,6 +469,7 @@ def find_standalone_executable():
 
     possible_paths = [
         dist_dir / "app.exe",
+        dist_dir / "debug_app.exe",
         dist_dir / "app.dist" / "app.exe",
         dist_dir / "ManimStudio.exe",
     ]
@@ -419,14 +528,121 @@ def check_requirements():
     print("✅ All requirements met!")
     return True
 
-def build_onefile_executable(jobs=None, priority="normal"):
+def check_dependencies_with_tools():
+    """Use dependency checking tools if available"""
+    print("🔍 Checking for dependency analysis tools...")
+    
+    # Check for Dependency Walker
+    depends_paths = [
+        r"C:\Program Files (x86)\Dependency Walker\depends.exe",
+        r"C:\Program Files\Dependency Walker\depends.exe",
+        "depends.exe"
+    ]
+    
+    for path in depends_paths:
+        if os.path.exists(path) or shutil.which(path):
+            print(f"✅ Found Dependency Walker: {path}")
+            print("💡 You can use this to analyze your exe:")
+            print(f"   {path} dist\\app.exe")
+            break
+    else:
+        print("❌ Dependency Walker not found")
+        print("💡 Download from: http://www.dependencywalker.com/")
+    
+    # Check for dumpbin (Visual Studio tool)
+    if shutil.which("dumpbin"):
+        print("✅ Found dumpbin (Visual Studio tool)")
+        print("💡 You can check dependencies with:")
+        print("   dumpbin /dependents dist\\app.exe")
+    else:
+        print("❌ dumpbin not found (install Visual Studio Build Tools)")
+
+def build_debug_executable(jobs=None):
+    """Build a debug version that shows console windows"""
+    
+    cpu_count = multiprocessing.cpu_count()
+    if jobs is None:
+        jobs = max(1, cpu_count - 1)
+    
+    # Clean previous builds
+    if Path("build").exists():
+        shutil.rmtree("build")
+    if Path("dist").exists():
+        shutil.rmtree("dist")
+    
+    # Create debug app
+    create_debug_app()
+    
+    print("🔧 Building DEBUG executable (with console windows)...")
+    
+    # Basic debug build command - SHOWS CONSOLE
+    cmd = [
+        sys.executable, "-m", "nuitka",
+        "--onefile",
+        "--onefile-tempdir-spec={PROGRAM_DIR}/temp_unpack",
+        "--show-progress",
+        "--remove-output",
+        "--assume-yes-for-downloads",
+        "--mingw64",
+        "--show-memory",
+        # DO NOT HIDE CONSOLE - we want to see errors
+        # "--windows-console-mode=disable",  # COMMENTED OUT
+        # "--windows-disable-console",       # COMMENTED OUT
+        "--enable-plugin=tk-inter",
+        "--lto=no",
+        
+        # Include essential packages
+        "--include-package=tkinter",
+        "--include-package=customtkinter", 
+        "--include-package=mapbox_earcut",
+        "--include-package=numpy",
+        "--include-package=PIL",
+        "--include-package=cv2",
+        "--include-package=matplotlib",
+        
+        # Include data
+        "--include-package-data=numpy",
+        "--include-package-data=PIL",
+        
+        # Output
+        "--output-dir=dist",
+        f"--jobs={jobs}",
+        
+        # Target file
+        "debug_app.py"
+    ]
+    
+    print("Debug build command:")
+    print(" ".join(cmd))
+    print("=" * 60)
+    
+    # Run the build
+    result = subprocess.run(cmd, capture_output=False, text=True)
+    
+    if result.returncode == 0:
+        print("✅ Debug build successful!")
+        exe_path = Path("dist/debug_app.exe")
+        if exe_path.exists():
+            print(f"📁 Debug executable: {exe_path}")
+            print("🚀 Run this to see startup messages and errors")
+            return exe_path
+        else:
+            print("❌ Executable not found")
+            list_contents()
+    else:
+        print("❌ Debug build failed!")
+        print(f"Return code: {result.returncode}")
+    
+    return None
+
+def build_onefile_executable(jobs=None, priority="normal", debug_mode=False):
     """Build onefile executable that unpacks next to the exe"""
     
     cpu_count = multiprocessing.cpu_count()
     if jobs is None:
         jobs = max(1, cpu_count - 1)
 
-    print(f"🚀 Building ONEFILE executable using {jobs} CPU threads...")
+    print(f"🚀 Building {'DEBUG' if debug_mode else 'PRODUCTION'} ONEFILE executable using {jobs} CPU threads...")
 
     # Clean previous builds
     if Path("build").exists():
@@ -441,10 +657,11 @@ def build_onefile_executable(jobs=None, priority="normal"):
     print("=" * 60)
     print("🔧 Creating enhanced build configuration...")
 
-    # Create enhanced patches and helpers
-    create_no_console_patch()
-    create_fixes_module()
-    create_subprocess_helper()
+    # Create enhanced patches and helpers (only for production builds)
+    if not debug_mode:
+        create_no_console_patch()
+        create_fixes_module()
+        create_subprocess_helper()
 
     # Check prerequisites
     if not check_system_prerequisites():
@@ -464,9 +681,6 @@ def build_onefile_executable(jobs=None, priority="normal"):
         "--onefile",
         "--onefile-tempdir-spec={PROGRAM_DIR}/temp_unpack",  # Latest: unpack next to exe
         "--onefile-cache-mode=cached",  # Force persistent caching - NEVER delete
-        # DISABLE CONSOLE - NO WINDOWS
-        "--windows-console-mode=disable",
-        "--windows-disable-console",
         "--enable-plugin=tk-inter",
         "--lto=no",
         "--show-progress",
@@ -476,12 +690,18 @@ def build_onefile_executable(jobs=None, priority="normal"):
         "--disable-ccache",
         "--show-memory",
         "--disable-dll-dependency-cache",
-        "--windows-force-stdout-spec=nul",
-        "--windows-force-stderr-spec=nul",
-        # '--windows-onefile-tempdir-spec' is not recognized on older Nuitka
-        # versions, so only use the generic option that works cross-platform
-        "--onefile-tempdir-spec={TEMP}\\nuitka-onefile-{PID}",
     ]
+
+    # Console hiding (only for production builds)
+    if not debug_mode:
+        cmd.extend([
+            "--windows-console-mode=disable",
+            "--windows-disable-console",
+            "--windows-force-stdout-spec=nul",
+            "--windows-force-stderr-spec=nul",
+        ])
+    else:
+        print("🐛 DEBUG MODE: Console windows will be visible")
 
     # CRITICAL: Include Visual C++ runtime dependencies for mapbox_earcut
     cmd.extend([
@@ -623,9 +843,10 @@ def build_onefile_executable(jobs=None, priority="normal"):
         cmd.append(f"--include-data-dir={data_dir}")
 
     # Final target
-    cmd.append("app.py")
+    target_file = "debug_app.py" if debug_mode else "app.py"
+    cmd.append(target_file)
 
-    print("Building onefile executable...")
+    print(f"Building {'debug' if debug_mode else 'production'} onefile executable...")
     print("Command:", " ".join(cmd))
     print("=" * 60)
 
@@ -674,16 +895,23 @@ def build_onefile_executable(jobs=None, priority="normal"):
 
         exe_path = find_standalone_executable()
         if exe_path:
-            # Create launcher scripts
-            create_launcher_script(exe_path)
+            # Create launcher scripts (only for production builds)
+            if not debug_mode:
+                create_launcher_script(exe_path)
             
             print(f"📁 Executable: {exe_path}")
-            print("🎉 ONEFILE FEATURES:")
-            print("  ✅ Single file executable")
-            print("  ✅ Unpacks next to the .exe file")
-            print("  ✅ Smart caching system")
-            print("  ✅ No console windows")
-            print("  ✅ Complete functionality included")
+            if debug_mode:
+                print("🐛 DEBUG FEATURES:")
+                print("  ✅ Console windows visible")
+                print("  ✅ Debug logging enabled")
+                print("  ✅ Error messages displayed")
+            else:
+                print("🎉 PRODUCTION FEATURES:")
+                print("  ✅ Single file executable")
+                print("  ✅ Unpacks next to the .exe file")
+                print("  ✅ Smart caching system")
+                print("  ✅ No console windows")
+                print("  ✅ Complete functionality included")
 
             return exe_path
         else:
@@ -697,11 +925,11 @@ def build_onefile_executable(jobs=None, priority="normal"):
         sys.exit(1)
 
 def main():
-    """Main function - Enhanced onefile build with DLL support"""
+    """Main function - Enhanced onefile build with DLL support and debug capabilities"""
     import sys  # Explicitly import here to fix scope issue
     
-    print("🚀 Manim Studio - Enhanced Onefile Builder with DLL Support")
-    print("=" * 60)
+    print("🚀 Manim Studio - Enhanced Onefile Builder with DLL Support & Debug Mode")
+    print("=" * 70)
     
     # Set up command line arguments
     parser = argparse.ArgumentParser(description="Build Manim Studio as onefile executable")
@@ -709,6 +937,8 @@ def main():
     parser.add_argument("--max-cpu", action="store_true", help="Use all available CPU cores with oversubscription")
     parser.add_argument("--turbo", action="store_true", help="Use turbo mode - maximum CPU with high priority")
     parser.add_argument("--ascii", action="store_true", help="Use ASCII output instead of Unicode symbols")
+    parser.add_argument("--debug", action="store_true", help="Build debug version with visible console windows")
+    parser.add_argument("--debug-only", action="store_true", help="Build only debug version for troubleshooting")
     
     # Parse args but keep default behavior if not specified
     args, remaining_args = parser.parse_known_args()
@@ -717,6 +947,20 @@ def main():
     global USE_ASCII_ONLY
     if args.ascii:
         USE_ASCII_ONLY = True
+    
+    # Debug mode handling
+    if args.debug_only:
+        print("🐛 DEBUG-ONLY MODE: Building debug version only")
+        exe_path = build_debug_executable()
+        if exe_path:
+            print("\n" + "=" * 60)
+            print("🎯 DEBUG BUILD COMPLETE!")
+            print("📋 TROUBLESHOOTING STEPS:")
+            print(f"1. Run: {exe_path}")
+            print("2. Watch for console output and error messages")
+            print("3. Check debug_startup.log file")
+            check_dependencies_with_tools()
+        return
     
     # Determine job count
     cpu_count = multiprocessing.cpu_count()
@@ -757,13 +1001,17 @@ def main():
     logging.info("Building enhanced onefile executable with DLL support")
     
     # Display build information
-    print("\n🎯 Building ENHANCED ONEFILE executable...")
+    build_type = "DEBUG" if args.debug else "PRODUCTION"
+    print(f"\n🎯 Building {build_type} ONEFILE executable...")
     print("📋 This build includes:")
     print("  ✅ Single file executable")
     print("  ✅ Unpacks to folder next to .exe")
     print("  ✅ Smart caching system")
     print("  ✅ Complete functionality")
-    print("  ✅ No console windows")
+    if not args.debug:
+        print("  ✅ No console windows")
+    else:
+        print("  🐛 Console windows visible (debug mode)")
     print("  ✅ Visual C++ redistributable DLLs")
     print("  ✅ mapbox_earcut DLL fix")
     print("  ✅ Latest Nuitka onefile features")
@@ -781,14 +1029,14 @@ def main():
             sys.exit(1)
     
     # Confirmation
-    confirm = input(f"\n🚀 Proceed with enhanced onefile build using {jobs} threads? (y/N): ").strip().lower()
+    confirm = input(f"\n🚀 Proceed with {build_type.lower()} onefile build using {jobs} threads? (y/N): ").strip().lower()
     if confirm not in ['y', 'yes']:
         print("❌ Build cancelled by user")
         sys.exit(0)
     
     # Execute the build
-    print(f"\n🚀 Starting enhanced onefile build process...")
-    exe_path = build_onefile_executable(jobs=jobs, priority=process_priority)
+    print(f"\n🚀 Starting {build_type.lower()} onefile build process...")
+    exe_path = build_onefile_executable(jobs=jobs, priority=process_priority, debug_mode=args.debug)
     success = exe_path is not None
     
     # Post-build: Copy DLLs next to executable
@@ -808,8 +1056,8 @@ def main():
     
     print("\n" + "=" * 60)
     if success:
-        print("🎉 Enhanced build completed successfully!")
-        print("🚀 ENHANCED ONEFILE BUILD: Single file executable ready!")
+        print(f"🎉 {build_type} build completed successfully!")
+        print(f"🚀 {build_type} ONEFILE BUILD: Single file executable ready!")
         print("   🆕 ENHANCED FEATURES:")
         print("   ✅ Single file executable")
         print("   ✅ Unpacks next to the .exe file")
@@ -818,7 +1066,10 @@ def main():
         print("   ✅ mapbox_earcut DLL loading fixed")
         print("   ✅ Latest Nuitka onefile technology")
         print("   ✅ Complete functionality included")
-        print("   ✅ No console windows")
+        if not args.debug:
+            print("   ✅ No console windows")
+        else:
+            print("   🐛 Console windows visible for debugging")
         print("   🎯 OPTIMIZED: Best onefile integration with DLL support!")
         print("🚀 Professional desktop application ready!")
         
@@ -828,15 +1079,25 @@ def main():
         print("   🚀 Run the .exe file to start the application")
         print("   📂 App will unpack to 'temp_unpack' folder next to .exe")
         print("   🔧 Visual C++ DLLs are bundled with the executable")
+        if args.debug:
+            print("   🐛 Console output will be visible for debugging")
+            print("   📄 Check debug_startup.log for detailed startup info")
         print("   ✅ Complete functionality ready out of the box")
         
         if bundled_dlls:
             print(f"\n📦 Bundled DLLs: {', '.join(bundled_dlls)}")
         
+        # Additional troubleshooting info for debug builds
+        if args.debug:
+            print("\n🔧 DEBUGGING INFO:")
+            check_dependencies_with_tools()
+        
     else:
         print("❌ Build failed!")
         print("💡 Check the logs above for error details.")
         print("   📄 Check build.log for detailed error information")
+        print("   🐛 Try --debug flag to see console output")
+        print("   🐛 Or use --debug-only for troubleshooting")
         sys.exit(1)
 
 if __name__ == "__main__":

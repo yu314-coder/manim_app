@@ -128,12 +128,14 @@ try:
 except ImportError:
     PYGMENTS_AVAILABLE = False
 # Early load of fixes module to handle runtime issues
+# Early load of fixes module to handle runtime issues
 try:
     import fixes
     fixes.apply_fixes()
-except ImportError:
-    print("Warning: fixes module not available")
-    pass
+except (ImportError, AttributeError) as e:
+    print(f"Warning: fixes module issue: {e}")
+except Exception as e:
+    print(f"Warning: Error applying fixes: {e}")
 
 # Force matplotlib backend to TkAgg
 try:
