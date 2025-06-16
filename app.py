@@ -10509,80 +10509,58 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
             )
 
 def main():
-    """Application entry point"""
-    import sys 
+    """Main application entry point"""
+    # NOTE: Do NOT import sys here - it's already imported at module level
+    # Any import of sys inside this function will cause UnboundLocalError
+    
+    logger = None  # Initialize logger variable to avoid UnboundLocalError
+    
     try:
-        # CRITICAL: Check DLL dependencies FIRST before anything else
-        if not check_dll_dependencies():
-            sys.exit(1)
-        
-        # Early console hiding for Windows
-        if sys.platform == "win32":
+        # Hide console window on Windows for packaged executable
+        if sys.platform == "win32" and hasattr(sys, 'frozen'):
             try:
                 import ctypes
-                ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
-            except:
-                pass
-
-        # Import the no-console patch immediately to hide ALL console windows
-        try:
-            import ENHANCED_NO_CONSOLE_PATCH
-        except ImportError:
-            try:
-                import NO_CONSOLE_PATCH
-            except ImportError:
-                # No patch available, create one in-memory
-                import subprocess
-                import sys
-                if sys.platform == "win32":
-                    # Define the flag if not already defined
-                    if not hasattr(subprocess, "CREATE_NO_WINDOW"):
-                        subprocess.CREATE_NO_WINDOW = 0x08000000
-                    
-                    # Get startupinfo to hide console
-                    def get_hidden_startupinfo():
-                        startupinfo = subprocess.STARTUPINFO()
-                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        startupinfo.wShowWindow = subprocess.SW_HIDE
-                        return startupinfo
+                from ctypes import wintypes
+                
+                kernel32 = ctypes.windll.kernel32
+                user32 = ctypes.windll.user32
+                
+                kernel32.GetConsoleWindow.restype = wintypes.HWND
+                kernel32.GetConsoleWindow.argtypes = []
+                user32.ShowWindow.restype = wintypes.BOOL
+                user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+                
+                # Multiple methods to ensure console is hidden
+                try:
+                    console_window = kernel32.GetConsoleWindow()
+                    if console_window:
+                        # SW_HIDE = 0
+                        user32.ShowWindow(console_window, 0)
                         
-                    # Patch Popen
-                    original_popen = subprocess.Popen
-                    def hidden_popen(*args, **kwargs):
-                        if sys.platform == "win32":
-                            # Add flags to hide console window
-                            if 'creationflags' not in kwargs:
-                                kwargs['creationflags'] = 0
-                            kwargs['creationflags'] |= subprocess.CREATE_NO_WINDOW
-                            
-                            # Add startupinfo
-                            kwargs['startupinfo'] = get_hidden_startupinfo()
-                            
-                            # Prefer pipe over None for stdout/stderr
-                            if 'stdout' not in kwargs:
-                                kwargs['stdout'] = subprocess.PIPE
-                            if 'stderr' not in kwargs:
-                                kwargs['stderr'] = subprocess.PIPE
-                        return original_popen(*args, **kwargs)
-                    
-                    # Patch all subprocess functions
-                    subprocess.Popen = hidden_popen
-                    
-                    # Hide any existing console window using Windows API
+                    # Additional method using SetWindowPos
                     try:
-                        import ctypes
-                        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-                        user32 = ctypes.WinDLL('user32', use_last_error=True)
-                        
-                        # Constants
-                        SW_HIDE = 0
-                        
-                        # Get console window handle and hide it
-                        hwnd = kernel32.GetConsoleWindow()
-                        if hwnd:
-                            user32.ShowWindow(hwnd, SW_HIDE)
-                    except Exception:
+                        user32.SetWindowPos.restype = wintypes.BOOL
+                        user32.SetWindowPos.argtypes = [
+                            wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                            ctypes.c_int, ctypes.c_int, wintypes.UINT
+                        ]
+                        if console_window:
+                            # SWP_HIDEWINDOW = 0x0080
+                            user32.SetWindowPos(console_window, None, 0, 0, 0, 0, 0x0080)
+                    except:
                         pass
+                        
+                    # Additional console hiding constants
+                    SW_HIDE = 0
+                    hwnd = kernel32.GetConsoleWindow()
+                    if hwnd:
+                        user32.ShowWindow(hwnd, SW_HIDE)
+                        
+                except Exception:
+                    pass
+                    
+            except Exception:
+                pass
 
         # Ensure working directory is the application directory
         os.chdir(BASE_DIR)
@@ -10591,8 +10569,27 @@ def main():
         try:
             import fixes
             fixes.apply_fixes()
-        except ImportError:
-            print("Warning: fixes module not available")
+        except (ImportError, AttributeError) as e:
+            print(f"Warning: fixes module issue: {e}")
+            # Try alternative import method without using sys inside function
+            try:
+                import importlib.util
+                fixes_path = os.path.join(os.path.dirname(__file__), "fixes.py")
+                if os.path.exists(fixes_path):
+                    spec = importlib.util.spec_from_file_location("fixes", fixes_path)
+                    fixes = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(fixes)
+                    if hasattr(fixes, 'apply_fixes'):
+                        fixes.apply_fixes()
+                    else:
+                        print("Warning: apply_fixes function not found in fixes module")
+                else:
+                    print("Warning: fixes.py file not found")
+            except Exception as alt_e:
+                print(f"Warning: alternative fixes import failed: {alt_e}")
+            pass
+        except Exception as e:
+            print(f"Warning: fixes module error: {e}")
             pass
 
         # Force matplotlib backend to TkAgg
@@ -10633,7 +10630,7 @@ def main():
         except Exception:
             pass
         
-        # Set up logging
+        # Set up logging - MOVED EARLIER to ensure logger is available
         log_file = os.path.join(app_dir, "manim_studio.log")
         logging.basicConfig(
             level=logging.INFO,
@@ -10643,48 +10640,86 @@ def main():
                 logging.StreamHandler()
             ]
         )
-
-        # Create logger instance
-        logger = logging.getLogger("ManimStudio")
-        logger.info("ManimStudio starting up...")
+        logger = logging.getLogger(__name__)  # Now logger is properly defined
+        
+        # Log startup information
+        logger.info("=== ManimStudio Starting ===")
         logger.info(f"Python version: {sys.version}")
-        logger.info(f"Platform: {platform.platform()}")
-        logger.info(f"Executable: {sys.executable}")
-        logger.info(f"Frozen: {getattr(sys, 'frozen', False)}")
+        logger.info(f"Platform: {sys.platform}")
+        logger.info(f"Frozen: {hasattr(sys, 'frozen')}")
         logger.info(f"Base directory: {BASE_DIR}")
         logger.info(f"App directory: {app_dir}")
 
-        # Set the appearance mode and theme
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
-
         # Check for Jedi availability
         if not JEDI_AVAILABLE:
+            logger.warning("Jedi not available. IntelliSense features will be limited.")
             print("Warning: Jedi not available. IntelliSense features will be limited.")
             print("Install Jedi with: pip install jedi")
 
         # Check LaTeX availability and pass result to UI
+        logger.info("Checking LaTeX installation...")
         latex_path = check_latex_installation()
+        if latex_path:
+            logger.info(f"LaTeX found at: {latex_path}")
+        else:
+            logger.warning("LaTeX not found")
 
         # Create and run application
+        logger.info("Creating main application...")
         app = ManimStudioApp(latex_path=latex_path)
         
         # Show getting started on first run
         settings_file = os.path.join(app_dir, "settings.json")
         if not os.path.exists(settings_file):
+            logger.info("First run detected, showing getting started dialog")
             app.root.after(1000, lambda: GettingStartedDialog(app.root))
         
+        logger.info("Starting application main loop...")
         app.run()
         
     except Exception as e:
-        logger.error(f"Startup error: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Now logger is available or we handle the case when it's not
+        error_msg = f"Startup error: {e}"
+        
+        if logger:
+            logger.error(error_msg)
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+        else:
+            print(error_msg)
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            
         try:
             from tkinter import messagebox
             messagebox.showerror("Startup Error", f"Failed to start application: {e}")
         except:
             print(f"Failed to start application: {e}")
+    
+    finally:
+        # Cleanup logging handlers to prevent issues on restart
+        if logger:
+            try:
+                for handler in logger.handlers[:]:
+                    handler.close()
+                    logger.removeHandler(handler)
+            except:
+                pass
+        
+        # Additional cleanup for Windows console
+        if sys.platform == "win32" and hasattr(sys, 'frozen'):
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                user32 = ctypes.windll.user32
+                
+                # Keep console hidden on exit
+                console_window = kernel32.GetConsoleWindow()
+                if console_window:
+                    # Don't show the console on exit - keep it hidden
+                    pass
+            except:
+                pass
 class SimpleEnvironmentDialog(ctk.CTkToplevel):
     """Emergency fallback dialog if other dialogs fail"""
     

@@ -73,3 +73,56 @@ MISSING:customtkinter
 2025-06-16 05:14:26,420 - INFO - All essential packages verified
 2025-06-16 05:14:26,421 - INFO - Default environment has all required packages
 2025-06-16 05:14:26,422 - INFO - Using existing environment: manim_studio_default
+2025-06-16 22:52:04,014 - INFO - ManimStudio starting up...
+2025-06-16 22:52:04,014 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-16 22:52:04,065 - INFO - Platform: Windows-11-10.0.26100-SP0
+2025-06-16 22:52:04,065 - INFO - Executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-16 22:52:04,065 - INFO - Frozen: False
+2025-06-16 22:52:04,065 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-16 22:52:04,065 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-16 22:52:04,593 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-16 22:52:04,706 - INFO - VirtualEnvironmentManager initialized
+2025-06-16 22:52:04,706 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-16 22:52:04,706 - INFO - Is frozen (corrected): False
+2025-06-16 22:52:04,706 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-16 22:52:04,706 - INFO - Discovering Python installations...
+2025-06-16 22:52:04,829 - INFO - EXCELLENT: Python 3.12 found at C:\Python312\python.exe
+2025-06-16 22:52:05,031 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 22:52:05,031 - INFO - Found 2 valid Python installations
+2025-06-16 22:52:05,031 - INFO -   - C:\Python312\python.exe
+2025-06-16 22:52:05,031 - INFO -   - C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 22:52:05,031 - INFO - Detecting existing environments...
+2025-06-16 22:52:05,031 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-16 22:52:05,031 - INFO - Default environment structure is valid
+2025-06-16 22:52:05,107 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-16 22:52:07,103 - INFO - All essential packages verified
+2025-06-16 22:52:07,103 - INFO - Default environment has all required packages
+2025-06-16 22:52:07,104 - INFO - Using existing environment: manim_studio_default
+2025-06-16 22:58:20,995 - INFO - === ManimStudio Starting ===
+2025-06-16 22:58:20,995 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-16 22:58:20,995 - INFO - Platform: win32
+2025-06-16 22:58:20,996 - INFO - Frozen: False
+2025-06-16 22:58:20,996 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-16 22:58:20,996 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-16 22:58:20,996 - INFO - Checking LaTeX installation...
+2025-06-16 22:58:21,316 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-16 22:58:21,317 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-16 22:58:21,317 - INFO - Creating main application...
+2025-06-16 22:58:21,403 - INFO - VirtualEnvironmentManager initialized
+2025-06-16 22:58:21,403 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-16 22:58:21,403 - INFO - Is frozen (corrected): False
+2025-06-16 22:58:21,404 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-16 22:58:21,405 - INFO - Discovering Python installations...
+2025-06-16 22:58:21,459 - INFO - EXCELLENT: Python 3.12 found at C:\Python312\python.exe
+2025-06-16 22:58:21,701 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 22:58:21,701 - INFO - Found 2 valid Python installations
+2025-06-16 22:58:21,702 - INFO -   - C:\Python312\python.exe
+2025-06-16 22:58:21,702 - INFO -   - C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 22:58:21,702 - INFO - Detecting existing environments...
+2025-06-16 22:58:21,702 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-16 22:58:21,702 - INFO - Default environment structure is valid
+2025-06-16 22:58:21,755 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-16 22:58:23,326 - INFO - All essential packages verified
+2025-06-16 22:58:23,327 - INFO - Default environment has all required packages
+2025-06-16 22:58:23,327 - INFO - Using existing environment: manim_studio_default
+2025-06-16 22:58:24,564 - INFO - Starting application main loop...
