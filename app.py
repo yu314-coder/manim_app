@@ -101,7 +101,9 @@ def get_long_path(path: str) -> str:
 # To avoid this we place the media directory inside the system's
 # temporary directory where ASCII paths are guaranteed. We convert the
 # resulting path to its long form on Windows to avoid 8.3 short paths.
-MEDIA_DIR = get_long_path(os.path.join(tempfile.gettempdir(), "manim_media"))
+MEDIA_DIR = get_long_path(
+    os.path.join(ensure_ascii_path(tempfile.gettempdir()), "manim_media")
+)
 os.makedirs(MEDIA_DIR, exist_ok=True)
 # Try to import Jedi for IntelliSense
 try:
@@ -131,6 +133,7 @@ except ImportError:
 # Early load of fixes module to handle runtime issues
 try:
     import fixes
+    from fixes import ensure_ascii_path
     fixes.apply_fixes()
 except (ImportError, AttributeError) as e:
     print(f"Warning: fixes module issue: {e}")
@@ -2406,6 +2409,16 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
             fg_color=VSCODE_COLORS["error"]
         )
         self.uninstall_btn.pack(side="left")
+
+        self.verify_btn = ctk.CTkButton(
+            pkg_action_frame,
+            text="Verify Packages",
+            command=self.verify_packages,
+            width=130,
+            height=35,
+            fg_color=VSCODE_COLORS["primary"]
+        )
+        self.verify_btn.pack(side="left", padx=(5, 0))
         
         # Package list
         pkg_list_frame = ctk.CTkFrame(self.package_frame, fg_color="transparent")
@@ -2601,6 +2614,7 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         self.delete_btn.configure(state=state)
         self.install_btn.configure(state=state)
         self.uninstall_btn.configure(state=state)
+        self.verify_btn.configure(state=state)
         self.pkg_entry.configure(state=state)
         
     def create_new_env(self):
@@ -2821,6 +2835,46 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         
         # Start uninstallation
         self.venv_manager.uninstall_package(package_name, on_uninstall_complete)
+
+    def verify_packages(self):
+        """Verify essential packages in the selected environment"""
+        selection = self.env_listbox.curselection()
+        if not selection:
+            messagebox.showwarning(
+                "No Environment Selected",
+                "Please select an environment to verify.",
+                parent=self
+            )
+            return
+
+        env_name = self.env_listbox.get(selection[0])
+        if " (Active)" in env_name:
+            env_name = env_name.split(" (Active)")[0][2:]
+
+        env_info = self.venv_manager.get_venv_info(env_name)
+        env_path = env_info["path"]
+
+        self.verify_btn.configure(text="Verifying...", state="disabled")
+
+        def run_verify():
+            success = self.venv_manager.verify_environment_packages(env_path)
+            msg = (
+                f"Packages verified for {env_name}" if success else
+                f"Package verification failed for {env_name}"
+            )
+            log_widget = getattr(
+                self.venv_manager.parent_app, "log_display", None
+            )
+            if log_widget:
+                log_widget.insert("end", msg + "\n")
+                log_widget.see("end")
+            if success:
+                messagebox.showinfo("Verification Complete", msg, parent=self)
+            else:
+                messagebox.showerror("Verification Failed", msg, parent=self)
+            self.verify_btn.configure(text="Verify Packages", state="normal")
+
+        threading.Thread(target=run_verify, daemon=True).start()
         
 class NewEnvironmentDialog(ctk.CTkToplevel):
     """Dialog for creating a new environment"""
@@ -9145,7 +9199,10 @@ class MyScene(Scene):
             # Create temporary directory with unique name
             import uuid
             temp_suffix = str(uuid.uuid4())[:8]
-            temp_dir = tempfile.mkdtemp(prefix=f"manim_preview_{temp_suffix}_")
+            temp_dir = tempfile.mkdtemp(
+                prefix=f"manim_preview_{temp_suffix}_",
+                dir=ensure_ascii_path(tempfile.gettempdir())
+            )
             temp_dir = get_long_path(temp_dir)
 
             # Extract scene class name
@@ -9400,7 +9457,10 @@ class MyScene(Scene):
         
         try:
             # Create temporary directory
-            temp_dir = tempfile.mkdtemp(prefix="manim_render_")
+            temp_dir = tempfile.mkdtemp(
+                prefix="manim_render_",
+                dir=ensure_ascii_path(tempfile.gettempdir())
+            )
             temp_dir = get_long_path(temp_dir)
             
             # Extract scene class name

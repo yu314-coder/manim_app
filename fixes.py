@@ -280,23 +280,35 @@ def fix_path_encoding():
         print(f"Warning: Path encoding fix failed: {e}")
         return False
 
+def ensure_ascii_path(path: str) -> str:
+    """Ensure the returned path only contains ASCII characters."""
+    if os.name == "nt" and any(ord(c) > 127 for c in path):
+        # Fallback to a simple ASCII location if needed
+        fallback = os.path.join("C:\\", "manim_temp")
+        os.makedirs(fallback, exist_ok=True)
+        return fallback
+    return path
+
+
 def setup_temp_directories():
     """Setup temporary directories for the application"""
     try:
         import tempfile
-        
+
+        base_temp = ensure_ascii_path(tempfile.gettempdir())
+
         # Create application-specific temp directory
-        app_temp_dir = os.path.join(tempfile.gettempdir(), "manim_studio_temp")
+        app_temp_dir = os.path.join(base_temp, "manim_studio_temp")
         os.makedirs(app_temp_dir, exist_ok=True)
-        
+
         # Set environment variable for other parts of the app to use
         os.environ['MANIM_STUDIO_TEMP'] = app_temp_dir
-        
+
         # Create media temp directory
         media_temp_dir = os.path.join(app_temp_dir, "media")
         os.makedirs(media_temp_dir, exist_ok=True)
         os.environ['MANIM_MEDIA_TEMP'] = media_temp_dir
-        
+
         return True
     except Exception as e:
         print(f"Warning: Temp directory setup failed: {e}")
