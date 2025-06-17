@@ -14,6 +14,17 @@ import importlib
 import argparse
 import glob
 from pathlib import Path
+import locale
+
+# Force UTF-8 encoding for build operations
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+try:
+    locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+except Exception:
+    try:
+        locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+    except Exception:
+        pass
 
 # ASCII vs Unicode output control
 USE_ASCII_ONLY = False
@@ -287,7 +298,7 @@ patch_subprocess()
 fix_dll_loading()
 '''
     
-    with open("fixes.py", "w", encoding="utf-8") as f:
+    with open("fixes.py", "w", encoding="utf-8", newline='\n', errors='ignore') as f:
         f.write(fixes_content)
     
     print("🔧 Created enhanced fixes module")
@@ -318,7 +329,7 @@ def run_hidden_subprocess(command, **kwargs):
     return run_original(command, **kwargs)
 '''
     
-    with open("process_utils.py", "w", encoding="utf-8") as f:
+    with open("process_utils.py", "w", encoding="utf-8", newline='\n', errors='ignore') as f:
         f.write(helper_content)
     
     print("🔧 Created subprocess helper")

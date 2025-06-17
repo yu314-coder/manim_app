@@ -64,6 +64,23 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ---------------------------------------------------------------------------
+# Encoding setup
+# Force UTF-8 for all file operations and standard streams. This helps avoid
+# Unicode related crashes especially on Windows.
+import locale
+
+try:
+    locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+except Exception:
+    try:
+        locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+    except Exception:
+        pass
+
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+os.environ['PYTHONLEGACYWINDOWSFSENCODING'] = '0'
 def check_dll_dependencies():
         """Check if required DLLs are available at startup"""
         if getattr(sys, 'frozen', False):
@@ -9218,15 +9235,20 @@ class MyScene(Scene):
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    with open(scene_file, "w", encoding="utf-8") as f:
-                        f.write(self.current_code)
+                    # Ensure content is UTF-8 safe
+                    content = self.current_code
+                    if isinstance(content, str):
+                        content = content.encode("utf-8", errors="ignore").decode("utf-8")
+
+                    with open(scene_file, "w", encoding="utf-8", newline='\n') as f:
+                        f.write(content)
                         f.flush()
                         os.fsync(f.fileno())
 
-                    if os.path.exists(scene_file):
+                    if os.path.exists(scene_file) and os.path.getsize(scene_file) > 0:
                         with open(scene_file, "r", encoding="utf-8") as f_verify:
-                            content = f_verify.read()
-                            if content:
+                            verified_content = f_verify.read()
+                            if verified_content and len(verified_content) > 10:
                                 break
 
                     raise Exception("File verification failed")
@@ -9235,7 +9257,7 @@ class MyScene(Scene):
                         raise Exception(f"Failed to create scene file after {max_retries} attempts: {e}")
                     else:
                         self.append_terminal_output(f"⚠️ Retry {attempt + 1}: {e}\n")
-                        time.sleep(0.1)
+                        time.sleep(0.2)
                 
             # Get preview settings - use custom resolution if selected
             if self.quality_var.get() == "Custom":
@@ -9264,16 +9286,16 @@ class MyScene(Scene):
                 
             # Build manim command
             command = [
-                python_exe, "-m", "manim",
-                scene_file,
-                scene_class,
-                quality_flag,
+                str(python_exe), "-m", "manim",
+                str(scene_file),
+                str(scene_class),
+                str(quality_flag),
                 "--format=mp4",
                 f"--fps={preview_quality['fps']}",
-                "--disable_caching",
                 f"--media_dir={MEDIA_DIR}",
                 "--renderer=cairo",
-                "--verbosity=INFO"  # Add verbose output
+                "--verbosity=INFO",
+                "--disable_caching"
             ]
             
             # Add custom resolution if using custom quality
@@ -9489,14 +9511,14 @@ class MyScene(Scene):
                 
             # Build manim command
             command = [
-                python_exe, "-m", "manim",
-                scene_file,
-                scene_class,
-                quality_flag,
+                str(python_exe), "-m", "manim",
+                str(scene_file),
+                str(scene_class),
+                str(quality_flag),
                 f"--format={format_ext}",
                 f"--fps={fps}",
                 f"--media_dir={MEDIA_DIR}",
-                f"--renderer=cairo"
+                "--renderer=cairo"
             ]
             
             # Add custom resolution if using custom quality
@@ -10630,8 +10652,15 @@ def main():
     """Main application entry point"""
     # NOTE: Do NOT import sys here - it's already imported at module level
     # Any import of sys inside this function will cause UnboundLocalError
-    
+
     logger = None  # Initialize logger variable to avoid UnboundLocalError
+
+    # Initialize encoding early to avoid Unicode issues
+    try:
+        import startup
+        startup.initialize_encoding()
+    except Exception:
+        pass
     
     try:
         # Hide console window on Windows for packaged executable

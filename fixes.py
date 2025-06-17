@@ -55,12 +55,10 @@ try:
 except:
     pass
 
+# Legacy apply_fixes kept for backward compatibility; real logic is in
+# ``apply_all_fixes`` defined later.
 def apply_fixes():
-    """Apply all fixes at startup"""
-    if not fix_manim_config():
-        print("Warning: Manim config setup failed")
-    patch_subprocess()
-    patch_manim_latex()
+    return apply_all_fixes()
 
 def fix_manim_config():
     """Fix the manim configuration issue by creating a default.cfg file
@@ -280,6 +278,25 @@ def fix_path_encoding():
         print(f"Warning: Path encoding fix failed: {e}")
         return False
 
+def fix_encoding_issues():
+    """Fix encoding issues that cause crashes"""
+    try:
+        # Force UTF-8 encoding for std streams
+        if hasattr(sys.stdout, 'reconfigure'):
+            try:
+                sys.stdout.reconfigure(encoding='utf-8', errors='ignore')
+                sys.stderr.reconfigure(encoding='utf-8', errors='ignore')
+            except Exception:
+                pass
+
+        os.environ['PYTHONIOENCODING'] = 'utf-8'
+        os.environ['PYTHONLEGACYWINDOWSFSENCODING'] = '0'
+
+        return True
+    except Exception as e:
+        print(f"Warning: Encoding fix failed: {e}")
+        return False
+
 def ensure_ascii_path(path: str) -> str:
     """Ensure the returned path only contains ASCII characters."""
     if os.name == "nt" and any(ord(c) > 127 for c in path):
@@ -372,28 +389,32 @@ def apply_all_fixes():
     # 1. Fix imports first
     if patch_imports():
         fixes_applied.append("imports")
-    
-    # 2. Fix path encoding
+
+    # 2. Fix encoding issues
+    if fix_encoding_issues():
+        fixes_applied.append("encoding")
+
+    # 3. Fix path encoding
     if fix_path_encoding():
         fixes_applied.append("path_encoding")
-    
-    # 3. Setup temp directories
+
+    # 4. Setup temp directories
     if setup_temp_directories():
         fixes_applied.append("temp_directories")
-    
-    # 4. Fix site packages
+
+    # 5. Fix site packages
     if patch_site_packages():
         fixes_applied.append("site_packages")
-    
-    # 5. Fix subprocess
+
+    # 6. Fix subprocess
     if patch_subprocess():
         fixes_applied.append("subprocess")
-    
-    # 6. Fix Manim config
+
+    # 7. Fix Manim config
     if fix_manim_config():
         fixes_applied.append("manim_config")
-    
-    # 7. Fix LaTeX
+
+    # 8. Fix LaTeX
     if patch_manim_latex():
         fixes_applied.append("manim_latex")
     
@@ -403,11 +424,6 @@ def apply_all_fixes():
         print("Warning: No fixes were successfully applied")
     
     return len(fixes_applied) > 0
-
-# For backwards compatibility, ensure apply_fixes calls the comprehensive version
-def apply_fixes():
-    """Apply all fixes at startup - main entry point"""
-    return apply_all_fixes()
 
 # Module-level initialization
 if __name__ == "__main__":

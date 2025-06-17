@@ -132,8 +132,36 @@ def system_hidden_process(command):
     return run_hidden_process(command, shell=True).returncode
 
 # Add direct access to original functions
-run_original = subprocess._original_run
-popen_original = subprocess._original_popen
+def run_original(*args, **kwargs):
+    """Wrapper for subprocess.run that hides console on Windows"""
+    if sys.platform == "win32":
+        startupinfo = kwargs.get('startupinfo')
+        if startupinfo is None:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            kwargs['startupinfo'] = startupinfo
+
+        creationflags = kwargs.get('creationflags', 0)
+        kwargs['creationflags'] = creationflags | subprocess.CREATE_NO_WINDOW
+
+    return subprocess._original_run(*args, **kwargs)
+
+def popen_original(*args, **kwargs):
+    """Wrapper for subprocess.Popen that hides console on Windows"""
+    if sys.platform == "win32":
+        startupinfo = kwargs.get('startupinfo')
+        if startupinfo is None:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            kwargs['startupinfo'] = startupinfo
+
+        creationflags = kwargs.get('creationflags', 0)
+        kwargs['creationflags'] = creationflags | subprocess.CREATE_NO_WINDOW
+
+    return subprocess._original_popen(*args, **kwargs)
+
 call_original = subprocess._original_call
 check_output_original = subprocess._original_check_output
 check_call_original = subprocess._original_check_call
