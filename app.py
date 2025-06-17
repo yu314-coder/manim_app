@@ -1953,9 +1953,9 @@ All packages will be installed in an isolated environment that won't affect your
         commands = [[sys.executable, "-m", "venv", env_path]]
 
         if os.name == 'nt':
-            python_exe = os.path.join(env_path, "Scripts", "python.exe")
+            python_exe = get_long_path(ensure_ascii_path(os.path.join(env_path, "Scripts", "python.exe")))
         else:
-            python_exe = os.path.join(env_path, "bin", "python")
+            python_exe = get_long_path(ensure_ascii_path(os.path.join(env_path, "bin", "python")))
 
         commands.append([python_exe, "-m", "pip", "install", "-r", "requirements.txt"])
 
@@ -3361,11 +3361,11 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             
             # Get Python and pip paths
             if sys.platform == "win32":
-                python_path = os.path.join(env_path, "Scripts", "python.exe")
-                pip_path = os.path.join(env_path, "Scripts", "pip.exe")
+                python_path = get_long_path(ensure_ascii_path(os.path.join(env_path, "Scripts", "python.exe")))
+                pip_path = get_long_path(ensure_ascii_path(os.path.join(env_path, "Scripts", "pip.exe")))
             else:
-                python_path = os.path.join(env_path, "bin", "python")
-                pip_path = os.path.join(env_path, "bin", "pip")
+                python_path = get_long_path(ensure_ascii_path(os.path.join(env_path, "bin", "python")))
+                pip_path = get_long_path(ensure_ascii_path(os.path.join(env_path, "bin", "pip")))
                 
             # Verify paths
             if not os.path.exists(python_path) or not os.path.exists(pip_path):
@@ -3494,10 +3494,12 @@ class VirtualEnvironmentManager:
         self.current_venv = None
         
         # Use persistent directory under user's home for virtual environments
-        persistent_venv_dir = os.path.join(
-            os.path.expanduser("~"),
-            ".manim_studio",
-            "venvs"
+        persistent_venv_dir = ensure_ascii_path(
+            os.path.join(
+                os.path.expanduser("~"),
+                ".manim_studio",
+                "venvs"
+            )
         )
         os.makedirs(persistent_venv_dir, exist_ok=True)
         self.venv_dir = persistent_venv_dir
@@ -4093,8 +4095,8 @@ Continue with setup?"""
             if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
                 venv_name = os.path.basename(sys.prefix)
                 self.current_venv = f"current_{venv_name}"
-                self.python_path = sys.executable
-                self.pip_path = os.path.join(os.path.dirname(sys.executable), "pip")
+                self.python_path = get_long_path(ensure_ascii_path(sys.executable))
+                self.pip_path = get_long_path(ensure_ascii_path(os.path.join(os.path.dirname(sys.executable), "pip")))
                 
                 # Check if this environment has essential packages
                 if self.verify_current_environment():
@@ -4147,7 +4149,7 @@ Continue with setup?"""
                 if result.returncode == 0:
                     self.logger.info("System Python has Manim available")
                     self.current_venv = "system_python"
-                    self.python_path = python_exe
+                    self.python_path = get_long_path(ensure_ascii_path(python_exe))
                     self.pip_path = "pip"
                     return True
         except Exception as e:
@@ -4214,11 +4216,11 @@ Continue with setup?"""
             
         # Check for essential structure
         if os.name == 'nt':
-            python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
+            python_exe = get_long_path(ensure_ascii_path(os.path.join(venv_path, "Scripts", "python.exe")))
+            pip_exe = get_long_path(ensure_ascii_path(os.path.join(venv_path, "Scripts", "pip.exe")))
         else:
-            python_exe = os.path.join(venv_path, "bin", "python")
-            pip_exe = os.path.join(venv_path, "bin", "pip")
+            python_exe = get_long_path(ensure_ascii_path(os.path.join(venv_path, "bin", "python")))
+            pip_exe = get_long_path(ensure_ascii_path(os.path.join(venv_path, "bin", "pip")))
             
         return os.path.exists(python_exe)
 
@@ -4243,11 +4245,11 @@ Continue with setup?"""
         try:
             # Get python path
             if os.name == 'nt':
-                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-                pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
+                python_exe = get_long_path(ensure_ascii_path(os.path.join(venv_path, "Scripts", "python.exe")))
+                pip_exe = get_long_path(ensure_ascii_path(os.path.join(venv_path, "Scripts", "pip.exe")))
             else:
-                python_exe = os.path.join(venv_path, "bin", "python")
-                pip_exe = os.path.join(venv_path, "bin", "pip")
+                python_exe = get_long_path(ensure_ascii_path(os.path.join(venv_path, "bin", "python")))
+                pip_exe = get_long_path(ensure_ascii_path(os.path.join(venv_path, "bin", "pip")))
             
             if not os.path.exists(python_exe):
                 self.logger.error(f"Python executable not found: {python_exe}")
@@ -4562,12 +4564,12 @@ else:
             # Step 2: Set up environment paths
             if os.name == 'nt':
                 scripts_path = os.path.join(env_path, "Scripts")
-                python_path = os.path.join(scripts_path, "python.exe")
-                pip_path = os.path.join(scripts_path, "pip.exe")
+                python_path = get_long_path(ensure_ascii_path(os.path.join(scripts_path, "python.exe")))
+                pip_path = get_long_path(ensure_ascii_path(os.path.join(scripts_path, "pip.exe")))
             else:
                 bin_path = os.path.join(env_path, "bin")
-                python_path = os.path.join(bin_path, "python")
-                pip_path = os.path.join(bin_path, "pip")
+                python_path = get_long_path(ensure_ascii_path(os.path.join(bin_path, "python")))
+                pip_path = get_long_path(ensure_ascii_path(os.path.join(bin_path, "pip")))
 
             # Verify the environment was created correctly
             if not os.path.exists(python_path):
@@ -4647,8 +4649,8 @@ else:
                         log_callback(f"⚠️ Failed packages: {', '.join(failed_packages)}")
 
             # Step 5: Activate the environment
-            self.python_path = python_path
-            self.pip_path = pip_path
+            self.python_path = get_long_path(ensure_ascii_path(python_path))
+            self.pip_path = get_long_path(ensure_ascii_path(pip_path))
             self.current_venv = name
             self.needs_setup = False
 
@@ -4673,8 +4675,8 @@ else:
                 old_pip_path = self.pip_path
                 old_current_venv = self.current_venv
                 
-                self.python_path = python_path
-                self.pip_path = pip_path  
+                self.python_path = get_long_path(ensure_ascii_path(python_path))
+                self.pip_path = get_long_path(ensure_ascii_path(pip_path))
                 self.current_venv = name
                 
                 # Try to fix missing packages
@@ -4707,7 +4709,7 @@ else:
             # Try to import manim - might work if it's installed system-wide
             __import__("manim")
             self.current_venv = "system_python_fallback"
-            self.python_path = sys.executable
+            self.python_path = get_long_path(ensure_ascii_path(sys.executable))
             self.pip_path = "pip"
             self.needs_setup = False
             self.using_fallback = True
@@ -4750,25 +4752,25 @@ else:
         """Activate a virtual environment by name"""
         if name.startswith("system_"):
             self.current_venv = name
-            self.python_path = sys.executable
+            self.python_path = get_long_path(ensure_ascii_path(sys.executable))
             self.pip_path = "pip"
             return True
         elif name.startswith("current_"):
             self.current_venv = name
-            self.python_path = sys.executable
-            self.pip_path = os.path.join(os.path.dirname(sys.executable), "pip")
+            self.python_path = get_long_path(ensure_ascii_path(sys.executable))
+            self.pip_path = get_long_path(ensure_ascii_path(os.path.join(os.path.dirname(sys.executable), "pip")))
             return True
         else:
             venv_path = os.path.join(self.venv_dir, name)
             
             if os.name == 'nt':
                 scripts_path = os.path.join(venv_path, "Scripts")
-                self.python_path = os.path.join(scripts_path, "python.exe")
-                self.pip_path = os.path.join(scripts_path, "pip.exe")
+                self.python_path = get_long_path(ensure_ascii_path(os.path.join(scripts_path, "python.exe")))
+                self.pip_path = get_long_path(ensure_ascii_path(os.path.join(scripts_path, "pip.exe")))
             else:
                 bin_path = os.path.join(venv_path, "bin")
-                self.python_path = os.path.join(bin_path, "python")
-                self.pip_path = os.path.join(bin_path, "pip")
+                self.python_path = get_long_path(ensure_ascii_path(os.path.join(bin_path, "python")))
+                self.pip_path = get_long_path(ensure_ascii_path(os.path.join(bin_path, "pip")))
                 
             if os.path.exists(self.python_path):
                 self.current_venv = name
@@ -4781,11 +4783,11 @@ else:
             return False
 
         if os.name == 'nt':
-            self.python_path = os.path.join(venv_path, "Scripts", "python.exe")
-            self.pip_path = os.path.join(venv_path, "Scripts", "pip.exe")
+            self.python_path = get_long_path(ensure_ascii_path(os.path.join(venv_path, "Scripts", "python.exe")))
+            self.pip_path = get_long_path(ensure_ascii_path(os.path.join(venv_path, "Scripts", "pip.exe")))
         else:
-            self.python_path = os.path.join(venv_path, "bin", "python")
-            self.pip_path = os.path.join(venv_path, "bin", "pip")
+            self.python_path = get_long_path(ensure_ascii_path(os.path.join(venv_path, "bin", "python")))
+            self.pip_path = get_long_path(ensure_ascii_path(os.path.join(venv_path, "bin", "pip")))
 
         self.current_venv = f"external_{os.path.basename(venv_path)}"
         return True
@@ -4793,7 +4795,7 @@ else:
     def deactivate_venv(self):
         """Deactivate the current virtual environment"""
         self.current_venv = None
-        self.python_path = sys.executable
+        self.python_path = get_long_path(ensure_ascii_path(sys.executable))
         self.pip_path = "pip"
         return True
 
@@ -9255,7 +9257,7 @@ class MyScene(Scene):
             quality_flag = preview_quality["flag"]
             
             # Use environment Python
-            python_exe = self.venv_manager.python_path
+            python_exe = get_long_path(ensure_ascii_path(self.venv_manager.python_path))
             
             # Get the number of cores to use
             num_cores = self.get_render_cores()
@@ -9480,7 +9482,7 @@ class MyScene(Scene):
             fps = resolution_settings["fps"]
             
             # Use environment Python
-            python_exe = self.venv_manager.python_path
+            python_exe = get_long_path(ensure_ascii_path(self.venv_manager.python_path))
             
             # Get the number of cores to use
             num_cores = self.get_render_cores()
