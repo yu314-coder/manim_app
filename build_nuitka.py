@@ -665,6 +665,10 @@ def build_onefile_executable(jobs=None, priority="normal", debug_mode=False):
     assets_dir = Path("assets")
     assets_dir.mkdir(exist_ok=True)
 
+    # When building in debug mode ensure debug_app.py exists
+    if debug_mode:
+        create_debug_app()
+
     print("=" * 60)
     print("🔧 Creating enhanced build configuration...")
 
