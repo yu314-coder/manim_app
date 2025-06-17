@@ -165,46 +165,57 @@ APP_VERSION = "3.5.0"
 APP_AUTHOR = "Manim Studio Team"
 APP_EMAIL = "euler.yu@gmail.com"
 
-# Essential packages for ManimStudio
+# Essential packages for ManimStudio - UPDATED VERSION
 ESSENTIAL_PACKAGES = [
-    # Core animation
-    "manim",
+    # Core animation and math (minimal for basic functionality)
     "numpy>=1.22.0",
-    "matplotlib>=3.5.0",
+    "matplotlib>=3.5.0", 
     "scipy>=1.8.0",
-    "mapbox_earcut==1.0.1",  # FIXED: Specific working version
-    "pycairo>=1.20.0",       # Required for cairo renderer
-    "manimpango>=0.4.0",     # Required for text rendering
+    
+    # UI and development tools (essential)
+    "customtkinter>=5.0.0",
+    "jedi>=0.18.0",  # IntelliSense
+    "Pillow>=9.0.0",
+    
+    # Manim dependencies (installed separately to avoid DLL issues)
+    "mapbox-earcut>=0.12.0",
+    "manimpango>=0.4.0",
+    "moderngl>=5.6.0",
+    "moderngl-window>=2.3.0",
+    "colour>=0.1.5",
+    "decorator>=4.4.2",
+    "isosurfaces>=0.1.0",
     
     # Image/Video processing
-    "Pillow>=9.0.0",
     "opencv-python>=4.6.0",
     "imageio>=2.19.0",
     "moviepy>=1.0.3",
     "imageio-ffmpeg",
-    "av",
     
-    # Development tools
-    "jedi>=0.18.0",  # IntelliSense
-    "black>=22.0.0",  # Code formatter
-    "isort>=5.10.0",  # Import sorter
+    # System utilities
+    "psutil>=5.8.0",
+    "requests>=2.25.0",
+    "colorama>=0.4.4",
+    "rich>=10.0.0",
+    "click>=8.0.0",
     
-    # GUI and system
-    "customtkinter>=5.2.0",
-    "psutil>=5.9.0",
-    
-    # Data science (commonly used with Manim)
-    "pandas>=1.4.0",
-    "seaborn>=0.11.0",
-    
-    # Network and utilities
-    "requests>=2.28.0",
-    "aiohttp>=3.8.0",
-    
-    # Package management
-    "pip>=23.0.0",
-    "setuptools>=65.0.0",
-    "wheel>=0.38.0",
+    # Remove aiohttp - not needed for basic functionality
+    # "aiohttp>=3.8.5",  # REMOVED - causes unnecessary dependencies
+]
+
+# Minimal packages for initial setup (to avoid DLL conflicts)
+MINIMAL_PACKAGES = [
+    "numpy>=1.22.0",
+    "customtkinter>=5.0.0", 
+    "Pillow>=9.0.0",
+    "jedi>=0.18.0",
+]
+
+# Windows-specific package fixes
+WINDOWS_FIX_PACKAGES = [
+    "mapbox-earcut>=0.12.0",
+    "manimpango>=0.4.0",
+    "moderngl>=5.6.0",
 ]
 
 # Optional packages
@@ -4354,64 +4365,40 @@ else:
 
     def create_default_environment(self, log_callback=None):
         """Create the default ManimStudio environment using unified method"""
-        # Complete list of essential packages for Manim to work properly
-        essential_packages = [
-            # Core animation engine
-            "manim",
-            
-            # Critical Manim dependencies (these often cause import errors if missing)
-            "mapbox-earcut>=0.12.0",
-            "manimpango>=0.4.0", 
-            "moderngl>=5.6.0",
-            "moderngl-window>=2.3.0",
-            "colour>=0.1.5",
-            "decorator>=4.4.2",
-            "isosurfaces>=0.1.0",
-            
-            # Core scientific computing
+        # Use minimal packages first to avoid DLL issues
+        minimal_packages = [
             "numpy>=1.22.0",
-            "matplotlib>=3.5.0",
-            "scipy>=1.8.0",
-            
-            # Image/Video processing
+            "customtkinter>=5.0.0", 
             "Pillow>=9.0.0",
-            "opencv-python>=4.6.0",
-            "imageio>=2.19.0",
-            "moviepy>=1.0.3",
-            "imageio-ffmpeg",
-            
-            # Development tools
-            "jedi>=0.18.0",
-            "customtkinter>=5.0.0",
-            "psutil>=5.8.0",
-            
-            # Scientific computing
-            "sympy>=1.9.0",
-            "pandas>=1.4.0",
-            "networkx>=2.6.0",
-            
-            # Additional utilities
-            "requests>=2.25.0",
-            "colorama>=0.4.4",
-            "rich>=10.0.0",
-            "click>=8.0.0",
-            "pydantic>=1.8.0",
-            "typing-extensions>=4.0.0",
-            
-            # Audio/video
-            "pydub>=0.25.0",
-            
-            # OpenGL support
-            "PyOpenGL>=3.1.0"
+            "jedi>=0.18.0"
         ]
         
-        return self.create_environment_unified(
+        success = self.create_environment_unified(
             name="manim_studio_default",
             location=self.venv_dir,
-            packages=essential_packages,
+            packages=minimal_packages,
             log_callback=log_callback
         )
-
+        
+        if success:
+            # Install manim separately with fixes
+            if log_callback:
+                log_callback("Installing manim with Windows fixes...")
+            
+            # Apply Windows-specific fixes if needed
+            if os.name == 'nt':
+                self.fix_windows_dll_issues(log_callback)
+            
+            # Install manim last
+            install_cmd = [self.pip_path, "install", "manim>=0.17.3"]
+            result = self.run_hidden_subprocess_nuitka_safe(
+                install_cmd, capture_output=True, text=True, timeout=600
+            )
+            
+            if result.returncode != 0 and log_callback:
+                log_callback(f"Manim installation warning: {result.stderr}")
+        
+        return success
     def create_environment_unified(self, name, location, packages=None, log_callback=None):
         """Unified environment creation with correct venv command and path handling"""
         import shutil
@@ -4949,7 +4936,47 @@ else:
         
         # Run in background thread
         threading.Thread(target=run_thread, daemon=True).start()
-
+    def fix_windows_dll_issues(self, log_callback=None):
+        """Fix Windows DLL loading issues for mapbox-earcut and other packages"""
+        if os.name != 'nt':
+            return True
+            
+        if log_callback:
+            log_callback("Applying Windows DLL fixes...")
+        
+        try:
+            # Force reinstall problematic packages with no cache
+            problematic_packages = ["mapbox-earcut", "manimpango"]
+            for package in problematic_packages:
+                if log_callback:
+                    log_callback(f"Reinstalling {package}...")
+                
+                # Uninstall first
+                uninstall_cmd = [self.pip_path, "uninstall", package, "-y"]
+                self.run_hidden_subprocess_nuitka_safe(
+                    uninstall_cmd, capture_output=True, text=True, timeout=120
+                )
+                
+                # Reinstall with force and no cache
+                install_cmd = [
+                    self.pip_path, "install", package, 
+                    "--force-reinstall", "--no-cache-dir"
+                ]
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    install_cmd, capture_output=True, text=True, timeout=300
+                )
+                
+                if result.returncode != 0:
+                    if log_callback:
+                        log_callback(f"Failed to fix {package}: {result.stderr}")
+                    return False
+                    
+            return True
+            
+        except Exception as e:
+            if log_callback:
+                log_callback(f"Error applying Windows fixes: {e}")
+            return False
     def fix_manim_environment(self):
         """Public method to fix common Manim environment issues"""
         if not self.current_venv:
@@ -5017,6 +5044,7 @@ else:
             self.temp_dir = tempfile.gettempdir()
         
         return True
+
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
