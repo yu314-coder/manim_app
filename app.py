@@ -9809,41 +9809,16 @@ else:
             self.install_missing_dependencies(install_names)
             
     def install_missing_dependencies(self, package_names):
-        """Install missing dependencies using system terminal"""
+        """Install missing dependencies with a progress dialog"""
         if not self.venv_manager.current_venv:
             messagebox.showwarning(
-                "No Environment", 
+                "No Environment",
                 "Please set up a virtual environment first before installing packages."
             )
             self.manage_environment()
             return
-            
-        # Install packages using system terminal
-        def install_package(index=0):
-            if index >= len(package_names):
-                # All packages installed
-                self.append_terminal_output("All packages installed successfully!\n")
-                return
-            
-            package = package_names[index]
-            self.append_terminal_output(f"Installing {package}...\n")
-            
-            def on_install_complete(success, return_code):
-                if success:
-                    self.append_terminal_output(f"✓ Successfully installed {package}\n")
-                else:
-                    self.append_terminal_output(f"✗ Failed to install {package} (exit code {return_code})\n")
-                    
-                # Install next package
-                install_package(index + 1)
-            
-            self.terminal.run_command_redirected(
-                [self.venv_manager.pip_path, "install", package],
-                on_complete=on_install_complete
-            )
-        
-        # Start installing the first package
-        install_package()
+
+        DependencyInstallDialog(self.root, self.venv_manager, package_names)
         
     # Help functions
     def open_manim_docs(self):
@@ -10011,6 +9986,56 @@ Licensed under MIT License"""
                 "Error",
                 f"An error occurred while fixing dependencies: {e}"
             )
+
+class DependencyInstallDialog(ctk.CTkToplevel):
+    """Dialog showing progress while installing packages."""
+
+    def __init__(self, parent, venv_manager, packages):
+        super().__init__(parent)
+        self.venv_manager = venv_manager
+        self.packages = packages
+
+        self.title("Installing Packages")
+        self.geometry("500x400")
+        self.transient(parent)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        self.status_label = ctk.CTkLabel(frame, text="Preparing...", font=ctk.CTkFont(size=14))
+        self.status_label.pack(pady=(0, 10))
+
+        self.progress_bar = ctk.CTkProgressBar(frame)
+        self.progress_bar.pack(fill="x")
+        self.progress_bar.set(0)
+
+        self.log_text = ctk.CTkTextbox(frame, height=200, font=ctk.CTkFont(size=11, family="Consolas"))
+        self.log_text.pack(fill="both", expand=True, pady=15)
+
+        threading.Thread(target=self.install_worker, daemon=True).start()
+
+    def log(self, message):
+        self.log_text.insert("end", message + "\n")
+        self.log_text.see("end")
+        self.update_idletasks()
+
+    def install_worker(self):
+        total = len(self.packages)
+        for i, pkg in enumerate(self.packages, 1):
+            self.status_label.configure(text=f"Installing {pkg} ({i}/{total})")
+            self.progress_bar.set((i - 1) / total)
+            cmd = self.venv_manager.get_pip_command() + ["install", pkg]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                self.log(f"✓ {pkg} installed")
+            else:
+                self.log(f"✗ Failed to install {pkg}")
+            self.progress_bar.set(i / total)
+
+        self.status_label.configure(text="Installation complete")
+        self.after(1000, self.destroy)
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
     
