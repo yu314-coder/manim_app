@@ -53,6 +53,11 @@ import tkinter as tk
 import queue
 import atexit
 from tkinter import filedialog, messagebox
+try:
+    from fixes import ensure_ascii_path
+except Exception:
+    def ensure_ascii_path(path: str) -> str:
+        return path
 
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
@@ -130,10 +135,8 @@ try:
 except ImportError:
     PYGMENTS_AVAILABLE = False
 # Early load of fixes module to handle runtime issues
-# Early load of fixes module to handle runtime issues
 try:
     import fixes
-    from fixes import ensure_ascii_path
     fixes.apply_fixes()
 except (ImportError, AttributeError) as e:
     print(f"Warning: fixes module issue: {e}")
