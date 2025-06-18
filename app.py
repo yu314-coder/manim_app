@@ -154,7 +154,12 @@ except ImportError:
 # Early load of fixes module to handle runtime issues
 try:
     import fixes
-    fixes.apply_fixes()
+    if hasattr(fixes, "apply_fixes"):
+        fixes.apply_fixes()
+    elif hasattr(fixes, "apply_all_fixes"):
+        fixes.apply_all_fixes()
+    else:
+        print("Warning: apply_fixes function not found in fixes module")
 except (ImportError, AttributeError) as e:
     print(f"Warning: fixes module issue: {e}")
 except Exception as e:
@@ -10715,7 +10720,12 @@ def main():
         # Early load of fixes module to handle runtime issues
         try:
             import fixes
-            fixes.apply_fixes()
+            if hasattr(fixes, "apply_fixes"):
+                fixes.apply_fixes()
+            elif hasattr(fixes, "apply_all_fixes"):
+                fixes.apply_all_fixes()
+            else:
+                print("Warning: apply_fixes function not found in fixes module")
         except (ImportError, AttributeError) as e:
             print(f"Warning: fixes module issue: {e}")
             # Try alternative import method without using sys inside function
@@ -10728,6 +10738,8 @@ def main():
                     spec.loader.exec_module(fixes)
                     if hasattr(fixes, 'apply_fixes'):
                         fixes.apply_fixes()
+                    elif hasattr(fixes, 'apply_all_fixes'):
+                        fixes.apply_all_fixes()
                     else:
                         print("Warning: apply_fixes function not found in fixes module")
                 else:
