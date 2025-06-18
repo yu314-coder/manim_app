@@ -7501,9 +7501,10 @@ class ManimStudioApp:
         if self.venv_manager.needs_setup:
             # Show setup dialog on the next UI update
             self.root.after(100, self.check_environment_setup)
-        self.initialize_variables()
-        # Load settings
+
+        # Load settings before initializing variables that depend on them
         self.load_settings()
+        self.initialize_variables()
         
     
         
