@@ -7501,12 +7501,11 @@ class ManimStudioApp:
         if self.venv_manager.needs_setup:
             # Show setup dialog on the next UI update
             self.root.after(100, self.check_environment_setup)
-        
+        self.initialize_variables()
         # Load settings
         self.load_settings()
         
-        # Initialize variables
-        self.initialize_variables()
+    
         
         # Setup UI
         self.create_ui()
@@ -8778,7 +8777,42 @@ class ManimStudioApp:
             self.video_player.clear()
         if not silent:
             self.update_status("Preview cleared")
+    def load_preview_video(self, video_path):
+        """Load preview video in the video player"""
+        try:
+            # Ensure video path exists
+            if not os.path.exists(video_path):
+                self.append_terminal_output(f"❌ Error: Video file not found: {video_path}\n")
+                return False
+            
+            # Load video in player
+            if hasattr(self, 'video_player') and self.video_player.load_video(video_path):
+                self.preview_video_path = video_path
+                self.append_terminal_output(f"✅ Preview loaded successfully: {os.path.basename(video_path)}\n")
+                return True
+            else:
+                self.append_terminal_output("❌ Error: Could not load video in player\n")
+                return False
+                
+        except Exception as e:
+            self.append_terminal_output(f"❌ Error loading preview video: {e}\n")
+            return False
+
+    def initialize_variables(self):
+        """Initialize application variables - ADD THIS TO YOUR __init__ METHOD"""
+        # Preview related variables
+        self.preview_video_path = None
+        self.is_previewing = False
+        self.is_rendering = False
+        self.last_preview_code = ""
         
+        # Process tracking
+        self.current_temp_dir = None
+        self.current_scene_file = None
+        
+        # Other variables that might be missing
+        self.current_code = ""
+        self.audio_path = None  
     # Editor Methods
     def undo(self):
         """Undo text operation"""
