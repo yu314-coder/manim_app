@@ -7599,7 +7599,9 @@ class ManimStudioApp:
         self.image_paths = []
         self.last_preview_code = ""
         self.preview_video_path = None
-        
+        self.current_temp_dir = None
+        self.current_scene_file = None
+
         # UI state
         self.is_rendering = False
         self.is_previewing = False
@@ -8798,21 +8800,6 @@ class ManimStudioApp:
             self.append_terminal_output(f"❌ Error loading preview video: {e}\n")
             return False
 
-    def initialize_variables(self):
-        """Initialize application variables - ADD THIS TO YOUR __init__ METHOD"""
-        # Preview related variables
-        self.preview_video_path = None
-        self.is_previewing = False
-        self.is_rendering = False
-        self.last_preview_code = ""
-        
-        # Process tracking
-        self.current_temp_dir = None
-        self.current_scene_file = None
-        
-        # Other variables that might be missing
-        self.current_code = ""
-        self.audio_path = None  
     # Editor Methods
     def undo(self):
         """Undo text operation"""
