@@ -126,3 +126,124 @@ MISSING:customtkinter
 2025-06-16 22:58:23,327 - INFO - Default environment has all required packages
 2025-06-16 22:58:23,327 - INFO - Using existing environment: manim_studio_default
 2025-06-16 22:58:24,564 - INFO - Starting application main loop...
+2025-06-18 11:11:48,868 - INFO - === ManimStudio Starting ===
+2025-06-18 11:11:48,868 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-18 11:11:48,869 - INFO - Platform: win32
+2025-06-18 11:11:48,869 - INFO - Frozen: False
+2025-06-18 11:11:48,869 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-18 11:11:48,869 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-18 11:11:48,869 - INFO - Checking LaTeX installation...
+2025-06-18 11:11:49,497 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-18 11:11:49,498 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-18 11:11:49,498 - INFO - Creating main application...
+2025-06-18 11:11:50,549 - INFO - VirtualEnvironmentManager initialized
+2025-06-18 11:11:50,549 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:11:50,549 - INFO - Is frozen (corrected): False
+2025-06-18 11:11:50,551 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-18 11:11:50,551 - INFO - ============================================================
+2025-06-18 11:11:50,551 - INFO - COMPREHENSIVE PYTHON DISCOVERY
+2025-06-18 11:11:50,551 - INFO - ============================================================
+2025-06-18 11:11:50,551 - INFO - 1. Searching system PATH...
+2025-06-18 11:11:50,552 - DEBUG - PATH found: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:11:50,552 - DEBUG - PATH found: C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:11:50,552 - DEBUG - PATH found: C:\Python312\python.exe
+2025-06-18 11:11:50,553 - DEBUG - PATH found: C:\Python312\pythonw.exe
+2025-06-18 11:11:50,556 - DEBUG - PATH found: C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python.exe
+2025-06-18 11:11:50,556 - DEBUG - PATH found: C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python3.exe
+2025-06-18 11:11:50,556 - INFO - 2. Searching Windows Registry...
+2025-06-18 11:11:50,557 - DEBUG - Registry found: C:\Python312\python.exe
+2025-06-18 11:11:50,557 - DEBUG - Registry found: C:\Python312\pythonw.exe
+2025-06-18 11:11:50,557 - INFO - 3. Searching common directories...
+2025-06-18 11:11:50,558 - DEBUG - Common dir found: C:\Python312\python.exe
+2025-06-18 11:11:50,558 - DEBUG - Common dir found: C:\Python312\pythonw.exe
+2025-06-18 11:11:50,559 - DEBUG - Running subprocess: ['C:\\Users\\euler\\venv_windows\\Scripts\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:50,687 - INFO - Validated Python 3.12: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:11:50,687 - DEBUG - Running subprocess: ['C:\\Users\\euler\\venv_windows\\Scripts\\pythonw.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:51,586 - INFO - Validated Python 3.12: C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:11:51,587 - DEBUG - Running subprocess: ['C:\\Python312\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:51,790 - INFO - Validated Python 3.12: C:\Python312\python.exe
+2025-06-18 11:11:51,791 - DEBUG - Running subprocess: ['C:\\Python312\\pythonw.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:51,961 - INFO - Validated Python 3.12: C:\Python312\pythonw.exe
+2025-06-18 11:11:51,961 - DEBUG - Running subprocess: ['C:\\Users\\euler\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:52,149 - WARNING - Python validation failed for C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python.exe: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+2025-06-18 11:11:52,150 - DEBUG - Running subprocess: ['C:\\Users\\euler\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:52,277 - WARNING - Python validation failed for C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python3.exe: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+2025-06-18 11:11:52,277 - INFO - Found 4 valid Python installations:
+2025-06-18 11:11:52,277 - INFO -   1. C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:11:52,278 - INFO -   2. C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:11:52,278 - INFO -   3. C:\Python312\python.exe
+2025-06-18 11:11:52,278 - INFO -   4. C:\Python312\pythonw.exe
+2025-06-18 11:12:00,773 - INFO - Using current virtual environment: venv_windows
+2025-06-18 11:12:00,773 - INFO - Using existing environment: current_venv_windows
+2025-06-18 11:12:03,391 - INFO - Starting application main loop...
+2025-06-18 11:22:26,417 - INFO - === ManimStudio Starting ===
+2025-06-18 11:22:26,418 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-18 11:22:26,418 - INFO - Platform: win32
+2025-06-18 11:22:26,418 - INFO - Frozen: False
+2025-06-18 11:22:26,419 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-18 11:22:26,419 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-18 11:22:26,419 - INFO - Checking LaTeX installation...
+2025-06-18 11:22:27,135 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-18 11:22:27,136 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-18 11:22:27,136 - INFO - Creating main application...
+2025-06-18 11:22:27,294 - INFO - Debug logging enabled to: C:\Users\euler\.manim_studio\logs\venv_debug.log
+2025-06-18 11:22:27,294 - INFO - System: win32
+2025-06-18 11:22:27,294 - INFO - Python: C:\Users\euler\venv_windows\Scripts\python.exe 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-18 11:22:27,295 - INFO - Frozen executable (corrected): False
+2025-06-18 11:22:27,295 - INFO - VirtualEnvironmentManager initialized
+2025-06-18 11:22:27,295 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:22:27,295 - INFO - Is frozen (corrected): False
+2025-06-18 11:22:27,296 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-18 11:22:27,296 - INFO - ============================================================
+2025-06-18 11:22:27,296 - INFO - COMPREHENSIVE PYTHON DISCOVERY
+2025-06-18 11:22:27,296 - INFO - ============================================================
+2025-06-18 11:22:27,296 - INFO - 1. Searching system PATH...
+2025-06-18 11:22:27,296 - DEBUG - Searching for Python executables: ['python.exe', 'python3.exe', 'pythonw.exe', 'python3w.exe', 'python3.8.exe', 'python38.exe', 'pythonw3.8.exe', 'python3.9.exe', 'python39.exe', 'pythonw3.9.exe', 'python3.10.exe', 'python310.exe', 'pythonw3.10.exe', 'python3.11.exe', 'python311.exe', 'pythonw3.11.exe', 'python3.12.exe', 'python312.exe', 'pythonw3.12.exe', 'python3.13.exe', 'python313.exe', 'pythonw3.13.exe']
+2025-06-18 11:22:27,297 - DEBUG - PATH found: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:22:27,297 - DEBUG - PATH found: C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:22:27,297 - DEBUG - PATH found: C:\Python312\python.exe
+2025-06-18 11:22:27,297 - DEBUG - PATH found: C:\Python312\pythonw.exe
+2025-06-18 11:22:27,298 - DEBUG - PATH found: C:\ProgramData\chocolatey\bin\python3.12.exe
+2025-06-18 11:22:27,302 - DEBUG - PATH found: C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python.exe
+2025-06-18 11:22:27,303 - DEBUG - PATH found: C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python3.exe
+2025-06-18 11:22:27,303 - INFO - 2. Searching Windows Registry...
+2025-06-18 11:22:27,303 - DEBUG - Registry found: C:\Python312\python.exe
+2025-06-18 11:22:27,304 - DEBUG - Registry found: C:\Python312\pythonw.exe
+2025-06-18 11:22:27,304 - INFO - 3. Searching common directories...
+2025-06-18 11:22:27,304 - DEBUG - Common dir found: C:\Python312\python.exe
+2025-06-18 11:22:27,305 - DEBUG - Common dir found: C:\Python312\pythonw.exe
+2025-06-18 11:22:27,305 - INFO - 4. Searching package managers...
+2025-06-18 11:22:27,311 - DEBUG - Running subprocess: ['C:\\Users\\euler\\venv_windows\\Scripts\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,425 - INFO - Validated Python 3.12: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:22:27,425 - DEBUG - Running subprocess: ['C:\\Users\\euler\\venv_windows\\Scripts\\pythonw.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,546 - INFO - Validated Python 3.12: C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:22:27,546 - DEBUG - Running subprocess: ['C:\\Python312\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,649 - INFO - Validated Python 3.12: C:\Python312\python.exe
+2025-06-18 11:22:27,649 - DEBUG - Running subprocess: ['C:\\Python312\\pythonw.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,721 - INFO - Validated Python 3.12: C:\Python312\pythonw.exe
+2025-06-18 11:22:27,721 - DEBUG - Running subprocess: ['C:\\ProgramData\\chocolatey\\bin\\python3.12.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,960 - INFO - Validated Python 3.12: C:\ProgramData\chocolatey\bin\python3.12.exe
+2025-06-18 11:22:27,961 - DEBUG - Running subprocess: ['C:\\Users\\euler\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:28,103 - WARNING - Python validation failed for C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python.exe: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+2025-06-18 11:22:28,104 - DEBUG - Running subprocess: ['C:\\Users\\euler\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:28,238 - WARNING - Python validation failed for C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python3.exe: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+2025-06-18 11:22:28,239 - INFO - Found 5 valid Python installations:
+2025-06-18 11:22:28,239 - INFO -   1. C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:22:28,239 - INFO -   2. C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:22:28,240 - INFO -   3. C:\Python312\python.exe
+2025-06-18 11:22:28,240 - INFO -   4. C:\Python312\pythonw.exe
+2025-06-18 11:22:28,240 - INFO -   5. C:\ProgramData\chocolatey\bin\python3.12.exe
+2025-06-18 11:22:28,241 - INFO - Detecting existing environments...
+2025-06-18 11:22:28,241 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-18 11:22:28,241 - INFO - Default environment structure is valid
+2025-06-18 11:22:28,241 - DEBUG - Running subprocess: ['C:\\Users\\euler\\.manim_studio\\venvs\\manim_studio_default\\Scripts\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:28,416 - INFO - Validated Python 3.12: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-18 11:22:28,417 - DEBUG - Running subprocess: ['C:\\Users\\euler\\.manim_studio\\venvs\\manim_studio_default\\Scripts\\python.exe', '-c', '\nimport sys\nmissing = []\npackages = [\'manim\', \'numpy\', \'customtkinter\', \'PIL\']\nfor pkg in packages:\n    try:\n        if pkg == \'PIL\':\n            import PIL\n        else:\n            __import__(pkg)\n        print(f\'[OK] {pkg}\')\n    except ImportError:\n        missing.append(pkg)\n        print(f\'[FAIL] {pkg}\')\n\nif missing:\n    print(f\'MISSING:{",".join(missing)}\')\n    sys.exit(1)\nelse:\n    print(\'ALL_OK\')\n    sys.exit(0)\n']
+2025-06-18 11:22:42,612 - INFO - All essential packages verified
+2025-06-18 11:22:42,614 - INFO - Default environment has all required packages
+2025-06-18 11:22:42,615 - INFO - Using existing environment: manim_studio_default
+2025-06-18 11:22:44,886 - INFO - Starting application main loop...

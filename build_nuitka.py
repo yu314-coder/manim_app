@@ -635,14 +635,16 @@ def build_debug_executable(jobs=None):
     
     return None
 
-def build_onefile_executable(jobs=None, priority="normal", debug_mode=False):
-    """Build onefile executable that unpacks next to the exe"""
+# Add these critical fixes to your build_nuitka.py file
+
+def build_onefile_executable(jobs=None, priority="normal"):
+    """Build onefile executable with subprocess fixes"""
     
     cpu_count = multiprocessing.cpu_count()
     if jobs is None:
         jobs = max(1, cpu_count - 1)
 
-    print(f"🚀 Building {'DEBUG' if debug_mode else 'PRODUCTION'} ONEFILE executable using {jobs} CPU threads...")
+    print(f"🚀 Building ONEFILE executable using {jobs} CPU threads...")
 
     # Clean previous builds
     if Path("build").exists():
@@ -657,31 +659,19 @@ def build_onefile_executable(jobs=None, priority="normal", debug_mode=False):
     print("=" * 60)
     print("🔧 Creating enhanced build configuration...")
 
-    # Create enhanced patches and helpers (only for production builds)
-    if not debug_mode:
-        create_no_console_patch()
-        create_fixes_module()
-        create_subprocess_helper()
-
-    # Check prerequisites
-    if not check_system_prerequisites():
-        print("❌ System prerequisites check failed")
-        sys.exit(1)
-
-    # Get Nuitka version
-    nuitka_version = get_nuitka_version()
-    print(f"📊 Detected Nuitka version: {nuitka_version}")
-
-    print("=" * 60)
-    print("🔨 Building onefile executable...")
-
-    # Basic command structure with latest onefile options
+    # CRITICAL FIX: Enhanced command for onefile with subprocess support
     cmd = [
         sys.executable, "-m", "nuitka",
         "--onefile",
-        "--onefile-tempdir-spec={PROGRAM_DIR}/temp_unpack",  # Latest: unpack next to exe
-        "--onefile-cache-mode=cached",  # Force persistent caching - NEVER delete
+        # CRITICAL: Use a predictable unpack directory
+        "--onefile-tempdir-spec={PROGRAM_DIR}/manim_studio_runtime",
+        "--onefile-cache-mode=cached",
+        # Console settings
+        "--windows-console-mode=disable",
+        "--windows-disable-console",
+        # Core plugins and settings
         "--enable-plugin=tk-inter",
+        "--enable-plugin=numpy",
         "--lto=no",
         "--show-progress",
         "--remove-output",
@@ -689,132 +679,91 @@ def build_onefile_executable(jobs=None, priority="normal", debug_mode=False):
         "--mingw64",
         "--disable-ccache",
         "--show-memory",
-        "--disable-dll-dependency-cache",
+        # CRITICAL: Ensure subprocess modules are properly included
+        "--include-module=subprocess",
+        "--include-module=threading",
+        "--include-module=tempfile",
+        "--include-module=os",
+        "--include-module=sys",
+        "--include-module=shutil",
+        "--include-module=pathlib",
+        # CRITICAL: Include process utilities
+        "--include-module=psutil",
+        "--include-module=signal",
+        "--include-module=uuid",
+        "--include-module=time",
+        # Force stdout/stderr to work properly
+        "--windows-force-stdout-spec={PROGRAM_DIR}/stdout.log",
+        "--windows-force-stderr-spec={PROGRAM_DIR}/stderr.log",
     ]
 
-    # Console hiding (only for production builds)
-    if not debug_mode:
-        cmd.extend([
-            "--windows-console-mode=disable",
-            "--windows-disable-console",
-            "--windows-force-stdout-spec=nul",
-            "--windows-force-stderr-spec=nul",
-        ])
-    else:
-        print("🐛 DEBUG MODE: Console windows will be visible")
-
-    # CRITICAL: Include Visual C++ runtime dependencies for mapbox_earcut
-    cmd.extend([
-        # Include Visual C++ redistributables
-        "--include-module=msvcrt",
-        "--include-module=_ctypes",
-        
-        # Force inclusion of mapbox_earcut and its dependencies
-        "--include-package=mapbox_earcut",
-        "--follow-import-to=mapbox_earcut",
-        
-        # Include Python's dynamic loading support
-        "--include-module=ctypes",
-        "--include-module=ctypes.util",
-        
-        # Include NumPy which mapbox_earcut depends on
-        "--include-package=numpy",
-        "--include-package-data=numpy",
-        
-        # Include additional C extension support
-        "--include-module=_ctypes_test",
-        "--include-module=_multiprocessing",
-    ])
-
-    # MINIMAL exclusions - only exclude test modules
+    # MINIMAL exclusions - only exclude test modules to avoid subprocess issues
     minimal_exclusions = [
-        # Only exclude test modules
         "*.tests.*", "*.test_*", "test.*",
         "pytest.*", "*.benchmarks.*",
-        # Still exclude problematic modules that cause build issues
-        "zstandard.*", "setuptools.*", "_distutils_hack.*"
+        # Only exclude known problematic modules
+        "zstandard.*", "setuptools.*", "_distutils_hack.*",
     ]
 
-    for exclusion in minimal_exclusions:
-        cmd.append(f"--nofollow-import-to={exclusion}")
+    for module in minimal_exclusions:
+        cmd.append(f"--nofollow-import-to={module}")
 
-    # Track included packages for summary
+    # CRITICAL: Include ALL subprocess-related packages
+    subprocess_critical_packages = [
+        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
+        "matplotlib", "jedi", "psutil", "manim", "subprocess",
+        "threading", "multiprocessing", "concurrent", "queue"
+    ]
+
     included_packages = []
-
-    # Include essential packages
-    essential_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2", 
-        "matplotlib", "psutil", "jedi", "requests"
-    ]
-
-    for package in essential_packages:
+    for package in subprocess_critical_packages:
         if is_package_importable(package):
-            package_name = get_correct_package_name(package)
-            cmd.append(f"--include-package={package_name}")
-            included_packages.append(package_name)
-            print(f"📦 Including package: {package_name}")
+            correct_name = get_correct_package_name(package)
+            if correct_name:
+                included_packages.append(correct_name)
+                cmd.append(f"--include-package={correct_name}")
+                cmd.append(f"--include-package-data={correct_name}")
+                print(f"📦 Including critical package: {correct_name}")
 
-    # Include Manim with special handling
-    if is_package_importable("manim"):
-        cmd.extend([
-            "--include-package=manim",
-            "--follow-import-to=manim",
-            "--include-package-data=manim"
-        ])
-        included_packages.append("manim")
-        print("🎬 Including Manim")
-
-    # Include SymPy if available (needed for Manim)
+    # CRITICAL: Include SymPy with minimal exclusions
     if is_package_importable("sympy"):
         cmd.append("--include-package=sympy")
+        cmd.append("--include-package-data=sympy")
         
-        # Exclude SymPy test modules to reduce size
-        sympy_test_exclusions = [
-            "sympy.*.tests.*", "sympy.*.test_*"
+        # Only exclude the absolute minimum to avoid build failures
+        sympy_critical_exclusions = [
+            "sympy.polys.benchmarks.bench_solvers",
+            "sympy.physics.quantum.tests.test_spin", 
+            "sympy.solvers.ode.tests.test_systems",
+            "sympy.polys.polyquinticconst",
         ]
         
-        for exclusion in sympy_test_exclusions:
+        for exclusion in sympy_critical_exclusions:
             cmd.append(f"--nofollow-import-to={exclusion}")
         
         included_packages.append("sympy")
-        print("🧮 Including SymPy")
+        print("🧮 Including SymPy with subprocess compatibility")
 
-    # Include comprehensive system modules
-    comprehensive_modules = [
-        "json", "tempfile", "threading", "subprocess",
-        "os", "sys", "ctypes", "venv", "fixes", "psutil",
-        "process_utils", "logging", "pathlib", "shutil",
-        "glob", "re", "time", "datetime", "uuid", "base64",
-        "io", "codecs", "platform", "getpass", "signal",
-        "atexit", "queue", "math", "random", "collections",
-        "itertools", "functools", "operator", "copy",
-        # Additional modules
-        "xml", "xml.etree", "xml.etree.ElementTree",
-        "urllib", "urllib.request", "urllib.parse",
-        "zipfile", "tarfile", "gzip", "bz2", "lzma",
-        "hashlib", "hmac", "ssl", "socket"
+    # CRITICAL: Include comprehensive system modules for subprocess support
+    critical_system_modules = [
+        "json", "tempfile", "threading", "subprocess", "multiprocessing",
+        "os", "sys", "ctypes", "venv", "psutil", "signal", "atexit",
+        "logging", "pathlib", "shutil", "glob", "re", "time", 
+        "datetime", "uuid", "base64", "io", "codecs", "platform", 
+        "getpass", "queue", "math", "random", "collections",
+        "itertools", "functools", "operator", "copy", "concurrent",
+        "concurrent.futures", "asyncio"
     ]
 
-    for module in comprehensive_modules:
+    for module in critical_system_modules:
         cmd.append(f"--include-module={module}")
 
-    # Include comprehensive data
+    # CRITICAL: Include data for packages that need it
     data_packages = ["manim", "matplotlib", "numpy", "sympy"]
-
     for package in data_packages:
         if is_package_importable(package):
             cmd.append(f"--include-package-data={package}")
-            print(f"📊 Including comprehensive data for: {package}")
-
-    # Add explicit data inclusion for compiled extensions
-    try:
-        import mapbox_earcut
-        import os
-        earcut_path = os.path.dirname(mapbox_earcut.__file__)
-        cmd.append(f"--include-data-dir={earcut_path}=mapbox_earcut")
-        print(f"📦 Including mapbox_earcut from: {earcut_path}")
-    except ImportError:
-        print("⚠️ mapbox_earcut not found in build environment")
+            print(f"📊 Including data for: {package}")
 
     # Output configuration
     cmd.extend([
@@ -826,10 +775,10 @@ def build_onefile_executable(jobs=None, priority="normal", debug_mode=False):
     if Path("assets/icon.ico").exists():
         cmd.append("--windows-icon-from-ico=assets/icon.ico")
 
-    # Include all data directories
+    # CRITICAL: Include all data directories
     data_dirs = ["assets=assets"]
     
-    # Try to include matplotlib data
+    # Include matplotlib data if available
     try:
         import matplotlib
         mpl_data = Path(matplotlib.get_data_path())
@@ -843,87 +792,60 @@ def build_onefile_executable(jobs=None, priority="normal", debug_mode=False):
         cmd.append(f"--include-data-dir={data_dir}")
 
     # Final target
-    target_file = "debug_app.py" if debug_mode else "app.py"
-    cmd.append(target_file)
+    cmd.append("app.py")
 
-    print(f"Building {'debug' if debug_mode else 'production'} onefile executable...")
+    print("Building onefile executable with subprocess support...")
     print("Command:", " ".join(cmd))
     print("=" * 60)
 
-    # Environment setup
+    # CRITICAL: Environment setup for build
     env = os.environ.copy()
-    env["GCC_LTO"] = "0"
-    env["NUITKA_DISABLE_LTO"] = "1"
-    env["GCC_COMPILE_ARGS"] = "-fno-lto"
+    env.update({
+        "GCC_LTO": "0",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "NUITKA_CACHE_MODE": "cached"
+    })
 
-    # Set process priority
-    process_priority = 0
-    if priority == "high" and sys.platform == "win32":
-        print("🔥 Setting HIGH process priority for maximum CPU utilization")
-        process_priority = 0x00000080
-
-    # Run the build
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        env=env,
-        creationflags=process_priority if sys.platform == "win32" else 0
-    )
-
-    # Display build info
-    print(f"🖥️ CPU Info: {cpu_count} logical cores available")
-    print(f"⚙️ Using {jobs} compilation threads")
-    print(f"📦 Included {len(included_packages)} packages")
-
-    # Stream compilation output
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            print(line.strip())
-
-    return_code = process.poll()
-
-    if return_code == 0:
-        print("=" * 60)
-        print("✅ Onefile build successful!")
-
-        exe_path = find_standalone_executable()
-        if exe_path:
-            # Create launcher scripts (only for production builds)
-            if not debug_mode:
-                create_launcher_script(exe_path)
+    try:
+        print("🚀 Starting build process...")
+        
+        # Run the build command
+        result = subprocess.run(
+            cmd,
+            env=env,
+            capture_output=False,  # Show real-time output
+            text=True,
+            timeout=3600  # 1 hour timeout
+        )
+        
+        if result.returncode == 0:
+            # Find the built executable
+            dist_dir = Path("dist")
+            exe_files = list(dist_dir.glob("*.exe"))
             
-            print(f"📁 Executable: {exe_path}")
-            if debug_mode:
-                print("🐛 DEBUG FEATURES:")
-                print("  ✅ Console windows visible")
-                print("  ✅ Debug logging enabled")
-                print("  ✅ Error messages displayed")
+            if exe_files:
+                exe_path = exe_files[0]
+                print(f"✅ Build successful! Executable: {exe_path}")
+                
+                # Create runtime directory alongside executable
+                runtime_dir = exe_path.parent / "manim_studio_runtime"
+                runtime_dir.mkdir(exist_ok=True)
+                
+                print(f"📂 Created runtime directory: {runtime_dir}")
+                return str(exe_path)
             else:
-                print("🎉 PRODUCTION FEATURES:")
-                print("  ✅ Single file executable")
-                print("  ✅ Unpacks next to the .exe file")
-                print("  ✅ Smart caching system")
-                print("  ✅ No console windows")
-                print("  ✅ Complete functionality included")
-
-            return exe_path
+                print("❌ Build completed but no executable found!")
+                return None
         else:
-            print("❌ Executable not found")
-            list_contents()
+            print(f"❌ Build failed with exit code: {result.returncode}")
             return None
-    else:
-        print("=" * 60)
-        print("❌ Build failed!")
-        print(f"Return code: {return_code}")
-        sys.exit(1)
-
+            
+    except subprocess.TimeoutExpired:
+        print("❌ Build timed out after 1 hour")
+        return None
+    except Exception as e:
+        print(f"❌ Build error: {e}")
+        return None
 def main():
     """Main function - Enhanced onefile build with DLL support and debug capabilities"""
     import sys  # Explicitly import here to fix scope issue
