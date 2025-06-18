@@ -14,17 +14,6 @@ import importlib
 import argparse
 import glob
 from pathlib import Path
-import locale
-
-# Force UTF-8 encoding for build operations
-os.environ['PYTHONIOENCODING'] = 'utf-8'
-try:
-    locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
-except Exception:
-    try:
-        locale.setlocale(locale.LC_ALL, 'C.UTF-8')
-    except Exception:
-        pass
 
 # ASCII vs Unicode output control
 USE_ASCII_ONLY = False
@@ -202,10 +191,10 @@ def patch_subprocess():
     try:
         if hasattr(subprocess, '_manimstudio_patched'):
             return True
-
+            
         original_run = subprocess.run
         original_popen = subprocess.Popen
-
+        
         def safe_run_wrapper(*args, **kwargs):
             if sys.platform == "win32":
                 startupinfo = kwargs.get('startupinfo')
@@ -214,12 +203,12 @@ def patch_subprocess():
                     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     startupinfo.wShowWindow = subprocess.SW_HIDE
                     kwargs['startupinfo'] = startupinfo
-
+                
                 if 'creationflags' not in kwargs:
                     kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-
+            
             return original_run(*args, **kwargs)
-
+        
         def safe_popen_wrapper(*args, **kwargs):
             if sys.platform == "win32":
                 startupinfo = kwargs.get('startupinfo')
@@ -228,16 +217,16 @@ def patch_subprocess():
                     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     startupinfo.wShowWindow = subprocess.SW_HIDE
                     kwargs['startupinfo'] = startupinfo
-
+                
                 if 'creationflags' not in kwargs:
                     kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-
+            
             return original_popen(*args, **kwargs)
-
+        
         subprocess.run = safe_run_wrapper
         subprocess.Popen = safe_popen_wrapper
         subprocess._manimstudio_patched = True
-
+        
         return True
     except Exception as e:
         print(f"Subprocess patching failed: {e}")
@@ -247,77 +236,58 @@ def fix_dll_loading():
     """Fix DLL loading for compiled extensions like mapbox_earcut"""
     try:
         import ctypes
-
+        import os
+        
+        # Get executable directory
         if getattr(sys, 'frozen', False):
             exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-
+            
+            # Add DLL directories to search path
             dll_dirs = [
                 exe_dir,
                 os.path.join(exe_dir, 'dlls'),
                 os.path.join(exe_dir, 'lib'),
             ]
-
+            
             for dll_dir in dll_dirs:
                 if os.path.exists(dll_dir):
+                    # Add to PATH
                     current_path = os.environ.get('PATH', '')
                     if dll_dir not in current_path:
                         os.environ['PATH'] = dll_dir + os.pathsep + current_path
-
+                    
+                    # Use AddDllDirectory on Windows 10+
                     if hasattr(ctypes.windll.kernel32, 'AddDllDirectory'):
                         try:
                             ctypes.windll.kernel32.AddDllDirectory(dll_dir)
                         except Exception:
                             pass
-
+            
+            # Pre-load critical DLLs
             critical_dlls = [
                 'msvcp140.dll',
-                'vcruntime140.dll',
+                'vcruntime140.dll', 
                 'vcruntime140_1.dll',
                 'concrt140.dll'
             ]
-
+            
             for dll_name in critical_dlls:
                 try:
                     ctypes.CDLL(dll_name)
                 except Exception:
                     pass
-
+        
         return True
     except Exception as e:
         print(f"DLL loading fix failed: {e}")
         return False
 
-def fix_encoding():
-    """Force UTF-8 encoding to avoid crashes"""
-    try:
-        if hasattr(sys.stdout, 'reconfigure'):
-            try:
-                sys.stdout.reconfigure(encoding='utf-8', errors='ignore')
-                sys.stderr.reconfigure(encoding='utf-8', errors='ignore')
-            except Exception:
-                pass
-
-        os.environ['PYTHONIOENCODING'] = 'utf-8'
-        os.environ['PYTHONLEGACYWINDOWSFSENCODING'] = '0'
-        return True
-    except Exception as e:
-        print(f"Encoding fix failed: {e}")
-        return False
-
-def apply_fixes():
-    """Apply all startup fixes"""
-    fix_encoding()
-    patch_subprocess()
-    fix_dll_loading()
-    return True
-
-apply_all_fixes = apply_fixes
-
 # Apply fixes automatically when imported
-apply_fixes()
+patch_subprocess()
+fix_dll_loading()
 '''
     
-    with open("fixes.py", "w", encoding="utf-8", newline='\n', errors='ignore') as f:
+    with open("fixes.py", "w", encoding="utf-8") as f:
         f.write(fixes_content)
     
     print("🔧 Created enhanced fixes module")
@@ -348,7 +318,7 @@ def run_hidden_subprocess(command, **kwargs):
     return run_original(command, **kwargs)
 '''
     
-    with open("process_utils.py", "w", encoding="utf-8", newline='\n', errors='ignore') as f:
+    with open("process_utils.py", "w", encoding="utf-8") as f:
         f.write(helper_content)
     
     print("🔧 Created subprocess helper")
@@ -683,10 +653,6 @@ def build_onefile_executable(jobs=None, priority="normal", debug_mode=False):
     # Create assets directory
     assets_dir = Path("assets")
     assets_dir.mkdir(exist_ok=True)
-
-    # When building in debug mode ensure debug_app.py exists
-    if debug_mode:
-        create_debug_app()
 
     print("=" * 60)
     print("🔧 Creating enhanced build configuration...")
