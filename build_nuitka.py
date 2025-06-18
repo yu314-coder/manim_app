@@ -1,513 +1,30 @@
 #!/usr/bin/env python3
 """
 Enhanced Nuitka Build Script for Manim Studio
-Includes Visual C++ redistributable DLL bundling, mapbox_earcut fix, and debug capabilities
+Builds onefile executable with comprehensive package inclusion and optimization
 """
 
 import os
 import sys
 import subprocess
 import shutil
-import tempfile
 import multiprocessing
-import importlib
 import argparse
-import glob
+import logging
 from pathlib import Path
+import tempfile
+import platform
+import glob
 
-# ASCII vs Unicode output control
+# Global flag for ASCII-only output
 USE_ASCII_ONLY = False
 
-def run_hidden_process(command, **kwargs):
-    """Run process with hidden window on Windows"""
-    if sys.platform == "win32":
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startupinfo.wShowWindow = subprocess.SW_HIDE
-        kwargs['startupinfo'] = startupinfo
-        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-    
-    return subprocess.run(command, **kwargs)
-
-def create_debug_app():
-    """Create a debug version of app.py that shows startup progress"""
-    debug_content = '''
-import sys
-import os
-import traceback
-
-def debug_print(msg):
-    """Print debug message to both console and file"""
-    print(f"[DEBUG] {msg}")
-    try:
-        with open("debug_startup.log", "a", encoding="utf-8") as f:
-            f.write(f"[DEBUG] {msg}\\n")
-    except:
-        pass
-
-try:
-    debug_print("=== DEBUG STARTUP ===")
-    debug_print(f"Python executable: {sys.executable}")
-    debug_print(f"Python version: {sys.version}")
-    debug_print(f"Current working directory: {os.getcwd()}")
-    debug_print(f"Frozen: {getattr(sys, 'frozen', False)}")
-    debug_print(f"sys.argv: {sys.argv}")
-    
-    # Test basic imports
-    debug_print("Testing basic imports...")
-    
-    import tkinter
-    debug_print("✓ tkinter imported")
-    
-    import customtkinter
-    debug_print("✓ customtkinter imported")
-    
-    # Test the problematic import
-    debug_print("Testing mapbox_earcut import...")
-    try:
-        import mapbox_earcut
-        debug_print("✓ mapbox_earcut imported successfully")
-    except Exception as e:
-        debug_print(f"✗ mapbox_earcut import failed: {e}")
-        debug_print(f"Error type: {type(e)}")
-        debug_print(f"Error traceback: {traceback.format_exc()}")
-    
-    # Test other critical imports
-    try:
-        import numpy
-        debug_print("✓ numpy imported")
-    except Exception as e:
-        debug_print(f"✗ numpy import failed: {e}")
-    
-    try:
-        import PIL
-        debug_print("✓ PIL imported")
-    except Exception as e:
-        debug_print(f"✗ PIL import failed: {e}")
-    
-    try:
-        import cv2
-        debug_print("✓ cv2 imported")
-    except Exception as e:
-        debug_print(f"✗ cv2 import failed: {e}")
-    
-    try:
-        import matplotlib
-        debug_print("✓ matplotlib imported")
-    except Exception as e:
-        debug_print(f"✗ matplotlib import failed: {e}")
-    
-    debug_print("All imports tested, attempting to create simple window...")
-    
-    # Create a simple test window
-    import tkinter as tk
-    root = tk.Tk()
-    root.title("Debug Test Window")
-    root.geometry("400x300")
-    
-    label = tk.Label(root, text="DEBUG: App started successfully!\\nCheck debug_startup.log for details", 
-                     font=("Arial", 12), wraplength=350)
-    label.pack(expand=True)
-    
-    button = tk.Button(root, text="Close", command=root.destroy)
-    button.pack(pady=20)
-    
-    debug_print("Test window created, starting mainloop...")
-    root.mainloop()
-    debug_print("Window closed normally")
-    
-except Exception as e:
-    debug_print(f"CRITICAL ERROR: {e}")
-    debug_print(f"Error type: {type(e)}")
-    debug_print(f"Full traceback: {traceback.format_exc()}")
-    
-    # Try to show error in a message box
-    try:
-        import tkinter.messagebox as messagebox
-        messagebox.showerror("Debug Error", f"Critical startup error:\\n{e}\\n\\nCheck debug_startup.log for details")
-    except:
-        pass
-    
-    # Keep console open
-    input("Press Enter to exit...")
-'''
-    
-    with open("debug_app.py", "w", encoding="utf-8") as f:
-        f.write(debug_content)
-    
-    print("✅ Created debug_app.py")
-
-def create_no_console_patch():
-    """Create patch to disable console windows"""
-    patch_content = '''
-import subprocess
-import sys
-
-# Store original subprocess functions
-_original_run = subprocess.run
-_original_popen = subprocess.Popen
-
-def hidden_run(*args, **kwargs):
-    """Run subprocess with hidden window on Windows"""
-    if sys.platform == "win32" and 'startupinfo' not in kwargs:
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startupinfo.wShowWindow = subprocess.SW_HIDE
-        kwargs['startupinfo'] = startupinfo
-        if 'creationflags' not in kwargs:
-            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-    return _original_run(*args, **kwargs)
-
-def hidden_popen(*args, **kwargs):
-    """Popen subprocess with hidden window on Windows"""
-    if sys.platform == "win32" and 'startupinfo' not in kwargs:
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startupinfo.wShowWindow = subprocess.SW_HIDE
-        kwargs['startupinfo'] = startupinfo
-        if 'creationflags' not in kwargs:
-            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-    return _original_popen(*args, **kwargs)
-
-# Patch subprocess module
-subprocess.run = hidden_run
-subprocess.Popen = hidden_popen
-'''
-    
-    with open("no_console_patch.py", "w", encoding="utf-8") as f:
-        f.write(patch_content)
-    
-    print("🔧 Created no console patch")
-
-def create_fixes_module():
-    """Create enhanced fixes module"""
-    fixes_content = '''
-import os
-import sys
-import subprocess
-
-def patch_subprocess():
-    """Enhanced subprocess patching for Nuitka builds"""
-    try:
-        if hasattr(subprocess, '_manimstudio_patched'):
-            return True
-            
-        original_run = subprocess.run
-        original_popen = subprocess.Popen
-        
-        def safe_run_wrapper(*args, **kwargs):
-            if sys.platform == "win32":
-                startupinfo = kwargs.get('startupinfo')
-                if startupinfo is None:
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    kwargs['startupinfo'] = startupinfo
-                
-                if 'creationflags' not in kwargs:
-                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-            
-            return original_run(*args, **kwargs)
-        
-        def safe_popen_wrapper(*args, **kwargs):
-            if sys.platform == "win32":
-                startupinfo = kwargs.get('startupinfo')
-                if startupinfo is None:
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    kwargs['startupinfo'] = startupinfo
-                
-                if 'creationflags' not in kwargs:
-                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-            
-            return original_popen(*args, **kwargs)
-        
-        subprocess.run = safe_run_wrapper
-        subprocess.Popen = safe_popen_wrapper
-        subprocess._manimstudio_patched = True
-        
-        return True
-    except Exception as e:
-        print(f"Subprocess patching failed: {e}")
-        return False
-
-def fix_dll_loading():
-    """Fix DLL loading for compiled extensions like mapbox_earcut"""
-    try:
-        import ctypes
-        import os
-        
-        # Get executable directory
-        if getattr(sys, 'frozen', False):
-            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-            
-            # Add DLL directories to search path
-            dll_dirs = [
-                exe_dir,
-                os.path.join(exe_dir, 'dlls'),
-                os.path.join(exe_dir, 'lib'),
-            ]
-            
-            for dll_dir in dll_dirs:
-                if os.path.exists(dll_dir):
-                    # Add to PATH
-                    current_path = os.environ.get('PATH', '')
-                    if dll_dir not in current_path:
-                        os.environ['PATH'] = dll_dir + os.pathsep + current_path
-                    
-                    # Use AddDllDirectory on Windows 10+
-                    if hasattr(ctypes.windll.kernel32, 'AddDllDirectory'):
-                        try:
-                            ctypes.windll.kernel32.AddDllDirectory(dll_dir)
-                        except Exception:
-                            pass
-            
-            # Pre-load critical DLLs
-            critical_dlls = [
-                'msvcp140.dll',
-                'vcruntime140.dll', 
-                'vcruntime140_1.dll',
-                'concrt140.dll'
-            ]
-            
-            for dll_name in critical_dlls:
-                try:
-                    ctypes.CDLL(dll_name)
-                except Exception:
-                    pass
-        
-        return True
-    except Exception as e:
-        print(f"DLL loading fix failed: {e}")
-        return False
-
-# Apply fixes automatically when imported
-patch_subprocess()
-fix_dll_loading()
-'''
-    
-    with open("fixes.py", "w", encoding="utf-8") as f:
-        f.write(fixes_content)
-    
-    print("🔧 Created enhanced fixes module")
-
-def create_subprocess_helper():
-    """Create subprocess helper for process utilities"""
-    helper_content = '''
-import subprocess
-import sys
-
-# Store original functions to prevent recursion
-popen_original = subprocess.Popen
-run_original = subprocess.run
-
-def run_hidden_subprocess(command, **kwargs):
-    """Run subprocess with hidden window"""
-    if sys.platform == "win32":
-        startupinfo = kwargs.get('startupinfo')
-        if startupinfo is None:
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            kwargs['startupinfo'] = startupinfo
-        
-        if 'creationflags' not in kwargs:
-            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-    
-    return run_original(command, **kwargs)
-'''
-    
-    with open("process_utils.py", "w", encoding="utf-8") as f:
-        f.write(helper_content)
-    
-    print("🔧 Created subprocess helper")
-
-def bundle_vcredist_dlls():
-    """Bundle Visual C++ redistributable DLLs with the executable"""
-    print("🔧 Bundling Visual C++ redistributable DLLs...")
-    
-    # Common locations for VC++ redistributable DLLs
-    system_dirs = [
-        r"C:\Windows\System32",
-        r"C:\Windows\SysWOW64",
-        r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT",
-        r"C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT",
-        r"C:\Program Files (x86)\Microsoft Visual Studio\2019\*\VC\Redist\MSVC\*\x64\Microsoft.VC142.CRT",
-        r"C:\Program Files\Microsoft Visual Studio\2019\*\VC\Redist\MSVC\*\x64\Microsoft.VC142.CRT"
-    ]
-    
-    required_dlls = [
-        "msvcp140.dll",
-        "vcruntime140.dll", 
-        "vcruntime140_1.dll",
-        "concrt140.dll"
-    ]
-    
-    dll_dir = Path("dist/dlls")
-    dll_dir.mkdir(parents=True, exist_ok=True)
-    
-    found_dlls = []
-    for dll_name in required_dlls:
-        dll_found = False
-        for sys_dir in system_dirs:
-            try:
-                dll_paths = glob.glob(os.path.join(sys_dir, dll_name))
-                if dll_paths:
-                    # Use the first found DLL
-                    src_path = dll_paths[0]
-                    dst_path = dll_dir / dll_name
-                    shutil.copy2(src_path, dst_path)
-                    found_dlls.append(dll_name)
-                    print(f"📦 Bundled DLL: {dll_name} from {src_path}")
-                    dll_found = True
-                    break
-            except Exception as e:
-                continue
-        
-        if not dll_found:
-            print(f"⚠️ Could not find {dll_name}")
-    
-    if found_dlls:
-        print(f"✅ Successfully bundled {len(found_dlls)} DLLs")
-    else:
-        print("❌ No VC++ redistributable DLLs found")
-    
-    return found_dlls
-
-def check_system_prerequisites():
-    """Check system prerequisites for building"""
-    print("🔍 Checking system prerequisites...")
-    
-    # Check Nuitka
-    try:
-        import nuitka
-        print("  ✅ Nuitka available")
-    except ImportError:
-        print("  ❌ Nuitka not available")
-        print("Please install it with: pip install nuitka")
-        return False
-    
-    return True
-
-def is_package_importable(package_name):
-    """Check if a package can be imported"""
-    try:
-        # Handle special cases
-        if package_name == "PIL":
-            import PIL
-            return True
-        elif package_name == "cv2":
-            import cv2
-            return True
-        elif package_name == "process_utils":
-            # This is our own module, will be included
-            return True
-        else:
-            importlib.import_module(package_name)
-            return True
-    except ImportError:
-        return False
-
-def get_correct_package_name(package_name):
-    """Get the correct package name for Nuitka"""
-    # Special cases
-    if package_name == "PIL":
-        return "PIL"
-    elif package_name == "cv2":
-        return "cv2"
-    elif package_name == "process_utils":
-        return "process_utils"
-    return package_name
-
-def get_nuitka_version():
-    """Get Nuitka version for compatibility checks"""
-    try:
-        result = run_hidden_process(
-            [sys.executable, "-m", "nuitka", "--version"],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-        return "Unknown"
-    except Exception:
-        return "Unknown"
-
-def create_launcher_script(exe_path):
-    """Create a batch launcher script that sets the correct environment"""
-    exe_dir = os.path.dirname(exe_path)
-    launcher_content = f'''@echo off
-REM Set environment variable so the app knows where it really is
-set NUITKA_ONEFILE_PARENT={exe_path}
-REM Launch the application
-start "" "{exe_path}"
-exit
-'''
-    
-    launcher_path = Path("Launch_ManimStudio.bat")
-    with open(launcher_path, 'w', encoding="utf-8") as f:
-        f.write(launcher_content)
-    
-    # Also create a PowerShell launcher
-    ps_launcher_content = f'''# PowerShell launcher for ManimStudio
-$env:NUITKA_ONEFILE_PARENT = "{exe_path}"
-Start-Process -FilePath "{exe_path}"
-'''
-    
-    ps_launcher_path = Path("Launch_ManimStudio.ps1")
-    with open(ps_launcher_path, 'w', encoding="utf-8") as f:
-        f.write(ps_launcher_content)
-    
-    print(f"📝 Created launchers: {launcher_path} and {ps_launcher_path}")
-
-def find_standalone_executable():
-    """Find standalone executable"""
-    dist_dir = Path("dist")
-    if not dist_dir.exists():
-        return None
-
-    possible_paths = [
-        dist_dir / "app.exe",
-        dist_dir / "debug_app.exe",
-        dist_dir / "app.dist" / "app.exe",
-        dist_dir / "ManimStudio.exe",
-    ]
-
-    for path in possible_paths:
-        if path.exists():
-            return path
-
-    for exe_file in dist_dir.rglob("*.exe"):
-        if exe_file.name not in ["python.exe", "pythonw.exe"]:
-            return exe_file
-
-    return None
-
-def list_contents():
-    """List contents of build directories"""
-    for dir_name in ["dist", "build"]:
-        dir_path = Path(dir_name)
-        if dir_path.exists():
-            print(f"\n📂 Contents of {dir_name}:")
-            for item in dir_path.iterdir():
-                if item.is_file():
-                    size = item.stat().st_size / (1024 * 1024)
-                    print(f"  📄 {item.name} ({size:.1f} MB)")
-                elif item.is_dir():
-                    print(f"  📁 {item.name}/")
-
 def check_requirements():
-    """Check if all build requirements are met"""
-    print("🔍 Checking build requirements...")
-    
-    required_packages = [
-        "nuitka", "customtkinter", "PIL", "numpy", "cv2", 
-        "matplotlib", "manim", "jedi", "psutil"
-    ]
-    
+    """Check if all required packages are available"""
+    required = ["nuitka", "customtkinter", "PIL", "numpy", "cv2", "matplotlib"]
     missing = []
-    for package in required_packages:
+    
+    for package in required:
         try:
             if package == "PIL":
                 import PIL
@@ -515,130 +32,420 @@ def check_requirements():
                 import cv2
             else:
                 __import__(package)
-            print(f"  ✅ {package}")
+            print(f"✅ {package} - OK")
         except ImportError:
-            print(f"  ❌ {package}")
             missing.append(package)
+            print(f"❌ {package} - Missing")
     
     if missing:
-        print(f"\n⚠️ Missing packages: {missing}")
-        print("Install with: pip install " + " ".join(missing))
+        print(f"\n❌ Missing packages: {', '.join(missing)}")
+        print("Please install missing packages first:")
+        for pkg in missing:
+            install_name = "Pillow" if pkg == "PIL" else "opencv-python" if pkg == "cv2" else pkg
+            print(f"  pip install {install_name}")
         return False
     
-    print("✅ All requirements met!")
+    print("✅ All required packages available")
     return True
 
-def check_dependencies_with_tools():
-    """Use dependency checking tools if available"""
-    print("🔍 Checking for dependency analysis tools...")
-    
-    # Check for Dependency Walker
-    depends_paths = [
-        r"C:\Program Files (x86)\Dependency Walker\depends.exe",
-        r"C:\Program Files\Dependency Walker\depends.exe",
-        "depends.exe"
-    ]
-    
-    for path in depends_paths:
-        if os.path.exists(path) or shutil.which(path):
-            print(f"✅ Found Dependency Walker: {path}")
-            print("💡 You can use this to analyze your exe:")
-            print(f"   {path} dist\\app.exe")
-            break
-    else:
-        print("❌ Dependency Walker not found")
-        print("💡 Download from: http://www.dependencywalker.com/")
-    
-    # Check for dumpbin (Visual Studio tool)
-    if shutil.which("dumpbin"):
-        print("✅ Found dumpbin (Visual Studio tool)")
-        print("💡 You can check dependencies with:")
-        print("   dumpbin /dependents dist\\app.exe")
-    else:
-        print("❌ dumpbin not found (install Visual Studio Build Tools)")
+def get_nuitka_version():
+    """Get Nuitka version"""
+    try:
+        result = subprocess.run([sys.executable, "-m", "nuitka", "--version"], 
+                              capture_output=True, text=True)
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except:
+        pass
+    return "Unknown"
 
-def build_debug_executable(jobs=None):
-    """Build a debug version that shows console windows"""
+def check_system_prerequisites():
+    """Check system prerequisites"""
+    print("🔍 Checking system prerequisites...")
     
-    cpu_count = multiprocessing.cpu_count()
-    if jobs is None:
-        jobs = max(1, cpu_count - 1)
+    # Check Python version
+    if sys.version_info < (3, 8):
+        print(f"❌ Python 3.8+ required, found {sys.version}")
+        return False
+    print(f"✅ Python {sys.version_info.major}.{sys.version_info.minor}")
     
-    # Clean previous builds
-    if Path("build").exists():
-        shutil.rmtree("build")
-    if Path("dist").exists():
-        shutil.rmtree("dist")
+    # Check if we're on Windows
+    if sys.platform != "win32":
+        print("⚠️ This script is optimized for Windows")
     
-    # Create debug app
-    create_debug_app()
-    
-    print("🔧 Building DEBUG executable (with console windows)...")
-    
-    # Basic debug build command - SHOWS CONSOLE
-    cmd = [
-        sys.executable, "-m", "nuitka",
-        "--onefile",
-        "--onefile-tempdir-spec={PROGRAM_DIR}/temp_unpack",
-        "--show-progress",
-        "--remove-output",
-        "--assume-yes-for-downloads",
-        "--mingw64",
-        "--show-memory",
-        # DO NOT HIDE CONSOLE - we want to see errors
-        # "--windows-console-mode=disable",  # COMMENTED OUT
-        # "--windows-disable-console",       # COMMENTED OUT
-        "--enable-plugin=tk-inter",
-        "--lto=no",
-        
-        # Include essential packages
-        "--include-package=tkinter",
-        "--include-package=customtkinter", 
-        "--include-package=mapbox_earcut",
-        "--include-package=numpy",
-        "--include-package=PIL",
-        "--include-package=cv2",
-        "--include-package=matplotlib",
-        
-        # Include data
-        "--include-package-data=numpy",
-        "--include-package-data=PIL",
-        
-        # Output
-        "--output-dir=dist",
-        f"--jobs={jobs}",
-        
-        # Target file
-        "debug_app.py"
-    ]
-    
-    print("Debug build command:")
-    print(" ".join(cmd))
-    print("=" * 60)
-    
-    # Run the build
-    result = subprocess.run(cmd, capture_output=False, text=True)
-    
-    if result.returncode == 0:
-        print("✅ Debug build successful!")
-        exe_path = Path("dist/debug_app.exe")
-        if exe_path.exists():
-            print(f"📁 Debug executable: {exe_path}")
-            print("🚀 Run this to see startup messages and errors")
-            return exe_path
+    return True
+
+def is_package_importable(package_name):
+    """Check if a package can be imported"""
+    try:
+        if package_name == "PIL":
+            import PIL
+        elif package_name == "cv2":
+            import cv2
         else:
-            print("❌ Executable not found")
-            list_contents()
-    else:
-        print("❌ Debug build failed!")
-        print(f"Return code: {result.returncode}")
+            __import__(package_name)
+        return True
+    except ImportError:
+        return False
+
+def get_correct_package_name(package):
+    """Get the correct package name for inclusion"""
+    package_mapping = {
+        "PIL": "PIL",
+        "cv2": "cv2", 
+        "sklearn": "sklearn",
+        "yaml": "yaml",
+    }
+    return package_mapping.get(package, package)
+
+def create_subprocess_helper():
+    """Create subprocess helper module for onefile compatibility"""
+    subprocess_helper_content = '''# process_utils.py - Enhanced subprocess utilities for onefile builds
+import subprocess
+import sys
+import os
+
+# Store original functions
+_original_run = subprocess.run
+_original_popen = subprocess.Popen
+_original_call = subprocess.call
+_original_check_output = subprocess.check_output
+_original_check_call = subprocess.check_call
+
+def run_hidden_process(command, **kwargs):
+    """Run a process with hidden console window"""
+    startupinfo = None
+    creationflags = 0
+    
+    if sys.platform == "win32":
+        # Set up startupinfo to hide window
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        
+        # Set creation flags to hide console
+        creationflags = subprocess.CREATE_NO_WINDOW
+        
+        kwargs['startupinfo'] = startupinfo
+        kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+    
+    # Use the original run function with our modifications
+    return _original_run(command, **kwargs)
+
+def popen_hidden_process(command, **kwargs):
+    """Popen with hidden console window"""
+    startupinfo = None
+    creationflags = 0
+    
+    if sys.platform == "win32":
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        
+        creationflags = subprocess.CREATE_NO_WINDOW
+        
+        kwargs['startupinfo'] = startupinfo
+        kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+    
+    return _original_popen(command, **kwargs)
+
+def call_hidden_process(*args, **kwargs):
+    """subprocess.call() replacement with hidden console window"""
+    result = run_hidden_process(*args, **kwargs)
+    
+    if result.returncode != 0:
+        cmd = args[0] if args else kwargs.get('args')
+        raise subprocess.CalledProcessError(result.returncode, cmd)
+    
+    return 0
+
+def check_output_hidden_process(*args, **kwargs):
+    """subprocess.check_output() replacement with hidden console window"""
+    kwargs['capture_output'] = True
+    result = run_hidden_process(*args, **kwargs)
+    
+    if result.returncode != 0:
+        cmd = args[0] if args else kwargs.get('args')
+        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+    
+    return result.stdout
+
+def check_call_hidden_process(*args, **kwargs):
+    """subprocess.check_call() replacement with hidden console window"""
+    result = run_hidden_process(*args, **kwargs)
+    
+    if result.returncode != 0:
+        cmd = args[0] if args else kwargs.get('args')
+        raise subprocess.CalledProcessError(result.returncode, cmd)
+    
+    return 0
+
+# Safe system replacement
+def system_hidden_process(command):
+    """os.system() replacement with hidden console window"""
+    return run_hidden_process(command, shell=True).returncode
+
+# Add direct access to original functions
+run_original = _original_run
+popen_original = _original_popen
+call_original = _original_call
+check_output_original = _original_check_output
+check_call_original = _original_check_call
+
+# Export all functions
+__all__ = [
+    'run_hidden_process', 
+    'popen_hidden_process',
+    'call_hidden_process',
+    'check_output_hidden_process',
+    'check_call_hidden_process',
+    'system_hidden_process',
+    'run_original',
+    'popen_original',
+    'call_original',
+    'check_output_original',
+    'check_call_original'
+]'''
+    
+    with open("process_utils.py", "w", encoding="utf-8") as f:
+        f.write(subprocess_helper_content)
+    
+    print("📄 Created process utilities module")
+
+def create_fixes_module():
+    """Create the fixes module to handle runtime issues"""
+    fixes_content = '''# fixes.py - Applied patches for the build process
+import os
+import sys
+from pathlib import Path
+import subprocess
+import shutil
+import site
+
+# Import the unified process helper early
+try:
+    from process_utils import run_hidden_process, popen_hidden_process, run_original, popen_original
+except ImportError:
+    # Fallback implementation if module is missing
+    def run_hidden_process(command, **kwargs):
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+            kwargs['startupinfo'] = startupinfo
+            kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+            
+        if kwargs.get('capture_output'):
+            kwargs.pop('stdout', None)
+            kwargs.pop('stderr', None)
+        
+        return subprocess.run(command, **kwargs)
+        
+    def popen_hidden_process(command, **kwargs):
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+            kwargs['startupinfo'] = startupinfo
+            kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+        
+        return subprocess.Popen(command, **kwargs)
+    
+    run_original = subprocess.run
+    popen_original = subprocess.Popen
+
+# Disable zstandard to avoid linking issues - do this as early as possible
+try:
+    import sys
+    sys.modules['zstandard'] = None
+except:
+    pass
+
+def apply_fixes():
+    """Apply all fixes at startup"""
+    patch_subprocess()
+
+def patch_subprocess():
+    """Patch subprocess to use our hidden process helpers"""
+    try:
+        # Check if already patched to prevent infinite recursion
+        if hasattr(subprocess, '_manimstudio_patched'):
+            return True
+        
+        # Define safe wrappers that check arguments
+        def safe_run_wrapper(*args, **kwargs):
+            # For safety, use original if this looks like a direct call
+            if len(args) == 1 and isinstance(args[0], list):
+                return run_hidden_process(args[0], **kwargs)
+            # Call with hidden console
+            return run_hidden_process(*args, **kwargs)
+        
+        def safe_popen_wrapper(*args, **kwargs):
+            # For safety, use original if this looks like a direct call  
+            if len(args) == 1 and isinstance(args[0], list):
+                return popen_hidden_process(args[0], **kwargs)
+            # Call directly
+            return popen_original(*args, **kwargs)
+        
+        # Replace with our wrappers
+        subprocess.run = safe_run_wrapper
+        subprocess.Popen = safe_popen_wrapper
+        
+        # Mark as patched to prevent infinite recursion
+        subprocess._manimstudio_patched = True
+        
+        return True
+    except Exception as e:
+        print(f"Error patching subprocess: {e}")
+        return False
+'''
+    
+    # Write with explicit UTF-8 encoding to avoid character encoding issues
+    with open("fixes.py", "w", encoding="utf-8") as f:
+        f.write(fixes_content)
+    
+    print("📄 Created fixes module")
+
+def create_no_console_patch():
+    """Create a more aggressive patch file to ensure NO subprocess calls show console windows"""
+    patch_content = '''# ENHANCED_NO_CONSOLE_PATCH.py
+# This ensures all subprocess calls hide console windows
+
+import subprocess
+import sys
+import os
+import ctypes
+
+# Check if already patched to prevent recursion
+if hasattr(subprocess, '_manimstudio_patched'):
+    print("Subprocess already patched, skipping additional patching")
+else:
+    # Define the Windows constants here to guarantee they're available
+    if sys.platform == "win32":
+        # Define this constant if not available
+        if not hasattr(subprocess, "CREATE_NO_WINDOW"):
+            subprocess.CREATE_NO_WINDOW = 0x08000000
+        
+        # Other Windows constants
+        CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+        DETACHED_PROCESS = 0x00000008
+        SW_HIDE = 0
+        STARTF_USESHOWWINDOW = 0x00000001
+
+    # Store original functions BEFORE defining any wrappers
+    _original_run = subprocess.run
+    _original_popen = subprocess.Popen
+    _original_call = subprocess.call
+    _original_check_output = subprocess.check_output
+    _original_check_call = subprocess.check_call
+
+    def run_hidden_process(command, **kwargs):
+        """Run a process with hidden console window"""
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            # Set up startupinfo to hide window
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = SW_HIDE
+            
+            # Set creation flags to hide console
+            creationflags = CREATE_NO_WINDOW
+            
+            kwargs['startupinfo'] = startupinfo
+            kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+        
+        # Use the original run function with our modifications
+        return _original_run(command, **kwargs)
+
+    def popen_hidden_process(command, **kwargs):
+        """Popen with hidden console window"""
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = SW_HIDE
+            
+            creationflags = CREATE_NO_WINDOW
+            
+            kwargs['startupinfo'] = startupinfo
+            kwargs['creationflags'] = kwargs.get('creationflags', 0) | creationflags
+        
+        return _original_popen(command, **kwargs)
+
+    # Replace subprocess functions with our hidden versions
+    subprocess.run = run_hidden_process
+    subprocess.Popen = popen_hidden_process
+    
+    # Mark as patched
+    subprocess._manimstudio_patched = True
+    
+    print("✅ Aggressive no-console patch applied successfully")
+'''
+    
+    with open("no_console_patch.py", "w", encoding="utf-8") as f:
+        f.write(patch_content)
+    
+    print("📄 Created aggressive no-console patch")
+
+def find_standalone_executable():
+    """Find the built standalone executable"""
+    dist_dir = Path("dist")
+    if not dist_dir.exists():
+        return None
+    
+    # Look for .exe files
+    for exe_file in dist_dir.glob("*.exe"):
+        return exe_file.absolute()
     
     return None
 
-# Add these critical fixes to your build_nuitka.py file
+def create_launcher_script(exe_path):
+    """Create a launcher script for the executable"""
+    launcher_content = f'''@echo off
+REM Launcher script for Manim Studio
+echo Starting Manim Studio...
+"{exe_path}"
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo Application exited with error code %ERRORLEVEL%
+    pause
+)
+'''
+    
+    launcher_path = exe_path.parent / "launch_manim_studio.bat"
+    with open(launcher_path, "w") as f:
+        f.write(launcher_content)
+    
+    print(f"📄 Created launcher script: {launcher_path}")
+
+def list_contents():
+    """List the contents of the dist directory"""
+    dist_dir = Path("dist")
+    if dist_dir.exists():
+        print("\n📁 Contents of dist directory:")
+        for item in dist_dir.iterdir():
+            size = item.stat().st_size if item.is_file() else 0
+            size_mb = size / (1024 * 1024)
+            print(f"  📄 {item.name} ({size_mb:.1f} MB)")
+    else:
+        print("❌ dist directory not found")
 
 def build_onefile_executable(jobs=None, priority="normal"):
-    """Build onefile executable with subprocess fixes"""
+    """Build onefile executable that unpacks next to the exe"""
     
     cpu_count = multiprocessing.cpu_count()
     if jobs is None:
@@ -659,7 +466,24 @@ def build_onefile_executable(jobs=None, priority="normal"):
     print("=" * 60)
     print("🔧 Creating enhanced build configuration...")
 
-    # CRITICAL FIX: Enhanced command for onefile with subprocess support
+    # Create enhanced patches and helpers
+    create_no_console_patch()
+    create_fixes_module()
+    create_subprocess_helper()
+
+    # Check prerequisites
+    if not check_system_prerequisites():
+        print("❌ System prerequisites check failed")
+        sys.exit(1)
+
+    # Get Nuitka version
+    nuitka_version = get_nuitka_version()
+    print(f"📊 Detected Nuitka version: {nuitka_version}")
+
+    print("=" * 60)
+    print("🔨 Building onefile executable...")
+
+    # CRITICAL: Enhanced command for onefile with subprocess support
     cmd = [
         sys.executable, "-m", "nuitka",
         "--onefile",
@@ -679,19 +503,6 @@ def build_onefile_executable(jobs=None, priority="normal"):
         "--mingw64",
         "--disable-ccache",
         "--show-memory",
-        # CRITICAL: Ensure subprocess modules are properly included
-        "--include-module=subprocess",
-        "--include-module=threading",
-        "--include-module=tempfile",
-        "--include-module=os",
-        "--include-module=sys",
-        "--include-module=shutil",
-        "--include-module=pathlib",
-        # CRITICAL: Include process utilities
-        "--include-module=psutil",
-        "--include-module=signal",
-        "--include-module=uuid",
-        "--include-module=time",
         # Force stdout/stderr to work properly
         "--windows-force-stdout-spec={PROGRAM_DIR}/stdout.log",
         "--windows-force-stderr-spec={PROGRAM_DIR}/stderr.log",
@@ -708,24 +519,59 @@ def build_onefile_executable(jobs=None, priority="normal"):
     for module in minimal_exclusions:
         cmd.append(f"--nofollow-import-to={module}")
 
-    # CRITICAL: Include ALL subprocess-related packages
-    subprocess_critical_packages = [
-        "customtkinter", "tkinter", "PIL", "numpy", "cv2",
-        "matplotlib", "jedi", "psutil", "manim", "subprocess",
-        "threading", "multiprocessing", "concurrent", "queue"
+    # CRITICAL: Include ALL external packages (not built-in modules)
+    external_packages = [
+        "customtkinter", "PIL", "numpy", "cv2",
+        "matplotlib", "jedi", "psutil", "manim", "tkinter"
     ]
 
+    # CRITICAL: Built-in modules that should use --include-module (not --include-package)  
+    builtin_modules = [
+        "subprocess", "threading", "multiprocessing", 
+        "queue", "json", "tempfile", "os", "sys", 
+        "shutil", "pathlib", "signal", "atexit", "logging", 
+        "glob", "re", "time", "datetime", "uuid", "base64", 
+        "io", "codecs", "platform", "getpass", "math", "random", 
+        "collections", "itertools", "functools", "operator", "copy",
+        "ctypes", "venv", "asyncio", "concurrent.futures"
+    ]
+
+    # Include external packages
     included_packages = []
-    for package in subprocess_critical_packages:
+    for package in external_packages:
         if is_package_importable(package):
             correct_name = get_correct_package_name(package)
             if correct_name:
                 included_packages.append(correct_name)
                 cmd.append(f"--include-package={correct_name}")
-                cmd.append(f"--include-package-data={correct_name}")
-                print(f"📦 Including critical package: {correct_name}")
+                # Only add package data for packages that actually need it
+                if correct_name in ["matplotlib", "numpy", "manim", "tkinter"]:
+                    cmd.append(f"--include-package-data={correct_name}")
+                print(f"📦 Including external package: {correct_name}")
+
+    # Include built-in modules (using --include-module)
+    for module in builtin_modules:
+        cmd.append(f"--include-module={module}")
+        print(f"🔧 Including built-in module: {module}")
 
     # CRITICAL: Include SymPy with minimal exclusions
+    if is_package_importable("sympy"):
+        cmd.append("--include-package=sympy")
+        cmd.append("--include-package-data=sympy")
+        
+        # Only exclude the absolute minimum to avoid build failures
+        sympy_critical_exclusions = [
+            "sympy.polys.benchmarks.bench_solvers",
+            "sympy.physics.quantum.tests.test_spin", 
+            "sympy.solvers.ode.tests.test_systems",
+            "sympy.polys.polyquinticconst",
+        ]
+        
+        for exclusion in sympy_critical_exclusions:
+            cmd.append(f"--nofollow-import-to={exclusion}")
+        
+        included_packages.append("sympy")
+        print("🧮 Including SymPy with subprocess compatibility")
     if is_package_importable("sympy"):
         cmd.append("--include-package=sympy")
         cmd.append("--include-package-data=sympy")
@@ -758,12 +604,12 @@ def build_onefile_executable(jobs=None, priority="normal"):
     for module in critical_system_modules:
         cmd.append(f"--include-module={module}")
 
-    # CRITICAL: Include data for packages that need it
-    data_packages = ["manim", "matplotlib", "numpy", "sympy"]
-    for package in data_packages:
-        if is_package_importable(package):
+    # CRITICAL: Include additional data for packages that need it (avoid duplicates)
+    additional_data_packages = ["sympy"]  # manim, matplotlib, numpy already handled above
+    for package in additional_data_packages:
+        if is_package_importable(package) and package not in [p.lower() for p in included_packages]:
             cmd.append(f"--include-package-data={package}")
-            print(f"📊 Including data for: {package}")
+            print(f"📊 Including additional data for: {package}")
 
     # Output configuration
     cmd.extend([
@@ -806,52 +652,83 @@ def build_onefile_executable(jobs=None, priority="normal"):
         "NUITKA_CACHE_MODE": "cached"
     })
 
+    # Set process priority
+    process_priority = 0
+    if priority == "high" and sys.platform == "win32":
+        print("🔥 Setting HIGH process priority for maximum CPU utilization")
+        process_priority = 0x00000080
+
     try:
         print("🚀 Starting build process...")
         
         # Run the build command
-        result = subprocess.run(
+        process = subprocess.Popen(
             cmd,
-            env=env,
-            capture_output=False,  # Show real-time output
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=3600  # 1 hour timeout
+            bufsize=1,
+            universal_newlines=True,
+            env=env,
+            creationflags=process_priority if sys.platform == "win32" else 0
         )
+
+        # Display build info
+        print(f"🖥️ CPU Info: {cpu_count} logical cores available")
+        print(f"⚙️ Using {jobs} compilation threads")
+        print(f"📦 Included {len(included_packages)} external packages")
+        print(f"🔧 Included {len(builtin_modules)} built-in modules")
+
+        # Stream compilation output
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                print(line.strip())
+
+        return_code = process.poll()
         
-        if result.returncode == 0:
-            # Find the built executable
-            dist_dir = Path("dist")
-            exe_files = list(dist_dir.glob("*.exe"))
-            
-            if exe_files:
-                exe_path = exe_files[0]
-                print(f"✅ Build successful! Executable: {exe_path}")
+        if return_code == 0:
+            print("=" * 60)
+            print("✅ Onefile build successful!")
+
+            exe_path = find_standalone_executable()
+            if exe_path:
+                # Create launcher scripts
+                create_launcher_script(exe_path)
                 
-                # Create runtime directory alongside executable
-                runtime_dir = exe_path.parent / "manim_studio_runtime"
-                runtime_dir.mkdir(exist_ok=True)
-                
-                print(f"📂 Created runtime directory: {runtime_dir}")
+                print(f"📁 Executable: {exe_path}")
+                print("🎉 ONEFILE FEATURES:")
+                print("  ✅ Single file executable")
+                print("  ✅ Unpacks to manim_studio_runtime folder next to .exe")
+                print("  ✅ Smart caching system")
+                print("  ✅ No console windows")
+                print("  ✅ Complete functionality included")
+                print("  ✅ Subprocess compatibility fixed")
+
                 return str(exe_path)
             else:
-                print("❌ Build completed but no executable found!")
+                print("❌ Executable not found")
+                list_contents()
                 return None
         else:
-            print(f"❌ Build failed with exit code: {result.returncode}")
+            print("=" * 60)
+            print("❌ Build failed!")
+            print(f"Return code: {return_code}")
             return None
             
     except subprocess.TimeoutExpired:
-        print("❌ Build timed out after 1 hour")
+        print("❌ Build timed out")
         return None
     except Exception as e:
         print(f"❌ Build error: {e}")
         return None
+
 def main():
-    """Main function - Enhanced onefile build with DLL support and debug capabilities"""
-    import sys  # Explicitly import here to fix scope issue
-    
-    print("🚀 Manim Studio - Enhanced Onefile Builder with DLL Support & Debug Mode")
-    print("=" * 70)
+    """Main function - Enhanced onefile build with proper parameter handling"""
+    print("🚀 Manim Studio - Enhanced Onefile Builder")
+    print("=" * 50)
     
     # Set up command line arguments
     parser = argparse.ArgumentParser(description="Build Manim Studio as onefile executable")
@@ -859,32 +736,15 @@ def main():
     parser.add_argument("--max-cpu", action="store_true", help="Use all available CPU cores with oversubscription")
     parser.add_argument("--turbo", action="store_true", help="Use turbo mode - maximum CPU with high priority")
     parser.add_argument("--ascii", action="store_true", help="Use ASCII output instead of Unicode symbols")
-    parser.add_argument("--debug", action="store_true", help="Build debug version with visible console windows")
-    parser.add_argument("--debug-only", action="store_true", help="Build only debug version for troubleshooting")
     
-    # Parse args but keep default behavior if not specified
-    args, remaining_args = parser.parse_known_args()
-    sys.argv = [sys.argv[0]] + remaining_args
+    # Parse args
+    args = parser.parse_args()
     
     global USE_ASCII_ONLY
     if args.ascii:
         USE_ASCII_ONLY = True
     
-    # Debug mode handling
-    if args.debug_only:
-        print("🐛 DEBUG-ONLY MODE: Building debug version only")
-        exe_path = build_debug_executable()
-        if exe_path:
-            print("\n" + "=" * 60)
-            print("🎯 DEBUG BUILD COMPLETE!")
-            print("📋 TROUBLESHOOTING STEPS:")
-            print(f"1. Run: {exe_path}")
-            print("2. Watch for console output and error messages")
-            print("3. Check debug_startup.log file")
-            check_dependencies_with_tools()
-        return
-    
-    # Determine job count
+    # Determine job count and priority
     cpu_count = multiprocessing.cpu_count()
     process_priority = "normal"
     
@@ -910,7 +770,6 @@ def main():
         sys.exit(1)
     
     # Configure logging
-    import logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
@@ -920,106 +779,57 @@ def main():
         ]
     )
     
-    logging.info("Building enhanced onefile executable with DLL support")
+    logging.info("Building onefile executable")
     
     # Display build information
-    build_type = "DEBUG" if args.debug else "PRODUCTION"
-    print(f"\n🎯 Building {build_type} ONEFILE executable...")
+    print("\n🎯 Building ENHANCED ONEFILE executable...")
     print("📋 This build includes:")
     print("  ✅ Single file executable")
-    print("  ✅ Unpacks to folder next to .exe")
+    print("  ✅ Unpacks to stable folder next to .exe")
     print("  ✅ Smart caching system")
     print("  ✅ Complete functionality")
-    if not args.debug:
-        print("  ✅ No console windows")
-    else:
-        print("  🐛 Console windows visible (debug mode)")
-    print("  ✅ Visual C++ redistributable DLLs")
-    print("  ✅ mapbox_earcut DLL fix")
+    print("  ✅ No console windows")
+    print("  ✅ Subprocess compatibility fixes")
     print("  ✅ Latest Nuitka onefile features")
     
-    # Before building, bundle required DLLs
-    print("\n🔧 Bundling Visual C++ redistributable DLLs...")
-    bundled_dlls = bundle_vcredist_dlls()
-    
-    if not bundled_dlls:
-        print("⚠️ Warning: No VC++ DLLs found. You may need to install them separately.")
-        print("   Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe")
-        user_choice = input("Continue build anyway? (y/N): ").lower().strip()
-        if user_choice not in ['y', 'yes']:
-            print("❌ Build cancelled")
-            sys.exit(1)
-    
     # Confirmation
-    confirm = input(f"\n🚀 Proceed with {build_type.lower()} onefile build using {jobs} threads? (y/N): ").strip().lower()
+    confirm = input(f"\n🚀 Proceed with production onefile build using {jobs} threads? (y/N): ").strip().lower()
     if confirm not in ['y', 'yes']:
         print("❌ Build cancelled by user")
         sys.exit(0)
     
-    # Execute the build
-    print(f"\n🚀 Starting {build_type.lower()} onefile build process...")
-    exe_path = build_onefile_executable(jobs=jobs, priority=process_priority, debug_mode=args.debug)
+    # Execute the build - FIXED: Remove debug_mode parameter
+    print(f"\n🚀 Starting enhanced onefile build process...")
+    exe_path = build_onefile_executable(jobs=jobs, priority=process_priority)
     success = exe_path is not None
-    
-    # Post-build: Copy DLLs next to executable
-    if success and exe_path and bundled_dlls:
-        print("\n📦 Copying DLLs to executable directory...")
-        exe_dir = os.path.dirname(exe_path)
-        
-        for dll in bundled_dlls:
-            src = Path("dist/dlls") / dll
-            dst = Path(exe_dir) / dll
-            if src.exists():
-                try:
-                    shutil.copy2(src, dst)
-                    print(f"  ✅ Copied {dll} to executable directory")
-                except Exception as e:
-                    print(f"  ⚠️ Failed to copy {dll}: {e}")
     
     print("\n" + "=" * 60)
     if success:
-        print(f"🎉 {build_type} build completed successfully!")
-        print(f"🚀 {build_type} ONEFILE BUILD: Single file executable ready!")
-        print("   🆕 ENHANCED FEATURES:")
+        print("🎉 Build completed successfully!")
+        print("🚀 ENHANCED ONEFILE BUILD: Single file executable ready!")
+        print("   🆕 FEATURES:")
         print("   ✅ Single file executable")
-        print("   ✅ Unpacks next to the .exe file")
+        print("   ✅ Unpacks to manim_studio_runtime folder next to .exe")
         print("   ✅ Smart caching for better performance")
-        print("   ✅ Visual C++ redistributable DLLs included")
-        print("   ✅ mapbox_earcut DLL loading fixed")
         print("   ✅ Latest Nuitka onefile technology")
         print("   ✅ Complete functionality included")
-        if not args.debug:
-            print("   ✅ No console windows")
-        else:
-            print("   🐛 Console windows visible for debugging")
-        print("   🎯 OPTIMIZED: Best onefile integration with DLL support!")
+        print("   ✅ No console windows")
+        print("   ✅ Subprocess compatibility fixed")
+        print("   🎯 OPTIMIZED: Best onefile integration with subprocess fixes!")
         print("🚀 Professional desktop application ready!")
         
         # Show usage instructions
         print("\n📋 USAGE INSTRUCTIONS:")
         print(f"   📁 Executable location: {exe_path}")
         print("   🚀 Run the .exe file to start the application")
-        print("   📂 App will unpack to 'temp_unpack' folder next to .exe")
-        print("   🔧 Visual C++ DLLs are bundled with the executable")
-        if args.debug:
-            print("   🐛 Console output will be visible for debugging")
-            print("   📄 Check debug_startup.log for detailed startup info")
+        print("   📂 App will unpack to 'manim_studio_runtime' folder next to .exe")
         print("   ✅ Complete functionality ready out of the box")
-        
-        if bundled_dlls:
-            print(f"\n📦 Bundled DLLs: {', '.join(bundled_dlls)}")
-        
-        # Additional troubleshooting info for debug builds
-        if args.debug:
-            print("\n🔧 DEBUGGING INFO:")
-            check_dependencies_with_tools()
+        print("   ✅ Subprocess calls work properly in onefile mode")
         
     else:
         print("❌ Build failed!")
         print("💡 Check the logs above for error details.")
         print("   📄 Check build.log for detailed error information")
-        print("   🐛 Try --debug flag to see console output")
-        print("   🐛 Or use --debug-only for troubleshooting")
         sys.exit(1)
 
 if __name__ == "__main__":
