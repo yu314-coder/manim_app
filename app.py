@@ -3566,12 +3566,18 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         pass
 
 
+# Essential packages for ManimStudio
+
 class VirtualEnvironmentManager:
     """Enhanced virtual environment manager with Nuitka onefile compatibility and comprehensive Python discovery"""
     
     def __init__(self, parent_app):
         self.parent_app = parent_app
         self.current_venv = None
+        
+        # Initialize paths
+        self.python_path = None
+        self.pip_path = None
         
         # Use persistent directory under user's home for virtual environments
         persistent_venv_dir = os.path.join(
@@ -3635,6 +3641,9 @@ class VirtualEnvironmentManager:
             # No environment found, will need to create default
             self.needs_setup = True
             self.logger.info("No suitable environment found. Setup required.")
+            # Set default paths
+            self.python_path = sys.executable
+            self.pip_path = "pip"
         else:
             self.needs_setup = False
             self.logger.info(f"Using existing environment: {self.current_venv}")
@@ -4364,23 +4373,24 @@ print('ALL_OK')
             # Test essential packages
             essential_packages = ["manim", "numpy", "customtkinter", "PIL"]
             
+            # Create a safer test command using exec instead of complex string formatting
             test_code = """
 import sys
 missing = []
-packages = """ + str(essential_packages) + """
+packages = ['manim', 'numpy', 'customtkinter', 'PIL']
 for pkg in packages:
     try:
         if pkg == 'PIL':
             import PIL
         else:
-            __import__(pkg)
-        print(f'[OK] {pkg}')
+            exec('import ' + pkg)
+        print('[OK] ' + pkg)
     except ImportError:
         missing.append(pkg)
-        print(f'[FAIL] {pkg}')
+        print('[FAIL] ' + pkg)
 
 if missing:
-    print(f'MISSING:{",".join(missing)}')
+    print('MISSING:' + ','.join(missing))
     sys.exit(1)
 else:
     print('ALL_OK')
@@ -4743,25 +4753,25 @@ else:
         if log_callback:
             log_callback("Verifying installation...")
         
-        # Test packages directly without temporary files
-        test_code = f"""
+        # Test packages directly without temporary files - FIXED safer version
+        test_code = """
 import sys
-test_packages = {test_packages}
+test_packages = ['manim', 'numpy', 'matplotlib', 'customtkinter', 'jedi']
 failed = []
 
 for package in test_packages:
     try:
-        __import__(package)
-        print(f"[OK] {{package}} imported successfully")
+        exec('import ' + package)
+        print('[OK] ' + package + ' imported successfully')
     except ImportError as e:
         failed.append(package)
-        print(f"[FAIL] {{package}}: {{e}}")
+        print('[FAIL] ' + package + ': ' + str(e))
 
 if failed:
-    print(f"FAILED_PACKAGES:{{','.join(failed)}}")
+    print('FAILED_PACKAGES:' + ','.join(failed))
     sys.exit(1)
 else:
-    print("ALL_PACKAGES_OK")
+    print('ALL_PACKAGES_OK')
     sys.exit(0)
 """
         
@@ -5090,6 +5100,91 @@ else:
             }
         
         return None
+
+    def get_pip_command(self):
+        """Get pip command as a list for subprocess"""
+        if not self.current_venv or not self.pip_path:
+            return ["pip"]
+        return [self.pip_path]
+
+    def get_python_command(self):
+        """Get python command as a list for subprocess"""
+        if not self.current_venv or not self.python_path:
+            return ["python"]
+        return [self.python_path]
+
+    def get_python_path(self):
+        """Get the path to the Python executable"""
+        return self.python_path if self.python_path else sys.executable
+
+    def get_pip_path(self):
+        """Get the path to the pip executable"""
+        return self.pip_path if self.pip_path else "pip"
+
+    def get_current_venv_name(self):
+        """Get the name of the current virtual environment"""
+        return self.current_venv
+
+    def get_venv_python_version(self, venv_name=None):
+        """Get Python version of a virtual environment"""
+        if venv_name is None:
+            python_exe = self.python_path
+        else:
+            if venv_name.startswith(("system_", "current_")):
+                python_exe = sys.executable
+            else:
+                venv_path = os.path.join(self.venv_dir, venv_name)
+                if os.name == 'nt':
+                    python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                else:
+                    python_exe = os.path.join(venv_path, "bin", "python")
+        
+        if not python_exe or not os.path.exists(python_exe):
+            return None
+            
+        try:
+            result = self.run_hidden_subprocess_nuitka_safe(
+                [python_exe, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+        return None
+
+    def get_venv_packages(self, venv_name=None):
+        """Get list of packages in a virtual environment"""
+        if venv_name is None:
+            pip_exe = self.pip_path
+        else:
+            if venv_name.startswith(("system_", "current_")):
+                pip_exe = "pip"
+            else:
+                venv_path = os.path.join(self.venv_dir, venv_name)
+                if os.name == 'nt':
+                    pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
+                else:
+                    pip_exe = os.path.join(venv_path, "bin", "pip")
+        
+        if not pip_exe:
+            return []
+            
+        try:
+            result = self.run_hidden_subprocess_nuitka_safe(
+                [pip_exe, "list", "--format=json"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                import json
+                return json.loads(result.stdout)
+        except Exception:
+            pass
+        return []
 class IntelliSenseEngine:
     """Advanced IntelliSense engine using Jedi for Python autocompletion"""
     
