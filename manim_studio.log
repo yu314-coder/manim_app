@@ -247,3 +247,19 @@ MISSING:customtkinter
 2025-06-18 11:22:42,614 - INFO - Default environment has all required packages
 2025-06-18 11:22:42,615 - INFO - Using existing environment: manim_studio_default
 2025-06-18 11:22:44,886 - INFO - Starting application main loop...
+2025-06-19 15:58:15,770 - INFO - === ManimStudio Starting ===
+2025-06-19 15:58:15,771 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-19 15:58:15,771 - INFO - Platform: win32
+2025-06-19 15:58:15,772 - INFO - Frozen: False
+2025-06-19 15:58:15,772 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-19 15:58:15,772 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-19 15:58:15,773 - INFO - Checking LaTeX installation...
+2025-06-19 15:58:16,679 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-19 15:58:16,680 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-19 15:58:16,681 - INFO - Creating main application...
+2025-06-19 15:58:18,002 - INFO - Initializing environment detection...
+2025-06-19 15:58:18,003 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-19 15:58:18,004 - INFO - Default environment structure is valid
+2025-06-19 15:58:30,453 - INFO - All essential packages verified
+2025-06-19 15:58:30,453 - INFO - Default environment has all required packages
+2025-06-19 15:58:31,868 - INFO - Starting application main loop...

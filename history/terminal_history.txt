@@ -7,3 +7,4 @@ C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Us
 C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Users\euler\AppData\Local\Temp\tmp057cbb24.py manim numpy PIL cv2
 C:\Users\euler\venv_windows\Scripts\python.exe C:\Users\euler\AppData\Local\Temp\tmptui1y20b.py manim numpy PIL cv2
 C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Users\euler\AppData\Local\Temp\tmp5x1ums3s.py manim numpy PIL cv2
+C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Users\euler\AppData\Local\Temp\tmpo5igtf5b.py manim numpy PIL cv2
