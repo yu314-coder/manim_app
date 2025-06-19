@@ -3949,21 +3949,15 @@ else:
         
         for attempt in range(max_retries):
             try:
-                # Try different installation strategies
-                install_strategies = [
-                    # Strategy 1: Basic install
-                    [self.python_path, "-m", "pip", "install", package, "--no-cache-dir", "--timeout", "300"],
-                    # Strategy 2: With upgrade flag
-                    [self.python_path, "-m", "pip", "install", package, "--upgrade", "--no-cache-dir", "--timeout", "300"],
-                    # Strategy 3: With force-reinstall (last resort)
-                    [self.python_path, "-m", "pip", "install", package, "--force-reinstall", "--no-cache-dir", "--timeout", "300"]
-                ]
+                # Try different installation strategies with Windows compatibility
+                install_strategies = self._get_install_strategies(package, attempt)
                 
                 # Use appropriate strategy based on attempt
                 strategy_index = min(attempt, len(install_strategies) - 1)
                 install_cmd = install_strategies[strategy_index]
                 
                 self.logger.info(f"Attempt {attempt+1}: Installing {package}")
+                self.logger.debug(f"Command: {' '.join(install_cmd)}")
                 
                 result = self.run_hidden_subprocess_nuitka_safe(
                     install_cmd,
@@ -3983,7 +3977,8 @@ else:
                             time.sleep(2)
                             continue
                 else:
-                    self.logger.warning(f"Attempt {attempt+1} failed for {package}: {result.stderr}")
+                    self.logger.warning(f"Attempt {attempt+1} failed for {package}")
+                    self.logger.debug(f"Error output: {result.stderr}")
                     if attempt < max_retries - 1:
                         time.sleep(2)  # Wait before retry
                         
@@ -3997,6 +3992,42 @@ else:
                     time.sleep(2)
                     
         return False
+    
+    def _get_install_strategies(self, package, attempt):
+        """Get installation strategies with Windows 64-bit compatibility"""
+        base_cmd = [self.python_path, "-m", "pip", "install"]
+        
+        # Common flags for all strategies
+        common_flags = ["--no-cache-dir", "--timeout", "300"]
+        
+        # Windows-specific flags for 64-bit compatibility
+        windows_flags = []
+        if os.name == 'nt':
+            # Force 64-bit wheels when available
+            arch = platform.machine().lower()
+            if arch in ['amd64', 'x86_64']:
+                windows_flags.extend([
+                    "--only-binary=:all:",  # Prefer wheels over source
+                    "--platform", "win_amd64",  # Force 64-bit platform
+                ])
+        
+        strategies = [
+            # Strategy 1: Basic install with Windows compatibility
+            base_cmd + [package] + common_flags + windows_flags,
+            
+            # Strategy 2: With upgrade flag
+            base_cmd + [package, "--upgrade"] + common_flags + windows_flags,
+            
+            # Strategy 3: Force reinstall with pre-compiled wheels only
+            base_cmd + [package, "--force-reinstall", "--only-binary=:all:"] + common_flags
+        ]
+        
+        # For specific problematic packages on Windows, use special handling
+        if os.name == 'nt' and any(pkg in package.lower() for pkg in ['opencv', 'numpy', 'scipy', 'pillow']):
+            # Add strategy for pre-compiled wheels from reliable sources
+            strategies.insert(0, base_cmd + [package, "--only-binary=:all:", "--find-links", "https://download.pytorch.org/whl/torch_stable.html"] + common_flags)
+        
+        return strategies
     
     def verify_single_package(self, package_spec):
         """Verify that a single package can be imported"""
@@ -4155,26 +4186,30 @@ else:
         return True
     
     def find_system_python(self):
-        """Find the best system Python installation"""
+        """Find the best system Python installation with 64-bit preference"""
         candidates = []
         
         if os.name == 'nt':
-            # Windows candidates
+            # Windows candidates - prioritize 64-bit installations
             candidates.extend([
                 sys.executable,
                 "python",
-                "python3",
-                r"C:\Python312\python.exe",
-                r"C:\Python311\python.exe",
-                r"C:\Python310\python.exe",
-                r"C:\Python39\python.exe"
+                "python3"
             ])
             
-            # Check AppData paths
-            appdata = os.environ.get('LOCALAPPDATA', '')
-            if appdata:
-                for version in ['3.12', '3.11', '3.10', '3.9']:
+            # Force 64-bit Python paths first
+            for version in ['3.12', '3.11', '3.10', '3.9']:
+                # 64-bit installations in Program Files
+                candidates.append(rf"C:\Program Files\Python{version.replace('.', '')}\python.exe")
+                # 64-bit installations in AppData
+                appdata = os.environ.get('LOCALAPPDATA', '')
+                if appdata:
                     candidates.append(os.path.join(appdata, 'Programs', 'Python', f'Python{version.replace(".", "")}', 'python.exe'))
+            
+            # Fallback to any Python (32-bit) only if no 64-bit found
+            for version in ['3.12', '3.11', '3.10', '3.9']:
+                candidates.append(rf"C:\Python{version.replace('.', '')}\python.exe")
+                
         else:
             # Unix-like candidates
             candidates.extend([
@@ -4188,23 +4223,45 @@ else:
         
         for candidate in candidates:
             try:
+                python_path = None
                 if os.path.isfile(candidate):
-                    result = subprocess.run([candidate, "--version"], capture_output=True, text=True, timeout=10)
-                    if result.returncode == 0 and "Python 3." in result.stdout:
-                        self.logger.info(f"Found Python: {candidate} - {result.stdout.strip()}")
-                        return candidate
+                    python_path = candidate
                 elif shutil.which(candidate):
-                    result = subprocess.run([candidate, "--version"], capture_output=True, text=True, timeout=10)
-                    if result.returncode == 0 and "Python 3." in result.stdout:
-                        self.logger.info(f"Found Python: {candidate} - {result.stdout.strip()}")
-                        return shutil.which(candidate)
-            except Exception:
+                    python_path = shutil.which(candidate)
+                else:
+                    continue
+                
+                # Check Python version
+                result = subprocess.run([python_path, "--version"], capture_output=True, text=True, timeout=10)
+                if result.returncode != 0 or "Python 3." not in result.stdout:
+                    continue
+                
+                # Check architecture (64-bit preferred on Windows)
+                if os.name == 'nt':
+                    arch_result = subprocess.run([python_path, "-c", "import platform; print(platform.machine())"], 
+                                                capture_output=True, text=True, timeout=10)
+                    if arch_result.returncode == 0:
+                        arch = arch_result.stdout.strip()
+                        self.logger.info(f"Found Python: {python_path} - {result.stdout.strip()} - Architecture: {arch}")
+                        
+                        # Prefer 64-bit on 64-bit systems
+                        if platform.machine().endswith('64') and not arch.endswith('64'):
+                            self.logger.info(f"Skipping 32-bit Python on 64-bit system: {python_path}")
+                            continue
+                            
+                        return python_path
+                else:
+                    self.logger.info(f"Found Python: {python_path} - {result.stdout.strip()}")
+                    return python_path
+                    
+            except Exception as e:
+                self.logger.debug(f"Error checking Python candidate {candidate}: {e}")
                 continue
                 
         return None
     
     def get_clean_environment(self):
-        """Get a clean environment for subprocess calls"""
+        """Get a clean environment for subprocess calls with 64-bit focus"""
         env = os.environ.copy()
         
         # Remove any existing virtual environment variables
@@ -4220,14 +4277,59 @@ else:
         env['TEMP'] = system_temp
         env['TMP'] = system_temp
         
+        # Windows-specific PATH cleaning for 64-bit compatibility
+        if os.name == 'nt':
+            # Clean PATH to avoid 16-bit legacy tools
+            path_dirs = env.get('PATH', '').split(os.pathsep)
+            clean_path_dirs = []
+            
+            # Prioritize 64-bit system directories
+            system_paths = [
+                os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32'),
+                os.path.join(os.environ.get('SystemRoot', 'C:\\Windows')),
+                os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'WindowsPowerShell', 'v1.0'),
+                os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'Git', 'bin'),
+                os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'Microsoft VS Code', 'bin')
+            ]
+            
+            # Add system paths first
+            for sys_path in system_paths:
+                if os.path.exists(sys_path) and sys_path not in clean_path_dirs:
+                    clean_path_dirs.append(sys_path)
+            
+            # Filter existing PATH, avoiding problematic directories
+            problematic_dirs = [
+                'SysWOW64',  # 32-bit compatibility layer
+                'System',    # 16-bit legacy
+                'C:\\Windows\\System',  # 16-bit legacy
+            ]
+            
+            for path_dir in path_dirs:
+                if path_dir and os.path.exists(path_dir):
+                    # Skip problematic directories
+                    if any(prob in path_dir for prob in problematic_dirs):
+                        self.logger.debug(f"Skipping problematic PATH entry: {path_dir}")
+                        continue
+                    
+                    # Skip duplicate entries
+                    if path_dir not in clean_path_dirs:
+                        clean_path_dirs.append(path_dir)
+            
+            env['PATH'] = os.pathsep.join(clean_path_dirs)
+            
+            # Force 64-bit architecture preference
+            env['PROCESSOR_ARCHITECTURE'] = 'AMD64'
+            if 'PROCESSOR_ARCHITEW6432' in env:
+                del env['PROCESSOR_ARCHITEW6432']
+        
         return env
     
     def run_hidden_subprocess_nuitka_safe(self, command, **kwargs):
-        """Run subprocess with proper hiding for Nuitka builds"""
+        """Run subprocess with proper hiding for Nuitka builds and 64-bit compatibility"""
         # Set up environment for CPU control if not provided
         cores = min(4, multiprocessing.cpu_count())  # Use up to 4 cores for stability
         
-        # Create environment variables for CPU control
+        # Create environment variables for CPU control and 64-bit compatibility
         env = kwargs.get('env', self.get_clean_environment())
         env.update({
             "OMP_NUM_THREADS": str(cores),
@@ -4235,6 +4337,16 @@ else:
             "MKL_NUM_THREADS": str(cores),
             "NUMEXPR_NUM_THREADS": str(cores)
         })
+        
+        # Windows-specific 64-bit compatibility
+        if os.name == 'nt':
+            env.update({
+                "DISTUTILS_USE_SDK": "1",
+                "VS_UNICODE_OUTPUT": "",
+                "PYTHONHOME": "",  # Clear to avoid conflicts
+                "PYTHONPATH": "",  # Clear to avoid conflicts
+            })
+        
         kwargs['env'] = env
 
         # Use the platform-appropriate startupinfo to hide console
@@ -4441,7 +4553,7 @@ else:
             return False
     
     def validate_python_installation(self, python_exe):
-        """Validate that Python installation is proper"""
+        """Validate that Python installation is proper and 64-bit compatible"""
         try:
             # Don't validate our own executable as Python
             if self.is_frozen and os.path.samefile(python_exe, sys.executable):
@@ -4456,7 +4568,47 @@ else:
                 timeout=30
             )
             
-            return result.returncode == 0 and "Python" in result.stdout
+            if result.returncode != 0 or "Python" not in result.stdout:
+                return False
+            
+            # Check architecture compatibility on Windows
+            if os.name == 'nt':
+                arch_script = """
+import platform
+import sys
+print(f"Architecture: {platform.machine()}")
+print(f"Platform: {platform.platform()}")
+print(f"64bit: {platform.architecture()[0]}")
+print(f"Pointer size: {sys.maxsize > 2**32}")
+"""
+                
+                arch_result = self.run_hidden_subprocess_nuitka_safe(
+                    [python_exe, "-c", arch_script],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if arch_result.returncode == 0:
+                    output = arch_result.stdout
+                    self.logger.info(f"Python architecture info:\n{output}")
+                    
+                    # Check for 64-bit compatibility
+                    system_arch = platform.machine()
+                    if system_arch.endswith('64'):
+                        # On 64-bit system, prefer 64-bit Python
+                        if '64bit' not in output or 'Pointer size: False' in output:
+                            self.logger.warning(f"32-bit Python on 64-bit system: {python_exe}")
+                            # Still allow it, but log the warning
+                        else:
+                            self.logger.info(f"64-bit Python confirmed: {python_exe}")
+                    
+                    return True
+                else:
+                    self.logger.warning(f"Could not determine Python architecture: {python_exe}")
+                    return True  # Allow it anyway
+            
+            return True
             
         except Exception as e:
             self.logger.debug(f"Python validation failed: {e}")
@@ -5043,6 +5195,79 @@ else:
         
         if not os.path.exists(self.venv_dir):
             return cleaned
+    
+    def diagnose_architecture_issues(self):
+        """Diagnose and report architecture-related issues"""
+        diagnosis = {
+            'system_arch': platform.machine(),
+            'system_platform': platform.platform(),
+            'python_arch': platform.architecture(),
+            'is_64bit_system': platform.machine().endswith('64'),
+            'current_python_64bit': sys.maxsize > 2**32,
+            'issues': [],
+            'recommendations': []
+        }
+        
+        # Check for common issues
+        if os.name == 'nt':
+            if diagnosis['is_64bit_system'] and not diagnosis['current_python_64bit']:
+                diagnosis['issues'].append("32-bit Python on 64-bit Windows system")
+                diagnosis['recommendations'].append("Install 64-bit Python from python.org")
+            
+            # Check PATH for problematic entries
+            path_dirs = os.environ.get('PATH', '').split(os.pathsep)
+            problematic_paths = []
+            for path_dir in path_dirs:
+                if any(prob in path_dir.lower() for prob in ['syswow64', 'system32\\wbem']):
+                    problematic_paths.append(path_dir)
+            
+            if problematic_paths:
+                diagnosis['issues'].append(f"Problematic PATH entries: {problematic_paths}")
+                diagnosis['recommendations'].append("Clean PATH to prioritize 64-bit directories")
+        
+        # Test current Python
+        if self.python_path:
+            try:
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [self.python_path, "-c", "import platform; print(f'{platform.machine()}-{platform.architecture()[0]}')"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if result.returncode == 0:
+                    diagnosis['current_python_details'] = result.stdout.strip()
+                else:
+                    diagnosis['issues'].append("Cannot determine current Python architecture")
+            except Exception as e:
+                diagnosis['issues'].append(f"Error testing current Python: {e}")
+        
+        return diagnosis
+    
+    def fix_architecture_issues(self):
+        """Attempt to fix common architecture issues"""
+        diagnosis = self.diagnose_architecture_issues()
+        fixes_applied = []
+        
+        if os.name == 'nt' and diagnosis['is_64bit_system']:
+            # Try to find and use 64-bit Python
+            python_64 = self.find_system_python()
+            if python_64:
+                # Validate it's actually 64-bit
+                try:
+                    result = self.run_hidden_subprocess_nuitka_safe(
+                        [python_64, "-c", "import sys; print(sys.maxsize > 2**32)"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    if result.returncode == 0 and "True" in result.stdout:
+                        self.logger.info(f"Found 64-bit Python: {python_64}")
+                        fixes_applied.append(f"Using 64-bit Python: {python_64}")
+                        return python_64, fixes_applied
+                except Exception as e:
+                    self.logger.warning(f"Error validating 64-bit Python: {e}")
+        
+        return None, fixes_applied
             
         current_env_path = None
         if keep_current and self.current_venv:
