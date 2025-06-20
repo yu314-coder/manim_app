@@ -10396,23 +10396,19 @@ class GettingStartedDialog(ctk.CTkToplevel):
         # Create tabview for different sections
         self.tabview = ctk.CTkTabview(content_frame)
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
-        
+
         # Code Editor Tab
         self.editor_tab = self.tabview.add("Code Editor")
         self.setup_editor_tab()
-        
-        # Preview Tab
-        self.preview_tab = self.tabview.add("Preview")
-        self.setup_preview_tab()
-        
+
         # Settings Tab
         self.settings_tab = self.tabview.add("Settings")
         self.setup_settings_tab()
-        
+
         # Log Tab
         self.log_tab = self.tabview.add("Logs")
         self.setup_log_tab()
-        
+
         # Status bar
         self.status_bar = ctk.CTkLabel(
             main_frame,
@@ -10496,45 +10492,6 @@ class MyScene(Scene):
 '''
         self.text_editor.insert("0.0", default_code)
 
-    def setup_preview_tab(self):
-        """Setup the preview tab"""
-        # Preview frame
-        preview_frame = ctk.CTkFrame(self.preview_tab)
-        preview_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Preview controls
-        controls_frame = ctk.CTkFrame(preview_frame)
-        controls_frame.pack(fill="x", padx=5, pady=5)
-        
-        # Quality selection
-        quality_label = ctk.CTkLabel(controls_frame, text="Quality:")
-        quality_label.pack(side="left", padx=5)
-        
-        self.quality_var = ctk.StringVar(value="480p")
-        quality_menu = ctk.CTkOptionMenu(
-            controls_frame,
-            variable=self.quality_var,
-            values=["480p", "720p", "1080p", "1440p", "2160p"]
-        )
-        quality_menu.pack(side="left", padx=5)
-        
-        # Generate preview button
-        preview_button = ctk.CTkButton(
-            controls_frame,
-            text="Generate Preview",
-            command=self.generate_preview,
-            fg_color="blue",
-            hover_color="darkblue"
-        )
-        preview_button.pack(side="right", padx=5)
-        
-        # Preview display area
-        self.preview_display = ctk.CTkLabel(
-            preview_frame,
-            text="Preview will appear here",
-            font=ctk.CTkFont(size=16)
-        )
-        self.preview_display.pack(fill="both", expand=True, padx=5, pady=5)
 
     def setup_settings_tab(self):
         """Setup the settings tab"""
@@ -11079,8 +11036,10 @@ def main():
                 logger.info("Debug mode - showing Getting Started dialog")
             else:
                 logger.info("First run detected, showing getting started dialog")
+            app.root.withdraw()
             dialog = GettingStartedDialog(app)
             app.root.wait_window(dialog)
+            app.root.deiconify()
 
         logger.info("Starting application main loop...")
         app.run()
@@ -11128,81 +11087,5 @@ def main():
                     pass
             except:
                 pass
-class SimpleEnvironmentDialog(ctk.CTkToplevel):
-    """Emergency fallback dialog if other dialogs fail"""
-    
-    def __init__(self, parent, venv_manager):
-        super().__init__(parent)
-        
-        self.venv_manager = venv_manager
-        self.title("Environment Setup")
-        self.geometry("500x300")
-        self.transient(parent)
-        self.grab_set()
-        
-        # Center the dialog
-        self.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 100,
-            parent.winfo_rooty() + 100
-        ))
-        
-        # Main frame
-        frame = ctk.CTkFrame(self)
-        frame.pack(fill="both", expand=True, padx=20, pady=20)
-        
-        # Title
-        ctk.CTkLabel(
-            frame,
-            text="Manim Studio Environment Setup",
-            font=ctk.CTkFont(size=18, weight="bold")
-        ).pack(pady=(0, 20))
-        
-        # Info text
-        ctk.CTkLabel(
-            frame,
-            text="This will set up a new Python environment for Manim animations. Continue?",
-            wraplength=400
-        ).pack(pady=(0, 20))
-        
-        # Buttons
-        button_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        button_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkButton(
-            button_frame,
-            text="Create Environment",
-            command=self.create_environment
-        ).pack(side="left", padx=5)
-        
-        ctk.CTkButton(
-            button_frame,
-            text="Cancel",
-            command=self.destroy
-        ).pack(side="right", padx=5)
-        
-    def create_environment(self):
-        """Create environment and close"""
-        try:
-            success = self.venv_manager.create_default_environment()
-            if success:
-                from tkinter import messagebox
-                messagebox.showinfo(
-                    "Success", 
-                    "Environment created successfully!"
-                )
-                self.destroy()
-            else:
-                from tkinter import messagebox
-                messagebox.showerror(
-                    "Error", 
-                    "Failed to create environment. Please try again."
-                )
-        except Exception as e:
-            from tkinter import messagebox
-            messagebox.showerror(
-                "Error", 
-                f"Error creating environment: {str(e)}"
-            )
-
 if __name__ == "__main__":
     main()
