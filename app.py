@@ -3822,7 +3822,7 @@ class VirtualEnvironmentManager:
             
         return False
     
-    def setup_environment(self):
+    def setup_environment(self, log_callback=None):
         """Main setup method - creates and configures everything"""
         self.logger.info("Starting environment setup...")
         
@@ -3857,10 +3857,10 @@ class VirtualEnvironmentManager:
                     self.logger.info(f"Missing packages: {missing_packages}")
                     
                     # Upgrade pip first in existing environment
-                    self.upgrade_pip_in_existing_env()
+                    self.upgrade_pip_in_existing_env(log_callback)
                     
                     # Try to install missing packages
-                    if self.install_missing_packages(missing_packages):
+                    if self.install_missing_packages(missing_packages, log_callback):
                         self.logger.info("✅ Successfully installed missing packages!")
                         self.activate_default_environment()
                         self.needs_setup = False
@@ -3893,11 +3893,11 @@ class VirtualEnvironmentManager:
             return False
             
         # Step 5: Install all packages
-        if not self.install_all_packages():
+        if not self.install_all_packages(log_callback):
             return False
-            
+
         # Step 6: Verify installation
-        if not self.verify_complete_installation():
+        if not self.verify_complete_installation(log_callback):
             return False
             
         # Step 7: Activate environment
@@ -3964,67 +3964,104 @@ else:
             # If we can't check, assume all are missing
             return self.essential_packages.copy()
     
-    def install_missing_packages(self, missing_packages):
+    def install_missing_packages(self, missing_packages, log_callback=None):
         """Install only the missing packages"""
         if not missing_packages:
             return True
-            
+
         self.logger.info(f"Installing {len(missing_packages)} missing packages...")
-        
+        if log_callback:
+            log_callback(f"Installing {len(missing_packages)} missing packages...")
+
         success_count = 0
         total_packages = len(missing_packages)
-        
+
         for i, package in enumerate(missing_packages):
             self.logger.info(f"Installing missing package: {package} ({i+1}/{total_packages})...")
-            
-            if self.install_single_package(package):
+            if log_callback:
+                log_callback(f"Installing missing package: {package} ({i+1}/{total_packages})...")
+
+            if log_callback:
+                ok = self.install_single_package_with_logging(package, log_callback)
+            else:
+                ok = self.install_single_package(package)
+
+            if ok:
                 success_count += 1
                 self.logger.info(f"✅ {package} installed successfully")
             else:
                 self.logger.error(f"❌ Failed to install {package}")
-                
+
         self.logger.info(f"Missing packages installation: {success_count}/{total_packages} successful")
+        if log_callback:
+            log_callback(f"Missing packages installation: {success_count}/{total_packages} successful")
         
         # Consider it successful if at least 80% of packages installed
         success_rate = success_count / total_packages if total_packages > 0 else 0
         return success_rate >= 0.8
     
-    def upgrade_pip_in_existing_env(self):
+    def upgrade_pip_in_existing_env(self, log_callback=None):
         """Upgrade pip in the existing environment"""
         try:
             self.logger.info("Upgrading pip in existing environment...")
+            if log_callback:
+                log_callback("Upgrading pip in existing environment...")
             result = self.run_hidden_subprocess_nuitka_safe(
                 [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
                 capture_output=True,
                 text=True,
                 timeout=120
             )
-            
+
+            if log_callback and result.stdout:
+                for line in result.stdout.splitlines():
+                    log_callback(line)
+            if log_callback and result.stderr:
+                for line in result.stderr.splitlines():
+                    log_callback(line)
+
             if result.returncode == 0:
                 self.logger.info("✅ Pip upgraded successfully")
+                if log_callback:
+                    log_callback("✅ Pip upgraded successfully")
             else:
                 self.logger.warning(f"Pip upgrade warning: {result.stderr}")
-                
+                if log_callback:
+                    log_callback(f"Pip upgrade warning: {result.stderr}")
+
         except Exception as e:
             self.logger.warning(f"Could not upgrade pip: {e}")
+            if log_callback:
+                log_callback(f"Could not upgrade pip: {e}")
 
-    def install_all_packages(self):
+    def install_all_packages(self, log_callback=None):
         """Install all essential packages one by one"""
         self.logger.info("Installing all essential packages...")
-        
+        if log_callback:
+            log_callback("Installing all essential packages...")
+
         success_count = 0
         total_packages = len(self.essential_packages)
-        
+
         for i, package in enumerate(self.essential_packages):
             self.logger.info(f"Installing {package} ({i+1}/{total_packages})...")
-            
-            if self.install_single_package(package):
+            if log_callback:
+                log_callback(f"Installing {package} ({i+1}/{total_packages})...")
+
+            if log_callback:
+                ok = self.install_single_package_with_logging(package, log_callback)
+            else:
+                ok = self.install_single_package(package)
+
+            if ok:
                 success_count += 1
                 self.logger.info(f"✅ {package} installed successfully")
             else:
                 self.logger.error(f"❌ Failed to install {package}")
                 
         self.logger.info(f"Installation complete: {success_count}/{total_packages} packages installed")
+        if log_callback:
+            log_callback(f"Installation complete: {success_count}/{total_packages} packages installed")
         
         # Consider it successful if at least the core packages are installed
         if success_count >= 10:  # At least core packages
@@ -4209,9 +4246,11 @@ except ImportError as e:
             self.logger.error(f"Error creating virtual environment: {e}")
             return False
     
-    def verify_complete_installation(self):
+    def verify_complete_installation(self, log_callback=None):
         """Verify that all critical packages are properly installed"""
         self.logger.info("Verifying installation...")
+        if log_callback:
+            log_callback("Verifying installation...")
         
         critical_packages = ["manim", "numpy", "matplotlib", "customtkinter"]
         
@@ -4251,13 +4290,19 @@ else:
             
             if result.returncode == 0:
                 self.logger.info("✅ All critical packages verified successfully")
+                if log_callback:
+                    log_callback("✅ All critical packages verified successfully")
                 return True
             else:
                 self.logger.error(f"Package verification failed: {result.stdout}")
+                if log_callback:
+                    log_callback(f"Package verification failed: {result.stdout}")
                 return False
                 
         except Exception as e:
             self.logger.error(f"Error verifying packages: {e}")
+            if log_callback:
+                log_callback(f"Error verifying packages: {e}")
             return False
     
     def activate_default_environment(self):
@@ -4731,9 +4776,9 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             handler = CallbackHandler(log_callback)
             handler.setLevel(logging.INFO)
             self.logger.addHandler(handler)
-            
+
         try:
-            success = self.setup_environment()
+            success = self.setup_environment(log_callback)
             return success
         finally:
             if handler:
@@ -5064,26 +5109,35 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
         """Upgrade pip in the current environment"""
         if not self.current_venv:
             return False
-            
+
         try:
             if log_callback:
                 log_callback("Upgrading pip...")
-            
-            # Use thread-safe command execution
-            def on_pip_upgraded(success, return_code):
-                if success:
-                    if log_callback:
-                        log_callback("Pip upgraded successfully")
-                else:
-                    if log_callback:
-                        log_callback(f"Warning: Failed to upgrade pip (exit code {return_code})")
-            
-            self.run_command_with_threading_fix(
+
+            result = self.run_hidden_subprocess_nuitka_safe(
                 [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
-                on_complete=on_pip_upgraded
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env=self.get_clean_environment(),
             )
-            return True
-                
+
+            if log_callback and result.stdout:
+                for line in result.stdout.splitlines():
+                    log_callback(line)
+            if log_callback and result.stderr:
+                for line in result.stderr.splitlines():
+                    log_callback(line)
+
+            if result.returncode == 0:
+                if log_callback:
+                    log_callback("Pip upgraded successfully")
+                return True
+            else:
+                if log_callback:
+                    log_callback(f"Warning: Failed to upgrade pip (exit code {result.returncode})")
+                return False
+
         except Exception as e:
             if log_callback:
                 log_callback(f"Error upgrading pip: {str(e)}")
