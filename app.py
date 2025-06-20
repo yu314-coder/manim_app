@@ -1753,7 +1753,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             width=120
         ).grid(row=1, column=0, sticky="w", pady=3)
         
-        env_path = os.path.join(BASE_DIR, "venvs", "manim_studio_default")
+        env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
         self.env_path_label = ctk.CTkLabel(
             env_details_frame,
             text=env_path
@@ -3072,8 +3072,8 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
             width=100
         ).pack(side="left")
         
-        # Default location next to the executable
-        default_location = os.path.join(BASE_DIR, "venvs")
+        # Default location under the user's application directory
+        default_location = self.venv_manager.venv_dir
         self.location_var = ctk.StringVar(value=default_location)
         
         location_entry = ctk.CTkEntry(
@@ -10431,6 +10431,8 @@ class GettingStartedDialog(ctk.CTkToplevel):
         else:
             status = "Environment not set up"
         self.env_status_label.configure(text=status)
+        env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
+        self.env_path_display.configure(text=env_path)
         if self.venv_manager.is_environment_ready():
             self.setup_button.configure(state="disabled")
             self.fix_button.configure(state="normal")
@@ -10464,7 +10466,16 @@ class GettingStartedDialog(ctk.CTkToplevel):
             text="Checking environment...",
             font=ctk.CTkFont(size=12)
         )
-        self.env_status_label.pack(pady=10)
+        self.env_status_label.pack(pady=(10, 5))
+
+        # Environment path
+        env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
+        self.env_path_display = ctk.CTkLabel(
+            status_frame,
+            text=env_path,
+            font=ctk.CTkFont(size=10)
+        )
+        self.env_path_display.pack(pady=(0, 10))
         
         # Button frame
         button_frame = ctk.CTkFrame(main_frame)
