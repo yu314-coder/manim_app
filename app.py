@@ -130,6 +130,24 @@ def run_subprocess_async_safe(command, callback, **kwargs):
     thread = threading.Thread(target=run_in_thread, daemon=True)
     thread.start()
     return thread
+
+# ---------------------------------------------------------------------------
+# Logging utilities
+class SafeStreamHandler(logging.StreamHandler):
+    """StreamHandler that ignores encoding errors"""
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            try:
+                self.stream.write(msg + self.terminator)
+            except UnicodeEncodeError:
+                encoding = getattr(self.stream, "encoding", "utf-8")
+                safe_msg = msg.encode(encoding, errors="replace").decode(encoding)
+                self.stream.write(safe_msg + self.terminator)
+            self.flush()
+        except Exception:
+            self.handleError(record)
 def check_dll_dependencies():
         """Check if required DLLs are available at startup"""
         if getattr(sys, 'frozen', False):
@@ -230,8 +248,8 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('manim_studio.log'),
-        logging.StreamHandler()
+        logging.FileHandler('manim_studio.log', encoding='utf-8'),
+        SafeStreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
