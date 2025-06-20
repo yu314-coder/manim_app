@@ -1650,8 +1650,8 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
 
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        width = min(750, screen_w - 100)
-        height = min(780, screen_h - 100)
+        width = max(650, min(int(screen_w * 0.7), screen_w - 100, 1000))
+        height = max(600, min(int(screen_h * 0.85), screen_h - 100, 900))
         self.geometry(f"{width}x{height}")
         self.minsize(650, 600)
         self.resizable(True, True)
@@ -7728,7 +7728,7 @@ class PyPISearchEngine:
         return POPULAR_PACKAGES
 
 class ManimStudioApp:
-    def __init__(self, latex_path: Optional[str] = None):
+    def __init__(self, latex_path: Optional[str] = None, debug: bool = False):
         # Initialize main window
         self.root = ctk.CTk()
         self.root.title(f"{APP_NAME} - Professional Edition v{APP_VERSION}")
@@ -7750,6 +7750,9 @@ class ManimStudioApp:
         # Store LaTeX path (``None`` if not found)
         self.latex_path = latex_path
         self.latex_installed = bool(latex_path)
+
+        # Debug flag to allow re-running setup
+        self.debug_mode = debug
 
         # Initialize logger reference
         self.logger = logger
@@ -10429,8 +10432,8 @@ class GettingStartedDialog(ctk.CTkToplevel):
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
 
-        width = min(800, screen_w - 100)
-        height = min(650, screen_h - 100)
+        width = max(600, min(int(screen_w * 0.6), screen_w - 100, 1000))
+        height = max(500, min(int(screen_h * 0.8), screen_h - 100, 850))
         self.geometry(f"{width}x{height}")
         self.minsize(600, 500)
         self.resizable(True, True)
@@ -10471,12 +10474,16 @@ class GettingStartedDialog(ctk.CTkToplevel):
         self.env_status_label.configure(text=status)
         env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
         self.env_path_display.configure(text=env_path)
-        if self.venv_manager.is_environment_ready():
+        ready = self.venv_manager.is_environment_ready()
+        if ready and not getattr(self.app, "debug_mode", False):
             self.setup_button.configure(state="disabled")
+        else:
+            self.setup_button.configure(state="normal")
+
+        if ready:
             self.fix_button.configure(state="normal")
             self.manage_button.configure(state="normal")
         else:
-            self.setup_button.configure(state="normal")
             self.fix_button.configure(state="disabled")
             self.manage_button.configure(state="disabled")
 
@@ -11197,14 +11204,15 @@ def main():
 
         # Create and run application
         logger.info("Creating main application...")
-        app = ManimStudioApp(latex_path=latex_path)
+        app = ManimStudioApp(latex_path=latex_path, debug=debug_mode)
         
         # Show setup dialogs before launching the main UI
         settings_file = os.path.join(app_dir, "settings.json")
         if debug_mode:
-            logger.info("Debug mode - showing Environment Setup dialog")
+            logger.info("Debug mode - showing Getting Started dialog")
             app.root.withdraw()
-            app.venv_manager.show_setup_dialog()
+            dialog = GettingStartedDialog(app)
+            app.root.wait_window(dialog)
             if not app.venv_manager.is_environment_ready():
                 logger.error("Environment setup incomplete. Exiting.")
                 return
