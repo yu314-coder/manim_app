@@ -1671,6 +1671,11 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.setup_ui()
+
+        # Forward environment manager logs to the dialog
+        self.log_handler = CallbackHandler(self.log_message_threadsafe)
+        self.log_handler.setLevel(logging.INFO)
+        self.venv_manager.logger.addHandler(self.log_handler)
         
     def setup_ui(self):
         """Setup the environment setup dialog UI"""
@@ -2216,6 +2221,11 @@ All packages will be installed in an isolated environment that won't affect your
             
     def continue_to_app(self):
         """Continue to the main application"""
+        if hasattr(self, "log_handler"):
+            try:
+                self.venv_manager.logger.removeHandler(self.log_handler)
+            except ValueError:
+                pass
         self.destroy()
         
     def on_closing(self):
@@ -2227,8 +2237,18 @@ All packages will be installed in an isolated environment that won't affect your
                 "ManimStudio may not work correctly.",
                 parent=self
             ):
+                if hasattr(self, "log_handler"):
+                    try:
+                        self.venv_manager.logger.removeHandler(self.log_handler)
+                    except ValueError:
+                        pass
                 self.destroy()
         else:
+            if hasattr(self, "log_handler"):
+                try:
+                    self.venv_manager.logger.removeHandler(self.log_handler)
+                except ValueError:
+                    pass
             self.destroy()
             
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
@@ -4706,8 +4726,8 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
     
     def create_default_environment(self, log_callback=None):
         """Public method for creating default environment with logging callback"""
+        handler = None
         if log_callback:
-            # Set up logging to callback
             handler = CallbackHandler(log_callback)
             handler.setLevel(logging.INFO)
             self.logger.addHandler(handler)
@@ -4716,11 +4736,8 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             success = self.setup_environment()
             return success
         finally:
-            if log_callback:
-                # Remove callback handler
-                for handler in self.logger.handlers[:]:
-                    if isinstance(handler, CallbackHandler):
-                        self.logger.removeHandler(handler)
+            if handler:
+                self.logger.removeHandler(handler)
     
     def create_environment_unified(self, name, location, packages=None, log_callback=None):
         """Unified environment creation method"""
