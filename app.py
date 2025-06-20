@@ -1,7 +1,7 @@
 # app.py - Manim Animation Studio - Professional Edition with Integrated Environment Manager
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk, colorchooser
+from tkinter import filedialog, messagebox
 import tempfile
 import os
 import ctypes
@@ -10318,6 +10318,14 @@ class GettingStartedDialog(ctk.CTkToplevel):
         else:
             status = "Environment not set up"
         self.env_status_label.configure(text=status)
+        if self.venv_manager.is_environment_ready():
+            self.setup_button.configure(state="disabled")
+            self.fix_button.configure(state="normal")
+            self.manage_button.configure(state="normal")
+        else:
+            self.setup_button.configure(state="normal")
+            self.fix_button.configure(state="disabled")
+            self.manage_button.configure(state="disabled")
 
     def setup_ui(self):
         """Setup the main UI"""
@@ -10453,7 +10461,7 @@ class GettingStartedDialog(ctk.CTkToplevel):
         run_button = ctk.CTkButton(
             toolbar_frame,
             text="Run Animation",
-            command=self.run_animation,
+            command=self.render_animation,
             fg_color="green",
             hover_color="darkgreen",
             width=120
