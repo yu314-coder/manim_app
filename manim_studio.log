@@ -1210,3 +1210,102 @@ Pointer size: True
 2025-06-21 00:23:16,745 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
 2025-06-21 00:56:51,413 - INFO - Debug mode - showing Getting Started dialog
 2025-06-21 00:56:54,177 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:19:22,865 - INFO - === ManimStudio Starting ===
+2025-06-21 01:19:22,866 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:19:22,867 - INFO - Platform: win32
+2025-06-21 01:19:22,867 - INFO - Frozen: False
+2025-06-21 01:19:22,867 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:19:22,868 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:19:22,868 - INFO - Checking LaTeX installation...
+2025-06-21 01:19:23,344 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:19:23,344 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:19:23,345 - INFO - Creating main application...
+2025-06-21 01:32:08,348 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:32:11,183 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:34:20,181 - INFO - === ManimStudio Starting ===
+2025-06-21 01:34:20,182 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:34:20,183 - INFO - Platform: win32
+2025-06-21 01:34:20,183 - INFO - Frozen: False
+2025-06-21 01:34:20,184 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:34:20,184 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:34:20,185 - INFO - Checking LaTeX installation...
+2025-06-21 01:34:20,833 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:34:20,834 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:34:20,834 - INFO - Creating main application...
+2025-06-21 01:34:56,450 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:35:07,442 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:39:16,645 - INFO - === ManimStudio Starting ===
+2025-06-21 01:39:16,646 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:39:16,646 - INFO - Platform: win32
+2025-06-21 01:39:16,646 - INFO - Frozen: False
+2025-06-21 01:39:16,647 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:39:16,647 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:39:16,647 - INFO - Checking LaTeX installation...
+2025-06-21 01:39:17,030 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:39:17,031 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:39:17,032 - INFO - Creating main application...
+2025-06-21 01:47:01,092 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:47:03,238 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:47:08,377 - INFO - === ManimStudio Starting ===
+2025-06-21 01:47:08,378 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:47:08,378 - INFO - Platform: win32
+2025-06-21 01:47:08,378 - INFO - Frozen: False
+2025-06-21 01:47:08,378 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:47:08,379 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:47:08,379 - INFO - Checking LaTeX installation...
+2025-06-21 01:47:09,043 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:47:09,044 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:47:09,044 - INFO - Creating main application...
+2025-06-21 01:47:32,490 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:47:34,592 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:47:56,338 - INFO - === ManimStudio Starting ===
+2025-06-21 01:47:56,338 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:47:56,338 - INFO - Platform: win32
+2025-06-21 01:47:56,339 - INFO - Frozen: False
+2025-06-21 01:47:56,339 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:47:56,339 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:47:56,339 - INFO - Checking LaTeX installation...
+2025-06-21 01:47:56,955 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:47:56,956 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:47:56,956 - INFO - Creating main application...
+2025-06-21 01:55:04,579 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:55:06,702 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:55:10,785 - INFO - === ManimStudio Starting ===
+2025-06-21 01:55:10,786 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:55:10,786 - INFO - Platform: win32
+2025-06-21 01:55:10,787 - INFO - Frozen: False
+2025-06-21 01:55:10,787 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:55:10,787 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:55:10,788 - INFO - Checking LaTeX installation...
+2025-06-21 01:55:11,453 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:55:11,453 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:55:11,454 - INFO - Creating main application...
+2025-06-21 01:55:27,061 - ERROR - Environment creation failed: 'VirtualEnvironmentManager' object has no attribute '_find_best_python'
+2025-06-21 01:55:49,940 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:55:52,195 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 02:06:51,074 - INFO - === ManimStudio Starting ===
+2025-06-21 02:06:51,075 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 02:06:51,075 - INFO - Platform: win32
+2025-06-21 02:06:51,075 - INFO - Frozen: False
+2025-06-21 02:06:51,075 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 02:06:51,075 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 02:06:51,075 - INFO - Checking LaTeX installation...
+2025-06-21 02:06:51,484 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 02:06:51,485 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 02:06:51,485 - INFO - Creating main application...
+2025-06-21 02:06:59,144 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 02:19:42,355 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 02:19:44,863 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 02:19:49,154 - INFO - === ManimStudio Starting ===
+2025-06-21 02:19:49,154 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 02:19:49,154 - INFO - Platform: win32
+2025-06-21 02:19:49,155 - INFO - Frozen: False
+2025-06-21 02:19:49,155 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 02:19:49,155 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 02:19:49,155 - INFO - Checking LaTeX installation...
+2025-06-21 02:19:49,557 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 02:19:49,558 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 02:19:49,558 - INFO - Creating main application...
+2025-06-21 02:19:58,048 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 02:26:56,688 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 02:28:00,257 - INFO - Starting application main loop...

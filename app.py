@@ -1657,6 +1657,8 @@ class SystemTerminalManager:
             self.env = old_env
             
         return result
+      
+
 class EnvironmentSetupDialog(ctk.CTkToplevel):
     """Professional dialog for setting up the default environment on first run"""
     
@@ -1668,14 +1670,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         self.setup_complete = False
         
         self.title("ManimStudio - Environment Setup")
-
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        width = max(650, min(int(screen_w * 0.7), screen_w - 100, 1000))
-        height = max(600, min(int(screen_h * 0.85), screen_h - 100, 900))
-        self.geometry(f"{width}x{height}")
-        self.minsize(650, 600)
-        self.resizable(True, True)
+        self.geometry("750x780")
         self.transient(parent)
         self.grab_set()
         
@@ -1688,12 +1683,13 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         # Prevent closing during setup
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
+        # Initialize queue-based logging
+        import queue
+        self._log_queue = queue.Queue()
+        self._result_queue = queue.Queue()
+        self._start_log_processor()
+        
         self.setup_ui()
-
-        # Forward environment manager logs to the dialog
-        self.log_handler = CallbackHandler(self.log_message_threadsafe)
-        self.log_handler.setLevel(logging.INFO)
-        self.venv_manager.logger.addHandler(self.log_handler)
         
     def setup_ui(self):
         """Setup the environment setup dialog UI"""
@@ -1717,247 +1713,143 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         title_label = ctk.CTkLabel(
             header_frame,
             text="Welcome to ManimStudio!",
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
+            font=ctk.CTkFont(size=28, weight="bold"),
+            text_color=VSCODE_COLORS["primary"]
         )
-        title_label.pack(pady=(0, 5))
+        title_label.pack()
         
         subtitle_label = ctk.CTkLabel(
             header_frame,
-            text="Setting up your animation environment...",
+            text="Let's set up your animation environment",
             font=ctk.CTkFont(size=14),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        subtitle_label.pack()
+        subtitle_label.pack(pady=(5, 0))
         
-        # Environment Information Section
-        env_info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        env_info_frame.pack(fill="x", pady=10)
-
-        env_info_label = ctk.CTkLabel(
-            env_info_frame,
-            text="Environment Information",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        env_info_label.pack(anchor="w", padx=15, pady=(10, 5))
-        
-        # Environment details
-        env_details_frame = ctk.CTkFrame(env_info_frame, fg_color="transparent")
-        env_details_frame.pack(fill="x", padx=15, pady=(0, 10))
-        env_details_frame.columnconfigure(1, weight=1)
-        
-        # Python version
-        ctk.CTkLabel(
-            env_details_frame,
-            text="Python:",
-            font=ctk.CTkFont(weight="bold"),
-            width=120
-        ).grid(row=0, column=0, sticky="w", pady=3)
-        
-        self.python_version_label = ctk.CTkLabel(
-            env_details_frame,
-            text=f"Python {sys.version.split()[0]}"
-        )
-        self.python_version_label.grid(row=0, column=1, sticky="w", pady=3)
-        
-        # Environment path
-        ctk.CTkLabel(
-            env_details_frame,
-            text="Environment Path:",
-            font=ctk.CTkFont(weight="bold"),
-            width=120
-        ).grid(row=1, column=0, sticky="w", pady=3)
-        
-        env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
-        self.env_path_label = ctk.CTkLabel(
-            env_details_frame,
-            text=env_path
-        )
-        self.env_path_label.grid(row=1, column=1, sticky="w", pady=3)
-        
-        # Info section
-        info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        # Environment info frame
+        info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
         info_frame.pack(fill="x", pady=10)
-        
-        info_text = """ManimStudio needs to create a Python virtual environment with all required packages.
-This process will:
-
-✓ Create a dedicated virtual environment for ManimStudio
-✓ Install Manim Community Edition for animations
-✓ Install development tools (NumPy, Matplotlib, Jedi for IntelliSense)
-✓ Install additional packages for enhanced functionality
-✓ Configure everything for optimal performance
-
-This may take a few minutes depending on your internet connection and system speed.
-All packages will be installed in an isolated environment that won't affect your system Python."""
         
         ctk.CTkLabel(
             info_frame,
-            text=info_text,
-            font=ctk.CTkFont(size=12),
-            justify="left",
-            text_color=VSCODE_COLORS["text"]
-        ).pack(padx=20, pady=20)
-        
-        # Package selection section
-        packages_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        packages_frame.pack(fill="x", pady=10)
-        
-        packages_header = ctk.CTkLabel(
-            packages_frame,
-            text="Packages to Install",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        packages_header.pack(anchor="w", padx=15, pady=(10, 5))
-        
-        # Essential packages list
-        essential_packages_frame = ctk.CTkScrollableFrame(
-            packages_frame, 
-            height=120,
-            fg_color="transparent"
-        )
-        essential_packages_frame.pack(fill="x", padx=15, pady=(0, 10))
-        
-        # Add some essential packages with checkboxes
-        self.package_vars = {}
-        essential_packages = [
-            ("manim", "Animation engine", True),
-            ("numpy", "Numerical computing", True),
-            ("matplotlib", "Plotting library", True),
-            ("jedi", "IntelliSense engine", True),
-            ("customtkinter", "Modern UI toolkit", True),
-            ("opencv-python", "Computer vision", True),
-            ("pillow", "Image processing", True),
-        ]
-        
-        for pkg, desc, default in essential_packages:
-            var = ctk.BooleanVar(value=default)
-            self.package_vars[pkg] = var
-            
-            pkg_frame = ctk.CTkFrame(essential_packages_frame, fg_color="transparent")
-            pkg_frame.pack(fill="x", pady=2)
-            
-            check = ctk.CTkCheckBox(
-                pkg_frame,
-                text=pkg,
-                variable=var,
-                onvalue=True,
-                offvalue=False
-            )
-            check.pack(side="left", padx=(5, 10))
-            
-            ctk.CTkLabel(
-                pkg_frame,
-                text=f"({desc})",
-                font=ctk.CTkFont(size=10),
-                text_color=VSCODE_COLORS["text_secondary"]
-            ).pack(side="left")
-        
-        # Optional packages frame
-        optional_label = ctk.CTkLabel(
-            packages_frame,
-            text="Optional Packages:",
+            text="📁 Environment Location:",
             font=ctk.CTkFont(size=12, weight="bold")
-        )
-        optional_label.pack(anchor="w", padx=15, pady=(5, 0))
+        ).pack(anchor="w", padx=15, pady=(15, 5))
         
-        optional_packages_frame = ctk.CTkFrame(packages_frame, fg_color=VSCODE_COLORS["background"])
-        optional_packages_frame.pack(fill="x", padx=15, pady=(5, 10))
-        
-        # Add optional packages with checkboxes
-        optional_packages = [
-            ("scipy", "Scientific computing"),
-            ("sympy", "Symbolic mathematics"),
-            ("pandas", "Data analysis"),
-            ("seaborn", "Statistical visualization")
-        ]
-        
-        for i, (pkg, desc) in enumerate(optional_packages):
-            var = ctk.BooleanVar(value=False)
-            self.package_vars[pkg] = var
-            
-            check = ctk.CTkCheckBox(
-                optional_packages_frame,
-                text=f"{pkg} ({desc})",
-                variable=var,
-                onvalue=True,
-                offvalue=False
-            )
-            check.grid(row=i//2, column=i%2, sticky="w", padx=15, pady=5)
-        
-        # Current step indicator
-        self.step_label = ctk.CTkLabel(
-            main_frame,
-            text="Ready to create environment...",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=VSCODE_COLORS["primary"]
-        )
-        self.step_label.pack(pady=(15, 5))
-        
-        # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(main_frame, height=20)
-        self.progress_bar.pack(fill="x", padx=20, pady=10)
-        self.progress_bar.set(0)
-        
-        # Progress details
-        self.detail_label = ctk.CTkLabel(
-            main_frame,
-            text="",
+        self.env_path_label = ctk.CTkLabel(
+            info_frame,
+            text=os.path.join(self.venv_manager.venv_dir, "manim_studio_default"),
             font=ctk.CTkFont(size=11),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.detail_label.pack(pady=(0, 10))
+        self.env_path_label.pack(anchor="w", padx=15, pady=(0, 15))
         
-        # Log output
-        log_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["background"])
+        # Package selection frame
+        packages_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
+        packages_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            packages_frame,
+            text="📦 Select Packages to Install:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(15, 10))
+        
+        # Package checkboxes
+        # Package checkboxes
+        self.package_vars = {}
+        default_packages = {
+            "manim": True,
+            "numpy": True,
+            "matplotlib": True,
+            "Pillow": True,
+            "customtkinter": True,  # Add this (was missing)
+            "jedi": True,           # Add this (was missing)
+            "scipy": True,          # Changed False to True
+            "pandas": True,         # Changed False to True
+            "jupyter": True,        # Changed False to True
+            "opencv-python": True   # Changed False to True
+        }
+        
+        checkbox_frame = ctk.CTkFrame(packages_frame, fg_color="transparent")
+        checkbox_frame.pack(fill="x", padx=15, pady=(0, 15))
+        
+        for i, (package, default) in enumerate(default_packages.items()):
+            var = ctk.BooleanVar(value=default)
+            self.package_vars[package] = var
+            
+            checkbox = ctk.CTkCheckBox(
+                checkbox_frame,
+                text=package,
+                variable=var,
+                font=ctk.CTkFont(size=12)
+            )
+            checkbox.grid(row=i//4, column=i%4, padx=10, pady=5, sticky="w")
+        
+        # CPU usage frame
+        cpu_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
+        cpu_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            cpu_frame,
+            text="⚡ CPU Usage During Installation:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(15, 10))
+        
+        self.cpu_var = ctk.StringVar(value="Medium")
+        cpu_options = ["Low", "Medium", "High"]
+        
+        cpu_option_frame = ctk.CTkFrame(cpu_frame, fg_color="transparent")
+        cpu_option_frame.pack(fill="x", padx=15, pady=(0, 15))
+        
+        for i, option in enumerate(cpu_options):
+            ctk.CTkRadioButton(
+                cpu_option_frame,
+                text=f"{option} ({['1 core', 'Half cores', 'All cores'][i]})",
+                variable=self.cpu_var,
+                value=option,
+                font=ctk.CTkFont(size=12)
+            ).grid(row=1, column=i, padx=10, pady=(0, 5), sticky="w")
+        
+        # Progress frame
+        progress_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
+        progress_frame.pack(fill="x", pady=10)
+        
+        self.step_label = ctk.CTkLabel(
+            progress_frame,
+            text="Ready to begin setup",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        )
+        self.step_label.pack(padx=15, pady=(15, 5))
+        
+        self.detail_label = ctk.CTkLabel(
+            progress_frame,
+            text="Click 'Create Environment' to start",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.detail_label.pack(padx=15, pady=(0, 10))
+        
+        self.progress_bar = ctk.CTkProgressBar(progress_frame, width=300)
+        self.progress_bar.pack(padx=15, pady=(0, 15))
+        self.progress_bar.set(0)
+        
+        # Log frame
+        log_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
         log_frame.pack(fill="both", expand=True, pady=10)
         
         ctk.CTkLabel(
             log_frame,
-            text="Setup Log:",
-            font=ctk.CTkFont(size=12, weight="bold")
-        ).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        self.log_text = ctk.CTkTextbox(log_frame, height=200, font=ctk.CTkFont(size=10, family="Consolas"))
-        self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        
-        # CPU Usage frame
-        cpu_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        cpu_frame.pack(fill="x", pady=10)
-        
-        cpu_header = ctk.CTkLabel(
-            cpu_frame,
-            text="CPU Usage for Installation",
+            text="📝 Setup Log:",
             font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(anchor="w", padx=15, pady=(15, 5))
+        
+        self.log_text = ctk.CTkTextbox(
+            log_frame,
+            font=ctk.CTkFont(family="Courier", size=10),
+            height=150
         )
-        cpu_header.pack(anchor="w", padx=15, pady=(10, 5))
-        
-        # CPU usage options
-        cpu_options_frame = ctk.CTkFrame(cpu_frame, fg_color="transparent")
-        cpu_options_frame.pack(fill="x", padx=15, pady=(0, 10))
-        
-        self.cpu_var = ctk.StringVar(value="Medium")
-        cpu_options = [
-            ("Low", "Use 1 core (minimal CPU usage)"),
-            ("Medium", "Use half available cores (balanced)"),
-            ("High", "Use all available cores (fastest)")
-        ]
-        
-        for i, (option, desc) in enumerate(cpu_options):
-            cpu_radio = ctk.CTkRadioButton(
-                cpu_options_frame,
-                text=option,
-                value=option,
-                variable=self.cpu_var
-            )
-            cpu_radio.grid(row=0, column=i, padx=10, pady=5, sticky="w")
-            
-            ctk.CTkLabel(
-                cpu_options_frame,
-                text=desc,
-                font=ctk.CTkFont(size=10),
-                text_color=VSCODE_COLORS["text_secondary"]
-            ).grid(row=1, column=i, padx=10, pady=(0, 5), sticky="w")
+        self.log_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         
         # Buttons
         button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -1999,10 +1891,37 @@ All packages will be installed in an isolated environment that won't affect your
         
     def log_message(self, message):
         """Add message to log"""
+        from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_text.insert("end", f"[{timestamp}] {message}\n")
         self.log_text.see("end")
         self.update_idletasks()
+        
+    def log_message_threadsafe(self, message):
+        """Thread-safe log message method using queue"""
+        if hasattr(self, '_log_queue'):
+            self._log_queue.put(message)
+    
+    def _start_log_processor(self):
+        """Start the log processor that runs on main thread"""
+        def process_logs():
+            if not hasattr(self, '_log_queue'):
+                return
+                
+            try:
+                while True:
+                    message = self._log_queue.get_nowait()
+                    self.log_message(message)
+            except:
+                pass  # Queue empty
+            
+            # Schedule next check
+            try:
+                self.after(100, process_logs)
+            except:
+                pass  # Widget destroyed
+        
+        self.after(100, process_logs)
         
     def update_progress(self, value, step_text="", detail_text=""):
         """Update progress bar and status"""
@@ -2012,16 +1931,6 @@ All packages will be installed in an isolated environment that won't affect your
         if detail_text:
             self.detail_label.configure(text=detail_text)
         self.update_idletasks()
-
-    def safe_after(self, delay, callback=None):
-        """Safely schedule a callback using ``after``.
-
-        This helper prevents ``RuntimeError`` that can occur if the
-        dialog has been closed or the Tk main loop is not running."""
-        try:
-            self.after(delay, callback)
-        except RuntimeError:
-            pass
         
     def start_setup(self):
         """Start the environment setup process"""
@@ -2034,91 +1943,131 @@ All packages will be installed in an isolated environment that won't affect your
         # Get selected packages
         selected_packages = [pkg for pkg, var in self.package_vars.items() if var.get()]
         
-        # Run setup in background thread
-        setup_thread = threading.Thread(
-            target=self.run_setup, 
-            args=(selected_packages,),
-            daemon=True
-        )
-        setup_thread.start()
+        # Start the setup process on main thread with after() calls
+        self.after(100, lambda: self.run_setup_step_by_step(selected_packages, 0))
 
-
-    def run_setup(self, packages):
-        """Run the actual setup process"""
+    def run_setup_step_by_step(self, packages, step):
+        """Run setup process step by step on main thread"""
         try:
-            # Step 1: Create virtual environment
-            self.safe_after(0, lambda: self.update_progress(0.1, "Creating virtual environment...", "Setting up isolated Python environment"))
-            self.safe_after(0, lambda: self.log_message("Creating virtual environment..."))
-            
-            success = self.venv_manager.create_default_environment(self.log_message_threadsafe)
-            
-            if not success:
-                self.safe_after(0, lambda: self.log_message("ERROR: Failed to create virtual environment"))
-                self.safe_after(0, lambda: self.show_error("Failed to create virtual environment"))
-                return
+            if step == 0:
+                # Step 1: Create virtual environment
+                self.update_progress(0.1, "Creating virtual environment...", "Setting up isolated Python environment")
+                self.log_message("Creating virtual environment...")
                 
-            # Step 2: Activate environment
-            self.safe_after(0, lambda: self.update_progress(0.2, "Activating environment...", "Configuring environment"))
-            self.safe_after(0, lambda: self.log_message("Activating environment..."))
-            
-            # Step 3: Upgrade pip
-            self.safe_after(0, lambda: self.update_progress(0.25, "Upgrading pip...", "Ensuring latest package manager"))
-            self.safe_after(0, lambda: self.log_message("Upgrading pip..."))
-            
-            success = self.venv_manager.upgrade_pip(self.log_message_threadsafe)
-            if not success:
-                self.safe_after(0, lambda: self.log_message("WARNING: Could not upgrade pip"))
-            
-            # Step 4: Install packages
-            if packages:
-                self.safe_after(0, lambda: self.update_progress(0.3, "Installing packages...", "Installing selected packages"))
-                self.safe_after(0, lambda: self.log_message("Installing packages..."))
+                # Run environment creation in background and schedule next step
+                def create_env():
+                    success = self.venv_manager.create_default_environment(self.log_message_threadsafe)
+                    # Use queue to communicate result back to main thread
+                    self._result_queue.put(('env_created', success))
                 
-                for i, package in enumerate(packages):
-                    progress = 0.3 + (i / len(packages) * 0.6)
-                    self.safe_after(0, lambda p=package, prog=progress: self.update_progress(
-                        prog,
-                        "Installing packages...",
-                        f"Installing {p}..."
-                    ))
-                    
-                    # Install package with appropriate CPU usage
-                    cpu_setting = self.cpu_var.get()
-                    self.log_message_threadsafe(f"Installing {package} with {cpu_setting} CPU usage...")
-                    
-                    # Implement package installation with CPU control
-                    success = self.install_package_with_cpu_control(
-                        package, 
-                        cpu_setting,
-                        self.log_message_threadsafe
-                    )
-                    
+                threading.Thread(target=create_env, daemon=True).start()
+                # Schedule checking for result
+                self.after(500, lambda: self.check_for_results(packages, 1))
+                
+            elif step == 1:
+                # Step 2: Activate environment
+                self.update_progress(0.2, "Activating environment...", "Configuring environment")
+                self.log_message("Activating environment...")
+                self.after(500, lambda: self.run_setup_step_by_step(packages, 2))
+                
+            elif step == 2:
+                # Step 3: Upgrade pip
+                self.update_progress(0.25, "Upgrading pip...", "Ensuring latest package manager")
+                self.log_message("Upgrading pip...")
+                
+                def upgrade_pip():
+                    success = self.venv_manager.upgrade_pip(self.log_message_threadsafe)
                     if not success:
-                        self.safe_after(0, lambda p=package: self.log_message(f"ERROR: Failed to install {p}"))
-            
-            # Step 5: Verify installation
-            self.safe_after(0, lambda: self.update_progress(0.95, "Verifying installation...", "Testing all components"))
-            self.safe_after(0, lambda: self.log_message("Verifying installation..."))
-            
-            success = self.venv_manager.verify_installation(self.log_message_threadsafe)
-            
-            if success:
-                self.safe_after(0, lambda: self.update_progress(1.0, "Setup complete!", "All components ready"))
-                self.safe_after(0, lambda: self.log_message("✅ Environment setup completed successfully!"))
-                self.safe_after(0, lambda: self.setup_complete_ui())
-            else:
-                self.safe_after(0, lambda: self.log_message("WARNING: Installation verification failed"))
-                self.safe_after(0, lambda: self.show_warning("Setup completed with warnings"))
+                        self.log_message_threadsafe("WARNING: Could not upgrade pip")
+                    # Use queue to communicate result back to main thread
+                    self._result_queue.put(('pip_upgraded', True))
+                
+                threading.Thread(target=upgrade_pip, daemon=True).start()
+                # Schedule checking for result
+                self.after(500, lambda: self.check_for_results(packages, 3))
+                
+            elif step == 3:
+                # Step 4: Install packages
+                if packages:
+                    self.update_progress(0.3, "Installing packages...", "Installing selected packages")
+                    self.log_message("Installing packages...")
+                    self.after(100, lambda: self.install_packages_step_by_step(packages, 0))
+                else:
+                    self.after(100, lambda: self.run_setup_step_by_step(packages, 5))
+                    
+            elif step == 5:
+                # Step 5: Verify installation
+                self.update_progress(0.95, "Verifying installation...", "Testing all components")
+                self.log_message("Verifying installation...")
+                
+                def verify():
+                    success = self.venv_manager.verify_installation(self.log_message_threadsafe)
+                    # Use queue to communicate result back to main thread
+                    self._result_queue.put(('verification_done', success))
+                
+                threading.Thread(target=verify, daemon=True).start()
+                # Schedule checking for result
+                self.after(500, lambda: self.check_for_results(packages, 5))
+                
+            elif step == 6:
+                # Success
+                self.update_progress(1.0, "Setup complete!", "All components ready")
+                self.log_message("✅ Environment setup completed successfully!")
+                self.setup_complete_ui()
+                
+            elif step == 7:
+                # Verification failed but continue
+                self.log_message("WARNING: Installation verification failed")
+                self.show_warning("Setup completed with warnings")
+                
+            elif step == -1:
+                # Error occurred
+                self.log_message("ERROR: Failed to create virtual environment")
+                self.show_error("Failed to create virtual environment")
                 
         except Exception as e:
             error_msg = f"Setup failed with error: {str(e)}"
-            self.safe_after(0, lambda: self.log_message(f"ERROR: {error_msg}"))
-            self.safe_after(0, lambda: self.show_error(error_msg))
+            self.log_message(f"ERROR: {error_msg}")
+            self.show_error(error_msg)
+
+    def install_packages_step_by_step(self, packages, package_index):
+        """Install packages one by one"""
+        if package_index >= len(packages):
+            # All packages installed, continue to verification
+            self.after(100, lambda: self.run_setup_step_by_step(packages, 5))
+            return
             
+        package = packages[package_index]
+        progress = 0.3 + (package_index / len(packages) * 0.6)
+        
+        self.update_progress(progress, "Installing packages...", f"Installing {package}...")
+        
+        # Install package with appropriate CPU usage
+        cpu_setting = self.cpu_var.get()
+        self.log_message(f"Installing {package} with {cpu_setting} CPU usage...")
+        
+        def install_package():
+            success = self.install_package_with_cpu_control(
+                package, 
+                cpu_setting,
+                self.log_message_threadsafe
+            )
+            
+            if not success:
+                self.log_message_threadsafe(f"ERROR: Failed to install {package}")
+            
+            # Use queue to communicate result back to main thread
+            self._result_queue.put(('package_installed', package_index + 1))
+        
+        threading.Thread(target=install_package, daemon=True).start()
+        # Schedule checking for result
+        self.after(500, lambda: self.check_for_package_results(packages, package_index))
+
     def install_package_with_cpu_control(self, package, cpu_setting, log_callback):
-        """Install package with CPU usage control"""
+        """Install package with CPU usage control and proper output streaming"""
         try:
             # Determine CPU count based on setting
+            import psutil
             cpu_count = psutil.cpu_count(logical=True)
             
             if cpu_setting == "Low":
@@ -2136,6 +2085,7 @@ All packages will be installed in an isolated environment that won't affect your
             env["OPENBLAS_NUM_THREADS"] = str(cores)
             env["MKL_NUM_THREADS"] = str(cores)
             env["NUMEXPR_NUM_THREADS"] = str(cores)
+            env["PYTHONUNBUFFERED"] = "1"  # ensure real-time pip output
             
             # Use the platform-appropriate startupinfo to hide console
             startupinfo = None
@@ -2148,8 +2098,7 @@ All packages will be installed in an isolated environment that won't affect your
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
             # Execute pip install with CPU control and stream output
-            env["PYTHONUNBUFFERED"] = "1"  # ensure real-time pip output
-            process = popen_original(
+            process = subprocess.Popen(
                 [self.venv_manager.pip_path, "install", package],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -2160,26 +2109,59 @@ All packages will be installed in an isolated environment that won't affect your
                 creationflags=creationflags,
             )
 
-            # Stream pip output line by line to the logger
+            # Stream pip output line by line to both dialog and terminal
             for line in process.stdout:
                 if line:
-                    log_callback(line.rstrip())
+                    cleaned_line = line.rstrip()
+                    log_callback(cleaned_line)
+                    
+                    # Also send to main terminal if available
+                    if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'append_terminal_output'):
+                        try:
+                            self.after(0, lambda l=cleaned_line: self.parent_window.append_terminal_output(f"{l}\n"))
+                        except:
+                            pass  # Ignore if GUI update fails
+                    
             exit_code = process.wait()
 
             if exit_code == 0:
                 log_callback(f"Successfully installed {package}")
                 return True
             else:
-                log_callback(f"Failed to install {package}")
+                log_callback(f"Failed to install {package} (exit code: {exit_code})")
                 return False
                 
         except Exception as e:
             log_callback(f"Error installing {package}: {str(e)}")
             return False
-    
-    def log_message_threadsafe(self, message):
-        """Thread-safe log message method"""
-        self.safe_after(0, lambda: self.log_message(message))
+
+    def check_for_results(self, packages, next_step):
+        """Check for results from background threads"""
+        try:
+            action, result = self._result_queue.get_nowait()
+            
+            if action == 'env_created':
+                self.run_setup_step_by_step(packages, next_step if result else -1)
+            elif action == 'pip_upgraded':
+                self.run_setup_step_by_step(packages, next_step)
+            elif action == 'verification_done':
+                self.run_setup_step_by_step(packages, 6 if result else 7)
+                
+        except:
+            # No result yet, check again later
+            self.after(500, lambda: self.check_for_results(packages, next_step))
+
+    def check_for_package_results(self, packages, current_package_index):
+        """Check for package installation results"""
+        try:
+            action, result = self._result_queue.get_nowait()
+            
+            if action == 'package_installed':
+                self.install_packages_step_by_step(packages, result)
+                
+        except:
+            # No result yet, check again later
+            self.after(500, lambda: self.check_for_package_results(packages, current_package_index))
         
     def setup_complete_ui(self):
         """Update UI when setup is complete"""
@@ -2198,77 +2180,54 @@ All packages will be installed in an isolated environment that won't affect your
         ctk.CTkLabel(
             success_frame,
             text="✅ Environment Ready!",
-            font=ctk.CTkFont(size=18, weight="bold"),
+            font=ctk.CTkFont(size=16, weight="bold"),
             text_color="white"
-        ).pack(padx=30, pady=20)
+        ).pack(padx=20, pady=10)
         
-        # Auto-continue after 3 seconds
-        self.safe_after(3000, lambda: success_frame.destroy())
-        self.safe_after(3500, self.continue_to_app)
+    def skip_setup(self):
+        """Skip environment setup"""
+        from tkinter import messagebox
+        if messagebox.askyesno(
+            "Skip Setup",
+            "Are you sure you want to skip environment setup?\n\n"
+            "You can set up the environment later from the Tools menu.",
+            parent=self
+        ):
+            self.venv_manager.needs_setup = False
+            self.destroy()
+            
+    def continue_to_app(self):
+        """Continue to main application"""
+        if self.setup_complete:
+            self.venv_manager.needs_setup = False
+            self.destroy()
         
     def show_error(self, message):
         """Show error message"""
-        self.step_label.configure(
-            text="❌ Setup Failed",
-            text_color=VSCODE_COLORS["error"]
-        )
-        self.detail_label.configure(text=message)
-        self.start_button.configure(text="🔄 Retry Setup", state="normal")
+        from tkinter import messagebox
+        messagebox.showerror("Setup Error", message, parent=self)
+        self.start_button.configure(state="normal")
         self.skip_button.configure(state="normal")
-        
+            
     def show_warning(self, message):
         """Show warning message"""
-        self.step_label.configure(
-            text="⚠️ Setup Completed with Warnings",
-            text_color=VSCODE_COLORS["warning"]
-        )
-        self.detail_label.configure(text=message)
-        self.close_button.configure(state="normal")
-        self.setup_complete = True
-        
-    def skip_setup(self):
-        """Skip the setup process"""
-        if messagebox.askyesno(
-            "Skip Setup",
-            "Are you sure you want to skip the environment setup?\n\n"
-            "ManimStudio may not work correctly without the required packages.",
-            parent=self
-        ):
-            self.log_message("Setup skipped by user")
-            self.continue_to_app()
-            
-    def continue_to_app(self):
-        """Continue to the main application"""
-        if hasattr(self, "log_handler"):
-            try:
-                self.venv_manager.logger.removeHandler(self.log_handler)
-            except ValueError:
-                pass
-        self.destroy()
+        from tkinter import messagebox
+        messagebox.showwarning("Setup Warning", message, parent=self)
+        self.setup_complete_ui()
         
     def on_closing(self):
-        """Handle dialog closing"""
+        """Handle window close attempt"""
         if not self.setup_complete:
+            from tkinter import messagebox
             if messagebox.askyesno(
                 "Cancel Setup",
-                "Setup is not complete. Exit anyway?\n\n"
-                "ManimStudio may not work correctly.",
+                "Setup is in progress. Are you sure you want to cancel?",
                 parent=self
             ):
-                if hasattr(self, "log_handler"):
-                    try:
-                        self.venv_manager.logger.removeHandler(self.log_handler)
-                    except ValueError:
-                        pass
                 self.destroy()
         else:
-            if hasattr(self, "log_handler"):
-                try:
-                    self.venv_manager.logger.removeHandler(self.log_handler)
-                except ValueError:
-                    pass
             self.destroy()
-            
+
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
     """Enhanced dialog for manual virtual environment management"""
     
@@ -4788,20 +4747,84 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             return False
     
     def create_default_environment(self, log_callback=None):
-        """Public method for creating default environment with logging callback"""
-        handler = None
-        if log_callback:
-            handler = CallbackHandler(log_callback)
-            handler.setLevel(logging.INFO)
-            self.logger.addHandler(handler)
-
+        """Create the default virtual environment with enhanced logging and error handling"""
+        env_name = "manim_studio_default"
+        env_path = os.path.join(self.venv_dir, env_name)
+        
         try:
-            success = self.setup_environment(log_callback)
-            return success
-        finally:
-            if handler:
-                self.logger.removeHandler(handler)
-    
+            if log_callback:
+                log_callback(f"Creating virtual environment: {env_name}")
+                log_callback(f"Location: {env_path}")
+            
+            # Remove existing environment if it exists
+            if os.path.exists(env_path):
+                if log_callback:
+                    log_callback("Removing existing environment...")
+                shutil.rmtree(env_path, ignore_errors=True)
+            
+            # Find the best Python executable
+            python_exe = self._find_best_python()
+            if not python_exe:
+                if log_callback:
+                    log_callback("❌ No suitable Python installation found")
+                return False
+            
+            if log_callback:
+                log_callback(f"Using Python: {python_exe}")
+            
+            # Create virtual environment with proper subprocess handling
+            create_cmd = [python_exe, "-m", "venv", env_path]
+            
+            if log_callback:
+                log_callback("Creating virtual environment...")
+            
+            # Use proper subprocess configuration
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+            
+            result = subprocess.run(
+                create_cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=creationflags
+            )
+            
+            if result.returncode != 0:
+                error_msg = f"Failed to create virtual environment: {result.stderr}"
+                if log_callback:
+                    log_callback(f"❌ {error_msg}")
+                self.logger.error(error_msg)
+                return False
+            
+            # Verify creation
+            if not os.path.exists(env_path):
+                if log_callback:
+                    log_callback("❌ Environment directory not created")
+                return False
+            
+            # Activate the environment
+            if self.activate_venv(env_name):
+                if log_callback:
+                    log_callback("✅ Virtual environment created and activated successfully")
+                return True
+            else:
+                if log_callback:
+                    log_callback("❌ Failed to activate environment")
+                return False
+
+        except Exception as e:
+            error_msg = f"Environment creation failed: {str(e)}"
+            if log_callback:
+                log_callback(f"❌ {error_msg}")
+            self.logger.error(error_msg)
+            return False
     def create_environment_unified(self, name, location, packages=None, log_callback=None):
         """Unified environment creation method"""
         if packages is None:
@@ -5124,45 +5147,58 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
         threading.Thread(target=run_in_thread, daemon=True).start()
     
     def upgrade_pip(self, log_callback=None):
-        """Upgrade pip in the current environment"""
+        """Upgrade pip in the current environment using system terminal"""
         if not self.current_venv:
+            if log_callback:
+                log_callback("No virtual environment active")
             return False
-
+            
         try:
             if log_callback:
                 log_callback("Upgrading pip...")
-
-            result = self.run_hidden_subprocess_nuitka_safe(
+            
+            # Create environment with proper subprocess handling
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+            
+            process = subprocess.Popen(
                 [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=300,
-                env=self.get_clean_environment(),
+                bufsize=1,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
             )
-
-            if log_callback and result.stdout:
-                for line in result.stdout.splitlines():
-                    log_callback(line)
-            if log_callback and result.stderr:
-                for line in result.stderr.splitlines():
-                    log_callback(line)
-
-            if result.returncode == 0:
+            
+            # Stream output
+            for line in process.stdout:
+                if line and log_callback:
+                    log_callback(line.rstrip())
+            
+            exit_code = process.wait()
+            
+            if exit_code == 0:
                 if log_callback:
                     log_callback("Pip upgraded successfully")
                 return True
             else:
                 if log_callback:
-                    log_callback(f"Warning: Failed to upgrade pip (exit code {result.returncode})")
+                    log_callback(f"Warning: Failed to upgrade pip (exit code {exit_code})")
                 return False
-
+                
         except Exception as e:
             if log_callback:
                 log_callback(f"Error upgrading pip: {str(e)}")
             return False
-    
     def verify_installation(self, log_callback=None):
-        """Verify that the installation is working correctly"""
+        """Verify that the installation is working correctly using direct subprocess"""
         test_packages = ["manim", "numpy", "matplotlib", "customtkinter", "jedi"]
         
         if log_callback:
@@ -5177,41 +5213,60 @@ failed = []
 for package in test_packages:
     try:
         __import__(package)
-        print(f'[OK] {{package}} imported successfully')
+        print(f"✓ {{package}} - OK")
     except ImportError as e:
+        print(f"✗ {{package}} - FAILED: {{e}}")
         failed.append(package)
-        print(f'[FAIL] {{package}}: {{e}}')
 
 if failed:
-    print(f"FAILED_PACKAGES:{{','.join(failed)}}")
+    print(f"Failed packages: {{failed}}")
     sys.exit(1)
 else:
-    print("ALL_PACKAGES_OK")
+    print("All packages verified successfully!")
     sys.exit(0)
 """
         
         try:
-            result = self.run_hidden_subprocess_nuitka_safe(
+            # Execute verification in the virtual environment
+            startupinfo = None
+            creationflags = 0
+            
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+            
+            process = subprocess.Popen(
                 [self.python_path, "-c", test_code],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=60
+                startupinfo=startupinfo,
+                creationflags=creationflags
             )
             
-            if result.returncode == 0 and "ALL_PACKAGES_OK" in result.stdout:
+            # Stream output if callback provided
+            if log_callback:
+                for line in process.stdout:
+                    if line.strip():
+                        log_callback(line.strip())
+            
+            exit_code = process.wait()
+            
+            if exit_code == 0:
                 if log_callback:
-                    log_callback("All components verified successfully")
+                    log_callback("✅ Installation verification completed successfully")
                 return True
             else:
                 if log_callback:
-                    log_callback(f"Package verification failed: {result.stdout}")
+                    log_callback("❌ Installation verification failed")
                 return False
                 
         except Exception as e:
             if log_callback:
-                log_callback(f"Error verifying packages: {str(e)}")
+                log_callback(f"Error during verification: {str(e)}")
             return False
-    
     def check_manim_availability(self):
         """Quick check if manim is available in current environment"""
         try:
@@ -5468,8 +5523,138 @@ else:
                         self.logger.warning(f"Could not clean up {item}: {e}")
                         
         return cleaned
-
-
+    def create_thread_safe_log_callback(self, original_callback):
+        """Create a thread-safe version of a log callback"""
+        import queue
+        import threading
+        
+        if not hasattr(self, '_log_queue'):
+            self._log_queue = queue.Queue()
+            self._setup_log_queue_processor(original_callback)
+        
+        def thread_safe_callback(message):
+            self._log_queue.put(message)
+        
+        return thread_safe_callback
+    
+    def _setup_log_queue_processor(self, original_callback):
+        """Setup queue processor on main thread"""
+        def process_queue():
+            try:
+                while True:
+                    message = self._log_queue.get_nowait()
+                    # Call original callback on main thread
+                    if hasattr(self.parent_app, 'after'):
+                        self.parent_app.after(0, lambda m=message: original_callback(m))
+                    else:
+                        original_callback(message)
+            except:
+                pass  # Queue empty
+            
+            # Schedule next check
+            if hasattr(self.parent_app, 'after'):
+                self.parent_app.after(100, process_queue)
+        
+        if hasattr(self.parent_app, 'after'):
+            self.parent_app.after(100, process_queue)
+    def _find_best_python(self):
+        """Find the best Python executable available on the system"""
+        try:
+            # First try the current Python executable
+            current_python = sys.executable
+            if current_python and os.path.exists(current_python):
+                self.logger.info(f"Using current Python executable: {current_python}")
+                return current_python
+            
+            # Common Python executable names to search for
+            python_names = []
+            
+            if os.name == 'nt':  # Windows
+                python_names = [
+                    "python.exe", "python3.exe", 
+                    "python3.11.exe", "python3.10.exe", "python3.9.exe", "python3.8.exe"
+                ]
+            else:  # Unix/Linux/macOS
+                python_names = [
+                    "python3", "python", 
+                    "python3.11", "python3.10", "python3.9", "python3.8"
+                ]
+            
+            # Search in PATH
+            for python_name in python_names:
+                python_path = shutil.which(python_name)
+                if python_path and os.path.exists(python_path):
+                    # Verify it's a working Python installation
+                    try:
+                        result = subprocess.run(
+                            [python_path, "--version"],
+                            capture_output=True,
+                            text=True,
+                            timeout=10
+                        )
+                        if result.returncode == 0:
+                            self.logger.info(f"Found Python: {python_path} - {result.stdout.strip()}")
+                            return python_path
+                    except Exception as e:
+                        self.logger.warning(f"Failed to verify Python {python_path}: {e}")
+                        continue
+            
+            # If still not found, try common installation paths
+            common_paths = []
+            
+            if os.name == 'nt':  # Windows
+                # Check common Windows Python installation paths
+                for version in ['311', '310', '39', '38']:
+                    common_paths.extend([
+                        f"C:\\Python{version}\\python.exe",
+                        f"C:\\Program Files\\Python {version[0]}.{version[1:]}\\python.exe",
+                        f"C:\\Program Files (x86)\\Python {version[0]}.{version[1:]}\\python.exe",
+                        os.path.expanduser(f"~\\AppData\\Local\\Programs\\Python\\Python{version}\\python.exe")
+                    ])
+            else:  # Unix/Linux/macOS
+                common_paths = [
+                    "/usr/bin/python3", "/usr/bin/python",
+                    "/usr/local/bin/python3", "/usr/local/bin/python",
+                    "/opt/python3/bin/python3", "/opt/python/bin/python"
+                ]
+            
+            for path in common_paths:
+                if os.path.exists(path):
+                    try:
+                        result = subprocess.run(
+                            [path, "--version"],
+                            capture_output=True,
+                            text=True,
+                            timeout=10
+                        )
+                        if result.returncode == 0:
+                            self.logger.info(f"Found Python at common path: {path} - {result.stdout.strip()}")
+                            return path
+                    except Exception as e:
+                        continue
+            
+            # Last resort: try 'python' command directly
+            try:
+                result = subprocess.run(
+                    ["python", "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    python_path = shutil.which("python")
+                    if python_path:
+                        self.logger.info(f"Using 'python' command: {python_path}")
+                        return python_path
+            except Exception:
+                pass
+            
+            self.logger.error("No suitable Python installation found")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error finding Python executable: {e}")
+            return None
 class CallbackHandler(logging.Handler):
     """Custom logging handler that calls a callback function"""
     
