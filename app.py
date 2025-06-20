@@ -1413,6 +1413,13 @@ class SystemTerminalManager:
         
         # Detect system terminal
         self.detect_system_terminal()
+
+    def safe_after(self, delay, callback=None):
+        """Safely schedule a callback on the main Tk loop."""
+        try:
+            self.parent_app.root.after(delay, callback)
+        except RuntimeError:
+            pass
         
     def detect_system_terminal(self):
         """Detect the best system terminal to use"""
@@ -1544,24 +1551,20 @@ class SystemTerminalManager:
                             output_lines.append(line)
                             # Send to output display
                             if hasattr(self.parent_app, 'append_terminal_output'):
-                                self.parent_app.root.after(0, 
-                                    lambda l=line: self.parent_app.append_terminal_output(l))
+                                self.safe_after(0, lambda l=line: self.parent_app.append_terminal_output(l))
                         
                         process.wait()
                         
                         if on_complete:
                             success = process.returncode == 0
-                            self.parent_app.root.after(0, 
-                                lambda: on_complete(success, process.returncode))
+                            self.safe_after(0, lambda: on_complete(success, process.returncode))
                             
                     except Exception as e:
                         error_msg = f"Error executing command: {str(e)}\n"
                         if hasattr(self.parent_app, 'append_terminal_output'):
-                            self.parent_app.root.after(0, 
-                                lambda: self.parent_app.append_terminal_output(error_msg))
+                            self.safe_after(0, lambda: self.parent_app.append_terminal_output(error_msg))
                         if on_complete:
-                            self.parent_app.root.after(0, 
-                                lambda: on_complete(False, -1))
+                            self.safe_after(0, lambda: on_complete(False, -1))
                 
                 # Run in background thread
                 thread = threading.Thread(target=run_command, daemon=True)
@@ -3578,6 +3581,14 @@ class VirtualEnvironmentManager:
         self.bundled_venv_dir = None
         self.bundled_available = False
         self._detect_bundled_environment()
+
+    def safe_after(self, delay, callback=None):
+        """Safely schedule a callback on the main Tk root."""
+        if self.parent_app and hasattr(self.parent_app, 'root'):
+            try:
+                self.parent_app.root.after(delay, callback)
+            except RuntimeError:
+                pass
         
         # Essential packages for ManimStudio - COMPLETE LIST
         self.essential_packages = [
@@ -5014,30 +5025,20 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
                 # Stream output to parent app if available
                 if hasattr(self.parent_app, 'append_terminal_output'):
                     if result.stdout:
-                        self.parent_app.root.after(0, 
-                            lambda: self.parent_app.append_terminal_output(result.stdout))
+                        self.safe_after(0, lambda: self.parent_app.append_terminal_output(result.stdout))
                     if result.stderr:
-                        self.parent_app.root.after(0, 
-                            lambda: self.parent_app.append_terminal_output(result.stderr))
-                
-                # Call completion callback on main thread
+                        self.safe_after(0, lambda: self.parent_app.append_terminal_output(result.stderr))
+
                 if on_complete:
-                    self.parent_app.root.after(
-                        0, 
-                        lambda: on_complete(result.returncode == 0, result.returncode)
-                    )
+                    self.safe_after(0, lambda: on_complete(result.returncode == 0, result.returncode))
                         
             except Exception as e:
                 error_msg = f"Command execution error: {e}\n"
                 self.logger.error(error_msg)
                 if hasattr(self.parent_app, 'append_terminal_output'):
-                    self.parent_app.root.after(0, 
-                        lambda: self.parent_app.append_terminal_output(error_msg))
+                    self.safe_after(0, lambda: self.parent_app.append_terminal_output(error_msg))
                 if on_complete:
-                    self.parent_app.root.after(
-                        0, 
-                        lambda: on_complete(False, -1)
-                    )
+                    self.safe_after(0, lambda: on_complete(False, -1))
         
         # Run in background thread
         threading.Thread(target=run_in_thread, daemon=True).start()
