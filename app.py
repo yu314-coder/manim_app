@@ -3637,6 +3637,17 @@ class VirtualEnvironmentManager:
         
         # Initialize environment detection
         self._initialize_environment()
+
+    def show_setup_dialog(self):
+        """Display the environment setup dialog and wait until it closes."""
+        if self.parent_app is None:
+            return
+        dialog = EnvironmentSetupDialog(self.parent_app.root, self)
+        self.parent_app.root.wait_window(dialog)
+
+    def is_environment_ready(self):
+        """Return True when the environment no longer needs setup."""
+        return not self.needs_setup
         
     def _detect_if_frozen(self):
         """Enhanced detection of frozen executable"""
@@ -7618,10 +7629,11 @@ class ManimStudioApp:
         # Initialize system terminal manager (will be created in create_output_area)
         self.terminal = None
         
-        # Show setup dialog if needed
+        # Run environment setup before showing UI
         if self.venv_manager.needs_setup:
-            # Show setup dialog on the next UI update
-            self.root.after(100, self.check_environment_setup)
+            self.root.withdraw()
+            self.venv_manager.show_setup_dialog()
+            self.root.deiconify()
 
         # Load settings before initializing variables that depend on them
         self.load_settings()
@@ -10283,7 +10295,7 @@ class GettingStartedDialog(ctk.CTkToplevel):
     def setup_ui(self):
         """Setup the main UI"""
         # Create main frame
-        main_frame = ctk.CTkFrame(self.root)
+        main_frame = ctk.CTkFrame(self)
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Title
@@ -10856,6 +10868,8 @@ def main():
 
     logger = None  # Initialize logger variable to avoid UnboundLocalError
 
+    debug_mode = "--debug" in sys.argv
+
     # Initialize encoding early to avoid Unicode issues
     try:
         import startup
@@ -11023,9 +11037,12 @@ def main():
         logger.info("Creating main application...")
         app = ManimStudioApp(latex_path=latex_path)
         
-        # Show getting started on first run
+        # Show getting started dialog when requested
         settings_file = os.path.join(app_dir, "settings.json")
-        if not os.path.exists(settings_file):
+        if debug_mode:
+            logger.info("Debug mode - showing Getting Started dialog")
+            app.root.after(1000, lambda: GettingStartedDialog(app.root))
+        elif not os.path.exists(settings_file):
             logger.info("First run detected, showing getting started dialog")
             app.root.after(1000, lambda: GettingStartedDialog(app.root))
         
