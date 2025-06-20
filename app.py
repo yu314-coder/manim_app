@@ -10558,6 +10558,30 @@ class MyScene(Scene):
             font=ctk.CTkFont(family="Consolas", size=10)
         )
         self.log_display.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Load log contents initially
+        self.refresh_logs()
+
+    def refresh_logs(self):
+        """Load the application log file into the display."""
+        try:
+            with open(os.path.join(os.path.expanduser("~"), ".manim_studio", "manim_studio.log"), "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:  # File not found or read error
+            content = f"Error reading log: {e}"
+        self.log_display.delete("1.0", "end")
+        self.log_display.insert("1.0", content)
+
+    def clear_logs(self):
+        """Clear the log file and the display."""
+        try:
+            log_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "manim_studio.log")
+            open(log_path, "w").close()
+        except Exception as e:
+            self.log_display.delete("1.0", "end")
+            self.log_display.insert("1.0", f"Error clearing log: {e}")
+            return
+        self.log_display.delete("1.0", "end")
     def create_setup_tab(self):
         """Create setup tab content"""
         content = ctk.CTkScrollableFrame(self.step1)
@@ -10570,7 +10594,7 @@ class MyScene(Scene):
             font=ctk.CTkFont(size=20, weight="bold")
         ).pack(pady=(0, 20))
         
-        # Steps
+        # Steps (installation focused)
         steps = [
             ("1. Automatic Environment Setup", """
 ✅ ManimStudio automatically detects your Python environment
@@ -10586,21 +10610,6 @@ class MyScene(Scene):
 ✅ Automatic dependency management
 ✅ Export/import requirements.txt files
 ✅ Seamless switching between environments
-            """),
-            ("3. Your First Scene", """
-✅ The editor comes with a complete example scene
-✅ Modify the default code or create your own
-✅ Use IntelliSense for smart autocompletion (Ctrl+Space)
-✅ Click 'Quick Preview' to test your animation
-✅ Use 'Render Animation' for final high-quality output
-            """),
-            ("4. Professional Features", """
-✅ Choose from multiple professional themes (Dark+, Light+, Monokai, Solarized)
-✅ Advanced code editor with syntax highlighting
-✅ Real-time video preview with playback controls
-✅ Visual asset management for images and audio
-✅ Advanced find/replace with regex support
-✅ Professional rendering up to 8K resolution
             """)
         ]
         
@@ -11039,6 +11048,9 @@ def main():
             app.root.withdraw()
             dialog = GettingStartedDialog(app)
             app.root.wait_window(dialog)
+            if not app.venv_manager.is_environment_ready():
+                logger.error("Environment setup incomplete. Exiting.")
+                return
             app.root.deiconify()
 
         logger.info("Starting application main loop...")
