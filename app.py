@@ -1959,16 +1959,6 @@ All packages will be installed in an isolated environment that won't affect your
         )
         self.start_button.pack(side="left", padx=(0, 10))
 
-        self.terminal_setup_button = ctk.CTkButton(
-            button_frame,
-            text="🖥️ Terminal Setup",
-            command=self.start_terminal_setup,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=VSCODE_COLORS["primary"],
-            hover_color=VSCODE_COLORS["primary_hover"]
-        )
-        self.terminal_setup_button.pack(side="left", padx=(0, 10))
         
         self.skip_button = ctk.CTkButton(
             button_frame,
@@ -2013,8 +2003,6 @@ All packages will be installed in an isolated environment that won't affect your
         """Start the environment setup process"""
         self.start_button.configure(state="disabled")
         self.skip_button.configure(state="disabled")
-        if hasattr(self, 'terminal_setup_button'):
-            self.terminal_setup_button.configure(state="disabled")
         
         self.log_message("Starting ManimStudio environment setup...")
         self.update_progress(0.05, "Preparing...", "Initializing environment creation")
@@ -2034,8 +2022,6 @@ All packages will be installed in an isolated environment that won't affect your
         """Run basic environment setup directly in the integrated terminal"""
         self.start_button.configure(state="disabled")
         self.skip_button.configure(state="disabled")
-        if hasattr(self, 'terminal_setup_button'):
-            self.terminal_setup_button.configure(state="disabled")
 
         env_path = self.env_path_label.cget("text")
 
@@ -2062,10 +2048,23 @@ All packages will be installed in an isolated environment that won't affect your
             if hasattr(self.parent_window, 'output_tabs'):
                 self.parent_window.output_tabs.set("Terminal")
 
-            self.parent_window.terminal.run_command_redirected(
-                cmd,
-                on_complete=lambda success, code, i=idx: run_next(i + 1)
-            )
+            if hasattr(self.parent_window, 'terminal'):
+                self.parent_window.terminal.run_command_redirected(
+                    cmd,
+                    on_complete=lambda success, code, i=idx: run_next(i + 1)
+                )
+            else:
+                process = popen_original(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True
+                )
+                for line in process.stdout:
+                    if line:
+                        self.log_message_threadsafe(line.rstrip())
+                process.wait()
+                run_next(idx + 1)
 
         threading.Thread(target=run_next, daemon=True).start()
 
