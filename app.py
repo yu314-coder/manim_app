@@ -3638,6 +3638,77 @@ class VirtualEnvironmentManager:
         # Initialize environment detection
         self._initialize_environment()
 
+    def fix_mapbox_earcut_issue(self):
+        """Attempt to reinstall mapbox_earcut to resolve DLL problems."""
+        try:
+            pip_cmd = self.get_pip_command()
+            # force reinstall of known good version
+            cmd = pip_cmd + ["install", "--force-reinstall", "mapbox-earcut"]
+            result = self.run_hidden_subprocess_nuitka_safe(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if result.returncode == 0:
+                return True
+        except Exception as e:
+            self.logger.error(f"Error fixing mapbox_earcut: {e}")
+        return False
+
+    def get_venv_info(self, venv_name):
+        """Return basic information about a named environment."""
+        if venv_name.startswith("system_") or venv_name.startswith("current_"):
+            return {
+                'name': venv_name,
+                'path': sys.prefix,
+                'is_active': venv_name == self.current_venv,
+                'python_version': f"Python {sys.version.split()[0]}",
+                'packages_count': 0,
+                'size': 0,
+            }
+
+        env_path = os.path.join(self.venv_dir, venv_name)
+        info = {
+            'name': venv_name,
+            'path': env_path,
+            'is_active': venv_name == self.current_venv,
+            'python_version': None,
+            'packages_count': 0,
+            'size': 0,
+        }
+        python_exe = os.path.join(env_path, "Scripts", "python.exe") if os.name == "nt" else os.path.join(env_path, "bin", "python")
+        pip_exe = os.path.join(env_path, "Scripts", "pip.exe") if os.name == "nt" else os.path.join(env_path, "bin", "pip")
+        try:
+            if os.path.exists(python_exe):
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [python_exe, "--version"], capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    info['python_version'] = result.stdout.strip()
+            if os.path.exists(pip_exe):
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [pip_exe, "list", "--format=json"], capture_output=True, text=True, timeout=15
+                )
+                if result.returncode == 0:
+                    try:
+                        import json
+                        info['packages_count'] = len(json.loads(result.stdout))
+                    except Exception:
+                        info['packages_count'] = 0
+            total_size = 0
+            for dirpath, _, filenames in os.walk(env_path):
+                for fname in filenames:
+                    fpath = os.path.join(dirpath, fname)
+                    try:
+                        total_size += os.path.getsize(fpath)
+                    except OSError:
+                        pass
+            info['size'] = total_size
+        except Exception as e:
+            self.logger.error(f"Error getting venv info for {venv_name}: {e}")
+        return info
+
     def show_setup_dialog(self):
         """Display the environment setup dialog and wait until it closes."""
         if self.parent_app is None:
@@ -7623,6 +7694,9 @@ class ManimStudioApp:
         self.latex_path = latex_path
         self.latex_installed = bool(latex_path)
 
+        # Initialize logger reference
+        self.logger = logger
+
         # Initialize virtual environment manager
         self.venv_manager = VirtualEnvironmentManager(self)
         
@@ -7647,8 +7721,6 @@ class ManimStudioApp:
         # Apply VSCode color scheme
         self.apply_vscode_theme()
         
-        # Start background tasks
-        self.start_background_tasks()
         
     def check_environment_setup(self):
         """Check if environment setup is needed"""
@@ -10184,6 +10256,7 @@ Licensed under MIT License"""
     def run(self):
         """Start the application"""
         try:
+            self.root.after(100, self.start_background_tasks)
             self.root.mainloop()
         except Exception as e:
             logger.error(f"Application error: {e}")
@@ -10217,7 +10290,7 @@ Licensed under MIT License"""
                     )
                     
         except Exception as e:
-            self.logger.error(f"Error fixing dependencies: {e}")
+            logger.error(f"Error fixing dependencies: {e}")
             import tkinter.messagebox as messagebox
             messagebox.showerror(
                 "Error",
