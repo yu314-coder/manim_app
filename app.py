@@ -2661,12 +2661,22 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         
         # Get packages in background thread
         def get_packages_thread():
-            success, _ = self.venv_manager.list_packages(self.on_packages_loaded)
-            if not success:
-                self.after(0, lambda: self.pkg_listbox.delete(0, tk.END))
-                self.after(0, lambda: self.pkg_listbox.insert(tk.END, "Failed to load packages"))
-        
+            success, result = self.venv_manager.list_packages()
+            if success:
+                self.package_queue.put((True, result, None))
+            else:
+                self.package_queue.put((False, [], result))
+
         threading.Thread(target=get_packages_thread, daemon=True).start()
+        self.after(100, self.check_packages_queue)
+
+    def check_packages_queue(self):
+        try:
+            success, packages, error = self.package_queue.get_nowait()
+        except queue.Empty:
+            self.after(100, self.check_packages_queue)
+            return
+        self.on_packages_loaded(success, packages, error)
         
     def on_packages_loaded(self, success, packages, error):
         """Handle package list loading"""
@@ -5271,7 +5281,7 @@ else:
                 log_callback(f"Error installing requirements: {str(e)}")
             return False
 
-    def list_packages(self, callback=None, env_name=None):
+    def list_packages(self, env_name=None):
         """List installed packages for the given or current environment."""
         if env_name and not env_name.startswith(("system_", "current_")):
             venv_path = os.path.join(self.venv_dir, env_name)
@@ -5292,21 +5302,11 @@ else:
 
             if result.returncode == 0:
                 packages = json.loads(result.stdout)
-                if callback and self.parent_app:
-                    self.parent_app.root.after(
-                        0, lambda: callback(True, packages, None)
-                    )
                 return True, packages
             else:
-                if callback and self.parent_app:
-                    self.parent_app.root.after(
-                        0, lambda: callback(False, [], result.stderr)
-                    )
                 return False, result.stderr
 
         except Exception as e:
-            if callback and self.parent_app:
-                self.parent_app.root.after(0, lambda: callback(False, [], str(e)))
             return False, str(e)
 
     def cleanup_old_environments(self, keep_current=True):
@@ -10391,6 +10391,7 @@ class GettingStartedDialog(ctk.CTkToplevel):
         super().__init__(app.root)
         self.app = app
         self.venv_manager = app.venv_manager
+        self.package_queue = queue.Queue()
         
         self.title("Getting Started - Manim Animation Studio")
         self.geometry("700x600")
