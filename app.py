@@ -10065,7 +10065,7 @@ else:
         
     def show_getting_started(self):
         """Show getting started guide"""
-        getting_started_dialog = GettingStartedDialog(self.root)
+        GettingStartedDialog(self)
         
     def show_about(self):
         """Show about dialog"""
@@ -10275,23 +10275,50 @@ class DependencyInstallDialog(ctk.CTkToplevel):
         self.after(1000, self.destroy)
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
-    
-    def __init__(self, parent):
-        super().__init__(parent)
+
+    def __init__(self, app):
+        super().__init__(app.root)
+        self.app = app
+        self.venv_manager = app.venv_manager
         
         self.title("Getting Started - Manim Animation Studio")
         self.geometry("700x600")
-        self.transient(parent)
+        self.transient(app.root)
         self.grab_set()
         
         # Center the dialog
         self.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 50,
-            parent.winfo_rooty() + 50
+            app.root.winfo_rootx() + 50,
+            app.root.winfo_rooty() + 50
         ))
-        
+
         self.setup_ui()
-        
+        self.update_env_status()
+
+    def __getattr__(self, name):
+        """Delegate attribute access to the parent app when not found here."""
+        return getattr(self.app, name)
+
+    def setup_environment(self):
+        """Launch the environment setup dialog via the app's manager."""
+        self.venv_manager.show_setup_dialog()
+        self.update_env_status()
+
+    def fix_manim_dependencies(self):
+        self.app.fix_manim_dependencies()
+        self.update_env_status()
+
+    def manage_environments(self):
+        self.app.manage_environment()
+        self.update_env_status()
+
+    def update_env_status(self):
+        if self.venv_manager.is_environment_ready():
+            status = "Environment ready"
+        else:
+            status = "Environment not set up"
+        self.env_status_label.configure(text=status)
+
     def setup_ui(self):
         """Setup the main UI"""
         # Create main frame
@@ -11039,13 +11066,14 @@ def main():
         
         # Show getting started dialog when requested
         settings_file = os.path.join(app_dir, "settings.json")
-        if debug_mode:
-            logger.info("Debug mode - showing Getting Started dialog")
-            app.root.after(1000, lambda: GettingStartedDialog(app.root))
-        elif not os.path.exists(settings_file):
-            logger.info("First run detected, showing getting started dialog")
-            app.root.after(1000, lambda: GettingStartedDialog(app.root))
-        
+        if debug_mode or not os.path.exists(settings_file):
+            if debug_mode:
+                logger.info("Debug mode - showing Getting Started dialog")
+            else:
+                logger.info("First run detected, showing getting started dialog")
+            dialog = GettingStartedDialog(app)
+            app.root.wait_window(dialog)
+
         logger.info("Starting application main loop...")
         app.run()
         
