@@ -11154,16 +11154,15 @@ def main():
         logger.info("Creating main application...")
         app = ManimStudioApp(latex_path=latex_path)
         
-        # Show getting started dialog when requested
+        # Show setup dialog on first run or when debugging
         settings_file = os.path.join(app_dir, "settings.json")
         if debug_mode or not os.path.exists(settings_file):
             if debug_mode:
-                logger.info("Debug mode - showing Getting Started dialog")
+                logger.info("Debug mode - showing Environment Setup dialog")
             else:
-                logger.info("First run detected, showing getting started dialog")
+                logger.info("First run detected, showing Environment Setup dialog")
             app.root.withdraw()
-            dialog = GettingStartedDialog(app)
-            app.root.wait_window(dialog)
+            app.venv_manager.show_setup_dialog()
             if not app.venv_manager.is_environment_ready():
                 logger.error("Environment setup incomplete. Exiting.")
                 return
