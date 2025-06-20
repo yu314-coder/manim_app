@@ -18,42 +18,24 @@ except Exception:
     run_original = subprocess.run
 import sys
 import time
-import uuid
 import threading
 import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
-import base64
 import re
 from PIL import Image, ImageTk
-import io
-import numpy as np
 import cv2
 import math
 import requests
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
-import asyncio
-import aiohttp
-import webbrowser
-from urllib.parse import quote, unquote
-import venv
-# Add to imports
+from typing import List, Optional
 import psutil
 import signal
-import re
 import glob
-import shutil
-import threading
-import tempfile
-import subprocess
-import tkinter as tk
 import queue
 import atexit
 import multiprocessing
-from tkinter import filedialog, messagebox
 try:
     from fixes import ensure_ascii_path
 except Exception:
@@ -152,7 +134,7 @@ def check_dll_dependencies():
         """Check if required DLLs are available at startup"""
         if getattr(sys, 'frozen', False):
             try:
-                import mapbox_earcut
+                import mapbox_earcut  # noqa: F401
                 print("✅ mapbox_earcut loaded successfully")
                 return True
             except ImportError as e:
@@ -204,17 +186,17 @@ except ImportError:
 
 # Try to import other optional dependencies
 try:
-    from idlelib.colorizer import ColorDelegator, color_config
-    from idlelib.percolator import Percolator
-    from idlelib.undo import UndoDelegator
+    from idlelib.colorizer import ColorDelegator, color_config  # noqa: F401
+    from idlelib.percolator import Percolator  # noqa: F401
+    from idlelib.undo import UndoDelegator  # noqa: F401
     IDLE_AVAILABLE = True
 except ImportError:
     IDLE_AVAILABLE = False
 
 try:
-    from pygments import highlight
-    from pygments.lexers import PythonLexer
-    from pygments.formatters import TerminalFormatter
+    from pygments import highlight  # noqa: F401
+    from pygments.lexers import PythonLexer  # noqa: F401
+    from pygments.formatters import TerminalFormatter  # noqa: F401
     PYGMENTS_AVAILABLE = True
 except ImportError:
     PYGMENTS_AVAILABLE = False
@@ -627,7 +609,7 @@ class PackageInstallationProgressDialog(ctk.CTkToplevel):
                 if not success and not self.installation_cancelled:
                     self.log_message(f"ERROR: Failed to install {package}")
                     # Don't fail completely for single package failures
-                    self.log_message(f"Continuing with remaining packages...")
+                    self.log_message("Continuing with remaining packages...")
                 
                 # Update progress
                 self.update_package_progress(1.0, f"✓ {package} processed")
@@ -980,7 +962,7 @@ Working directory: {self.cwd}
                     
                     # Show completion status
                     if return_code == 0:
-                        self.insert("end", f"\n[Process completed successfully]\n", "success")
+                        self.insert("end", "\n[Process completed successfully]\n", "success")
                     else:
                         self.insert("end", f"\n[Process exited with code {return_code}]\n", "error")
                         
@@ -1665,7 +1647,14 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         self.setup_complete = False
         
         self.title("ManimStudio - Environment Setup")
-        self.geometry("750x780")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(750, screen_w - 100)
+        height = min(780, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(650, 600)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -2291,10 +2280,14 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         self.package_queue = queue.Queue()
         self.title("Virtual Environment Manager")
         
-        # FIXED: Improved sizing to ensure buttons are visible
-        self.geometry("900x800")
-        self.minsize(850, 850)  # Set minimum size to ensure all controls are visible
-        self.resizable(True, True)  # Allow user to resize if needed
+        # Dynamic sizing so dialog fits on smaller screens
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(900, screen_w - 100)
+        height = min(800, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(min(850, width), min(700, height))
+        self.resizable(True, True)
         
         self.transient(parent)
         self.grab_set()
@@ -2989,7 +2982,14 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
         self.venv_manager = venv_manager
         
         self.title("Create New Environment")
-        self.geometry("500x1000")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(600, screen_w - 100)
+        height = min(700, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(500, 500)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -3346,7 +3346,14 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         self.packages = packages
         
         self.title("Creating Environment")
-        self.geometry("500x900")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(500, screen_w - 100)
+        height = min(900, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(450, 400)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -6562,7 +6569,14 @@ class FindReplaceDialog(ctk.CTkToplevel):
         
         self.text_widget = text_widget
         self.title("Find and Replace")
-        self.geometry("450x250")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(450, screen_w - 100)
+        height = min(250, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(400, 200)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -7718,7 +7732,11 @@ class ManimStudioApp:
         # Initialize main window
         self.root = ctk.CTk()
         self.root.title(f"{APP_NAME} - Professional Edition v{APP_VERSION}")
-        self.root.geometry("1600x1000")
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        width = min(1600, screen_w - 100)
+        height = min(1000, screen_h - 100)
+        self.root.geometry(f"{width}x{height}")
         
         # Set minimum size
         self.root.minsize(1200, 800)
@@ -10182,7 +10200,11 @@ else:
         """Show about dialog"""
         about_dialog = ctk.CTkToplevel(self.root)
         about_dialog.title(f"About {APP_NAME}")
-        about_dialog.geometry("500x600")
+        screen_w = about_dialog.winfo_screenwidth()
+        screen_h = about_dialog.winfo_screenheight()
+        width = min(500, screen_w - 100)
+        height = min(600, screen_h - 100)
+        about_dialog.geometry(f"{width}x{height}")
         about_dialog.transient(self.root)
         about_dialog.grab_set()
         
@@ -10345,7 +10367,14 @@ class DependencyInstallDialog(ctk.CTkToplevel):
         self.packages = packages
 
         self.title("Installing Packages")
-        self.geometry("500x400")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(500, screen_w - 100)
+        height = min(400, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(400, 300)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", lambda: None)
@@ -10395,7 +10424,15 @@ class GettingStartedDialog(ctk.CTkToplevel):
         self.package_queue = queue.Queue()
         
         self.title("Getting Started - Manim Animation Studio")
-        self.geometry("700x600")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+
+        width = min(800, screen_w - 100)
+        height = min(650, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(600, 500)
+        self.resizable(True, True)
         self.transient(app.root)
         self.grab_set()
         
@@ -10910,7 +10947,14 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
         
         self.venv_manager = venv_manager
         self.title("Environment Setup")
-        self.geometry("500x300")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(500, screen_w - 100)
+        height = min(300, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(400, 250)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -11154,15 +11198,15 @@ def main():
         logger.info("Creating main application...")
         app = ManimStudioApp(latex_path=latex_path)
         
-        # Show setup dialog on first run or when debugging
+        # Show getting started guide on first run or when debugging
         settings_file = os.path.join(app_dir, "settings.json")
         if debug_mode or not os.path.exists(settings_file):
             if debug_mode:
-                logger.info("Debug mode - showing Environment Setup dialog")
+                logger.info("Debug mode - showing Getting Started dialog")
             else:
-                logger.info("First run detected, showing Environment Setup dialog")
+                logger.info("First run detected, showing Getting Started dialog")
             app.root.withdraw()
-            app.venv_manager.show_setup_dialog()
+            GettingStartedDialog(app)
             if not app.venv_manager.is_environment_ready():
                 logger.error("Environment setup incomplete. Exiting.")
                 return
