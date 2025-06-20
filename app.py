@@ -18,42 +18,24 @@ except Exception:
     run_original = subprocess.run
 import sys
 import time
-import uuid
 import threading
 import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
-import base64
 import re
 from PIL import Image, ImageTk
-import io
-import numpy as np
 import cv2
 import math
 import requests
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
-import asyncio
-import aiohttp
-import webbrowser
-from urllib.parse import quote, unquote
-import venv
-# Add to imports
+from typing import List, Optional
 import psutil
 import signal
-import re
 import glob
-import shutil
-import threading
-import tempfile
-import subprocess
-import tkinter as tk
 import queue
 import atexit
 import multiprocessing
-from tkinter import filedialog, messagebox
 try:
     from fixes import ensure_ascii_path
 except Exception:
@@ -152,7 +134,7 @@ def check_dll_dependencies():
         """Check if required DLLs are available at startup"""
         if getattr(sys, 'frozen', False):
             try:
-                import mapbox_earcut
+                import mapbox_earcut  # noqa: F401
                 print("✅ mapbox_earcut loaded successfully")
                 return True
             except ImportError as e:
@@ -204,17 +186,17 @@ except ImportError:
 
 # Try to import other optional dependencies
 try:
-    from idlelib.colorizer import ColorDelegator, color_config
-    from idlelib.percolator import Percolator
-    from idlelib.undo import UndoDelegator
+    from idlelib.colorizer import ColorDelegator, color_config  # noqa: F401
+    from idlelib.percolator import Percolator  # noqa: F401
+    from idlelib.undo import UndoDelegator  # noqa: F401
     IDLE_AVAILABLE = True
 except ImportError:
     IDLE_AVAILABLE = False
 
 try:
-    from pygments import highlight
-    from pygments.lexers import PythonLexer
-    from pygments.formatters import TerminalFormatter
+    from pygments import highlight  # noqa: F401
+    from pygments.lexers import PythonLexer  # noqa: F401
+    from pygments.formatters import TerminalFormatter  # noqa: F401
     PYGMENTS_AVAILABLE = True
 except ImportError:
     PYGMENTS_AVAILABLE = False
@@ -627,7 +609,7 @@ class PackageInstallationProgressDialog(ctk.CTkToplevel):
                 if not success and not self.installation_cancelled:
                     self.log_message(f"ERROR: Failed to install {package}")
                     # Don't fail completely for single package failures
-                    self.log_message(f"Continuing with remaining packages...")
+                    self.log_message("Continuing with remaining packages...")
                 
                 # Update progress
                 self.update_package_progress(1.0, f"✓ {package} processed")
@@ -980,7 +962,7 @@ Working directory: {self.cwd}
                     
                     # Show completion status
                     if return_code == 0:
-                        self.insert("end", f"\n[Process completed successfully]\n", "success")
+                        self.insert("end", "\n[Process completed successfully]\n", "success")
                     else:
                         self.insert("end", f"\n[Process exited with code {return_code}]\n", "error")
                         
@@ -1665,7 +1647,14 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         self.setup_complete = False
         
         self.title("ManimStudio - Environment Setup")
-        self.geometry("750x780")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = max(650, min(int(screen_w * 0.7), screen_w - 100, 1000))
+        height = max(600, min(int(screen_h * 0.85), screen_h - 100, 900))
+        self.geometry(f"{width}x{height}")
+        self.minsize(650, 600)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -1753,7 +1742,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             width=120
         ).grid(row=1, column=0, sticky="w", pady=3)
         
-        env_path = os.path.join(BASE_DIR, "venvs", "manim_studio_default")
+        env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
         self.env_path_label = ctk.CTkLabel(
             env_details_frame,
             text=env_path
@@ -2291,10 +2280,14 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         self.package_queue = queue.Queue()
         self.title("Virtual Environment Manager")
         
-        # FIXED: Improved sizing to ensure buttons are visible
-        self.geometry("900x800")
-        self.minsize(850, 850)  # Set minimum size to ensure all controls are visible
-        self.resizable(True, True)  # Allow user to resize if needed
+        # Dynamic sizing so dialog fits on smaller screens
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(900, screen_w - 100)
+        height = min(800, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(min(850, width), min(700, height))
+        self.resizable(True, True)
         
         self.transient(parent)
         self.grab_set()
@@ -2989,7 +2982,14 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
         self.venv_manager = venv_manager
         
         self.title("Create New Environment")
-        self.geometry("500x1000")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(600, screen_w - 100)
+        height = min(700, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(500, 500)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -3072,8 +3072,8 @@ class NewEnvironmentDialog(ctk.CTkToplevel):
             width=100
         ).pack(side="left")
         
-        # Default location next to the executable
-        default_location = os.path.join(BASE_DIR, "venvs")
+        # Default location under the user's application directory
+        default_location = self.venv_manager.venv_dir
         self.location_var = ctk.StringVar(value=default_location)
         
         location_entry = ctk.CTkEntry(
@@ -3346,7 +3346,14 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         self.packages = packages
         
         self.title("Creating Environment")
-        self.geometry("500x900")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(500, screen_w - 100)
+        height = min(900, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(450, 400)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -6562,7 +6569,14 @@ class FindReplaceDialog(ctk.CTkToplevel):
         
         self.text_widget = text_widget
         self.title("Find and Replace")
-        self.geometry("450x250")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(450, screen_w - 100)
+        height = min(250, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(400, 200)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -7714,11 +7728,15 @@ class PyPISearchEngine:
         return POPULAR_PACKAGES
 
 class ManimStudioApp:
-    def __init__(self, latex_path: Optional[str] = None):
+    def __init__(self, latex_path: Optional[str] = None, debug: bool = False):
         # Initialize main window
         self.root = ctk.CTk()
         self.root.title(f"{APP_NAME} - Professional Edition v{APP_VERSION}")
-        self.root.geometry("1600x1000")
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        width = min(1600, screen_w - 100)
+        height = min(1000, screen_h - 100)
+        self.root.geometry(f"{width}x{height}")
         
         # Set minimum size
         self.root.minsize(1200, 800)
@@ -7732,6 +7750,9 @@ class ManimStudioApp:
         # Store LaTeX path (``None`` if not found)
         self.latex_path = latex_path
         self.latex_installed = bool(latex_path)
+
+        # Debug flag to allow re-running setup
+        self.debug_mode = debug
 
         # Initialize logger reference
         self.logger = logger
@@ -10176,13 +10197,18 @@ else:
         
     def show_getting_started(self):
         """Show getting started guide"""
-        GettingStartedDialog(self)
+        dialog = GettingStartedDialog(self)
+        self.root.wait_window(dialog)
         
     def show_about(self):
         """Show about dialog"""
         about_dialog = ctk.CTkToplevel(self.root)
         about_dialog.title(f"About {APP_NAME}")
-        about_dialog.geometry("500x600")
+        screen_w = about_dialog.winfo_screenwidth()
+        screen_h = about_dialog.winfo_screenheight()
+        width = min(500, screen_w - 100)
+        height = min(600, screen_h - 100)
+        about_dialog.geometry(f"{width}x{height}")
         about_dialog.transient(self.root)
         about_dialog.grab_set()
         
@@ -10345,7 +10371,14 @@ class DependencyInstallDialog(ctk.CTkToplevel):
         self.packages = packages
 
         self.title("Installing Packages")
-        self.geometry("500x400")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(500, screen_w - 100)
+        height = min(400, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(400, 300)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", lambda: None)
@@ -10395,7 +10428,15 @@ class GettingStartedDialog(ctk.CTkToplevel):
         self.package_queue = queue.Queue()
         
         self.title("Getting Started - Manim Animation Studio")
-        self.geometry("700x600")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+
+        width = max(600, min(int(screen_w * 0.6), screen_w - 100, 1000))
+        height = max(500, min(int(screen_h * 0.8), screen_h - 100, 850))
+        self.geometry(f"{width}x{height}")
+        self.minsize(600, 500)
+        self.resizable(True, True)
         self.transient(app.root)
         self.grab_set()
         
@@ -10431,12 +10472,18 @@ class GettingStartedDialog(ctk.CTkToplevel):
         else:
             status = "Environment not set up"
         self.env_status_label.configure(text=status)
-        if self.venv_manager.is_environment_ready():
+        env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
+        self.env_path_display.configure(text=env_path)
+        ready = self.venv_manager.is_environment_ready()
+        if ready and not getattr(self.app, "debug_mode", False):
             self.setup_button.configure(state="disabled")
+        else:
+            self.setup_button.configure(state="normal")
+
+        if ready:
             self.fix_button.configure(state="normal")
             self.manage_button.configure(state="normal")
         else:
-            self.setup_button.configure(state="normal")
             self.fix_button.configure(state="disabled")
             self.manage_button.configure(state="disabled")
 
@@ -10464,7 +10511,16 @@ class GettingStartedDialog(ctk.CTkToplevel):
             text="Checking environment...",
             font=ctk.CTkFont(size=12)
         )
-        self.env_status_label.pack(pady=10)
+        self.env_status_label.pack(pady=(10, 5))
+
+        # Environment path
+        env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
+        self.env_path_display = ctk.CTkLabel(
+            status_frame,
+            text=env_path,
+            font=ctk.CTkFont(size=10)
+        )
+        self.env_path_display.pack(pady=(0, 10))
         
         # Button frame
         button_frame = ctk.CTkFrame(main_frame)
@@ -10899,7 +10955,14 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
         
         self.venv_manager = venv_manager
         self.title("Environment Setup")
-        self.geometry("500x300")
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(500, screen_w - 100)
+        height = min(300, screen_h - 100)
+        self.geometry(f"{width}x{height}")
+        self.minsize(400, 250)
+        self.resizable(True, True)
         self.transient(parent)
         self.grab_set()
         
@@ -11141,15 +11204,21 @@ def main():
 
         # Create and run application
         logger.info("Creating main application...")
-        app = ManimStudioApp(latex_path=latex_path)
+        app = ManimStudioApp(latex_path=latex_path, debug=debug_mode)
         
-        # Show getting started dialog when requested
+        # Show setup dialogs before launching the main UI
         settings_file = os.path.join(app_dir, "settings.json")
-        if debug_mode or not os.path.exists(settings_file):
-            if debug_mode:
-                logger.info("Debug mode - showing Getting Started dialog")
-            else:
-                logger.info("First run detected, showing getting started dialog")
+        if debug_mode:
+            logger.info("Debug mode - showing Getting Started dialog")
+            app.root.withdraw()
+            dialog = GettingStartedDialog(app)
+            app.root.wait_window(dialog)
+            if not app.venv_manager.is_environment_ready():
+                logger.error("Environment setup incomplete. Exiting.")
+                return
+            app.root.deiconify()
+        elif not os.path.exists(settings_file):
+            logger.info("First run detected, showing Getting Started dialog")
             app.root.withdraw()
             dialog = GettingStartedDialog(app)
             app.root.wait_window(dialog)
