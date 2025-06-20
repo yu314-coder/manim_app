@@ -1,7 +1,7 @@
 # app.py - Manim Animation Studio - Professional Edition with Integrated Environment Manager
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk, colorchooser
+from tkinter import filedialog, messagebox
 import tempfile
 import os
 import ctypes
@@ -2285,9 +2285,10 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
     
     def __init__(self, parent, venv_manager):
         super().__init__(parent)
-        
+
         self.parent = parent
         self.venv_manager = venv_manager
+        self.package_queue = queue.Queue()
         self.title("Virtual Environment Manager")
         
         # FIXED: Improved sizing to ensure buttons are visible
@@ -2661,12 +2662,22 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
         
         # Get packages in background thread
         def get_packages_thread():
-            success, _ = self.venv_manager.list_packages(self.on_packages_loaded)
-            if not success:
-                self.after(0, lambda: self.pkg_listbox.delete(0, tk.END))
-                self.after(0, lambda: self.pkg_listbox.insert(tk.END, "Failed to load packages"))
-        
+            success, result = self.venv_manager.list_packages()
+            if success:
+                self.package_queue.put((True, result, None))
+            else:
+                self.package_queue.put((False, [], result))
+
         threading.Thread(target=get_packages_thread, daemon=True).start()
+        self.after(100, self.check_packages_queue)
+
+    def check_packages_queue(self):
+        try:
+            success, packages, error = self.package_queue.get_nowait()
+        except queue.Empty:
+            self.after(100, self.check_packages_queue)
+            return
+        self.on_packages_loaded(success, packages, error)
         
     def on_packages_loaded(self, success, packages, error):
         """Handle package list loading"""
@@ -3637,6 +3648,88 @@ class VirtualEnvironmentManager:
         
         # Initialize environment detection
         self._initialize_environment()
+
+    def fix_mapbox_earcut_issue(self):
+        """Attempt to reinstall mapbox_earcut to resolve DLL problems."""
+        try:
+            pip_cmd = self.get_pip_command()
+            # force reinstall of known good version
+            cmd = pip_cmd + ["install", "--force-reinstall", "mapbox-earcut"]
+            result = self.run_hidden_subprocess_nuitka_safe(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if result.returncode == 0:
+                return True
+        except Exception as e:
+            self.logger.error(f"Error fixing mapbox_earcut: {e}")
+        return False
+
+    def get_venv_info(self, venv_name):
+        """Return basic information about a named environment."""
+        if venv_name.startswith("system_") or venv_name.startswith("current_"):
+            return {
+                'name': venv_name,
+                'path': sys.prefix,
+                'is_active': venv_name == self.current_venv,
+                'python_version': f"Python {sys.version.split()[0]}",
+                'packages_count': 0,
+                'size': 0,
+            }
+
+        env_path = os.path.join(self.venv_dir, venv_name)
+        info = {
+            'name': venv_name,
+            'path': env_path,
+            'is_active': venv_name == self.current_venv,
+            'python_version': None,
+            'packages_count': 0,
+            'size': 0,
+        }
+        python_exe = os.path.join(env_path, "Scripts", "python.exe") if os.name == "nt" else os.path.join(env_path, "bin", "python")
+        pip_exe = os.path.join(env_path, "Scripts", "pip.exe") if os.name == "nt" else os.path.join(env_path, "bin", "pip")
+        try:
+            if os.path.exists(python_exe):
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [python_exe, "--version"], capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    info['python_version'] = result.stdout.strip()
+            if os.path.exists(pip_exe):
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [pip_exe, "list", "--format=json"], capture_output=True, text=True, timeout=15
+                )
+                if result.returncode == 0:
+                    try:
+                        import json
+                        info['packages_count'] = len(json.loads(result.stdout))
+                    except Exception:
+                        info['packages_count'] = 0
+            total_size = 0
+            for dirpath, _, filenames in os.walk(env_path):
+                for fname in filenames:
+                    fpath = os.path.join(dirpath, fname)
+                    try:
+                        total_size += os.path.getsize(fpath)
+                    except OSError:
+                        pass
+            info['size'] = total_size
+        except Exception as e:
+            self.logger.error(f"Error getting venv info for {venv_name}: {e}")
+        return info
+
+    def show_setup_dialog(self):
+        """Display the environment setup dialog and wait until it closes."""
+        if self.parent_app is None:
+            return
+        dialog = EnvironmentSetupDialog(self.parent_app.root, self)
+        self.parent_app.root.wait_window(dialog)
+
+    def is_environment_ready(self):
+        """Return True when the environment no longer needs setup."""
+        return not self.needs_setup
         
     def _detect_if_frozen(self):
         """Enhanced detection of frozen executable"""
@@ -5188,7 +5281,35 @@ else:
             if log_callback:
                 log_callback(f"Error installing requirements: {str(e)}")
             return False
-    
+
+    def list_packages(self, env_name=None):
+        """List installed packages for the given or current environment."""
+        if env_name and not env_name.startswith(("system_", "current_")):
+            venv_path = os.path.join(self.venv_dir, env_name)
+            if os.name == "nt":
+                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+            else:
+                python_exe = os.path.join(venv_path, "bin", "python")
+        else:
+            python_exe = self.python_path
+
+        try:
+            result = self.run_hidden_subprocess_nuitka_safe(
+                [python_exe, "-m", "pip", "list", "--format=json"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            if result.returncode == 0:
+                packages = json.loads(result.stdout)
+                return True, packages
+            else:
+                return False, result.stderr
+
+        except Exception as e:
+            return False, str(e)
+
     def cleanup_old_environments(self, keep_current=True):
         """Clean up old virtual environments to save disk space"""
         cleaned = []
@@ -7612,16 +7733,20 @@ class ManimStudioApp:
         self.latex_path = latex_path
         self.latex_installed = bool(latex_path)
 
+        # Initialize logger reference
+        self.logger = logger
+
         # Initialize virtual environment manager
         self.venv_manager = VirtualEnvironmentManager(self)
         
         # Initialize system terminal manager (will be created in create_output_area)
         self.terminal = None
         
-        # Show setup dialog if needed
+        # Run environment setup before showing UI
         if self.venv_manager.needs_setup:
-            # Show setup dialog on the next UI update
-            self.root.after(100, self.check_environment_setup)
+            self.root.withdraw()
+            self.venv_manager.show_setup_dialog()
+            self.root.deiconify()
 
         # Load settings before initializing variables that depend on them
         self.load_settings()
@@ -7635,8 +7760,6 @@ class ManimStudioApp:
         # Apply VSCode color scheme
         self.apply_vscode_theme()
         
-        # Start background tasks
-        self.start_background_tasks()
         
     def check_environment_setup(self):
         """Check if environment setup is needed"""
@@ -10053,7 +10176,7 @@ else:
         
     def show_getting_started(self):
         """Show getting started guide"""
-        getting_started_dialog = GettingStartedDialog(self.root)
+        GettingStartedDialog(self)
         
     def show_about(self):
         """Show about dialog"""
@@ -10172,6 +10295,7 @@ Licensed under MIT License"""
     def run(self):
         """Start the application"""
         try:
+            self.root.after(100, self.start_background_tasks)
             self.root.mainloop()
         except Exception as e:
             logger.error(f"Application error: {e}")
@@ -10205,7 +10329,7 @@ Licensed under MIT License"""
                     )
                     
         except Exception as e:
-            self.logger.error(f"Error fixing dependencies: {e}")
+            logger.error(f"Error fixing dependencies: {e}")
             import tkinter.messagebox as messagebox
             messagebox.showerror(
                 "Error",
@@ -10263,27 +10387,63 @@ class DependencyInstallDialog(ctk.CTkToplevel):
         self.after(1000, self.destroy)
 class GettingStartedDialog(ctk.CTkToplevel):
     """Getting started guide dialog"""
-    
-    def __init__(self, parent):
-        super().__init__(parent)
+
+    def __init__(self, app):
+        super().__init__(app.root)
+        self.app = app
+        self.venv_manager = app.venv_manager
+        self.package_queue = queue.Queue()
         
         self.title("Getting Started - Manim Animation Studio")
         self.geometry("700x600")
-        self.transient(parent)
+        self.transient(app.root)
         self.grab_set()
         
         # Center the dialog
         self.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 50,
-            parent.winfo_rooty() + 50
+            app.root.winfo_rootx() + 50,
+            app.root.winfo_rooty() + 50
         ))
-        
+
         self.setup_ui()
-        
+        self.update_env_status()
+
+    def __getattr__(self, name):
+        """Delegate attribute access to the parent app when not found here."""
+        return getattr(self.app, name)
+
+    def setup_environment(self):
+        """Launch the environment setup dialog via the app's manager."""
+        self.venv_manager.show_setup_dialog()
+        self.update_env_status()
+
+    def fix_manim_dependencies(self):
+        self.app.fix_manim_dependencies()
+        self.update_env_status()
+
+    def manage_environments(self):
+        self.app.manage_environment()
+        self.update_env_status()
+
+    def update_env_status(self):
+        if self.venv_manager.is_environment_ready():
+            status = "Environment ready"
+        else:
+            status = "Environment not set up"
+        self.env_status_label.configure(text=status)
+        if self.venv_manager.is_environment_ready():
+            self.setup_button.configure(state="disabled")
+            self.fix_button.configure(state="normal")
+            self.manage_button.configure(state="normal")
+        else:
+            self.setup_button.configure(state="normal")
+            self.fix_button.configure(state="disabled")
+            self.manage_button.configure(state="disabled")
+
     def setup_ui(self):
         """Setup the main UI"""
         # Create main frame
-        main_frame = ctk.CTkFrame(self.root)
+        main_frame = ctk.CTkFrame(self)
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Title
@@ -10349,23 +10509,19 @@ class GettingStartedDialog(ctk.CTkToplevel):
         # Create tabview for different sections
         self.tabview = ctk.CTkTabview(content_frame)
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
-        
+
         # Code Editor Tab
         self.editor_tab = self.tabview.add("Code Editor")
         self.setup_editor_tab()
-        
-        # Preview Tab
-        self.preview_tab = self.tabview.add("Preview")
-        self.setup_preview_tab()
-        
+
         # Settings Tab
         self.settings_tab = self.tabview.add("Settings")
         self.setup_settings_tab()
-        
+
         # Log Tab
         self.log_tab = self.tabview.add("Logs")
         self.setup_log_tab()
-        
+
         # Status bar
         self.status_bar = ctk.CTkLabel(
             main_frame,
@@ -10411,15 +10567,7 @@ class GettingStartedDialog(ctk.CTkToplevel):
         )
         save_button.pack(side="left", padx=5)
         
-        run_button = ctk.CTkButton(
-            toolbar_frame,
-            text="Run Animation",
-            command=self.run_animation,
-            fg_color="green",
-            hover_color="darkgreen",
-            width=120
-        )
-        run_button.pack(side="right", padx=5)
+        # Removed animation rendering button for simplified setup UI
         
         # Text editor
         self.text_editor = ctk.CTkTextbox(
@@ -10449,45 +10597,6 @@ class MyScene(Scene):
 '''
         self.text_editor.insert("0.0", default_code)
 
-    def setup_preview_tab(self):
-        """Setup the preview tab"""
-        # Preview frame
-        preview_frame = ctk.CTkFrame(self.preview_tab)
-        preview_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Preview controls
-        controls_frame = ctk.CTkFrame(preview_frame)
-        controls_frame.pack(fill="x", padx=5, pady=5)
-        
-        # Quality selection
-        quality_label = ctk.CTkLabel(controls_frame, text="Quality:")
-        quality_label.pack(side="left", padx=5)
-        
-        self.quality_var = ctk.StringVar(value="480p")
-        quality_menu = ctk.CTkOptionMenu(
-            controls_frame,
-            variable=self.quality_var,
-            values=["480p", "720p", "1080p", "1440p", "2160p"]
-        )
-        quality_menu.pack(side="left", padx=5)
-        
-        # Generate preview button
-        preview_button = ctk.CTkButton(
-            controls_frame,
-            text="Generate Preview",
-            command=self.generate_preview,
-            fg_color="blue",
-            hover_color="darkblue"
-        )
-        preview_button.pack(side="right", padx=5)
-        
-        # Preview display area
-        self.preview_display = ctk.CTkLabel(
-            preview_frame,
-            text="Preview will appear here",
-            font=ctk.CTkFont(size=16)
-        )
-        self.preview_display.pack(fill="both", expand=True, padx=5, pady=5)
 
     def setup_settings_tab(self):
         """Setup the settings tab"""
@@ -10554,6 +10663,30 @@ class MyScene(Scene):
             font=ctk.CTkFont(family="Consolas", size=10)
         )
         self.log_display.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Load log contents initially
+        self.refresh_logs()
+
+    def refresh_logs(self):
+        """Load the application log file into the display."""
+        try:
+            with open(os.path.join(os.path.expanduser("~"), ".manim_studio", "manim_studio.log"), "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:  # File not found or read error
+            content = f"Error reading log: {e}"
+        self.log_display.delete("1.0", "end")
+        self.log_display.insert("1.0", content)
+
+    def clear_logs(self):
+        """Clear the log file and the display."""
+        try:
+            log_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "manim_studio.log")
+            open(log_path, "w").close()
+        except Exception as e:
+            self.log_display.delete("1.0", "end")
+            self.log_display.insert("1.0", f"Error clearing log: {e}")
+            return
+        self.log_display.delete("1.0", "end")
     def create_setup_tab(self):
         """Create setup tab content"""
         content = ctk.CTkScrollableFrame(self.step1)
@@ -10566,7 +10699,7 @@ class MyScene(Scene):
             font=ctk.CTkFont(size=20, weight="bold")
         ).pack(pady=(0, 20))
         
-        # Steps
+        # Steps (installation focused)
         steps = [
             ("1. Automatic Environment Setup", """
 ✅ ManimStudio automatically detects your Python environment
@@ -10582,21 +10715,6 @@ class MyScene(Scene):
 ✅ Automatic dependency management
 ✅ Export/import requirements.txt files
 ✅ Seamless switching between environments
-            """),
-            ("3. Your First Scene", """
-✅ The editor comes with a complete example scene
-✅ Modify the default code or create your own
-✅ Use IntelliSense for smart autocompletion (Ctrl+Space)
-✅ Click 'Quick Preview' to test your animation
-✅ Use 'Render Animation' for final high-quality output
-            """),
-            ("4. Professional Features", """
-✅ Choose from multiple professional themes (Dark+, Light+, Monokai, Solarized)
-✅ Advanced code editor with syntax highlighting
-✅ Real-time video preview with playback controls
-✅ Visual asset management for images and audio
-✅ Advanced find/replace with regex support
-✅ Professional rendering up to 8K resolution
             """)
         ]
         
@@ -10856,6 +10974,8 @@ def main():
 
     logger = None  # Initialize logger variable to avoid UnboundLocalError
 
+    debug_mode = "--debug" in sys.argv
+
     # Initialize encoding early to avoid Unicode issues
     try:
         import startup
@@ -11023,12 +11143,21 @@ def main():
         logger.info("Creating main application...")
         app = ManimStudioApp(latex_path=latex_path)
         
-        # Show getting started on first run
+        # Show getting started dialog when requested
         settings_file = os.path.join(app_dir, "settings.json")
-        if not os.path.exists(settings_file):
-            logger.info("First run detected, showing getting started dialog")
-            app.root.after(1000, lambda: GettingStartedDialog(app.root))
-        
+        if debug_mode or not os.path.exists(settings_file):
+            if debug_mode:
+                logger.info("Debug mode - showing Getting Started dialog")
+            else:
+                logger.info("First run detected, showing getting started dialog")
+            app.root.withdraw()
+            dialog = GettingStartedDialog(app)
+            app.root.wait_window(dialog)
+            if not app.venv_manager.is_environment_ready():
+                logger.error("Environment setup incomplete. Exiting.")
+                return
+            app.root.deiconify()
+
         logger.info("Starting application main loop...")
         app.run()
         
@@ -11075,81 +11204,5 @@ def main():
                     pass
             except:
                 pass
-class SimpleEnvironmentDialog(ctk.CTkToplevel):
-    """Emergency fallback dialog if other dialogs fail"""
-    
-    def __init__(self, parent, venv_manager):
-        super().__init__(parent)
-        
-        self.venv_manager = venv_manager
-        self.title("Environment Setup")
-        self.geometry("500x300")
-        self.transient(parent)
-        self.grab_set()
-        
-        # Center the dialog
-        self.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 100,
-            parent.winfo_rooty() + 100
-        ))
-        
-        # Main frame
-        frame = ctk.CTkFrame(self)
-        frame.pack(fill="both", expand=True, padx=20, pady=20)
-        
-        # Title
-        ctk.CTkLabel(
-            frame,
-            text="Manim Studio Environment Setup",
-            font=ctk.CTkFont(size=18, weight="bold")
-        ).pack(pady=(0, 20))
-        
-        # Info text
-        ctk.CTkLabel(
-            frame,
-            text="This will set up a new Python environment for Manim animations. Continue?",
-            wraplength=400
-        ).pack(pady=(0, 20))
-        
-        # Buttons
-        button_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        button_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkButton(
-            button_frame,
-            text="Create Environment",
-            command=self.create_environment
-        ).pack(side="left", padx=5)
-        
-        ctk.CTkButton(
-            button_frame,
-            text="Cancel",
-            command=self.destroy
-        ).pack(side="right", padx=5)
-        
-    def create_environment(self):
-        """Create environment and close"""
-        try:
-            success = self.venv_manager.create_default_environment()
-            if success:
-                from tkinter import messagebox
-                messagebox.showinfo(
-                    "Success", 
-                    "Environment created successfully!"
-                )
-                self.destroy()
-            else:
-                from tkinter import messagebox
-                messagebox.showerror(
-                    "Error", 
-                    "Failed to create environment. Please try again."
-                )
-        except Exception as e:
-            from tkinter import messagebox
-            messagebox.showerror(
-                "Error", 
-                f"Error creating environment: {str(e)}"
-            )
-
 if __name__ == "__main__":
     main()
