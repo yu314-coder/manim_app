@@ -10194,7 +10194,8 @@ else:
         
     def show_getting_started(self):
         """Show getting started guide"""
-        GettingStartedDialog(self)
+        dialog = GettingStartedDialog(self)
+        self.root.wait_window(dialog)
         
     def show_about(self):
         """Show about dialog"""
@@ -11198,15 +11199,21 @@ def main():
         logger.info("Creating main application...")
         app = ManimStudioApp(latex_path=latex_path)
         
-        # Show getting started guide on first run or when debugging
+        # Show setup dialogs before launching the main UI
         settings_file = os.path.join(app_dir, "settings.json")
-        if debug_mode or not os.path.exists(settings_file):
-            if debug_mode:
-                logger.info("Debug mode - showing Getting Started dialog")
-            else:
-                logger.info("First run detected, showing Getting Started dialog")
+        if debug_mode:
+            logger.info("Debug mode - showing Environment Setup dialog")
             app.root.withdraw()
-            GettingStartedDialog(app)
+            app.venv_manager.show_setup_dialog()
+            if not app.venv_manager.is_environment_ready():
+                logger.error("Environment setup incomplete. Exiting.")
+                return
+            app.root.deiconify()
+        elif not os.path.exists(settings_file):
+            logger.info("First run detected, showing Getting Started dialog")
+            app.root.withdraw()
+            dialog = GettingStartedDialog(app)
+            app.root.wait_window(dialog)
             if not app.venv_manager.is_environment_ready():
                 logger.error("Environment setup incomplete. Exiting.")
                 return
