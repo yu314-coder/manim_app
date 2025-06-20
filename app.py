@@ -1947,17 +1947,6 @@ All packages will be installed in an isolated environment that won't affect your
             hover_color="#117A65"
         )
         self.start_button.pack(side="left", padx=(0, 10))
-
-        self.terminal_setup_button = ctk.CTkButton(
-            button_frame,
-            text="🖥️ Terminal Setup",
-            command=self.start_terminal_setup,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=VSCODE_COLORS["primary"],
-            hover_color=VSCODE_COLORS["primary_hover"]
-        )
-        self.terminal_setup_button.pack(side="left", padx=(0, 10))
         
         self.skip_button = ctk.CTkButton(
             button_frame,
@@ -1997,13 +1986,21 @@ All packages will be installed in an isolated environment that won't affect your
         if detail_text:
             self.detail_label.configure(text=detail_text)
         self.update_idletasks()
+
+    def safe_after(self, delay, callback=None):
+        """Safely schedule a callback using ``after``.
+
+        This helper prevents ``RuntimeError`` that can occur if the
+        dialog has been closed or the Tk main loop is not running."""
+        try:
+            self.after(delay, callback)
+        except RuntimeError:
+            pass
         
     def start_setup(self):
         """Start the environment setup process"""
         self.start_button.configure(state="disabled")
         self.skip_button.configure(state="disabled")
-        if hasattr(self, 'terminal_setup_button'):
-            self.terminal_setup_button.configure(state="disabled")
         
         self.log_message("Starting ManimStudio environment setup...")
         self.update_progress(0.05, "Preparing...", "Initializing environment creation")
@@ -2019,81 +2016,43 @@ All packages will be installed in an isolated environment that won't affect your
         )
         setup_thread.start()
 
-    def start_terminal_setup(self):
-        """Run basic environment setup directly in the integrated terminal"""
-        self.start_button.configure(state="disabled")
-        self.skip_button.configure(state="disabled")
-        if hasattr(self, 'terminal_setup_button'):
-            self.terminal_setup_button.configure(state="disabled")
-
-        env_path = self.env_path_label.cget("text")
-
-        commands = [[sys.executable, "-m", "venv", env_path]]
-
-        if os.name == 'nt':
-            python_exe = get_long_path(ensure_ascii_path(os.path.join(env_path, "Scripts", "python.exe")))
-        else:
-            python_exe = get_long_path(ensure_ascii_path(os.path.join(env_path, "bin", "python")))
-
-        commands.append([python_exe, "-m", "pip", "install", "-r", "requirements.txt"])
-
-        def run_next(idx=0):
-            if idx >= len(commands):
-                self.log_message_threadsafe("✅ Terminal setup completed!")
-                self.venv_manager.activate_venv("manim_studio_default")
-                if hasattr(self.parent_window, 'terminal'):
-                    self.parent_window.terminal.execute_command("activate manim_studio_default")
-                self.venv_manager.needs_setup = False
-                self.after(0, self.setup_complete_ui)
-                return
-
-            cmd = commands[idx]
-            if hasattr(self.parent_window, 'output_tabs'):
-                self.parent_window.output_tabs.set("Terminal")
-
-            self.parent_window.terminal.run_command_redirected(
-                cmd,
-                on_complete=lambda success, code, i=idx: run_next(i + 1)
-            )
-
-        threading.Thread(target=run_next, daemon=True).start()
 
     def run_setup(self, packages):
         """Run the actual setup process"""
         try:
             # Step 1: Create virtual environment
-            self.after(0, lambda: self.update_progress(0.1, "Creating virtual environment...", "Setting up isolated Python environment"))
-            self.after(0, lambda: self.log_message("Creating virtual environment..."))
+            self.safe_after(0, lambda: self.update_progress(0.1, "Creating virtual environment...", "Setting up isolated Python environment"))
+            self.safe_after(0, lambda: self.log_message("Creating virtual environment..."))
             
             success = self.venv_manager.create_default_environment(self.log_message_threadsafe)
             
             if not success:
-                self.after(0, lambda: self.log_message("ERROR: Failed to create virtual environment"))
-                self.after(0, lambda: self.show_error("Failed to create virtual environment"))
+                self.safe_after(0, lambda: self.log_message("ERROR: Failed to create virtual environment"))
+                self.safe_after(0, lambda: self.show_error("Failed to create virtual environment"))
                 return
                 
             # Step 2: Activate environment
-            self.after(0, lambda: self.update_progress(0.2, "Activating environment...", "Configuring environment"))
-            self.after(0, lambda: self.log_message("Activating environment..."))
+            self.safe_after(0, lambda: self.update_progress(0.2, "Activating environment...", "Configuring environment"))
+            self.safe_after(0, lambda: self.log_message("Activating environment..."))
             
             # Step 3: Upgrade pip
-            self.after(0, lambda: self.update_progress(0.25, "Upgrading pip...", "Ensuring latest package manager"))
-            self.after(0, lambda: self.log_message("Upgrading pip..."))
+            self.safe_after(0, lambda: self.update_progress(0.25, "Upgrading pip...", "Ensuring latest package manager"))
+            self.safe_after(0, lambda: self.log_message("Upgrading pip..."))
             
             success = self.venv_manager.upgrade_pip(self.log_message_threadsafe)
             if not success:
-                self.after(0, lambda: self.log_message("WARNING: Could not upgrade pip"))
+                self.safe_after(0, lambda: self.log_message("WARNING: Could not upgrade pip"))
             
             # Step 4: Install packages
             if packages:
-                self.after(0, lambda: self.update_progress(0.3, "Installing packages...", "Installing selected packages"))
-                self.after(0, lambda: self.log_message("Installing packages..."))
+                self.safe_after(0, lambda: self.update_progress(0.3, "Installing packages...", "Installing selected packages"))
+                self.safe_after(0, lambda: self.log_message("Installing packages..."))
                 
                 for i, package in enumerate(packages):
                     progress = 0.3 + (i / len(packages) * 0.6)
-                    self.after(0, lambda p=package, prog=progress: self.update_progress(
-                        prog, 
-                        "Installing packages...", 
+                    self.safe_after(0, lambda p=package, prog=progress: self.update_progress(
+                        prog,
+                        "Installing packages...",
                         f"Installing {p}..."
                     ))
                     
@@ -2109,26 +2068,26 @@ All packages will be installed in an isolated environment that won't affect your
                     )
                     
                     if not success:
-                        self.after(0, lambda p=package: self.log_message(f"ERROR: Failed to install {p}"))
+                        self.safe_after(0, lambda p=package: self.log_message(f"ERROR: Failed to install {p}"))
             
             # Step 5: Verify installation
-            self.after(0, lambda: self.update_progress(0.95, "Verifying installation...", "Testing all components"))
-            self.after(0, lambda: self.log_message("Verifying installation..."))
+            self.safe_after(0, lambda: self.update_progress(0.95, "Verifying installation...", "Testing all components"))
+            self.safe_after(0, lambda: self.log_message("Verifying installation..."))
             
             success = self.venv_manager.verify_installation(self.log_message_threadsafe)
             
             if success:
-                self.after(0, lambda: self.update_progress(1.0, "Setup complete!", "All components ready"))
-                self.after(0, lambda: self.log_message("✅ Environment setup completed successfully!"))
-                self.after(0, lambda: self.setup_complete_ui())
+                self.safe_after(0, lambda: self.update_progress(1.0, "Setup complete!", "All components ready"))
+                self.safe_after(0, lambda: self.log_message("✅ Environment setup completed successfully!"))
+                self.safe_after(0, lambda: self.setup_complete_ui())
             else:
-                self.after(0, lambda: self.log_message("WARNING: Installation verification failed"))
-                self.after(0, lambda: self.show_warning("Setup completed with warnings"))
+                self.safe_after(0, lambda: self.log_message("WARNING: Installation verification failed"))
+                self.safe_after(0, lambda: self.show_warning("Setup completed with warnings"))
                 
         except Exception as e:
             error_msg = f"Setup failed with error: {str(e)}"
-            self.after(0, lambda: self.log_message(f"ERROR: {error_msg}"))
-            self.after(0, lambda: self.show_error(error_msg))
+            self.safe_after(0, lambda: self.log_message(f"ERROR: {error_msg}"))
+            self.safe_after(0, lambda: self.show_error(error_msg))
             
     def install_package_with_cpu_control(self, package, cpu_setting, log_callback):
         """Install package with CPU usage control"""
@@ -2194,7 +2153,7 @@ All packages will be installed in an isolated environment that won't affect your
     
     def log_message_threadsafe(self, message):
         """Thread-safe log message method"""
-        self.after(0, lambda: self.log_message(message))
+        self.safe_after(0, lambda: self.log_message(message))
         
     def setup_complete_ui(self):
         """Update UI when setup is complete"""
@@ -2218,8 +2177,8 @@ All packages will be installed in an isolated environment that won't affect your
         ).pack(padx=30, pady=20)
         
         # Auto-continue after 3 seconds
-        self.after(3000, lambda: success_frame.destroy())
-        self.after(3500, self.continue_to_app)
+        self.safe_after(3000, lambda: success_frame.destroy())
+        self.safe_after(3500, self.continue_to_app)
         
     def show_error(self, message):
         """Show error message"""
