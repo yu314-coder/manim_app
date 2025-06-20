@@ -5270,7 +5270,45 @@ else:
             if log_callback:
                 log_callback(f"Error installing requirements: {str(e)}")
             return False
-    
+
+    def list_packages(self, callback=None, env_name=None):
+        """List installed packages for the given or current environment."""
+        if env_name and not env_name.startswith(("system_", "current_")):
+            venv_path = os.path.join(self.venv_dir, env_name)
+            if os.name == "nt":
+                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+            else:
+                python_exe = os.path.join(venv_path, "bin", "python")
+        else:
+            python_exe = self.python_path
+
+        try:
+            result = self.run_hidden_subprocess_nuitka_safe(
+                [python_exe, "-m", "pip", "list", "--format=json"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            if result.returncode == 0:
+                packages = json.loads(result.stdout)
+                if callback and self.parent_app:
+                    self.parent_app.root.after(
+                        0, lambda: callback(True, packages, None)
+                    )
+                return True, packages
+            else:
+                if callback and self.parent_app:
+                    self.parent_app.root.after(
+                        0, lambda: callback(False, [], result.stderr)
+                    )
+                return False, result.stderr
+
+        except Exception as e:
+            if callback and self.parent_app:
+                self.parent_app.root.after(0, lambda: callback(False, [], str(e)))
+            return False, str(e)
+
     def cleanup_old_environments(self, keep_current=True):
         """Clean up old virtual environments to save disk space"""
         cleaned = []
@@ -10527,15 +10565,7 @@ class GettingStartedDialog(ctk.CTkToplevel):
         )
         save_button.pack(side="left", padx=5)
         
-        run_button = ctk.CTkButton(
-            toolbar_frame,
-            text="Run Animation",
-            command=self.render_animation,
-            fg_color="green",
-            hover_color="darkgreen",
-            width=120
-        )
-        run_button.pack(side="right", padx=5)
+        # Removed animation rendering button for simplified setup UI
         
         # Text editor
         self.text_editor = ctk.CTkTextbox(
