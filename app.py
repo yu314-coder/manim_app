@@ -2285,9 +2285,10 @@ class EnhancedVenvManagerDialog(ctk.CTkToplevel):
     
     def __init__(self, parent, venv_manager):
         super().__init__(parent)
-        
+
         self.parent = parent
         self.venv_manager = venv_manager
+        self.package_queue = queue.Queue()
         self.title("Virtual Environment Manager")
         
         # FIXED: Improved sizing to ensure buttons are visible
