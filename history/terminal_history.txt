@@ -32,3 +32,4 @@ C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Us
 C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Users\euler\AppData\Local\Temp\tmpny7rwhb_.py manim numpy PIL cv2
 C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Users\euler\AppData\Local\Temp\tmptl61wr9j.py manim numpy PIL cv2
 C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Users\euler\AppData\Local\Temp\tmpmkmeh9ye.py manim numpy PIL cv2
+C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe C:\Users\euler\AppData\Local\Temp\tmp6ds1ujcb.py manim numpy PIL cv2

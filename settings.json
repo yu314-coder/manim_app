@@ -1,0 +1,15 @@
+{
+  "first_run": false,
+  "quality": "medium_quality",
+  "format": "mp4",
+  "fps": 30,
+  "preview_quality": "low_quality",
+  "auto_preview": true,
+  "font_size": 14,
+  "intellisense_enabled": true,
+  "theme": "Dark",
+  "custom_width": 1920,
+  "custom_height": 1080,
+  "custom_fps": 60,
+  "current_venv": null
+}

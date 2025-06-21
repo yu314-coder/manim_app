@@ -1309,3 +1309,154 @@ Pointer size: True
 2025-06-21 02:19:58,048 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
 2025-06-21 02:26:56,688 - INFO - Debug mode - showing Getting Started dialog
 2025-06-21 02:28:00,257 - INFO - Starting application main loop...
+2025-06-21 09:21:17,254 - INFO - === ManimStudio Starting ===
+2025-06-21 09:21:17,254 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 09:21:17,255 - INFO - Platform: win32
+2025-06-21 09:21:17,255 - INFO - Frozen: False
+2025-06-21 09:21:17,255 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 09:21:17,255 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:21:17,256 - INFO - Checking LaTeX installation...
+2025-06-21 09:21:17,710 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:21:17,711 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:21:17,711 - INFO - Creating main application...
+2025-06-21 09:21:29,374 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 09:27:14,913 - INFO - First run detected, showing Getting Started dialog
+2025-06-21 09:27:50,060 - INFO - Starting application main loop...
+2025-06-21 09:46:53,243 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:46:53,244 - INFO - Checking LaTeX installation...
+2025-06-21 09:46:54,205 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:46:54,205 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:46:54,206 - INFO - Creating main application...
+2025-06-21 09:47:07,915 - INFO - Environment manim_studio_default is properly configured
+2025-06-21 09:47:07,916 - INFO - Found existing configured environment, showing main UI
+2025-06-21 09:47:07,917 - ERROR - Startup error: 'ManimStudioApp' object has no attribute 'setup_main_ui'
+2025-06-21 09:47:07,934 - ERROR - Traceback: Traceback (most recent call last):
+  File "C:\Users\euler\github\manim_app\app.py", line 11542, in main
+    app = ManimStudioApp(latex_path=latex_path)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\euler\github\manim_app\app.py", line 8159, in __init__
+    self.show_main_ui_directly()
+  File "C:\Users\euler\github\manim_app\app.py", line 8178, in show_main_ui_directly
+    self.setup_main_ui()  # Your existing main UI setup method
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: 'ManimStudioApp' object has no attribute 'setup_main_ui'. Did you mean: 'show_main_ui'?
+
+2025-06-21 09:51:14,104 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:51:14,105 - INFO - Checking LaTeX installation...
+2025-06-21 09:51:15,126 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:51:15,127 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:51:15,133 - INFO - Creating main application...
+2025-06-21 09:51:15,356 - INFO - Checking for existing environment...
+2025-06-21 09:51:20,882 - INFO - Environment manim_studio_default is properly configured
+2025-06-21 09:51:20,883 - INFO - Found existing configured environment, showing main UI
+2025-06-21 09:51:20,884 - INFO - Initializing main application UI
+2025-06-21 09:51:22,074 - INFO - Main UI is now visible
+2025-06-21 09:51:22,075 - INFO - Starting application main loop
+2025-06-21 09:51:43,731 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:51:43,732 - INFO - Checking LaTeX installation...
+2025-06-21 09:51:44,149 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:51:44,150 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:51:44,153 - INFO - Creating main application...
+2025-06-21 09:51:44,240 - INFO - Checking for existing environment...
+2025-06-21 09:51:47,397 - INFO - Environment manim_studio_default is properly configured
+2025-06-21 09:51:47,398 - INFO - Found existing configured environment, showing main UI
+2025-06-21 09:51:47,398 - INFO - Initializing main application UI
+2025-06-21 09:51:49,182 - INFO - Main UI is now visible
+2025-06-21 09:51:49,183 - INFO - Starting application main loop
+2025-06-21 09:55:01,427 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:55:01,427 - INFO - Checking LaTeX installation...
+2025-06-21 09:55:02,071 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:55:02,071 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:55:02,072 - INFO - Creating main application...
+2025-06-21 09:55:02,204 - INFO - Checking for existing environment...
+2025-06-21 09:55:07,240 - INFO - Environment manim_studio_default is properly configured
+2025-06-21 09:55:07,241 - INFO - Found existing configured environment, showing main UI
+2025-06-21 09:55:07,241 - INFO - Initializing main application UI
+2025-06-21 09:55:07,887 - INFO - Main UI is now visible
+2025-06-21 09:55:07,888 - INFO - Starting application main loop
+2025-06-21 09:59:29,742 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:59:29,742 - INFO - Checking LaTeX installation...
+2025-06-21 09:59:30,280 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:59:30,280 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:59:30,280 - INFO - Creating main application...
+2025-06-21 09:59:30,389 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 09:59:30,392 - INFO - Showing environment setup dialog
+2025-06-21 09:59:53,634 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:05:17,961 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:05:17,961 - INFO - Initializing main application UI
+2025-06-21 10:05:17,962 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'setup_ui'
+2025-06-21 10:05:33,576 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:05:33,577 - INFO - Checking LaTeX installation...
+2025-06-21 10:05:34,241 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:05:34,241 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:05:34,242 - INFO - Creating main application...
+2025-06-21 10:05:34,400 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:05:34,400 - INFO - Showing environment setup dialog
+2025-06-21 10:06:02,977 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:11:36,495 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:11:36,495 - INFO - Initializing main application UI
+2025-06-21 10:11:36,495 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'setup_ui'
+2025-06-21 10:18:10,448 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:18:10,449 - INFO - Checking LaTeX installation...
+2025-06-21 10:18:10,851 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:18:10,852 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:18:10,853 - INFO - Creating main application...
+2025-06-21 10:18:10,957 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:18:10,957 - INFO - Showing environment setup dialog
+2025-06-21 10:18:30,410 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:25:17,236 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:25:17,236 - INFO - Initializing main application UI
+2025-06-21 10:25:17,237 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'show_main_ui'
+2025-06-21 10:26:04,473 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:26:04,474 - INFO - Checking LaTeX installation...
+2025-06-21 10:26:05,148 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:26:05,149 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:26:05,149 - INFO - Creating main application...
+2025-06-21 10:26:05,360 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:26:05,361 - INFO - Showing environment setup dialog
+2025-06-21 10:26:23,625 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:26:34,724 - INFO - Environment setup was skipped or cancelled
+2025-06-21 10:26:34,725 - INFO - Main UI is now visible
+2025-06-21 10:26:34,725 - INFO - Starting application main loop
+2025-06-21 10:26:43,073 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:26:43,074 - INFO - Checking LaTeX installation...
+2025-06-21 10:26:43,765 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:26:43,766 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:26:43,766 - INFO - Creating main application...
+2025-06-21 10:26:43,865 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:26:43,865 - INFO - Showing environment setup dialog
+2025-06-21 10:26:54,375 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:26:54,375 - INFO - Main UI is now visible
+2025-06-21 10:26:54,375 - INFO - Starting application main loop
+2025-06-21 10:29:04,367 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:29:04,367 - INFO - Checking LaTeX installation...
+2025-06-21 10:29:04,777 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:29:04,777 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:29:04,777 - INFO - Creating main application...
+2025-06-21 10:29:04,867 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:29:04,868 - INFO - Showing environment setup dialog
+2025-06-21 10:32:01,925 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:35:34,619 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:35:34,620 - INFO - Main UI is now visible
+2025-06-21 10:35:34,621 - INFO - Starting application main loop
+2025-06-21 10:35:46,516 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:35:46,516 - INFO - Checking LaTeX installation...
+2025-06-21 10:35:47,031 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:35:47,032 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:35:47,032 - INFO - Creating main application...
+2025-06-21 10:35:47,131 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:35:47,131 - INFO - Showing environment setup dialog
+2025-06-21 10:35:59,682 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:40:14,487 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:40:14,487 - INFO - Main UI is now visible
+2025-06-21 10:40:14,487 - INFO - Starting application main loop
+2025-06-21 10:52:16,406 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:52:16,407 - INFO - Checking LaTeX installation...
+2025-06-21 10:52:17,086 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:52:17,088 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:52:17,088 - INFO - Creating main application...
+2025-06-21 10:52:17,250 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:52:17,250 - INFO - Showing environment setup dialog
+2025-06-21 10:52:36,496 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:52:36,496 - INFO - Main UI is now visible
+2025-06-21 10:52:36,497 - INFO - Starting application main loop
