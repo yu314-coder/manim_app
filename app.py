@@ -2226,6 +2226,8 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             ):
                 self.destroy()
         else:
+            # Mark setup as completed when closing after success
+            self.venv_manager.needs_setup = False
             self.destroy()
 
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
