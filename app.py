@@ -1438,7 +1438,38 @@ class SystemTerminalManager:
             self.parent_app.root.after(delay, callback)
         except RuntimeError:
             pass
-        
+    # Essential packages for ManimStudio - COMPLETE LIST
+        self.essential_packages = [
+            # Core animation
+            "manim",
+            "numpy>=1.22.0",
+            "matplotlib>=3.5.0",
+            "scipy>=1.8.0",
+            
+            # Image/Video processing
+            "Pillow>=9.0.0",
+            "opencv-python>=4.6.0",
+            "imageio>=2.19.0",
+            "moviepy>=1.0.3",
+            "imageio-ffmpeg",
+            "av",
+            
+            # Development tools
+            "jedi>=0.18.0",
+            "customtkinter>=5.0.0",
+            
+            # Additional useful packages
+            "requests",
+            "pydub",
+            "rich",
+            "tqdm",
+            "sympy",
+            "colour",
+            "moderngl",
+            "moderngl-window",
+            "pycairo",
+            "manimpango"
+        ]
     def detect_system_terminal(self):
         """Detect the best system terminal to use"""
         system = platform.system().lower()
@@ -1665,7 +1696,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
     def __init__(self, parent, venv_manager):
         super().__init__(parent)
         
-        self.parent_window = parent
+        self.parent_window = parent  # Store reference to parent window
         self.venv_manager = venv_manager
         self.setup_complete = False
         
@@ -1713,171 +1744,195 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         title_label = ctk.CTkLabel(
             header_frame,
             text="Welcome to ManimStudio!",
-            font=ctk.CTkFont(size=28, weight="bold"),
-            text_color=VSCODE_COLORS["primary"]
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
         )
-        title_label.pack()
+        title_label.pack(pady=(0, 10))
         
         subtitle_label = ctk.CTkLabel(
             header_frame,
-            text="Let's set up your animation environment",
+            text="Set up your Python environment for animation creation",
             font=ctk.CTkFont(size=14),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        subtitle_label.pack(pady=(5, 0))
-        
-        # Environment info frame
-        info_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
-        info_frame.pack(fill="x", pady=10)
-        
-        ctk.CTkLabel(
-            info_frame,
-            text="📁 Environment Location:",
-            font=ctk.CTkFont(size=12, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(15, 5))
-        
-        self.env_path_label = ctk.CTkLabel(
-            info_frame,
-            text=os.path.join(self.venv_manager.venv_dir, "manim_studio_default"),
-            font=ctk.CTkFont(size=11),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.env_path_label.pack(anchor="w", padx=15, pady=(0, 15))
+        subtitle_label.pack()
         
         # Package selection frame
-        packages_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
-        packages_frame.pack(fill="x", pady=10)
+        package_frame = ctk.CTkFrame(main_frame)
+        package_frame.pack(fill="x", pady=(0, 15))
         
-        ctk.CTkLabel(
-            packages_frame,
-            text="📦 Select Packages to Install:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(15, 10))
+        package_title = ctk.CTkLabel(
+            package_frame,
+            text="📦 Select Packages to Install",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        )
+        package_title.pack(pady=(15, 10))
         
-        # Package checkboxes
-        # Package checkboxes
-        self.package_vars = {}
-        default_packages = {
-            "manim": True,
-            "numpy": True,
-            "matplotlib": True,
-            "Pillow": True,
-            "customtkinter": True,  # Add this (was missing)
-            "jedi": True,           # Add this (was missing)
-            "scipy": True,          # Changed False to True
-            "pandas": True,         # Changed False to True
-            "jupyter": True,        # Changed False to True
-            "opencv-python": True   # Changed False to True
+        # Package checkboxes in grid
+        checkbox_frame = ctk.CTkFrame(package_frame, fg_color="transparent")
+        checkbox_frame.pack(fill="x", padx=20, pady=(0, 15))
+        
+        # Essential packages (always selected)essential_frame = ctk.CTkFrame(checkbox_frame, fg_color=VSCODE_COLORS["input"])
+        essential_frame = ctk.CTkFrame(checkbox_frame, fg_color=VSCODE_COLORS["surface_light"])
+        essential_frame.pack(fill="x", pady=(0, 10))
+        
+        essential_label = ctk.CTkLabel(
+            essential_frame,
+            text="✅ Essential Packages (Required)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=VSCODE_COLORS["success"]
+        )
+        essential_label.pack(pady=10)
+        
+        essential_desc = ctk.CTkLabel(
+            essential_frame,
+            text="manim, numpy, matplotlib, customtkinter, jedi, pillow",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        essential_desc.pack(pady=(0, 10))
+        
+        # Optional packages
+        optional_packages = {
+            "Video Processing": ["opencv-python", "moviepy", "imageio"],
+            "Scientific Computing": ["scipy", "sympy"],
+            "Audio Processing": ["pydub"],
+            "Enhanced Graphics": ["moderngl", "colour"],
+            "Utilities": ["requests", "rich", "tqdm"]
         }
         
-        checkbox_frame = ctk.CTkFrame(packages_frame, fg_color="transparent")
-        checkbox_frame.pack(fill="x", padx=15, pady=(0, 15))
+        self.package_vars = {}
         
-        for i, (package, default) in enumerate(default_packages.items()):
-            var = ctk.BooleanVar(value=default)
-            self.package_vars[package] = var
+        for category, packages in optional_packages.items():
+            cat_frame = ctk.CTkFrame(checkbox_frame, fg_color="transparent")
+            cat_frame.pack(fill="x", pady=2)
             
-            checkbox = ctk.CTkCheckBox(
-                checkbox_frame,
-                text=package,
-                variable=var,
-                font=ctk.CTkFont(size=12)
+            cat_label = ctk.CTkLabel(
+                cat_frame,
+                text=f"📁 {category}",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color=VSCODE_COLORS["text"]
             )
-            checkbox.grid(row=i//4, column=i%4, padx=10, pady=5, sticky="w")
+            cat_label.pack(anchor="w")
+            
+            pkg_grid = ctk.CTkFrame(cat_frame, fg_color="transparent")
+            pkg_grid.pack(fill="x", padx=20)
+            
+            for i, pkg in enumerate(packages):
+                var = ctk.BooleanVar(value=True)  # Default to selected
+                self.package_vars[pkg] = var
+                
+                checkbox = ctk.CTkCheckBox(
+                    pkg_grid,
+                    text=pkg,
+                    variable=var,
+                    text_color=VSCODE_COLORS["text"],
+                    font=ctk.CTkFont(size=12)
+                )
+                checkbox.grid(row=i//2, column=i%2, sticky="w", padx=10, pady=2)
         
-        # CPU usage frame
-        cpu_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
-        cpu_frame.pack(fill="x", pady=10)
+        # CPU Usage setting
+        cpu_frame = ctk.CTkFrame(main_frame)
+        cpu_frame.pack(fill="x", pady=(0, 15))
         
-        ctk.CTkLabel(
+        cpu_title = ctk.CTkLabel(
             cpu_frame,
-            text="⚡ CPU Usage During Installation:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(15, 10))
+            text="⚙️ CPU Usage",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        )
+        cpu_title.pack(pady=(15, 10))
         
         self.cpu_var = ctk.StringVar(value="Medium")
-        cpu_options = ["Low", "Medium", "High"]
+        cpu_options = ["Low (1 core)", "Medium (Half cores)", "High (All cores)"]
         
-        cpu_option_frame = ctk.CTkFrame(cpu_frame, fg_color="transparent")
-        cpu_option_frame.pack(fill="x", padx=15, pady=(0, 15))
+        cpu_menu = ctk.CTkOptionMenu(
+            cpu_frame,
+            variable=self.cpu_var,
+            values=cpu_options,
+            font=ctk.CTkFont(size=12)
+        )
+        cpu_menu.pack(pady=(0, 15))
         
-        for i, option in enumerate(cpu_options):
-            ctk.CTkRadioButton(
-                cpu_option_frame,
-                text=f"{option} ({['1 core', 'Half cores', 'All cores'][i]})",
-                variable=self.cpu_var,
-                value=option,
-                font=ctk.CTkFont(size=12)
-            ).grid(row=1, column=i, padx=10, pady=(0, 5), sticky="w")
+        # Progress section
+        progress_frame = ctk.CTkFrame(main_frame)
+        progress_frame.pack(fill="x", pady=(0, 15))
         
-        # Progress frame
-        progress_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
-        progress_frame.pack(fill="x", pady=10)
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(progress_frame, height=20)
+        self.progress_bar.pack(fill="x", padx=20, pady=(15, 10))
+        self.progress_bar.set(0)
         
+        # Status labels
         self.step_label = ctk.CTkLabel(
             progress_frame,
             text="Ready to begin setup",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=VSCODE_COLORS["text"]
         )
-        self.step_label.pack(padx=15, pady=(15, 5))
+        self.step_label.pack(pady=(0, 5))
         
         self.detail_label = ctk.CTkLabel(
             progress_frame,
-            text="Click 'Create Environment' to start",
+            text="Click 'Start Setup' to begin environment configuration",
             font=ctk.CTkFont(size=12),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.detail_label.pack(padx=15, pady=(0, 10))
-        
-        self.progress_bar = ctk.CTkProgressBar(progress_frame, width=300)
-        self.progress_bar.pack(padx=15, pady=(0, 15))
-        self.progress_bar.set(0)
+        self.detail_label.pack(pady=(0, 15))
         
         # Log frame
-        log_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_lighter"])
-        log_frame.pack(fill="both", expand=True, pady=10)
+        log_frame = ctk.CTkFrame(main_frame)
+        log_frame.pack(fill="both", expand=True, pady=(0, 15))
         
-        ctk.CTkLabel(
+        log_title = ctk.CTkLabel(
             log_frame,
-            text="📝 Setup Log:",
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(anchor="w", padx=15, pady=(15, 5))
+            text="📋 Setup Log",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        )
+        log_title.pack(pady=(10, 5))
         
+        # Log text widget
         self.log_text = ctk.CTkTextbox(
             log_frame,
-            font=ctk.CTkFont(family="Courier", size=10),
-            height=150
+            height=200,
+            font=ctk.CTkFont(size=11, family="Consolas"),
+            text_color=VSCODE_COLORS["text"],
+            fg_color=VSCODE_COLORS["surface_light"]
         )
         self.log_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         
-        # Buttons
+        # Button frame
         button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        button_frame.pack(fill="x", pady=15)
+        button_frame.pack(fill="x", pady=(0, 10))
         
+        # Start button
         self.start_button = ctk.CTkButton(
             button_frame,
-            text="🚀 Create Environment",
+            text="🚀 Start Setup",
             command=self.start_setup,
             height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=VSCODE_COLORS["success"],
-            hover_color="#117A65"
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
         )
-        self.start_button.pack(side="left", padx=(0, 10))
+        self.start_button.pack(side="left")
         
+        # Skip button
         self.skip_button = ctk.CTkButton(
             button_frame,
-            text="Skip Setup",
+            text="⏭️ Skip",
             command=self.skip_setup,
             height=40,
-            width=100,
-            font=ctk.CTkFont(size=12),
-            fg_color=VSCODE_COLORS["surface_lighter"],
+            font=ctk.CTkFont(size=14),
+            fg_color="transparent",
+            border_width=2,
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.skip_button.pack(side="left")
+        self.skip_button.pack(side="left", padx=(10, 0))
         
+        # Continue button (initially disabled)
         self.close_button = ctk.CTkButton(
             button_frame,
             text="✅ Continue",
@@ -1956,7 +2011,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
                 
                 # Run environment creation in background and schedule next step
                 def create_env():
-                    success = self.venv_manager.create_default_environment(self.log_message_threadsafe)
+                    success = self.venv_manager.create_virtual_environment()
                     # Use queue to communicate result back to main thread
                     self._result_queue.put(('env_created', success))
                 
@@ -1976,7 +2031,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
                 self.log_message("Upgrading pip...")
                 
                 def upgrade_pip():
-                    success = self.venv_manager.upgrade_pip(self.log_message_threadsafe)
+                    success = self.venv_manager.upgrade_pip_in_existing_env(self.log_message_threadsafe)
                     if not success:
                         self.log_message_threadsafe("WARNING: Could not upgrade pip")
                     # Use queue to communicate result back to main thread
@@ -2001,7 +2056,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
                 self.log_message("Verifying installation...")
                 
                 def verify():
-                    success = self.venv_manager.verify_installation(self.log_message_threadsafe)
+                    success = self.venv_manager.verify_complete_installation(self.log_message_threadsafe)
                     # Use queue to communicate result back to main thread
                     self._result_queue.put(('verification_done', success))
                 
@@ -2047,14 +2102,10 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         self.log_message(f"Installing {package} with {cpu_setting} CPU usage...")
         
         def install_package():
-            success = self.install_package_with_cpu_control(
+            success = self.venv_manager.install_single_package_with_logging(
                 package, 
-                cpu_setting,
                 self.log_message_threadsafe
             )
-            
-            if not success:
-                self.log_message_threadsafe(f"ERROR: Failed to install {package}")
             
             # Use queue to communicate result back to main thread
             self._result_queue.put(('package_installed', package_index + 1))
@@ -2062,78 +2113,6 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         threading.Thread(target=install_package, daemon=True).start()
         # Schedule checking for result
         self.after(500, lambda: self.check_for_package_results(packages, package_index))
-
-    def install_package_with_cpu_control(self, package, cpu_setting, log_callback):
-        """Install package with CPU usage control and proper output streaming"""
-        try:
-            # Determine CPU count based on setting
-            import psutil
-            cpu_count = psutil.cpu_count(logical=True)
-            
-            if cpu_setting == "Low":
-                cores = 1
-            elif cpu_setting == "Medium":
-                cores = max(1, cpu_count // 2)
-            else:  # High
-                cores = cpu_count
-                
-            log_callback(f"Using {cores} of {cpu_count} CPU cores for installation")
-            
-            # Create environment variables for CPU control
-            env = os.environ.copy()
-            env["OMP_NUM_THREADS"] = str(cores)
-            env["OPENBLAS_NUM_THREADS"] = str(cores)
-            env["MKL_NUM_THREADS"] = str(cores)
-            env["NUMEXPR_NUM_THREADS"] = str(cores)
-            env["PYTHONUNBUFFERED"] = "1"  # ensure real-time pip output
-            
-            # Use the platform-appropriate startupinfo to hide console
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-                
-            # Execute pip install with CPU control and stream output
-            process = subprocess.Popen(
-                [self.venv_manager.pip_path, "install", package],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=env,
-                startupinfo=startupinfo,
-                creationflags=creationflags,
-            )
-
-            # Stream pip output line by line to both dialog and terminal
-            for line in process.stdout:
-                if line:
-                    cleaned_line = line.rstrip()
-                    log_callback(cleaned_line)
-                    
-                    # Also send to main terminal if available
-                    if hasattr(self, 'parent_window') and hasattr(self.parent_window, 'append_terminal_output'):
-                        try:
-                            self.after(0, lambda l=cleaned_line: self.parent_window.append_terminal_output(f"{l}\n"))
-                        except:
-                            pass  # Ignore if GUI update fails
-                    
-            exit_code = process.wait()
-
-            if exit_code == 0:
-                log_callback(f"Successfully installed {package}")
-                return True
-            else:
-                log_callback(f"Failed to install {package} (exit code: {exit_code})")
-                return False
-                
-        except Exception as e:
-            log_callback(f"Error installing {package}: {str(e)}")
-            return False
 
     def check_for_results(self, packages, next_step):
         """Check for results from background threads"""
@@ -2166,23 +2145,18 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
     def setup_complete_ui(self):
         """Update UI when setup is complete"""
         self.setup_complete = True
-        self.close_button.configure(state="normal")
-        self.step_label.configure(
-            text="🎉 Setup Complete!",
-            text_color=VSCODE_COLORS["success"]
+        self.progress_bar.set(1.0)
+        self.step_label.configure(text="✅ Setup Complete!")
+        self.detail_label.configure(text="Environment is ready to use")
+        
+        # Enable the continue button
+        self.close_button.configure(state="normal", text="✅ Continue to App")
+        
+        # Update button colors to indicate success
+        self.close_button.configure(
+            fg_color="#28a745",  # Green color for success
+            hover_color="#218838"
         )
-        self.detail_label.configure(text="ManimStudio is ready to use")
-        
-        # Show completion message
-        success_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["success"])
-        success_frame.place(relx=0.5, rely=0.5, anchor="center")
-        
-        ctk.CTkLabel(
-            success_frame,
-            text="✅ Environment Ready!",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="white"
-        ).pack(padx=20, pady=10)
         
     def skip_setup(self):
         """Skip environment setup"""
@@ -2194,12 +2168,47 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             parent=self
         ):
             self.venv_manager.needs_setup = False
+            # Ensure main window is shown before destroying dialog
+            if hasattr(self, 'parent_window') and self.parent_window:
+                self.parent_window.after(10, lambda: self.parent_window.deiconify())
             self.destroy()
             
     def continue_to_app(self):
         """Continue to main application"""
         if self.setup_complete:
             self.venv_manager.needs_setup = False
+            # Ensure main window is shown before destroying dialog
+            if hasattr(self, 'parent_window') and self.parent_window:
+                self.parent_window.after(10, lambda: self.parent_window.deiconify())
+            self.destroy()
+        else:
+            from tkinter import messagebox
+            messagebox.showwarning(
+                "Setup Not Complete",
+                "Please complete the environment setup first, or skip setup to continue.",
+                parent=self
+            )
+
+    def on_closing(self):
+        """Handle window close attempt"""
+        if not self.setup_complete:
+            from tkinter import messagebox
+            if messagebox.askyesno(
+                "Cancel Setup",
+                "Setup is in progress. Are you sure you want to cancel?\n\n"
+                "You can skip setup to continue without environment setup.",
+                parent=self
+            ):
+                # Mark as not needing setup so app can continue
+                self.venv_manager.needs_setup = False
+                # Ensure main window is shown
+                if hasattr(self, 'parent_window') and self.parent_window:
+                    self.parent_window.after(10, lambda: self.parent_window.deiconify())
+                self.destroy()
+        else:
+            # Setup is complete, continue normally
+            if hasattr(self, 'parent_window') and self.parent_window:
+                self.parent_window.after(10, lambda: self.parent_window.deiconify())
             self.destroy()
         
     def show_error(self, message):
@@ -2214,22 +2223,6 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         from tkinter import messagebox
         messagebox.showwarning("Setup Warning", message, parent=self)
         self.setup_complete_ui()
-        
-    def on_closing(self):
-        """Handle window close attempt"""
-        if not self.setup_complete:
-            from tkinter import messagebox
-            if messagebox.askyesno(
-                "Cancel Setup",
-                "Setup is in progress. Are you sure you want to cancel?",
-                parent=self
-            ):
-                self.destroy()
-        else:
-            # Mark setup as completed when closing after success
-            self.venv_manager.needs_setup = False
-            self.destroy()
-
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
     """Enhanced dialog for manual virtual environment management"""
     
@@ -3697,15 +3690,43 @@ class VirtualEnvironmentManager:
         return info
 
     def show_setup_dialog(self):
-        """Display the environment setup dialog and wait until it closes."""
+        """Show environment setup dialog"""
         if self.parent_app is None:
             return
         dialog = EnvironmentSetupDialog(self.parent_app.root, self)
         self.parent_app.root.wait_window(dialog)
+        
+        # After dialog closes, ensure main window is visible
+        self.parent_app.root.after(10, lambda: self.parent_app.root.deiconify())
 
     def is_environment_ready(self):
         """Return True when the environment no longer needs setup."""
-        return not self.needs_setup
+        # Check if we're already marked as not needing setup
+        if not self.needs_setup:
+            return True
+            
+        # Check for manim_studio_default environment specifically
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        if os.path.exists(default_venv_path) and self.is_valid_venv(default_venv_path):
+            self.logger.info("Found valid manim_studio_default environment")
+            # Set up paths for this environment
+            if os.name == 'nt':
+                self.python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+                self.pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+            else:
+                self.python_path = os.path.join(default_venv_path, "bin", "python")
+                self.pip_path = os.path.join(default_venv_path, "bin", "pip")
+            
+            # Verify that manim is available
+            if self.check_manim_availability():
+                self.current_venv = "manim_studio_default"
+                self.needs_setup = False
+                self.logger.info("✅ manim_studio_default environment is ready!")
+                return True
+            else:
+                self.logger.warning("manim_studio_default exists but manim not available")
+        
+        return False
         
     def _detect_if_frozen(self):
         """Enhanced detection of frozen executable"""
@@ -3751,22 +3772,29 @@ class VirtualEnvironmentManager:
         """Initialize and detect current environment"""
         self.logger.info("Initializing environment detection...")
         
+        # First check for manim_studio_default specifically
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        if os.path.exists(default_venv_path) and self.is_valid_venv(default_venv_path):
+            self.logger.info("Found manim_studio_default environment")
+            if os.name == 'nt':
+                self.python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+                self.pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+            else:
+                self.python_path = os.path.join(default_venv_path, "bin", "python")
+                self.pip_path = os.path.join(default_venv_path, "bin", "pip")
+                
+            # Verify manim is available
+            if self.check_manim_availability():
+                self.current_venv = "manim_studio_default"
+                self.needs_setup = False
+                return True
+            else:
+                self.logger.warning("manim_studio_default exists but manim not available")
+
         # Check for local environment alongside the application
         if self.check_local_directory_venv():
             return True
 
-        # Check for default environment
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-        if os.path.exists(default_venv_path):
-            self.logger.info(f"Found default environment at: {default_venv_path}")
-            if self.is_valid_venv(default_venv_path):
-                self.logger.info("Default environment structure is valid")
-                self.activate_venv("manim_studio_default")
-                self.needs_setup = False
-                return True
-            else:
-                self.logger.warning("Default environment structure is invalid")
-                
         # CRITICAL: Don't check current virtual environment when frozen
         # because sys.executable points to our .exe file
         if not self.is_frozen:
@@ -3796,7 +3824,6 @@ class VirtualEnvironmentManager:
             return False  # Still need setup, but we have backup
             
         return False
-    
     def setup_environment(self, log_callback=None):
         """Main setup method - creates and configures everything"""
         self.logger.info("Starting environment setup...")
@@ -5051,7 +5078,31 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
                 
             return True
         return False
-
+    def activate_default_environment(self):
+        """Activate the manim_studio_default environment"""
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        
+        if not os.path.exists(default_venv_path):
+            self.logger.error("manim_studio_default environment not found")
+            return False
+            
+        if not self.is_valid_venv(default_venv_path):
+            self.logger.error("manim_studio_default environment is invalid")
+            return False
+        
+        # Set up paths
+        if os.name == 'nt':
+            self.python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+            self.pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+        else:
+            self.python_path = os.path.join(default_venv_path, "bin", "python")
+            self.pip_path = os.path.join(default_venv_path, "bin", "pip")
+        
+        self.current_venv = "manim_studio_default"
+        self.needs_setup = False
+        
+        self.logger.info("Successfully activated manim_studio_default environment")
+        return True
     def deactivate_venv(self):
         """Deactivate the current virtual environment"""
         self.current_venv = None
@@ -5272,16 +5323,34 @@ else:
                 log_callback(f"Error during verification: {str(e)}")
             return False
     def check_manim_availability(self):
-        """Quick check if manim is available in current environment"""
+        """Check if manim is available in the current environment"""
         try:
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "-c", "import manim; print(manim.__version__)"],
+            if not self.python_path or not os.path.exists(self.python_path):
+                self.logger.warning(f"Python path not found: {self.python_path}")
+                return False
+                
+            self.logger.info(f"Checking manim availability with Python: {self.python_path}")
+            
+            # Try to import manim using the current Python path
+            result = subprocess.run(
+                [self.python_path, "-c", "import manim; print('MANIM_OK:', manim.__version__)"],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=10
             )
-            return result.returncode == 0
-        except Exception:
+            
+            if result.returncode == 0 and "MANIM_OK" in result.stdout:
+                version = result.stdout.strip().split("MANIM_OK:")[-1].strip()
+                self.logger.info(f"✅ Manim is available, version: {version}")
+                return True
+            else:
+                self.logger.warning(f"Manim not available. Return code: {result.returncode}")
+                self.logger.warning(f"stdout: {result.stdout}")
+                self.logger.warning(f"stderr: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error checking manim availability: {e}")
             return False
     
     def repair_environment(self):
@@ -5688,6 +5757,7 @@ else:
         except Exception as e:
             self.logger.error(f"Error finding Python executable: {e}")
             return None
+
 class CallbackHandler(logging.Handler):
     """Custom logging handler that calls a callback function"""
     
