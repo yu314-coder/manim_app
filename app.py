@@ -3761,13 +3761,9 @@ class VirtualEnvironmentManager:
             self.logger.info(f"Found default environment at: {default_venv_path}")
             if self.is_valid_venv(default_venv_path):
                 self.logger.info("Default environment structure is valid")
-                if self.verify_environment_packages(default_venv_path):
-                    self.logger.info("Default environment has all required packages")
-                    self.activate_venv("manim_studio_default")
-                    self.needs_setup = False
-                    return True
-                else:
-                    self.logger.warning("Default environment missing required packages")
+                self.activate_venv("manim_studio_default")
+                self.needs_setup = False
+                return True
             else:
                 self.logger.warning("Default environment structure is invalid")
                 
@@ -5592,6 +5588,16 @@ else:
             for python_name in python_names:
                 python_path = shutil.which(python_name)
                 if python_path and os.path.exists(python_path):
+                    # Skip our own executable when frozen
+                    if self.is_frozen:
+                        try:
+                            if os.path.samefile(python_path, sys.executable):
+                                self.logger.debug("Skipping frozen executable candidate")
+                                continue
+                        except Exception:
+                            if os.path.abspath(python_path) == os.path.abspath(sys.executable):
+                                continue
+
                     # Verify it's a working Python installation
                     try:
                         result = subprocess.run(
@@ -5628,6 +5634,16 @@ else:
             
             for path in common_paths:
                 if os.path.exists(path):
+                    # Skip our own executable when frozen
+                    if self.is_frozen:
+                        try:
+                            if os.path.samefile(path, sys.executable):
+                                self.logger.debug("Skipping frozen executable candidate")
+                                continue
+                        except Exception:
+                            if os.path.abspath(path) == os.path.abspath(sys.executable):
+                                continue
+
                     try:
                         result = subprocess.run(
                             [path, "--version"],
@@ -5652,8 +5668,17 @@ else:
                 if result.returncode == 0:
                     python_path = shutil.which("python")
                     if python_path:
-                        self.logger.info(f"Using 'python' command: {python_path}")
-                        return python_path
+                        if self.is_frozen:
+                            try:
+                                if os.path.samefile(python_path, sys.executable):
+                                    self.logger.debug("Skipping frozen executable candidate")
+                                    python_path = None
+                            except Exception:
+                                if os.path.abspath(python_path) == os.path.abspath(sys.executable):
+                                    python_path = None
+                        if python_path:
+                            self.logger.info(f"Using 'python' command: {python_path}")
+                            return python_path
             except Exception:
                 pass
             
