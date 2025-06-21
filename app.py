@@ -8810,10 +8810,13 @@ class ManimStudioApp:
         # Settings
         self.settings = {}
     
-        # Load settings first
+        # Load settings and initialize variables before creating the UI
         self.load_settings()
-        # Now create the main UI
+        self.initialize_variables()
         self.create_ui()
+
+        # Apply the selected theme on startup
+        self.apply_vscode_theme()
         
         # Start services
         self.start_services()
@@ -8860,99 +8863,6 @@ class ManimStudioApp:
         self.root.lift()
         self.root.focus_force()
 
-    def setup_main_ui(self):
-        """Don't setup anything - UI already exists"""
-        pass  # Do nothing, use existing UI
-
-    def setup_main_ui(self):
-        """Just call the existing setup_ui method"""
-        self.setup_ui()
-
-    def setup_main_ui(self):
-        """Setup the main application user interface"""
-        # Clear any existing widgets
-        for widget in self.root.winfo_children():
-            widget.destroy()
-        
-        # Use your existing setup_ui method if it exists, otherwise create basic UI
-        if hasattr(self, 'setup_ui') and callable(getattr(self, 'setup_ui')):
-            # Call your existing setup_ui method
-            self.setup_ui()
-        else:
-            # Create basic UI if setup_ui doesn't exist
-            self.create_basic_ui()
-
-    def create_basic_ui(self):
-        """Create basic UI structure with all required elements"""
-        # Configure grid weights
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
-        
-        # Create main frame
-        main_frame = ctk.CTkFrame(self.root)
-        main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        main_frame.grid_rowconfigure(1, weight=1)
-        main_frame.grid_columnconfigure(1, weight=1)
-        
-        # Header
-        header_frame = ctk.CTkFrame(main_frame, height=60)
-        header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
-        header_frame.grid_columnconfigure(0, weight=1)
-        
-        title_label = ctk.CTkLabel(
-            header_frame, 
-            text="🎬 ManimStudio", 
-            font=ctk.CTkFont(size=24, weight="bold")
-        )
-        title_label.grid(row=0, column=0, padx=20, pady=15, sticky="w")
-        
-        # Add time label (this was missing)
-        from datetime import datetime
-        self.time_label = ctk.CTkLabel(
-            header_frame,
-            text=datetime.now().strftime("%H:%M"),
-            font=ctk.CTkFont(size=12)
-        )
-        self.time_label.grid(row=0, column=1, padx=20, pady=15, sticky="e")
-        
-        # Sidebar
-        sidebar_frame = ctk.CTkFrame(main_frame, width=250)
-        sidebar_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
-        
-        # Main content area
-        content_frame = ctk.CTkFrame(main_frame)
-        content_frame.grid(row=1, column=1, sticky="nsew", padx=5, pady=5)
-        
-        # Welcome message
-        welcome_label = ctk.CTkLabel(
-            content_frame,
-            text="Welcome to ManimStudio!\n\nYour environment is ready for creating animations.",
-            font=ctk.CTkFont(size=16),
-            justify="center"
-        )
-        welcome_label.pack(expand=True)
-        
-        # Status bar
-        status_frame = ctk.CTkFrame(main_frame, height=30)
-        status_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
-        
-        # Environment status
-        env_status = "✅ Environment: manim_studio_default" if not self.venv_manager.needs_setup else "⚠️ No environment"
-        latex_status = f"✅ LaTeX: Available" if self.latex_path else "⚠️ LaTeX: Not found"
-        
-        status_label = ctk.CTkLabel(
-            status_frame,
-            text=f"{env_status} | {latex_status}",
-            font=ctk.CTkFont(size=11)
-        )
-        status_label.pack(side="left", padx=10, pady=5)
-        
-        # Initialize any other required attributes that your existing code expects
-        self.setup_required_attributes()
-
-    def setup_required_attributes(self):
-        """Setup any required attributes that existing code expects"""
-        # Add any oth
     def center_window(self):
         """Center the application window on screen"""
         self.root.update_idletasks()
@@ -11579,61 +11489,6 @@ Licensed under MIT License"""
                 
         return False
     
-    def load_settings(self):
-        """Load settings from file"""
-        if getattr(sys, 'frozen', False):
-            # Running as executable
-            settings_dir = os.path.join(os.path.dirname(sys.executable), "settings")
-        else:
-            # Running as script
-            settings_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
-    
-        os.makedirs(settings_dir, exist_ok=True)
-        self.settings_file = os.path.join(settings_dir, "settings.json")
-        
-        # Default settings
-        default_settings = {
-            "quality": "720p",
-            "format": "MP4 Video",
-            "fps": 30,
-            "preview_quality": "Medium",
-            "auto_preview": False,
-            "theme": "Dark+",
-            "font_size": 14,
-            "intellisense_enabled": True,
-            "current_venv": None,
-            "custom_width": 1920,
-            "custom_height": 1080
-        }
-        
-        try:
-            if os.path.exists(self.settings_file):
-                with open(self.settings_file, 'r', encoding='utf-8') as f:
-                    loaded_settings = json.load(f)
-                    self.settings = {**default_settings, **loaded_settings}
-            else:
-                self.settings = default_settings
-        except Exception as e:
-            logger.warning(f"Could not load settings: {e}")
-            self.settings = default_settings
-            
-        # Update variables from settings
-        self.intellisense_var.set(self.settings.get("intellisense_enabled", True))
-        self.auto_preview_var.set(self.settings.get("auto_preview", False))
-        self.font_size_var.set(self.settings.get("font_size", 14))
-    
-    def save_settings(self):
-        """Save settings to file"""
-        try:
-            # Update settings from variables
-            self.settings["intellisense_enabled"] = self.intellisense_var.get()
-            self.settings["auto_preview"] = self.auto_preview_var.get()
-            self.settings["font_size"] = self.font_size_var.get()
-            
-            with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump(self.settings, f, indent=2)
-        except Exception as e:
-            logger.warning(f"Could not save settings: {e}")
     
 class DependencyInstallDialog(ctk.CTkToplevel):
     """Dialog showing progress while installing packages."""
