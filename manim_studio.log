@@ -1460,3 +1460,93 @@ AttributeError: 'ManimStudioApp' object has no attribute 'setup_main_ui'. Did yo
 2025-06-21 10:52:36,496 - INFO - Environment setup completed, showing main UI
 2025-06-21 10:52:36,496 - INFO - Main UI is now visible
 2025-06-21 10:52:36,497 - INFO - Starting application main loop
+2025-06-21 11:04:09,360 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:04:09,361 - INFO - Checking LaTeX installation...
+2025-06-21 11:04:09,906 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:04:09,907 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:04:09,907 - INFO - Creating main application...
+2025-06-21 11:04:10,018 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 11:04:10,021 - INFO - Showing environment setup dialog
+2025-06-21 11:04:17,238 - INFO - Environment setup was skipped or cancelled
+2025-06-21 11:04:17,238 - INFO - Main UI is now visible
+2025-06-21 11:04:17,239 - INFO - Starting application main loop
+2025-06-21 11:15:09,044 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:15:09,045 - INFO - Checking LaTeX installation...
+2025-06-21 11:15:09,796 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:15:09,796 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:15:09,797 - INFO - Creating main application...
+2025-06-21 11:15:09,916 - WARNING - Could not load icon: name 'resource_path' is not defined
+2025-06-21 11:15:09,916 - ERROR - Missing required dependency: name 'AsyncPackageSearchService' is not defined
+2025-06-21 11:18:51,449 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:18:51,449 - INFO - Checking LaTeX installation...
+2025-06-21 11:18:51,952 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:18:51,953 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:18:51,953 - INFO - Creating main application...
+2025-06-21 11:18:52,050 - ERROR - Missing required dependency: 'VirtualEnvironmentManager' object has no attribute 'discover_all_python_installations'
+2025-06-21 11:20:00,799 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:20:00,799 - INFO - Checking LaTeX installation...
+2025-06-21 11:20:01,439 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:20:01,440 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:20:01,440 - INFO - Creating main application...
+2025-06-21 11:20:01,524 - INFO - Discovering Python installations...
+2025-06-21 11:20:01,562 - INFO - Found current Python: Python 3.12.3 at C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 11:20:02,389 - INFO - Discovered 1 Python installations
+2025-06-21 11:20:02,390 - INFO - Detecting existing environments...
+2025-06-21 11:20:02,390 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-21 11:20:02,390 - INFO - Default environment structure is valid
+2025-06-21 11:20:02,613 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 11:20:02,614 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:20:05,935 - INFO - All essential packages verified
+2025-06-21 11:20:05,935 - INFO - Default environment has all required packages
+2025-06-21 11:20:05,936 - INFO - Activated environment: manim_studio_default
+2025-06-21 11:20:05,936 - INFO - Python path: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:20:05,936 - INFO - Pip path: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\pip.exe
+2025-06-21 11:20:06,177 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 11:20:06,177 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:20:08,945 - INFO - All essential packages verified
+2025-06-21 11:20:08,945 - INFO - Using existing environment: manim_studio_default
+2025-06-21 11:20:10,092 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'intellisense_var'
+2025-06-21 11:35:21,538 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:35:21,539 - INFO - Checking LaTeX installation...
+2025-06-21 11:35:22,506 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:35:22,506 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:35:22,506 - INFO - Creating main application...
+2025-06-21 11:35:22,647 - INFO - Discovering Python installations...
+2025-06-21 11:35:22,706 - INFO - Found current Python: Python 3.12.3 at C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 11:35:24,622 - INFO - Discovered 1 Python installations
+2025-06-21 11:35:24,623 - INFO - Detecting existing environments...
+2025-06-21 11:35:24,623 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-21 11:35:24,624 - INFO - Default environment structure is valid
+2025-06-21 11:35:25,267 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 11:35:25,267 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:35:30,844 - INFO - All essential packages verified
+2025-06-21 11:35:30,844 - INFO - Default environment has all required packages
+2025-06-21 11:35:30,845 - INFO - Activated environment: manim_studio_default
+2025-06-21 11:35:30,845 - INFO - Python path: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:35:30,846 - INFO - Pip path: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\pip.exe
+2025-06-21 11:35:31,308 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 11:35:31,309 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:35:36,798 - INFO - All essential packages verified
+2025-06-21 11:35:36,798 - INFO - Using existing environment: manim_studio_default
+2025-06-21 11:35:38,290 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 11:35:38,290 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'logger'
