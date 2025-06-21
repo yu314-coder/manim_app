@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.log
+.preview_cache/
+logs(for codex debug).txt
+history/

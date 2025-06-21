@@ -196,8 +196,8 @@ def run_subprocess_safe(command, **kwargs):
     try:
         return subprocess.run(command, **kwargs)
     except Exception as e:
-        print(f"Subprocess error: {e}")
-        print(f"Command: {command}")
+        logger.error(f"Subprocess error: {e}")
+        logger.error(f"Command: {command}")
         raise
 
 def run_subprocess_async_safe(command, callback, **kwargs):
@@ -209,7 +209,7 @@ def run_subprocess_async_safe(command, callback, **kwargs):
             success = result.returncode == 0
             callback(success, result.returncode)
         except Exception as e:
-            print(f"Async subprocess error: {e}")
+            logger.error(f"Async subprocess error: {e}")
             callback(False, -1)
     
     thread = threading.Thread(target=run_in_thread, daemon=True)
@@ -267,10 +267,10 @@ def check_dll_dependencies():
     if getattr(sys, 'frozen', False):
         try:
             import mapbox_earcut  # noqa: F401
-            print("✅ mapbox_earcut loaded successfully")
+            logger.info("mapbox_earcut loaded successfully")
             return True
         except ImportError as e:
-            print(f"❌ mapbox_earcut import failed: {e}")
+            logger.warning(f"mapbox_earcut import failed: {e}")
             
             # Try to provide helpful error message
             if "DLL load failed" in str(e):
@@ -314,7 +314,7 @@ try:
     JEDI_AVAILABLE = True
 except ImportError:
     JEDI_AVAILABLE = False
-    print("Jedi not available. IntelliSense will be limited.")
+    logger.warning("Jedi not available. IntelliSense will be limited.")
 
 # Try to import other optional dependencies
 try:
@@ -340,18 +340,18 @@ try:
     elif hasattr(fixes, "apply_all_fixes"):
         fixes.apply_all_fixes()
     else:
-        print("Warning: apply_fixes function not found in fixes module")
+        logger.warning("apply_fixes function not found in fixes module")
 except (ImportError, AttributeError) as e:
-    print(f"Warning: fixes module issue: {e}")
+    logger.warning(f"fixes module issue: {e}")
 except Exception as e:
-    print(f"Warning: Error applying fixes: {e}")
+    logger.warning(f"Error applying fixes: {e}")
 
 # Force matplotlib backend to TkAgg
 try:
     import matplotlib
     matplotlib.use('TkAgg')
 except ImportError:
-    print("Warning: matplotlib not available")
+    logger.warning("matplotlib not available")
     pass
 # Configure CustomTkinter with modern appearance
 ctk.set_appearance_mode("dark")
@@ -2349,7 +2349,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             "ManimStudio may not work correctly without the required packages.",
             parent=self
         ):
-            print("DEBUG: User skipped setup")
+            logger.debug("User skipped setup")
             self.log_message("Setup skipped by user")
             
             # Mark setup as complete
@@ -2373,18 +2373,18 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             
             # FORCE main window to show
             def show_main():
-                print("DEBUG: Forcing main window visible...")
+                logger.debug("Forcing main window visible...")
                 main_window.deiconify()
                 main_window.lift() 
                 main_window.focus_force()
                 main_window.attributes('-topmost', True)
                 main_window.after(500, lambda: main_window.attributes('-topmost', False))
-                print("DEBUG: Main window should be visible now!")
+                logger.debug("Main window should be visible now!")
             
             main_window.after(100, show_main)
     def continue_to_app(self):
         """Continue to the main application - FIXED"""
-        print("DEBUG: Continuing to main app")
+        logger.debug("Continuing to main app")
         
         # Ensure main window will be visible
         if hasattr(self.parent_window, 'withdraw'):
@@ -2399,7 +2399,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
     def _show_main_window(self):
         """Force main window to be visible and focused"""
         try:
-            print("DEBUG: Forcing main window to show")
+            logger.debug("Forcing main window to show")
             
             # Make sure window is not withdrawn
             if self.parent_window.state() == 'withdrawn':
@@ -2413,10 +2413,10 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             # Remove topmost after a moment
             self.parent_window.after(500, lambda: self.parent_window.attributes('-topmost', False))
             
-            print("DEBUG: Main window should now be visible")
+            logger.debug("Main window should now be visible")
             
         except Exception as e:
-            print(f"ERROR: Could not show main window: {e}")
+            logger.error(f"Could not show main window: {e}")
 
     def _create_settings_file(self):
         """Create settings file to prevent future dialogs"""
@@ -2441,9 +2441,9 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
                 }
                 with open(settings_file, 'w') as f:
                     json.dump(default_settings, f, indent=2)
-                print(f"DEBUG: Created settings file: {settings_file}")
+                logger.debug(f"Created settings file: {settings_file}")
             except Exception as e:
-                print(f"WARNING: Could not create settings file: {e}")
+                logger.warning(f"Could not create settings file: {e}")
 
     def on_closing(self):
         """Handle dialog closing - FIXED"""
@@ -2455,7 +2455,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
                 parent=self
             ):
                 # User wants to exit - treat as skip
-                print("DEBUG: User canceled setup")
+                logger.debug("User canceled setup")
                 self.venv_manager.needs_setup = False
                 self.setup_complete = True
                 self._create_settings_file()
@@ -10419,7 +10419,7 @@ class MyScene(Scene):
         try:
             # Check if environment needs setup first
             if self.venv_manager.needs_setup:
-                print("Environment needs setup, showing setup dialog...")
+                logger.info("Environment needs setup, showing setup dialog...")
                 self.venv_manager.show_setup_dialog()
             else:
                # Show enhanced environment management dialog
@@ -11552,9 +11552,9 @@ Licensed under MIT License"""
                 self.root.deiconify()
             self.root.lift()
             self.root.focus_force()
-            print("DEBUG: Main window forced to show")
+            logger.debug("Main window forced to show")
         except Exception as e:
-            print(f"ERROR: Could not show main window: {e}")
+            logger.error(f"Could not show main window: {e}")
     def detect_latex(self):
         """Detect if LaTeX is installed"""
         if self.latex_path and os.path.exists(self.latex_path):
@@ -11635,342 +11635,6 @@ Licensed under MIT License"""
         except Exception as e:
             logger.warning(f"Could not save settings: {e}")
     
-    def create_ui(self):
-        """Create the main user interface"""
-        # Configure main window
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
-        
-        # Create main container
-        self.main_container = ctk.CTkFrame(self.root)
-        self.main_container.grid(row=0, column=0, sticky="nsew")
-        self.main_container.grid_rowconfigure(1, weight=1)
-        self.main_container.grid_columnconfigure(1, weight=1)
-        
-        # Create menu bar
-        self.create_menu_bar()
-        
-        # Create toolbar
-        self.create_toolbar()
-        
-        # Create main content area
-        self.create_main_content()
-        
-        # Create status bar
-        self.create_status_bar()
-        
-        # Apply theme
-        self.apply_current_theme()
-    
-    def create_menu_bar(self):
-        """Create menu bar"""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
-        
-        # File menu
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
-        file_menu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
-        file_menu.add_separator()
-        file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
-        file_menu.add_command(label="Save As", command=self.save_as_file, accelerator="Ctrl+Shift+S")
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.on_closing)
-        
-        # View menu
-        view_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_checkbutton(label="IntelliSense", variable=self.intellisense_var, command=self.toggle_intellisense)
-        
-        # Help menu
-        help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self.show_about)
-    
-    def create_toolbar(self):
-        """Create toolbar"""
-        toolbar_frame = ctk.CTkFrame(self.main_container, height=50)
-        toolbar_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
-        toolbar_frame.grid_columnconfigure(0, weight=1)
-        
-        # Left side - file operations
-        left_frame = ctk.CTkFrame(toolbar_frame, fg_color="transparent")
-        left_frame.grid(row=0, column=0, sticky="w", padx=10, pady=5)
-        
-        # File buttons
-        ctk.CTkButton(
-            left_frame, text="New", width=60, height=30,
-            command=self.new_file
-        ).pack(side="left", padx=2)
-        
-        ctk.CTkButton(
-            left_frame, text="Open", width=60, height=30,
-            command=self.open_file
-        ).pack(side="left", padx=2)
-        
-        ctk.CTkButton(
-            left_frame, text="Save", width=60, height=30,
-            command=self.save_file
-        ).pack(side="left", padx=2)
-        
-        # Right side - render buttons
-        right_frame = ctk.CTkFrame(toolbar_frame, fg_color="transparent")
-        right_frame.grid(row=0, column=1, sticky="e", padx=10, pady=5)
-        
-        ctk.CTkButton(
-            right_frame, text="▶ Preview", width=80, height=30,
-            command=self.quick_preview
-        ).pack(side="right", padx=2)
-        
-        ctk.CTkButton(
-            right_frame, text="🎬 Render", width=80, height=30,
-            command=self.render_animation
-        ).pack(side="right", padx=2)
-    
-    def create_main_content(self):
-        """Create main content area"""
-        # Create paned window for split layout
-        self.paned_window = ctk.CTkFrame(self.main_container)
-        self.paned_window.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
-        self.paned_window.grid_rowconfigure(0, weight=1)
-        self.paned_window.grid_columnconfigure(1, weight=1)
-        
-        # Left sidebar
-        self.create_sidebar()
-        
-        # Main editor area
-        self.create_editor_area()
-    
-    def create_sidebar(self):
-        """Create left sidebar"""
-        sidebar_frame = ctk.CTkFrame(self.paned_window, width=250)
-        sidebar_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        
-        # Sidebar title
-        ctk.CTkLabel(
-            sidebar_frame, 
-            text="📁 Project Files", 
-            font=ctk.CTkFont(size=14, weight="bold")
-        ).pack(pady=10)
-        
-        # Placeholder for file browser
-        ctk.CTkLabel(
-            sidebar_frame,
-            text="File browser\n(Coming soon)",
-            text_color="gray"
-        ).pack(pady=20)
-    
-    def create_editor_area(self):
-        """Create main editor area"""
-        editor_frame = ctk.CTkFrame(self.paned_window)
-        editor_frame.grid(row=0, column=1, sticky="nsew")
-        editor_frame.grid_rowconfigure(0, weight=1)
-        editor_frame.grid_columnconfigure(1, weight=1)
-        
-        # Line numbers
-        self.line_numbers = ctk.CTkTextbox(
-            editor_frame, 
-            width=50, 
-            font=("Consolas", 12),
-            state="disabled"
-        )
-        self.line_numbers.grid(row=0, column=0, sticky="nsew")
-        
-        # Code editor
-        self.code_editor = ctk.CTkTextbox(
-            editor_frame,
-            font=("Consolas", 12),
-            wrap="none"
-        )
-        self.code_editor.grid(row=0, column=1, sticky="nsew")
-        
-        # Add some default code
-        self.load_default_code()
-    
-    def create_status_bar(self):
-        """Create status bar"""
-        self.status_bar = ctk.CTkFrame(self.main_container, height=30)
-        self.status_bar.grid(row=2, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
-        self.status_bar.grid_columnconfigure(1, weight=1)
-        
-        # Status label
-        self.status_label = ctk.CTkLabel(
-            self.status_bar,
-            text="Ready",
-            font=ctk.CTkFont(size=11)
-        )
-        self.status_label.grid(row=0, column=0, sticky="w", padx=10, pady=2)
-        
-        # IntelliSense status
-        self.intellisense_status = ctk.CTkLabel(
-            self.status_bar,
-            text=f"IntelliSense: {'Enabled' if self.intellisense_var.get() else 'Disabled'}",
-            font=ctk.CTkFont(size=11)
-        )
-        self.intellisense_status.grid(row=0, column=1, pady=2)
-        
-        # LaTeX status
-        latex_text = f"LaTeX: {'Found' if self.latex_installed else 'Not found'}"
-        self.latex_status_label = ctk.CTkLabel(
-            self.status_bar,
-            text=latex_text,
-            font=ctk.CTkFont(size=11)
-        )
-        self.latex_status_label.grid(row=0, column=2, sticky="e", padx=10, pady=2)
-    
-    def apply_current_theme(self):
-        """Apply current theme settings"""
-        # This can be expanded to support multiple themes
-        pass
-    
-    def load_default_code(self):
-        """Load default Manim code"""
-        default_code = '''from manim import *
-
-class HelloWorld(Scene):
-    def construct(self):
-        # Create a text object
-        text = Text("Hello, Manim!", font_size=48)
-        
-        # Add the text to the scene
-        self.play(Write(text))
-        
-        # Wait for 2 seconds
-        self.wait(2)
-        
-        # Transform the text
-        new_text = Text("Welcome to ManimStudio!", font_size=36)
-        self.play(Transform(text, new_text))
-        
-        # Wait and fade out
-        self.wait(1)
-        self.play(FadeOut(text))
-'''
-        if self.code_editor:
-            self.code_editor.delete("1.0", "end")
-            self.code_editor.insert("1.0", default_code)
-    
-    def toggle_intellisense(self):
-        """Toggle IntelliSense on/off"""
-        enabled = self.intellisense_var.get()
-        status_text = f"IntelliSense: {'Enabled' if enabled else 'Disabled'}"
-        if self.intellisense_status:
-            self.intellisense_status.configure(text=status_text)
-        self.save_settings()
-    
-    def start_services(self):
-        """Start background services"""
-        # Update time display
-        self.update_time()
-    
-    def update_time(self):
-        """Update time display"""
-        from datetime import datetime
-        current_time = datetime.now().strftime("%H:%M")
-        if hasattr(self, 'time_label') and self.time_label:
-            self.time_label.configure(text=current_time)
-        # Schedule next update
-        self.root.after(60000, self.update_time)  # Update every minute
-    
-    def create_key_bindings(self):
-        """Create keyboard shortcuts"""
-        self.root.bind("<Control-n>", lambda e: self.new_file())
-        self.root.bind("<Control-o>", lambda e: self.open_file())
-        self.root.bind("<Control-s>", lambda e: self.save_file())
-        self.root.bind("<F5>", lambda e: self.quick_preview())
-    
-    # Placeholder methods for functionality that's referenced but missing
-    def new_file(self):
-        """Create new file"""
-        if self.code_editor:
-            self.code_editor.delete("1.0", "end")
-            self.load_default_code()
-        self.current_file_path = None
-        self.update_status("New file created")
-    
-    def open_file(self):
-        """Open file"""
-        file_path = filedialog.askopenfilename(
-            title="Open Python File",
-            filetypes=[("Python files", "*.py"), ("All files", "*.*")]
-        )
-        if file_path and self.code_editor:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                self.code_editor.delete("1.0", "end")
-                self.code_editor.insert("1.0", content)
-                self.current_file_path = file_path
-                self.update_status(f"Opened: {os.path.basename(file_path)}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Could not open file: {e}")
-    
-    def save_file(self):
-        """Save file"""
-        if not self.current_file_path:
-            self.save_as_file()
-            return
-            
-        if self.code_editor:
-            try:
-                content = self.code_editor.get("1.0", "end-1c")
-                with open(self.current_file_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                self.update_status(f"Saved: {os.path.basename(self.current_file_path)}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Could not save file: {e}")
-    
-    def save_as_file(self):
-        """Save file as"""
-        file_path = filedialog.asksaveasfilename(
-            title="Save Python File",
-            defaultextension=".py",
-            filetypes=[("Python files", "*.py"), ("All files", "*.*")]
-        )
-        if file_path and self.code_editor:
-            try:
-                content = self.code_editor.get("1.0", "end-1c")
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                self.current_file_path = file_path
-                self.update_status(f"Saved as: {os.path.basename(file_path)}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Could not save file: {e}")
-    
-    def quick_preview(self):
-        """Quick preview animation"""
-        self.update_status("Preview functionality coming soon...")
-    
-    def render_animation(self):
-        """Render animation"""
-        self.update_status("Render functionality coming soon...")
-    
-    def show_about(self):
-        """Show about dialog"""
-        messagebox.showinfo("About", f"{APP_NAME} v{APP_VERSION}\n\nA professional Manim animation studio.")
-    
-    def update_status(self, message):
-        """Update status bar message"""
-        if self.status_label:
-            self.status_label.configure(text=message)
-    
-    def on_closing(self):
-        """Handle window closing"""
-        self.save_settings()
-        self.root.destroy()
-        
-    def show_main_ui_directly(self):
-        """Show the main UI directly"""
-        logger.info("Main UI is now visible")
-        
-        # Make sure window is visible
-        self.root.deiconify()
-        self.root.lift()
-        self.root.focus_force()
-        
-        # Mark setup as complete
-        self.is_setup_complete = True
 class DependencyInstallDialog(ctk.CTkToplevel):
     """Dialog showing progress while installing packages."""
 
@@ -12339,11 +12003,11 @@ def main():
                 # FIXED: Only show ONE dialog - environment setup takes priority
                 settings_file = os.path.join(BASE_DIR, "settings.json")
                 if app.venv_manager.needs_setup:
-                    print("DEBUG: Environment needs setup - showing ONLY environment dialog")
+                    logger.debug("Environment needs setup - showing ONLY environment dialog")
                     # Show ONLY environment setup dialog
                     app.root.after(1000, lambda: app.venv_manager.show_setup_dialog())
                 elif not os.path.exists(settings_file):
-                    print("DEBUG: First run but no env setup needed - showing getting started")
+                    logger.debug("First run but no env setup needed - showing getting started")
                     # Only show getting started if environment is already set up
                     app.root.after(1000, lambda: GettingStartedDialog(app.root))
             else:
