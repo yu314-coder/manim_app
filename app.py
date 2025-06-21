@@ -2226,6 +2226,8 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             ):
                 self.destroy()
         else:
+            # Mark setup as completed when closing after success
+            self.venv_manager.needs_setup = False
             self.destroy()
 
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
@@ -4303,8 +4305,9 @@ else:
         
         if os.name == 'nt':
             # Windows candidates - prioritize 64-bit installations
+            if not self.is_frozen:
+                candidates.append(sys.executable)
             candidates.extend([
-                sys.executable,
                 "python",
                 "python3"
             ])
@@ -4324,8 +4327,9 @@ else:
                 
         else:
             # Unix-like candidates
+            if not self.is_frozen:
+                candidates.append(sys.executable)
             candidates.extend([
-                sys.executable,
                 "python3",
                 "python",
                 "/usr/bin/python3",
@@ -4341,6 +4345,10 @@ else:
                 elif shutil.which(candidate):
                     python_path = shutil.which(candidate)
                 else:
+                    continue
+
+                if self.is_frozen and os.path.samefile(python_path, sys.executable):
+                    self.logger.debug("Skipping frozen executable candidate")
                     continue
                 
                 # Check Python version
@@ -5560,9 +5568,9 @@ else:
     def _find_best_python(self):
         """Find the best Python executable available on the system"""
         try:
-            # First try the current Python executable
+            # First try the current Python executable when not frozen
             current_python = sys.executable
-            if current_python and os.path.exists(current_python):
+            if not self.is_frozen and current_python and os.path.exists(current_python):
                 self.logger.info(f"Using current Python executable: {current_python}")
                 return current_python
             
