@@ -495,6 +495,14 @@ VSCODE_COLORS = {
     "border": "#3e3e42",
     "bracket_match": "#3e3e42"
 }
+# Global color scheme
+# Global color scheme - explicitly ensure critical keys exist
+VSCODE_COLORS = THEME_SCHEMES["Dark+"].copy()
+VSCODE_COLORS["success"] = "#16A085"  # Explicitly ensure success exists
+VSCODE_COLORS["error"] = "#E74C3C"    # Explicitly ensure error exists 
+VSCODE_COLORS["warning"] = "#F39C12"  # Explicitly ensure warning exists
+VSCODE_COLORS["info"] = "#3498DB"     # Explicitly ensure info exists
+
 
 # Enhanced Python syntax highlighting colors (like VSCode Dark+)
 SYNTAX_COLORS = {
@@ -1736,6 +1744,20 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         
     def setup_ui(self):
         """Setup the environment setup dialog UI"""
+        # Safety check: Ensure VSCODE_COLORS has required keys
+        global VSCODE_COLORS
+        if "success" not in VSCODE_COLORS:
+            VSCODE_COLORS["success"] = "#16A085"
+        if "error" not in VSCODE_COLORS:
+            VSCODE_COLORS["error"] = "#E74C3C"
+        if "warning" not in VSCODE_COLORS:
+            VSCODE_COLORS["warning"] = "#F39C12"
+        if "surface" not in VSCODE_COLORS:
+            VSCODE_COLORS["surface"] = "#252526"
+        if "text" not in VSCODE_COLORS:
+            VSCODE_COLORS["text"] = "#CCCCCC"
+        if "text_secondary" not in VSCODE_COLORS:
+            VSCODE_COLORS["text_secondary"] = "#858585"
         # Main frame
         main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -2185,26 +2207,25 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             )
 
     def on_closing(self):
-        """Handle window close attempt"""
-        if not self.setup_complete:
-            from tkinter import messagebox
-            if messagebox.askyesno(
-                "Cancel Setup",
-                "Setup is in progress. Are you sure you want to cancel?\n\n"
-                "You can skip setup to continue without environment setup.",
-                parent=self
-            ):
-                # Mark as not needing setup so app can continue
-                self.venv_manager.needs_setup = False
-                # Ensure main window is shown
-                if hasattr(self, 'parent_window') and self.parent_window:
-                    self.parent_window.after(10, lambda: self.parent_window.deiconify())
-                self.destroy()
-        else:
-            # Setup is complete, continue normally
-            if hasattr(self, 'parent_window') and self.parent_window:
-                self.parent_window.after(10, lambda: self.parent_window.deiconify())
-            self.destroy()
+        """Handle application closing"""
+        try:
+            if hasattr(self, 'logger'):
+                self.logger.info("Application closing...")
+            
+            # Stop any running processes
+            self.stop_process()
+            
+            # Save settings
+            self.save_settings()
+            
+            # Destroy the window
+            if self.root and self.root.winfo_exists():
+                self.root.quit()
+                self.root.destroy()
+                
+        except Exception as e:
+            # Ignore errors during shutdown
+            pass
         
     def show_error(self, message):
         """Show error message"""
@@ -6307,6 +6328,13 @@ command = {python_exe} -m venv {env_path}
         except Exception as e:
             self.logger.error(f"Failed to regenerate pyvenv.cfg: {e}")
             return False
+    def get_python_command(self):
+        """Get the Python command as a list for subprocess execution"""
+        return [self.python_path]
+
+    def get_pip_command(self):
+        """Get the pip command as a list for subprocess execution"""  
+        return [self.pip_path]
 class CallbackHandler(logging.Handler):
     """Custom logging handler that calls a callback function"""
     
@@ -9268,7 +9296,7 @@ class ManimStudioApp:
         self.auto_activate_default_environment()
         
         # Run environment setup before showing UI (only if still needed after auto-activation)
-        if self.venv_manager.needs_setup:
+        if self.debug_mode and self.venv_manager.needs_setup:
             self.root.withdraw()
             self.venv_manager.show_setup_dialog()
             self.root.deiconify()
@@ -9278,10 +9306,24 @@ class ManimStudioApp:
         self.initialize_variables()
         
         # Setup UI
-        self.create_ui()
+        # Setup UI
+        try:
+            self.logger.info("Starting UI creation...")
+            self.create_ui()
+            self.logger.info("UI created successfully")
+            
+            # Apply VSCode color scheme
+            self.apply_vscode_theme()
+            self.logger.info("Theme applied successfully")
+            
+        except Exception as e:
+            self.logger.error(f"UI creation failed: {e}")
+            import traceback
+            self.logger.error(f"UI creation traceback: {traceback.format_exc()}")
+            raise
         
-        # Apply VSCode color scheme
-        self.apply_vscode_theme()
+        # Log UI creation success
+        self.logger.info("UI created successfully")
         
     def check_environment_setup(self):
         """Check if environment setup is needed"""
@@ -9402,6 +9444,17 @@ class ManimStudioApp:
         if self.current_theme in THEME_SCHEMES:
             global VSCODE_COLORS
             VSCODE_COLORS = THEME_SCHEMES[self.current_theme].copy()
+            
+            # Ensure critical colors exist after theme switch
+            required_colors = {
+                "success": "#16A085",
+                "error": "#E74C3C", 
+                "warning": "#F39C12",
+                "info": "#3498DB"
+            }
+            for key, default_value in required_colors.items():
+                if key not in VSCODE_COLORS:
+                    VSCODE_COLORS[key] = default_value
         
     def apply_vscode_theme(self):
         """Apply VSCode-like color theme"""
@@ -11698,8 +11751,19 @@ else:
         
     def show_getting_started(self):
         """Show getting started guide"""
-        dialog = GettingStartedDialog(self)
-        self.root.wait_window(dialog)
+        try:
+            from tkinter import messagebox
+            messagebox.showinfo(
+                "Getting Started", 
+                "Welcome to ManimStudio!\n\n"
+                "• Create animations using the code editor\n"
+                "• Use Quick Preview (F5) to test your code\n"
+                "• Use Render Animation (F7) for final output\n"
+                "• Check Tools → Environment Setup if needed\n\n"
+                "See Help → Manim Documentation for more info."
+            )
+        except Exception as e:
+            print(f"Error showing getting started: {e}")
         
     def show_about(self):
         """Show about dialog"""
@@ -11820,13 +11884,16 @@ Licensed under MIT License"""
         close_btn.pack(side="left", padx=5)
         
     def run(self):
-        """Start the application"""
+        """Start the application main loop"""
         try:
-            self.root.after(100, self.start_background_tasks)
-            self.root.mainloop()
+            if self.root and self.root.winfo_exists():
+                self.root.mainloop()
         except Exception as e:
-            logger.error(f"Application error: {e}")
-            messagebox.showerror("Error", f"Application error: {e}")
+            if "application has been destroyed" not in str(e):
+                if hasattr(self, 'logger'):
+                    self.logger.error(f"Main loop error: {e}")
+                else:
+                    print(f"Main loop error: {e}")
     def fix_manim_dependencies(self):
         """Fix common Manim dependency issues"""
         try:
@@ -12638,262 +12705,218 @@ def setup_logging(app_dir=None):
     return logger
 
 def main():
-    """Enhanced main function with comprehensive error recovery and auto-repair"""
-    logger = None
+    """Main application entry point"""
+    # NOTE: Do NOT import sys here - it's already imported at module level
+    # Any import of sys inside this function will cause UnboundLocalError
+
+    logger = None  # Initialize logger variable to avoid UnboundLocalError
+
+    debug_mode = "--debug" in sys.argv
+
+    # Initialize encoding early to avoid Unicode issues
+    try:
+        import startup
+        startup.initialize_encoding()
+    except Exception:
+        pass
     
     try:
-        # Step 1: Apply fixes first (critical for preventing startup issues)
-        try:
-            fixes_path = os.path.join(os.path.dirname(__file__), "fixes.py")
-            if os.path.exists(fixes_path):
-                spec = importlib.util.spec_from_file_location("fixes", fixes_path)
-                fixes = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(fixes)
-                if hasattr(fixes, 'apply_fixes'):
-                    fixes.apply_fixes()
-                elif hasattr(fixes, 'apply_all_fixes'):
-                    fixes.apply_all_fixes()
-                else:
-                    print("Warning: apply_fixes function not found in fixes module")
-            else:
-                print("Warning: fixes.py file not found")
-        except Exception as e:
-            print(f"Warning: fixes module error: {e}")
-
-        # Step 2: Force matplotlib backend to TkAgg (prevents GUI conflicts)
-        try:
-            import matplotlib
-            matplotlib.use('TkAgg')
-        except ImportError:
-            print("Warning: matplotlib not available")
-        
-        # Step 3: Create application directory and handle multiple instances
-        app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
-        os.makedirs(app_dir, exist_ok=True)
-
-        # Prevent multiple instances
-        lock_file = os.path.join(app_dir, "app.lock")
-        try:
-            if os.path.exists(lock_file):
-                with open(lock_file, "r") as f:
-                    pid = int(f.read().strip() or 0)
-                if pid and psutil.pid_exists(pid):
-                    print("ManimStudio is already running.")
-                    try:
-                        from tkinter import messagebox
-                        messagebox.showwarning("Already Running", 
-                            "ManimStudio is already running. Please close the existing instance first.")
-                    except:
-                        pass
-                    return
-        except Exception:
-            pass  # Continue if lock check fails
-
-        # Create lock file
-        try:
-            with open(lock_file, "w") as f:
-                f.write(str(os.getpid()))
-        except Exception:
-            pass  # Continue if lock creation fails
-
-        # Step 4: Setup logging
-        logger = setup_logging(app_dir)
-        logger.info("Starting ManimStudio with enhanced error recovery...")
-        logger.info(f"Python version: {sys.version}")
-        logger.info(f"Platform: {sys.platform}")
-        logger.info(f"Executable: {sys.executable}")
-        
-        # Step 5: Create app with enhanced error handling
-        try:
-            app = ManimStudioApp()
-            logger.info("ManimStudioApp created successfully")
-        except Exception as e:
-            logger.error(f"Failed to create ManimStudioApp: {e}")
-            raise
-        
-        # Step 6: Enhanced environment validation and auto-repair
-        logger.info("Checking environment status...")
-        environment_ready = False
-        max_repair_attempts = 2
-        
-        for attempt in range(max_repair_attempts):
-            if app.venv_manager.is_environment_ready():
-                environment_ready = True
-                logger.info("✅ Environment is ready")
-                break
-            
-            logger.warning(f"Environment not ready (attempt {attempt + 1}/{max_repair_attempts})")
-            
-            # Check if we have an existing environment to repair
-            default_venv_path = os.path.join(app.venv_manager.venv_dir, "manim_studio_default")
-            if os.path.exists(default_venv_path):
-                logger.info("Found existing environment, attempting validation and repair...")
-                
-                def repair_log_callback(msg):
-                    logger.info(f"Repair: {msg}")
-                
-                # Try comprehensive validation and repair
-                if hasattr(app.venv_manager, 'validate_and_repair_environment'):
-                    if app.venv_manager.validate_and_repair_environment(repair_log_callback):
-                        logger.info("✅ Environment auto-repair successful!")
-                        app.venv_manager.activate_default_environment()
-                        app.venv_manager.needs_setup = False
-                        environment_ready = True
-                        break
-                    else:
-                        logger.warning("❌ Auto-repair failed")
-                        if attempt == 0:  # Only try recreating on first attempt
-                            logger.info("Attempting to recreate environment...")
-                            try:
-                                # Remove corrupted environment
-                                shutil.rmtree(default_venv_path, ignore_errors=True)
-                                # Force setup on next check
-                                app.venv_manager.needs_setup = True
-                            except Exception as e:
-                                logger.error(f"Failed to remove corrupted environment: {e}")
-                else:
-                    logger.warning("validate_and_repair_environment method not available")
-                    break
-            else:
-                logger.info("No existing environment found")
-                break
-        
-        # Step 7: Handle Windows console visibility (for packaged apps)
+        # Hide console window on Windows for packaged executable
         if sys.platform == "win32" and hasattr(sys, 'frozen'):
             try:
                 import ctypes
+                from ctypes import wintypes
+                
                 kernel32 = ctypes.windll.kernel32
                 user32 = ctypes.windll.user32
                 
-                # Hide console window for GUI app
                 console_window = kernel32.GetConsoleWindow()
                 if console_window:
-                    user32.ShowWindow(console_window, 0)  # SW_HIDE
-            except Exception as e:
-                logger.warning(f"Could not hide console: {e}")
-        
-        # Step 8: Determine startup flow based on environment status
-        settings_file = os.path.join(app_dir, "settings.json")
-        
-        if environment_ready and os.path.exists(settings_file):
-            # Normal startup - environment ready and not first run
-            logger.info("Normal startup: environment ready and settings exist")
-            app.root.deiconify()
-            
-        elif environment_ready and not os.path.exists(settings_file):
-            # First run with working environment
-            logger.info("First run with working environment")
-            app.root.withdraw()
-            try:
-                dialog = GettingStartedDialog(app)
-                app.root.wait_window(dialog)
-                # Verify environment is still ready after dialog
-                if not app.venv_manager.is_environment_ready():
-                    logger.error("Environment became unavailable after setup dialog")
+                    # SW_HIDE = 0
+                    user32.ShowWindow(console_window, 0)
+                        
+            except Exception:
+                pass
+
+        # Ensure working directory is the application directory
+        os.chdir(BASE_DIR)
+
+        # Early load of fixes module to handle runtime issues
+        try:
+            import fixes
+            if hasattr(fixes, "apply_fixes"):
+                fixes.apply_fixes()
+            elif hasattr(fixes, "apply_all_fixes"):
+                fixes.apply_all_fixes()
+        except (ImportError, AttributeError):
+            pass
+
+        # Set up application directories
+        if getattr(sys, 'frozen', False):
+            # Running as executable
+            app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        else:
+            # Running as script
+            app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+
+        os.makedirs(app_dir, exist_ok=True)
+
+        # Simple single instance check
+        lock_file = os.path.join(app_dir, "manim_studio.lock")
+        try:
+            if os.path.exists(lock_file):
+                try:
+                    with open(lock_file, "r") as f:
+                        pid = int(f.read().strip())
+                    # Simple check - if we can read the PID, assume another instance is running
+                    print("Another instance may be running. Continuing anyway...")
+                except:
+                    # Remove invalid lock file
                     try:
-                        from tkinter import messagebox
-                        messagebox.showerror("Environment Error", 
-                            "Environment setup was incomplete. Please restart the application.")
+                        os.remove(lock_file)
                     except:
                         pass
-                    return
-                app.root.deiconify()
-            except Exception as e:
-                logger.error(f"Error in Getting Started dialog: {e}")
-                app.root.deiconify()  # Show main window anyway
+            
+            # Create new lock file
+            with open(lock_file, "w") as f:
+                f.write(str(os.getpid()))
                 
+            # Cleanup function
+            import atexit
+            def cleanup_lock():
+                try:
+                    os.remove(lock_file)
+                except:
+                    pass
+            atexit.register(cleanup_lock)
+            
+        except Exception:
+            # If lock file operations fail, continue anyway
+            pass
+        
+        # Set up logging - MOVED EARLIER to ensure logger is available
+        log_file = os.path.join(app_dir, "manim_studio.log")
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, encoding='utf-8'),
+                logging.StreamHandler()
+            ]
+        )
+        logger = logging.getLogger(__name__)  # Now logger is properly defined
+        
+        # Log startup information
+        logger.info("=== ManimStudio Starting ===")
+        logger.info(f"Python version: {sys.version}")
+        logger.info(f"Platform: {sys.platform}")
+        logger.info(f"Frozen: {hasattr(sys, 'frozen')}")
+        logger.info(f"Base directory: {BASE_DIR}")
+        logger.info(f"App directory: {app_dir}")
+
+        # Check for Jedi availability
+        if not JEDI_AVAILABLE:
+            logger.warning("Jedi not available. IntelliSense features will be limited.")
+            print("Warning: Jedi not available. IntelliSense features will be limited.")
+            print("Install Jedi with: pip install jedi")
+
+        # Check LaTeX availability and pass result to UI
+        logger.info("Checking LaTeX installation...")
+        latex_path = check_latex_installation()
+        if latex_path:
+            logger.info(f"LaTeX found at: {latex_path}")
         else:
-            # Environment not ready - show setup
-            logger.warning("Environment not ready, user intervention required")
+            logger.warning("LaTeX not found")
+
+        # Create and run application
+        logger.info("Creating main application...")
+        app = ManimStudioApp(latex_path=latex_path, debug=debug_mode)
+        
+        # Check environment and show setup if needed
+        logger.info("Checking environment status...")
+        if not app.venv_manager.is_environment_ready():
+            logger.info("Environment not ready - showing setup dialog")
             app.root.withdraw()
-            
             try:
-                from tkinter import messagebox
-                choice = messagebox.askyesno(
-                    "Environment Setup Required",
-                    "ManimStudio needs to set up its Python environment.\n\n"
-                    "This will install required packages like Manim, NumPy, etc.\n\n"
-                    "Would you like to proceed with automatic setup?\n\n"
-                    "(Selecting 'No' will close the application)",
-                    icon='question'
-                )
-                
-                if not choice:
-                    logger.info("User declined environment setup")
-                    return
-                    
-            except Exception as e:
-                logger.error(f"Failed to show setup dialog: {e}")
-                # Proceed with setup anyway
-                pass
-            
-            # Show setup dialog
-            try:
-                dialog = GettingStartedDialog(app)
+                # Show environment setup dialog directly
+                dialog = EnvironmentSetupDialog(app.root, app.venv_manager)
                 app.root.wait_window(dialog)
                 
-                # Final verification
+                # Check if setup was completed
                 if not app.venv_manager.is_environment_ready():
                     logger.error("Environment setup incomplete after dialog")
                     try:
                         from tkinter import messagebox
-                        messagebox.showerror("Setup Failed", 
-                            "Environment setup was not completed successfully.\n\n"
-                            "Please check the logs and try again, or contact support.")
+                        messagebox.showwarning(
+                            "Setup Incomplete", 
+                            "Environment setup was not completed.\n"
+                            "ManimStudio requires a working environment to function.\n\n"
+                            "Please try again or run with --debug flag."
+                        )
                     except:
                         pass
                     return
                     
-                app.root.deiconify()
                 logger.info("Environment setup completed successfully")
                 
             except Exception as e:
-                logger.error(f"Error during environment setup: {e}")
+                logger.error(f"Error in environment setup: {e}")
                 try:
                     from tkinter import messagebox
-                    messagebox.showerror("Setup Error", 
-                        f"An error occurred during environment setup:\n\n{e}\n\n"
-                        "Please check the logs and try again.")
+                    messagebox.showerror(
+                        "Setup Error", 
+                        f"Error during environment setup: {e}\n\n"
+                        "Please try again or check the log file."
+                    )
                 except:
                     pass
                 return
+        else:
+            logger.info("Environment ready - proceeding to main application")
 
-        # Step 9: Final pre-launch checks
         logger.info("Performing final pre-launch checks...")
         
-        # Verify critical components
+        # Final verification that environment is working
         try:
-            if app.venv_manager.is_environment_ready():
-                # Quick manim test
-                if hasattr(app.venv_manager, 'run_hidden_subprocess_nuitka_safe'):
-                    test_result = app.venv_manager.run_hidden_subprocess_nuitka_safe(
-                        [app.venv_manager.python_path, "-c", "import manim; print('Manim OK')"],
-                        capture_output=True,
-                        text=True,
-                        timeout=10
-                    )
-                    
-                    if test_result.returncode != 0:
-                        logger.warning("Manim import test failed, but continuing...")
-                    else:
-                        logger.info("✅ Manim import test passed")
-                        
+            # Quick test that manim can be imported
+            import subprocess
+            test_cmd = app.venv_manager.get_python_command() + ["-c", "import manim; print('Manim import successful')"]
+            result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                logger.info("✅ Manim import test passed")
+            else:
+                logger.warning(f"⚠️ Manim import test failed: {result.stderr}")
         except Exception as e:
-            logger.warning(f"Pre-launch check failed: {e}")
-        
-        # Step 10: Start main application loop
+            logger.warning(f"⚠️ Could not verify manim import: {e}")
+
         logger.info("Starting application main loop...")
-        app.run()
         
-    except KeyboardInterrupt:
-        if logger:
-            logger.info("Application interrupted by user")
-        else:
-            print("Application interrupted by user")
+        # Show window and start main loop
+        try:
+            # Ensure window is visible
+            if app.root and app.root.winfo_exists():
+                app.root.deiconify()
+                app.root.update()
+                app.root.lift()
+                app.root.focus_force()
+                logger.info("Window made visible")
             
+            # Start the main loop
+            app.run()
+            
+        except Exception as e:
+            # Handle UI errors gracefully
+            error_msg = str(e)
+            if "application has been destroyed" in error_msg or "invalid command name" in error_msg:
+                logger.info("Application closed by user")
+            else:
+                logger.error(f"UI error: {e}")
+                import traceback
+                logger.error(f"UI Traceback: {traceback.format_exc()}")
+        
     except Exception as e:
-        # Comprehensive error handling
-        error_msg = f"Critical startup error: {e}"
+        # Handle startup errors
+        error_msg = f"Startup error: {e}"
         
         if logger:
             logger.error(error_msg)
@@ -12904,92 +12927,22 @@ def main():
             import traceback
             print(f"Traceback: {traceback.format_exc()}")
             
-        # Show user-friendly error dialog
         try:
             from tkinter import messagebox
-            import traceback
-            
-            # Determine error type for better user guidance
-            error_type = type(e).__name__
-            error_details = str(e)
-            
-            if "3221225477" in error_details or "0xC0000005" in error_details:
-                user_msg = (
-                    "ManimStudio encountered a memory access error (3221225477).\n\n"
-                    "This is usually caused by corrupted environment files.\n\n"
-                    "Recommended solutions:\n"
-                    "1. Run as Administrator\n"
-                    "2. Delete the environment folder and restart\n"
-                    "3. Check antivirus software isn't blocking files\n\n"
-                    f"Technical details: {error_details}"
-                )
-            elif "Permission" in error_details or "Access" in error_details:
-                user_msg = (
-                    "ManimStudio encountered a permission error.\n\n"
-                    "Please try:\n"
-                    "1. Running as Administrator\n"
-                    "2. Checking file permissions\n"
-                    "3. Disabling antivirus temporarily\n\n"
-                    f"Technical details: {error_details}"
-                )
-            elif "ImportError" in error_type or "ModuleNotFoundError" in error_type:
-                user_msg = (
-                    "ManimStudio encountered a module import error.\n\n"
-                    "This suggests the Python environment needs to be recreated.\n\n"
-                    "The application will attempt to fix this automatically on restart.\n\n"
-                    f"Technical details: {error_details}"
-                )
-            else:
-                user_msg = (
-                    "ManimStudio encountered an unexpected error.\n\n"
-                    "Please check the log files for detailed information.\n\n"
-                    f"Error type: {error_type}\n"
-                    f"Details: {error_details}"
-                )
-            
-            messagebox.showerror("ManimStudio Error", user_msg)
-            
-        except Exception as dialog_error:
-            print(f"Failed to show error dialog: {dialog_error}")
-            print(f"Original error: {e}")
+            messagebox.showerror("Startup Error", f"Failed to start application: {e}")
+        except:
+            print(f"Failed to start application: {e}")
     
     finally:
-        # Step 11: Cleanup operations
-        try:
-            # Cleanup logging handlers to prevent issues on restart
-            if logger:
-                try:
-                    for handler in logger.handlers[:]:
-                        handler.close()
-                        logger.removeHandler(handler)
-                except Exception as cleanup_error:
-                    print(f"Warning: Logger cleanup failed: {cleanup_error}")
-                    
-            # Remove lock file
+        # Cleanup logging handlers to prevent issues on restart
+        if logger:
             try:
-                app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
-                lock_file = os.path.join(app_dir, "app.lock")
-                if os.path.exists(lock_file):
-                    os.remove(lock_file)
-            except Exception as lock_error:
-                print(f"Warning: Failed to remove lock file: {lock_error}")
-            
-            # Additional cleanup for Windows console
-            if sys.platform == "win32" and hasattr(sys, 'frozen'):
-                try:
-                    import ctypes
-                    kernel32 = ctypes.windll.kernel32
-                    
-                    # Keep console hidden on exit
-                    console_window = kernel32.GetConsoleWindow()
-                    if console_window:
-                        # Don't show the console on exit - keep it hidden
-                        pass
-                except Exception as console_error:
-                    print(f"Warning: Console cleanup failed: {console_error}")
-                    
-        except Exception as final_cleanup_error:
-            print(f"Warning: Final cleanup failed: {final_cleanup_error}")
+                for handler in logger.handlers[:]:
+                    handler.close()
+                    logger.removeHandler(handler)
+            except:
+                pass
+
 
 if __name__ == "__main__":
     main()
