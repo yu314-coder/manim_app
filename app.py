@@ -36,6 +36,8 @@ import glob
 import queue
 import atexit
 import multiprocessing
+import importlib.util
+import importlib 
 try:
     from fixes import ensure_ascii_path
 except Exception:
@@ -480,9 +482,19 @@ THEME_SCHEMES = {
         "find_current": "#007ACC",
     }
 }
-
-# Global color scheme
-VSCODE_COLORS = THEME_SCHEMES["Dark+"]
+# VSCode-style colors (adjust these to match your existing color scheme)
+VSCODE_COLORS = {
+    "surface": "#1e1e1e",
+    "surface_light": "#2d2d30",
+    "surface_lighter": "#3e3e42",
+    "primary": "#0078d4",
+    "primary_hover": "#106ebe",
+    "text": "#cccccc",
+    "text_bright": "#ffffff",
+    "text_secondary": "#969696",
+    "border": "#3e3e42",
+    "bracket_match": "#3e3e42"
+}
 
 # Enhanced Python syntax highlighting colors (like VSCode Dark+)
 SYNTAX_COLORS = {
@@ -3717,20 +3729,33 @@ class VirtualEnvironmentManager:
         self.parent_app.root.after(10, lambda: self.parent_app.root.deiconify())
 
     def is_environment_ready(self):
-        """Check if the environment is ready to use"""
-        if not self.current_venv:
+        """Enhanced environment readiness check with error handling"""
+        if self.needs_setup:
             return False
-            
-        # Check if default environment exists and has manim
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-        if self.current_venv == "manim_studio_default":
-            if not os.path.exists(default_venv_path):
-                return False
-            if not self.is_valid_venv(default_venv_path):
-                return False
-            return self.check_manim_availability()
         
-        return self.check_manim_availability()
+        # Quick validation with repair attempt
+        if not self.validate_and_repair_environment():
+            # If validation fails, try to auto-repair once
+            try:
+                self.logger.info("Environment validation failed, attempting auto-repair...")
+                default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+                
+                if os.path.exists(default_venv_path):
+                    if self.repair_corrupted_environment(default_venv_path):
+                        self.activate_default_environment()
+                        self.needs_setup = False
+                        return True
+                
+                # If repair fails, mark as needs setup
+                self.needs_setup = True
+                return False
+                
+            except Exception as e:
+                self.logger.error(f"Auto-repair failed: {e}")
+                self.needs_setup = True
+                return False
+        
+        return True
         
     def _detect_if_frozen(self):
         """Enhanced detection of frozen executable"""
@@ -6078,6 +6103,210 @@ except Exception as e:
         
         self._save_environment_config(config)
         self.logger.info(f"Marked environment {env_name} as validated (manim: {'working' if manim_working else 'not working'})")
+    def validate_and_repair_environment(self, log_callback=None):
+        """Enhanced validation with automatic repair for corrupted environments"""
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        
+        if not os.path.exists(default_venv_path):
+            if log_callback:
+                log_callback("❌ Default environment not found")
+            return False
+        
+        # Check for basic structure
+        if not self.is_valid_venv(default_venv_path):
+            if log_callback:
+                log_callback("❌ Environment structure invalid, attempting repair...")
+            return self.repair_corrupted_environment(default_venv_path, log_callback)
+        
+        # Test if Python executable works (catches 3221225477 errors)
+        try:
+            test_result = self.run_hidden_subprocess_nuitka_safe(
+                [self.python_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if test_result.returncode != 0:
+                if log_callback:
+                    log_callback(f"❌ Python executable test failed: {test_result.stderr}")
+                return self.repair_corrupted_environment(default_venv_path, log_callback)
+                
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ Critical error testing Python: {str(e)}")
+            return self.repair_corrupted_environment(default_venv_path, log_callback)
+        
+        # Test manim import specifically (main cause of environment issues)
+        try:
+            manim_test = self.run_hidden_subprocess_nuitka_safe(
+                [self.python_path, "-c", "import manim; print('MANIM_OK')"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if manim_test.returncode != 0 or "MANIM_OK" not in manim_test.stdout:
+                if log_callback:
+                    log_callback("❌ Manim import failed, repairing environment...")
+                # Force reinstall manim and dependencies
+                self.force_reinstall_manim(log_callback)
+                
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ Manim test failed: {str(e)}")
+            return False
+        
+        if log_callback:
+            log_callback("✅ Environment validation successful")
+        return True
+    def repair_corrupted_environment(self, env_path, log_callback=None):
+        """Repair corrupted environment by recreating critical components"""
+        try:
+            if log_callback:
+                log_callback("🔧 Attempting environment repair...")
+            
+            # Step 1: Backup and clear problematic cache files
+            cache_dirs = [
+                os.path.join(env_path, "Lib", "site-packages", "__pycache__"),
+                os.path.join(env_path, "Scripts", "__pycache__"),
+                os.path.join(env_path, "pyvenv.cfg.bak")
+            ]
+            
+            for cache_dir in cache_dirs:
+                if os.path.exists(cache_dir):
+                    try:
+                        if os.path.isdir(cache_dir):
+                            shutil.rmtree(cache_dir, ignore_errors=True)
+                        else:
+                            os.remove(cache_dir)
+                    except Exception as e:
+                        if log_callback:
+                            log_callback(f"Warning: Could not clear {cache_dir}: {e}")
+            
+            # Step 2: Regenerate pyvenv.cfg if corrupted
+            pyvenv_cfg = os.path.join(env_path, "pyvenv.cfg")
+            if os.path.exists(pyvenv_cfg):
+                try:
+                    with open(pyvenv_cfg, 'r') as f:
+                        content = f.read()
+                    if len(content.strip()) < 10:  # Corrupted file
+                        os.remove(pyvenv_cfg)
+                        self.regenerate_pyvenv_cfg(env_path)
+                except Exception:
+                    os.remove(pyvenv_cfg)
+                    self.regenerate_pyvenv_cfg(env_path)
+            
+            # Step 3: Fix permissions (Windows specific)
+            if os.name == 'nt':
+                try:
+                    import stat
+                    scripts_dir = os.path.join(env_path, "Scripts")
+                    for file in os.listdir(scripts_dir):
+                        file_path = os.path.join(scripts_dir, file)
+                        if file.endswith('.exe'):
+                            os.chmod(file_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"Warning: Permission fix failed: {e}")
+            
+            # Step 4: Test repair
+            if self.is_valid_venv(env_path):
+                if log_callback:
+                    log_callback("✅ Environment repair successful")
+                return True
+            else:
+                if log_callback:
+                    log_callback("❌ Repair failed, environment needs recreation")
+                return False
+                
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ Repair process failed: {str(e)}")
+            return False
+    def force_reinstall_manim(self, log_callback=None):
+        """Force reinstall manim and related packages to fix DLL issues"""
+        try:
+            if log_callback:
+                log_callback("🔄 Force reinstalling manim and dependencies...")
+            
+            # Critical packages that often cause 3221225477 errors
+            critical_packages = [
+                "manim",
+                "numpy",
+                "opencv-python", 
+                "Pillow",
+                "moderngl",
+                "pycairo",
+                "manimpango",
+                "mapbox-earcut"  # Common cause of DLL errors
+            ]
+            
+            pip_cmd = [self.pip_path, "install", "--force-reinstall", "--no-cache-dir"]
+            
+            for package in critical_packages:
+                try:
+                    cmd = pip_cmd + [package]
+                    result = self.run_hidden_subprocess_nuitka_safe(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    
+                    if result.returncode == 0:
+                        if log_callback:
+                            log_callback(f"✅ Reinstalled {package}")
+                    else:
+                        if log_callback:
+                            log_callback(f"⚠️ Failed to reinstall {package}: {result.stderr}")
+                            
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"❌ Error reinstalling {package}: {str(e)}")
+            
+            return True
+            
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ Force reinstall failed: {str(e)}")
+            return False
+    def regenerate_pyvenv_cfg(self, env_path):
+        """Regenerate pyvenv.cfg file for corrupted environments"""
+        try:
+            python_exe = self.find_system_python()
+            if not python_exe:
+                return False
+            
+            # Get Python version info
+            version_result = self.run_hidden_subprocess_nuitka_safe(
+                [python_exe, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+                capture_output=True,
+                text=True
+            )
+            
+            if version_result.returncode != 0:
+                return False
+            
+            version = version_result.stdout.strip()
+            python_home = os.path.dirname(os.path.dirname(python_exe))
+            
+            pyvenv_content = f"""home = {python_home}
+include-system-site-packages = false
+version = {version}
+executable = {python_exe}
+command = {python_exe} -m venv {env_path}
+"""
+            
+            pyvenv_cfg = os.path.join(env_path, "pyvenv.cfg")
+            with open(pyvenv_cfg, 'w') as f:
+                f.write(pyvenv_content)
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to regenerate pyvenv.cfg: {e}")
+            return False
 class CallbackHandler(logging.Handler):
     """Custom logging handler that calls a callback function"""
     
@@ -7607,8 +7836,583 @@ class AssetCard(ctk.CTkFrame):
         if self.on_remove_callback:
             self.on_remove_callback(self.asset_path, self)
 
+
+
+import tkinter as tk
+import customtkinter as ctk
+import cv2
+import threading
+import time
+from PIL import Image, ImageTk
+import os
+
+# VSCode-style colors (adjust these to match your existing color scheme)
+VSCODE_COLORS = {
+    "surface": "#1e1e1e",
+    "surface_light": "#2d2d30",
+    "surface_lighter": "#3e3e42",
+    "primary": "#0078d4",
+    "primary_hover": "#106ebe",
+    "text": "#cccccc",
+    "text_bright": "#ffffff",
+    "text_secondary": "#969696",
+    "border": "#3e3e42",
+    "bracket_match": "#3e3e42"
+}
+
+class FullscreenVideoPlayer(tk.Toplevel):
+    """YouTube-style fullscreen video player with proper state management"""
+    
+    def __init__(self, parent, video_player):
+        super().__init__(parent)
+        
+        self.video_player = video_player
+        self.parent = parent
+        
+        # Fullscreen setup
+        self.attributes("-fullscreen", True)
+        self.attributes("-topmost", True)
+        self.configure(bg="black", cursor="none")
+        
+        # Control visibility
+        self.controls_visible = True
+        self.mouse_timer = None
+        self.last_mouse_move = time.time()
+        
+        self.setup_fullscreen_ui()
+        self.setup_bindings()
+        
+        # Start mouse tracking
+        self.start_mouse_tracking()
+        
+        # Sync initial state
+        self.sync_with_main_player()
+        
+    def sync_with_main_player(self):
+        """Sync fullscreen player state with main player"""
+        if self.video_player.cap:
+            self.display_frame(self.video_player.current_frame)
+            self.update_progress_bar()
+            
+            # Update play button state AND start playing if main player is playing
+            if self.video_player.is_playing:
+                self.play_btn.configure(text="⏸")
+                # Start fullscreen playback loop if main player is playing
+                self.start_fullscreen_playback()
+            else:
+                self.play_btn.configure(text="▶")
+    
+    def start_fullscreen_playback(self):
+        """Start fullscreen playback synchronized with main player"""
+        if not self.video_player.is_playing or not self.video_player.cap:
+            return
+        
+        # Schedule regular updates to sync with main player
+        self.sync_playback_with_main()
+    
+    def sync_playback_with_main(self):
+        """Keep fullscreen player synchronized with main player"""
+        if not self.video_player.is_playing or not self.video_player.cap or not self.winfo_exists():
+            return
+        
+        # Update fullscreen display to match main player
+        self.display_frame(self.video_player.current_frame)
+        
+        # Update controls if visible
+        if self.controls_visible:
+            self.update_progress_bar()
+        
+        # Calculate sync interval based on playback speed for smoother sync
+        # Higher speeds need more frequent updates
+        if self.video_player.playback_speed >= 4.0:
+            sync_interval = 20  # 20ms for very high speeds
+        elif self.video_player.playback_speed >= 2.0:
+            sync_interval = 30  # 30ms for high speeds  
+        else:
+            sync_interval = 50  # 50ms for normal speeds
+        
+        # Schedule next sync
+        self.after(sync_interval, self.sync_playback_with_main)
+        
+    def setup_fullscreen_ui(self):
+        """Setup YouTube-style fullscreen interface"""
+        # Main video area
+        self.video_frame = tk.Frame(self, bg="black")
+        self.video_frame.pack(fill="both", expand=True)
+        
+        # Video canvas
+        self.canvas = tk.Canvas(
+            self.video_frame,
+            bg="black",
+            highlightthickness=0,
+            relief="flat"
+        )
+        self.canvas.pack(fill="both", expand=True)
+        
+        # YouTube-style overlay controls container
+        self.overlay_frame = tk.Frame(self, bg="black")
+        self.overlay_frame.pack(fill="x", side="bottom")
+        
+        # Gradient background for controls
+        self.controls_bg = tk.Frame(
+            self.overlay_frame,
+            bg="#000000",
+            height=120
+        )
+        self.controls_bg.pack(fill="x", padx=0, pady=0)
+        
+        # Create controls with YouTube-style layout
+        self.create_youtube_controls()
+        
+        # Title overlay (top)
+        self.title_frame = tk.Frame(self, bg="black")
+        self.title_frame.pack(fill="x", side="top")
+        
+        self.title_bg = tk.Frame(
+            self.title_frame,
+            bg="#000000",
+            height=60
+        )
+        self.title_bg.pack(fill="x")
+        
+        # Video title
+        self.title_label = tk.Label(
+            self.title_bg,
+            text="Manim Animation Preview",
+            font=("Arial", 18, "bold"),
+            fg="white",
+            bg="#000000"
+        )
+        self.title_label.pack(side="left", padx=20, pady=15)
+        
+        # Exit fullscreen button (top right)
+        self.exit_btn = tk.Button(
+            self.title_bg,
+            text="⚬ ⚬ ⚬",
+            font=("Arial", 16),
+            fg="white",
+            bg="#000000",
+            relief="flat",
+            cursor="hand2",
+            command=self.exit_fullscreen
+        )
+        self.exit_btn.pack(side="right", padx=20, pady=15)
+        
+    def create_youtube_controls(self):
+        """Create YouTube-style control layout"""
+        # Progress bar (full width, top of controls)
+        self.progress_frame = tk.Frame(self.controls_bg, bg="#000000", height=30)
+        self.progress_frame.pack(fill="x", padx=20, pady=(10, 0))
+        
+        # Custom progress bar that looks like YouTube
+        self.progress_canvas = tk.Canvas(
+            self.progress_frame,
+            height=8,
+            bg="#000000",
+            highlightthickness=0
+        )
+        self.progress_canvas.pack(fill="x", pady=10)
+        self.progress_canvas.bind("<Button-1>", self.on_progress_click)
+        
+        # Main controls row
+        self.main_controls = tk.Frame(self.controls_bg, bg="#000000", height=60)
+        self.main_controls.pack(fill="x", padx=20, pady=(0, 10))
+        
+        # Left side controls
+        self.left_controls = tk.Frame(self.main_controls, bg="#000000")
+        self.left_controls.pack(side="left", fill="y")
+        
+        # Play/Pause button (YouTube style - only one button like YouTube)
+        self.play_btn = tk.Button(
+            self.left_controls,
+            text="▶",
+            font=("Arial", 24),
+            fg="white",
+            bg="#000000",
+            relief="flat",
+            cursor="hand2",
+            command=self.toggle_playback
+        )
+        self.play_btn.pack(side="left", padx=(0, 15))
+        
+        # Volume button
+        self.volume_btn = tk.Button(
+            self.left_controls,
+            text="🔊",
+            font=("Arial", 16),
+            fg="white",
+            bg="#000000",
+            relief="flat",
+            cursor="hand2"
+        )
+        self.volume_btn.pack(side="left", padx=(0, 15))
+        
+        # Time display (YouTube style)
+        self.time_label = tk.Label(
+            self.left_controls,
+            text="0:00 / 0:00",
+            font=("Arial", 14),
+            fg="white",
+            bg="#000000"
+        )
+        self.time_label.pack(side="left", padx=(0, 15))
+        
+        # Right side controls
+        self.right_controls = tk.Frame(self.main_controls, bg="#000000")
+        self.right_controls.pack(side="right", fill="y")
+        
+        # Speed control
+        self.speed_label = tk.Label(
+            self.right_controls,
+            text="1×",
+            font=("Arial", 14),
+            fg="white",
+            bg="#000000"
+        )
+        self.speed_label.pack(side="right", padx=(15, 0))
+        
+        # Settings button
+        self.settings_btn = tk.Button(
+            self.right_controls,
+            text="⚙️",
+            font=("Arial", 16),
+            fg="white",
+            bg="#000000",
+            relief="flat",
+            cursor="hand2",
+            command=self.show_speed_menu
+        )
+        self.settings_btn.pack(side="right", padx=(15, 0))
+        
+        # Fullscreen button
+        self.fullscreen_btn = tk.Button(
+            self.right_controls,
+            text="⛶",
+            font=("Arial", 16),
+            fg="white",
+            bg="#000000",
+            relief="flat",
+            cursor="hand2",
+            command=self.exit_fullscreen
+        )
+        self.fullscreen_btn.pack(side="right", padx=(15, 0))
+        
+        # Speed menu (hidden by default)
+        self.speed_menu = tk.Frame(self, bg="#1c1c1c")
+        self.speed_menu_visible = False
+        
+        speeds = ["0.25", "0.5", "0.75", "Normal", "1.25", "1.5", "1.75", "2"]
+        for speed in speeds:
+            btn = tk.Button(
+                self.speed_menu,
+                text=speed,
+                font=("Arial", 12),
+                fg="white",
+                bg="#1c1c1c",
+                relief="flat",
+                cursor="hand2",
+                command=lambda s=speed: self.set_speed_from_menu(s)
+            )
+            btn.pack(fill="x", pady=1)
+        
+    def setup_bindings(self):
+        """Setup keyboard and mouse bindings for fullscreen"""
+        # Escape to exit fullscreen
+        self.bind("<Escape>", lambda e: self.exit_fullscreen())
+        self.bind("<F11>", lambda e: self.exit_fullscreen())
+        self.bind("<f>", lambda e: self.exit_fullscreen())  # 'f' key like YouTube
+        
+        # Space for play/pause
+        self.bind("<space>", lambda e: self.toggle_playback())
+        
+        # Arrow keys for seeking
+        self.bind("<Left>", lambda e: self.seek_relative(-5))
+        self.bind("<Right>", lambda e: self.seek_relative(5))
+        self.bind("<Up>", lambda e: self.change_speed(0.25))
+        self.bind("<Down>", lambda e: self.change_speed(-0.25))
+        
+        # Number keys for speed
+        for i in range(1, 9):
+            self.bind(f"<Key-{i}>", lambda e, speed=i*0.25: self.set_speed(speed))
+        
+        # Mouse tracking for control visibility
+        self.bind("<Motion>", self.on_mouse_move)
+        self.canvas.bind("<Motion>", self.on_mouse_move)
+        self.bind("<Button-1>", self.on_mouse_click)
+        self.canvas.bind("<Button-1>", self.on_mouse_click)
+        
+        # Focus handling
+        self.focus_set()
+        
+    def start_mouse_tracking(self):
+        """Start tracking mouse movement for control visibility"""
+        def check_mouse_idle():
+            current_time = time.time()
+            if current_time - self.last_mouse_move > 3.0:  # 3 seconds idle
+                if self.controls_visible:
+                    self.hide_controls()
+            
+            # Schedule next check
+            if self.winfo_exists():
+                self.after(500, check_mouse_idle)
+        
+        check_mouse_idle()
+        
+    def on_mouse_move(self, event):
+        """Handle mouse movement"""
+        self.last_mouse_move = time.time()
+        if not self.controls_visible:
+            self.show_controls()
+        
+        # Show cursor
+        self.configure(cursor="")
+        
+        # Hide cursor after delay
+        if self.mouse_timer:
+            self.after_cancel(self.mouse_timer)
+        self.mouse_timer = self.after(3000, lambda: self.configure(cursor="none"))
+        
+    def on_mouse_click(self, event):
+        """Handle mouse clicks"""
+        self.last_mouse_move = time.time()
+        if not self.controls_visible:
+            self.show_controls()
+        else:
+            # Click on video area toggles play/pause (like YouTube)
+            if event.widget == self.canvas:
+                self.toggle_playback()
+    
+    def on_progress_click(self, event):
+        """Handle progress bar clicks for seeking"""
+        if not self.video_player.cap:
+            return
+        
+        canvas_width = self.progress_canvas.winfo_width()
+        if canvas_width > 0:
+            click_position = event.x / canvas_width
+            target_frame = int(click_position * self.video_player.total_frames)
+            target_frame = max(0, min(target_frame, self.video_player.total_frames - 1))
+            
+            # Update both players
+            self.video_player.seek_to_frame(target_frame)
+            self.update_progress_bar()
+        
+    def show_controls(self):
+        """Show controls with smooth animation"""
+        if not self.controls_visible:
+            self.controls_visible = True
+            
+            # Fade in effect (simplified)
+            self.overlay_frame.pack(fill="x", side="bottom")
+            self.title_frame.pack(fill="x", side="top")
+            
+            # Update progress bar
+            self.update_progress_bar()
+            
+    def hide_controls(self):
+        """Hide controls with smooth animation"""
+        if self.controls_visible:
+            self.controls_visible = False
+            
+            # Fade out effect (simplified)
+            self.overlay_frame.pack_forget()
+            self.title_frame.pack_forget()
+            
+            # Hide speed menu if visible
+            if self.speed_menu_visible:
+                self.hide_speed_menu()
+        
+    def update_progress_bar(self):
+        """Update YouTube-style progress bar"""
+        if not self.video_player.cap or not self.controls_visible:
+            return
+        
+        # Clear previous progress
+        self.progress_canvas.delete("all")
+        
+        # Get canvas dimensions
+        canvas_width = self.progress_canvas.winfo_width()
+        if canvas_width <= 1:
+            return
+        
+        # Calculate progress
+        progress = 0
+        if self.video_player.total_frames > 0:
+            progress = self.video_player.current_frame / self.video_player.total_frames
+        
+        # Draw progress bar background
+        self.progress_canvas.create_rectangle(
+            0, 2, canvas_width, 6,
+            fill="#404040", outline=""
+        )
+        
+        # Draw progress
+        if progress > 0:
+            self.progress_canvas.create_rectangle(
+                0, 2, canvas_width * progress, 6,
+                fill="#ff0000", outline=""  # YouTube red
+            )
+        
+        # Draw scrubber circle
+        if progress > 0:
+            x = canvas_width * progress
+            self.progress_canvas.create_oval(
+                x-6, 0, x+6, 8,
+                fill="#ff0000", outline="white", width=2
+            )
+        
+        # Update time display
+        if self.video_player.cap:
+            current_seconds = self.video_player.current_frame / max(self.video_player.fps, 1)
+            total_seconds = self.video_player.total_frames / max(self.video_player.fps, 1)
+            
+            current_time = f"{int(current_seconds // 60)}:{int(current_seconds % 60):02d}"
+            total_time = f"{int(total_seconds // 60)}:{int(total_seconds % 60):02d}"
+            
+            self.time_label.configure(text=f"{current_time} / {total_time}")
+        
+    def toggle_playback(self):
+        """Toggle video playback (synchronized with main player)"""
+        if self.video_player.cap:
+            # Handle replay scenario - if video ended, restart from beginning
+            if not self.video_player.is_playing and self.video_player.current_frame >= self.video_player.total_frames - 1:
+                self.video_player.current_frame = 0
+                self.video_player.display_frame(0)
+                self.video_player.update_time_display()
+                self.video_player.update_frame_display()
+                self.display_frame(0)  # Update fullscreen too
+                if self.controls_visible:
+                    self.update_progress_bar()
+            
+            # Now toggle playback normally
+            self.video_player.toggle_playback()
+            
+            # Update button text and sync playback state
+            if self.video_player.is_playing:
+                self.play_btn.configure(text="⏸")
+                # Start syncing fullscreen playback
+                self.start_fullscreen_playback()
+            else:
+                self.play_btn.configure(text="▶")
+                # Fullscreen will stop syncing automatically when main player stops
+        
+    def seek_relative(self, seconds):
+        """Seek relative to current position"""
+        if not self.video_player.cap:
+            return
+        
+        target_frame = self.video_player.current_frame + (seconds * self.video_player.fps)
+        target_frame = max(0, min(target_frame, self.video_player.total_frames - 1))
+        
+        self.video_player.seek_to_frame(int(target_frame))
+        self.update_progress_bar()
+        
+    def change_speed(self, delta):
+        """Change playback speed"""
+        new_speed = max(0.25, min(8.0, self.video_player.playback_speed + delta))
+        self.set_speed(new_speed)
+        
+    def set_speed(self, speed):
+        """Set playback speed"""
+        self.video_player.set_speed(speed)
+        self.speed_label.configure(text=f"{speed}×")
+        
+    def show_speed_menu(self):
+        """Show speed selection menu"""
+        if not self.speed_menu_visible:
+            self.speed_menu_visible = True
+            
+            # Position menu above settings button
+            self.speed_menu.place(
+                x=self.winfo_width() - 200,
+                y=self.winfo_height() - 200
+            )
+        else:
+            self.hide_speed_menu()
+        
+    def hide_speed_menu(self):
+        """Hide speed selection menu"""
+        if self.speed_menu_visible:
+            self.speed_menu_visible = False
+            self.speed_menu.place_forget()
+        
+    def set_speed_from_menu(self, speed_text):
+        """Set speed from menu selection"""
+        speed_map = {
+            "0.25": 0.25, "0.5": 0.5, "0.75": 0.75, "Normal": 1.0,
+            "1.25": 1.25, "1.5": 1.5, "1.75": 1.75, "2": 2.0
+        }
+        
+        if speed_text in speed_map:
+            self.set_speed(speed_map[speed_text])
+        
+        self.hide_speed_menu()
+        
+    def display_frame(self, frame_number):
+        """Display video frame in fullscreen canvas"""
+        if not self.video_player.cap or not self.winfo_exists():
+            return
+        
+        try:
+            self.video_player.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = self.video_player.cap.read()
+            
+            if not ret:
+                return
+                
+            # Get screen dimensions
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            
+            # Convert frame
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_height, frame_width = frame_rgb.shape[:2]
+            
+            # Calculate display size to maintain aspect ratio
+            aspect_ratio = frame_width / frame_height
+            
+            if screen_width / screen_height > aspect_ratio:
+                # Screen is wider than video
+                display_height = screen_height
+                display_width = int(display_height * aspect_ratio)
+            else:
+                # Screen is taller than video
+                display_width = screen_width
+                display_height = int(display_width / aspect_ratio)
+            
+            # Resize frame
+            frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
+            
+            # Convert to PhotoImage
+            image = Image.fromarray(frame_resized)
+            self.photo = ImageTk.PhotoImage(image)
+            
+            # Display centered
+            self.canvas.delete("all")
+            self.canvas.create_image(
+                screen_width // 2,
+                screen_height // 2,
+                image=self.photo,
+                anchor="center"
+            )
+            
+            # Update progress if controls are visible
+            if self.controls_visible:
+                self.update_progress_bar()
+                
+        except Exception as e:
+            print(f"Fullscreen display error: {e}")
+            # Don't crash, just skip this frame
+        
+    def exit_fullscreen(self):
+        """Exit fullscreen mode properly"""
+        # Properly destroy and clear reference
+        self.video_player.fullscreen_player = None
+        self.destroy()
+
 class VideoPlayerWidget(ctk.CTkFrame):
-    """Professional video player with optimized high-speed playback capability and fullscreen support"""
+    """Professional video player with YouTube-like behavior and simple state management"""
+    
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
         
@@ -7618,32 +8422,20 @@ class VideoPlayerWidget(ctk.CTkFrame):
         self.current_frame = 0
         self.total_frames = 0
         self.fps = 30
-        self.frame_delay = 33  # milliseconds
-        self.play_thread = None
-        self.playback_speed = 1.0  # Normal speed multiplier
+        self.playback_speed = 1.0
         self.parent_window = parent
         self.has_focus = False
+        self.fullscreen_player = None
         
-        # Fullscreen variables
-        self.fullscreen_window = None
-        self.is_fullscreen = False
-        self.fullscreen_canvas = None
-        self.original_parent = parent
-        
-        # Speed menu variables
-        self.speed_menu = None
-        self.speed_options = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0, 6.0, 8.0]
-        
-        # Performance optimization variables
-        self.last_update_time = 0
-        self.ui_update_interval = 100
-        self.frame_skip_threshold = 5
+        # Simple playback control (YouTube-style)
+        self.playback_timer = None
+        self.frame_delay_ms = 33  # ~30 FPS default
         self.max_speed = 8.0
         
         self.setup_ui()
         
     def setup_ui(self):
-        """Setup the video player interface with modern layout"""
+        """Setup the video player interface"""
         # Configure grid
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -7663,27 +8455,31 @@ class VideoPlayerWidget(ctk.CTkFrame):
         )
         self.canvas.pack(fill="both", expand=True, padx=8, pady=8)
         
-        # Make canvas focusable and add events
+        # Canvas bindings
         self.canvas.configure(takefocus=True)
         self.canvas.bind("<Button-1>", self.on_canvas_click)
-        self.canvas.bind("<Double-Button-1>", self.toggle_fullscreen)  # Double-click for fullscreen
+        self.canvas.bind("<Double-Button-1>", self.enter_fullscreen)
         self.canvas.bind("<FocusIn>", self.on_focus_in)
         self.canvas.bind("<FocusOut>", self.on_focus_out)
         self.canvas.bind("<KeyPress>", self.on_key_press)
         
-        # Default placeholder
+        # Show placeholder
         self.show_placeholder()
         
-        # Modern controls frame with gradient-like appearance
-        self.controls_frame = ctk.CTkFrame(self, height=90, corner_radius=8)
+        # Enhanced controls frame
+        self.controls_frame = ctk.CTkFrame(self, height=120, corner_radius=8)
         self.controls_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         self.controls_frame.grid_columnconfigure(2, weight=1)
         
+        self.create_controls()
+        
+    def create_controls(self):
+        """Create YouTube-style control layout (simplified like YouTube)"""
         # Left controls - Playback
         left_controls = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
         left_controls.grid(row=0, column=0, sticky="w", padx=15, pady=10)
         
-        # Play/Pause button with modern styling
+        # Play/Pause button (YouTube style - single button)
         self.play_button = ctk.CTkButton(
             left_controls,
             text="▶",
@@ -7695,21 +8491,7 @@ class VideoPlayerWidget(ctk.CTkFrame):
             hover_color=VSCODE_COLORS["primary_hover"],
             corner_radius=25
         )
-        self.play_button.pack(side="left", padx=(0, 8))
-        
-        # Stop button
-        self.stop_button = ctk.CTkButton(
-            left_controls,
-            text="⏹",
-            width=45,
-            height=45,
-            font=ctk.CTkFont(size=18),
-            command=self.stop_playback,
-            fg_color=VSCODE_COLORS["surface_light"],
-            hover_color=VSCODE_COLORS["border"],
-            corner_radius=22
-        )
-        self.stop_button.pack(side="left", padx=(0, 15))
+        self.play_button.pack(side="left", padx=(0, 15))
         
         # Fullscreen button
         self.fullscreen_button = ctk.CTkButton(
@@ -7717,15 +8499,15 @@ class VideoPlayerWidget(ctk.CTkFrame):
             text="⛶",
             width=45,
             height=45,
-            font=ctk.CTkFont(size=16),
-            command=self.toggle_fullscreen,
+            font=ctk.CTkFont(size=18),
+            command=self.enter_fullscreen,
             fg_color=VSCODE_COLORS["surface_light"],
-            hover_color=VSCODE_COLORS["border"],
+            hover_color=VSCODE_COLORS["primary"],
             corner_radius=22
         )
         self.fullscreen_button.pack(side="left", padx=(0, 15))
         
-        # Time display with better formatting
+        # Time display
         time_frame = ctk.CTkFrame(left_controls, fg_color="transparent")
         time_frame.pack(side="left", padx=(0, 15))
         
@@ -7737,685 +8519,439 @@ class VideoPlayerWidget(ctk.CTkFrame):
         )
         self.time_label.pack()
         
-        # Center controls - Progress bar with enhanced styling
-        center_controls = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
-        center_controls.grid(row=0, column=2, sticky="ew", padx=20, pady=15)
-        center_controls.grid_columnconfigure(0, weight=1)
+        # Speed indicator
+        self.speed_indicator = ctk.CTkLabel(
+            time_frame,
+            text="1.0×",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["primary"]
+        )
+        self.speed_indicator.pack()
         
-        # Progress slider with drag detection
-        self.progress_var = tk.DoubleVar()
-        self._user_seeking = False
+        # Center controls - Speed
+        self.create_speed_controls()
         
-        self.progress_slider = ctk.CTkSlider(
+        # Progress bar (right side)
+        self.create_progress_controls()
+        
+    def create_speed_controls(self):
+        """Create speed control section"""
+        center_controls = ctk.CTkFrame(
+            self.controls_frame,
+            fg_color=VSCODE_COLORS["surface_light"],
+            corner_radius=8,
+        )
+        center_controls.grid(row=0, column=1, sticky="ew", padx=15, pady=10)
+        center_controls.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        center_controls.grid_rowconfigure(1, weight=1)
+
+        # Speed section header
+        speed_header = ctk.CTkLabel(
             center_controls,
+            text="⚡ Playback Speed",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=VSCODE_COLORS["text"],
+        )
+        speed_header.grid(row=0, column=0, columnspan=4, pady=(8, 5))
+
+        # Speed controls container
+        speed_controls = ctk.CTkFrame(center_controls, fg_color="transparent")
+        speed_controls.grid(row=1, column=0, columnspan=4, padx=10, pady=(0, 8))
+        
+        # Speed preset buttons
+        speed_presets = [
+            ("0.25×", 0.25, "#ff6b6b"),
+            ("0.5×", 0.5, "#ffa500"), 
+            ("1×", 1.0, "#4ecdc4"),
+            ("1.5×", 1.5, "#45b7d1"),
+            ("2×", 2.0, "#96ceb4"),
+            ("4×", 4.0, "#feca57"),
+            ("8×", 8.0, "#ff9ff3")
+        ]
+        
+        self.speed_buttons = {}
+        for i, (text, speed, color) in enumerate(speed_presets):
+            btn = ctk.CTkButton(
+                speed_controls,
+                text=text,
+                width=45,
+                height=30,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                command=lambda s=speed: self.set_speed(s),
+                fg_color=color if speed == 1.0 else "transparent",
+                hover_color=color,
+                border_width=2,
+                border_color=color,
+                corner_radius=15,
+            )
+            row, col = divmod(i, 4)
+            btn.grid(row=row, column=col, padx=2, pady=2, sticky="ew")
+            self.speed_buttons[speed] = btn
+
+        # Custom speed slider
+        slider_frame = ctk.CTkFrame(center_controls, fg_color="transparent")
+        slider_frame.grid(row=2, column=0, columnspan=4, pady=(5, 8))
+        
+        ctk.CTkLabel(
+            slider_frame,
+            text="Custom:",
+            font=ctk.CTkFont(size=10),
+            text_color=VSCODE_COLORS["text_secondary"]
+        ).pack(side="left", padx=(5, 5))
+
+        self.speed_slider = ctk.CTkSlider(
+            slider_frame,
+            from_=0.25,
+            to=self.max_speed,
+            number_of_steps=31,
+            command=self.on_speed_slider_change,
+            width=120,
+            height=16
+        )
+        self.speed_slider.pack(side="left", padx=5)
+        self.speed_slider.set(1.0)
+            
+    def create_progress_controls(self):
+        """Create progress control section"""
+        progress_frame = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
+        progress_frame.grid(row=0, column=2, sticky="ew", padx=15, pady=10)
+        progress_frame.grid_columnconfigure(0, weight=1)
+        
+        # Progress label
+        ctk.CTkLabel(
+            progress_frame,
+            text="Progress",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=VSCODE_COLORS["text_secondary"]
+        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
+        
+        # Progress bar
+        self.progress_var = ctk.DoubleVar()
+        self.progress_slider = ctk.CTkSlider(
+            progress_frame,
             from_=0,
             to=100,
             variable=self.progress_var,
             command=self.seek_to_position,
-            height=20,
-            button_color=VSCODE_COLORS["primary"],
-            button_hover_color=VSCODE_COLORS["primary_hover"],
+            height=24,
             progress_color=VSCODE_COLORS["primary"]
         )
-        self.progress_slider.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        self.progress_slider.grid(row=1, column=0, sticky="ew", pady=(0, 5))
         
-        # Bind drag events to prevent conflicts during playback
-        self.progress_slider.bind("<Button-1>", self.on_progress_drag_start)
-        self.progress_slider.bind("<ButtonRelease-1>", self.on_progress_drag_end)
-        
-        # Right controls - Speed, frame info, and focus
-        right_controls = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
-        right_controls.grid(row=0, column=3, sticky="e", padx=15, pady=10)
-        
-        # YouTube-style Speed button
-        speed_frame = ctk.CTkFrame(right_controls, fg_color="transparent")
-        speed_frame.pack(side="right", padx=(15, 0))
-        
-        self.speed_button = ctk.CTkButton(
-            speed_frame,
-            text="1×",
-            width=55,
-            height=35,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            command=self.show_speed_menu,
-            fg_color=VSCODE_COLORS["surface_light"],
-            hover_color=VSCODE_COLORS["border"],
-            corner_radius=6,
-            border_width=1,
-            border_color=VSCODE_COLORS["border"]
-        )
-        self.speed_button.pack()
-        
-        # Frame counter
-        frame_frame = ctk.CTkFrame(right_controls, fg_color="transparent")
-        frame_frame.pack(side="right", padx=(15, 0))
+        # Frame info
+        info_frame = ctk.CTkFrame(progress_frame, fg_color="transparent")
+        info_frame.grid(row=2, column=0, sticky="ew")
+        info_frame.grid_columnconfigure(1, weight=1)
         
         self.frame_label = ctk.CTkLabel(
-            frame_frame,
+            info_frame,
             text="Frame: 0/0",
-            font=ctk.CTkFont(family="Monaco", size=12),
+            font=ctk.CTkFont(size=10),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.frame_label.pack()
+        self.frame_label.grid(row=0, column=0, sticky="w")
         
         # Focus indicator
-        focus_frame = ctk.CTkFrame(right_controls, fg_color="transparent")
-        focus_frame.pack(side="right", padx=(0, 15))
-        
         self.focus_indicator = ctk.CTkLabel(
-            focus_frame,
+            info_frame,
             text="",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=9),
             text_color=VSCODE_COLORS["primary"]
         )
-        self.focus_indicator.pack()
+        self.focus_indicator.grid(row=0, column=1, sticky="e")
         
-        # Initialize speed menu variables
-        self.speed_menu = None
-        self.speed_options = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0, 6.0, 8.0]   
-    def toggle_fullscreen(self, event=None):
-        """Toggle fullscreen mode"""
-        if self.is_fullscreen:
-            self.exit_fullscreen()
-        else:
-            self.enter_fullscreen()
-    
-    def enter_fullscreen(self):
-        """Enter fullscreen mode"""
-        if self.is_fullscreen:
-            return
-            
+    def load_video(self, video_path):
+        """Load video file with accurate timing setup"""
         try:
-            # Create fullscreen window
-            self.fullscreen_window = tk.Toplevel()
-            self.fullscreen_window.attributes('-fullscreen', True)
-            self.fullscreen_window.configure(bg='black')
-            self.fullscreen_window.focus_set()
+            if self.cap:
+                self.cap.release()
             
-            # Create fullscreen canvas
-            self.fullscreen_canvas = tk.Canvas(
-                self.fullscreen_window,
-                bg="black",
-                highlightthickness=0,
-                relief="flat"
-            )
-            self.fullscreen_canvas.pack(fill="both", expand=True)
+            self.cap = cv2.VideoCapture(video_path)
+            if not self.cap.isOpened():
+                self.show_error("Could not open video file")
+                return False
             
-            # Bind keyboard events for fullscreen
-            self.fullscreen_window.bind("<KeyPress>", self.on_fullscreen_key_press)
-            self.fullscreen_window.bind("<Escape>", lambda e: self.exit_fullscreen())
-            self.fullscreen_window.bind("<F11>", lambda e: self.exit_fullscreen())
-            self.fullscreen_window.bind("<Double-Button-1>", lambda e: self.exit_fullscreen())
+            self.video_path = video_path
+            self.current_frame = 0
+            self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
             
-            # Handle window close
-            self.fullscreen_window.protocol("WM_DELETE_WINDOW", self.exit_fullscreen)
+            # Ensure FPS is reasonable (some videos report crazy values)
+            if self.fps > 120 or self.fps < 1:
+                self.fps = 30  # Default to 30 FPS for problematic videos
             
-            # Update state
-            self.is_fullscreen = True
-            self.fullscreen_button.configure(text="⛶", fg_color=VSCODE_COLORS["primary"])
+            # Calculate base frame delay for accurate timing
+            self.frame_delay_ms = int(1000.0 / self.fps)
             
-            # Display current frame in fullscreen
-            if self.cap and self.current_frame < self.total_frames:
-                self.after(100, lambda: self.display_current_frame())
-                
-            # Show fullscreen instructions
-            self.show_fullscreen_instructions()
+            self.display_frame(0)
+            self.update_time_display()
+            self.update_frame_display()
+            
+            return True
             
         except Exception as e:
-            print(f"Error entering fullscreen: {e}")
-            self.exit_fullscreen()
-    def show_speed_menu(self):
-        """Show YouTube-style speed selection menu"""
-        if self.speed_menu and self.speed_menu.winfo_exists():
-            self.hide_speed_menu()
-            return
-            
-        # Create speed menu window
-        self.speed_menu = tk.Toplevel(self.speed_button)
-        self.speed_menu.withdraw()  # Hide initially for positioning
-        self.speed_menu.overrideredirect(True)  # Remove window decorations
-        self.speed_menu.configure(bg=VSCODE_COLORS["surface"])
-        
-        # Configure for proper layering
-        self.speed_menu.attributes('-topmost', True)
-        
-        # Create menu frame with modern styling
-        menu_frame = ctk.CTkFrame(
-            self.speed_menu,
-            fg_color=VSCODE_COLORS["surface"],
-            border_width=1,
-            border_color=VSCODE_COLORS["border"],
-            corner_radius=8
-        )
-        menu_frame.pack(fill="both", expand=True, padx=2, pady=2)
-        
-        # Menu header
-        header_frame = ctk.CTkFrame(menu_frame, fg_color=VSCODE_COLORS["surface_light"], height=35)
-        header_frame.pack(fill="x", padx=5, pady=(5, 0))
-        header_frame.pack_propagate(False)
-        
-        header_label = ctk.CTkLabel(
-            header_frame,
-            text="Playback Speed",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        )
-        header_label.pack(pady=8)
-        
-        # Speed options
-        options_frame = ctk.CTkFrame(menu_frame, fg_color="transparent")
-        options_frame.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        for speed in self.speed_options:
-            self.create_speed_option(options_frame, speed)
-        
-        # Position menu above the speed button
-        self.position_speed_menu()
-        
-        # Bind click outside to close
-        self.speed_menu.bind('<FocusOut>', lambda e: self.hide_speed_menu())
-        self.speed_menu.after(50, lambda: self.speed_menu.focus_set())
-        
-        # Bind escape key to close
-        self.speed_menu.bind('<Escape>', lambda e: self.hide_speed_menu())
-        self.speed_menu.bind('<KeyPress>', self.on_speed_menu_key)
-        
-        self.speed_menu.deiconify()  # Show the menu
+            self.show_error(f"Error loading video: {str(e)}")
+            return False
     
-    def create_speed_option(self, parent, speed):
-        """Create a speed option button"""
-        # Format speed text like YouTube
-        if speed == 1.0:
-            speed_text = "Normal"
-            display_speed = "1×"
-        else:
-            speed_text = f"{speed:g}×"
-            display_speed = speed_text
-        
-        # Check if this is the current speed
-        is_current = abs(self.playback_speed - speed) < 0.01
-        
-        # Create option frame with hover effect
-        option_frame = ctk.CTkFrame(
-            parent,
-            fg_color=VSCODE_COLORS["primary"] if is_current else "transparent",
-            height=32
-        )
-        option_frame.pack(fill="x", pady=1)
-        option_frame.pack_propagate(False)
-        
-        # Create clickable area
-        option_button = ctk.CTkButton(
-            option_frame,
-            text=speed_text,
-            font=ctk.CTkFont(size=12, weight="bold" if is_current else "normal"),
-            command=lambda s=speed: self.select_speed_from_menu(s),
-            fg_color="transparent",
-            hover_color=VSCODE_COLORS["surface_light"] if not is_current else VSCODE_COLORS["primary_hover"],
-            text_color=VSCODE_COLORS["text_bright"] if is_current else VSCODE_COLORS["text"],
-            height=30,
-            anchor="w"
-        )
-        option_button.pack(fill="both", expand=True, padx=8, pady=1)
-        
-        # Add checkmark for current speed
-        if is_current:
-            check_label = ctk.CTkLabel(
-                option_frame,
-                text="✓",
-                font=ctk.CTkFont(size=14, weight="bold"),
-                text_color=VSCODE_COLORS["text_bright"]
-            )
-            check_label.place(relx=0.9, rely=0.5, anchor="center")
-    
-    def position_speed_menu(self):
-        """Position the speed menu relative to the speed button"""
-        if not self.speed_menu:
-            return
-            
-        # Update menu to get correct size
-        self.speed_menu.update_idletasks()
-        
-        # Get button position and size
-        button_x = self.speed_button.winfo_rootx()
-        button_y = self.speed_button.winfo_rooty()
-        button_width = self.speed_button.winfo_width()
-        button_height = self.speed_button.winfo_height()
-        
-        # Get menu size
-        menu_width = self.speed_menu.winfo_reqwidth()
-        menu_height = self.speed_menu.winfo_reqheight()
-        
-        # Get screen dimensions
-        screen_width = self.speed_menu.winfo_screenwidth()
-        screen_height = self.speed_menu.winfo_screenheight()
-        
-        # Calculate position (above the button, right-aligned)
-        menu_x = button_x + button_width - menu_width
-        menu_y = button_y - menu_height - 5
-        
-        # Adjust if menu would go off screen
-        if menu_x < 0:
-            menu_x = button_x
-        elif menu_x + menu_width > screen_width:
-            menu_x = screen_width - menu_width - 10
-            
-        if menu_y < 0:
-            menu_y = button_y + button_height + 5  # Show below if no room above
-            
-        self.speed_menu.geometry(f"{menu_width}x{menu_height}+{menu_x}+{menu_y}")
-    
-    def select_speed_from_menu(self, speed):
-        """Select speed from menu and close it"""
-        self.set_speed(speed)
-        self.hide_speed_menu()
-    
-    def hide_speed_menu(self):
-        """Hide the speed menu"""
-        if self.speed_menu and self.speed_menu.winfo_exists():
-            self.speed_menu.destroy()
-        self.speed_menu = None
-    
-    def on_speed_menu_key(self, event):
-        """Handle keyboard input in speed menu"""
-        key = event.keysym.lower()
-        
-        if key == "escape":
-            self.hide_speed_menu()
-        elif key.isdigit():
-            # Quick speed selection with number keys
-            speed_map = {
-                "1": 0.25, "2": 0.5, "3": 0.75, "4": 1.0,
-                "5": 1.25, "6": 1.5, "7": 2.0, "8": 4.0
-            }
-            if key in speed_map:
-                self.select_speed_from_menu(speed_map[key])
-    def exit_fullscreen(self):
-        """Exit fullscreen mode"""
-        if not self.is_fullscreen:
-            return
-            
-        try:
-            # Destroy fullscreen window
-            if self.fullscreen_window:
-                self.fullscreen_window.destroy()
-                self.fullscreen_window = None
-            
-            self.fullscreen_canvas = None
-            self.is_fullscreen = False
-            self.fullscreen_button.configure(text="⛶", fg_color=VSCODE_COLORS["surface_light"])
-            
-            # Return focus to main canvas
-            self.canvas.focus_set()
-            
-            # Redisplay current frame in main window
-            if self.cap and self.current_frame < self.total_frames:
-                self.display_frame(self.current_frame)
-                
-        except Exception as e:
-            print(f"Error exiting fullscreen: {e}")
-    
-    def display_current_frame(self):
-        """Display the current frame in the appropriate canvas"""
-        if self.is_fullscreen and self.fullscreen_canvas:
-            self.display_frame_on_canvas(self.current_frame, self.fullscreen_canvas)
-        else:
-            self.display_frame(self.current_frame)
-    
-    def display_frame_on_canvas(self, frame_number, target_canvas):
-        """Display frame on a specific canvas"""
+    def enter_fullscreen(self, event=None):
+        """Enter YouTube-style fullscreen mode with proper management"""
         if not self.cap:
             return
             
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-        ret, frame = self.cap.read()
+        # Always create new fullscreen player (destroy old one if exists)
+        if self.fullscreen_player:
+            try:
+                self.fullscreen_player.destroy()
+            except:
+                pass
+            self.fullscreen_player = None
         
-        if not ret:
+        try:
+            self.fullscreen_player = FullscreenVideoPlayer(self.winfo_toplevel(), self)
+            
+            # Handle cleanup when fullscreen closes
+            def on_fullscreen_close():
+                self.fullscreen_player = None
+            
+            self.fullscreen_player.bind("<Destroy>", lambda e: on_fullscreen_close())
+            
+            # IMPORTANT: If main player is playing, ensure fullscreen starts playing too
+            if self.is_playing:
+                # The sync_with_main_player method in fullscreen will handle this automatically
+                pass
+            
+        except Exception as e:
+            print(f"Error creating fullscreen player: {e}")
+            self.fullscreen_player = None
+    
+    def on_canvas_click(self, event):
+        """Handle canvas click"""
+        self.canvas.focus_set()
+        
+    def on_focus_in(self, event):
+        """Handle canvas gaining focus"""
+        self.has_focus = True
+        self.focus_indicator.configure(text="🎯 Focused • ESC to release • F11 for fullscreen")
+        self.canvas.configure(highlightthickness=2)
+        
+    def on_focus_out(self, event):
+        """Handle canvas losing focus"""
+        self.has_focus = False
+        self.focus_indicator.configure(text="")
+        self.canvas.configure(highlightthickness=1)
+        
+    def on_key_press(self, event):
+        """Enhanced keyboard shortcuts"""
+        if not self.has_focus:
+            return
+            
+        handled = False
+        
+        # Fullscreen controls
+        if event.keysym in ["F11", "f"]:
+            self.enter_fullscreen()
+            handled = True
+        # Speed controls
+        elif event.keysym in ["minus", "KP_Subtract"]:
+            new_speed = max(0.25, self.playback_speed - 0.25)
+            self.set_speed(new_speed)
+            handled = True
+        elif event.keysym in ["plus", "equal", "KP_Add"]:
+            new_speed = min(self.max_speed, self.playback_speed + 0.25)
+            self.set_speed(new_speed)
+            handled = True
+        elif event.char in "12345678":
+            speeds = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 6.0, 8.0]
+            try:
+                index = int(event.char) - 1
+                if 0 <= index < len(speeds):
+                    self.set_speed(speeds[index])
+                    handled = True
+            except:
+                pass
+        elif event.keysym == "space":
+            self.toggle_playback()
+            handled = True
+        elif event.keysym == "Escape":
+            self.canvas.master.focus_set()
+            handled = True
+        elif event.keysym == "BackSpace":
+            self.set_speed(1.0)
+            handled = True
+            
+        return "break" if handled else None
+    
+    def on_speed_slider_change(self, value):
+        """Handle custom speed slider change"""
+        # Round to nearest 0.25
+        speed = round(value * 4) / 4
+        self.set_speed(speed)
+    
+    def toggle_playback(self):
+        """Toggle playback with proper position maintenance (YouTube-style)"""
+        if not self.cap:
+            return
+
+        if self.is_playing:
+            # Pause at current position (just like YouTube)
+            self.is_playing = False
+            self.play_button.configure(text="▶")
+            if self.playback_timer:
+                self.after_cancel(self.playback_timer)
+                self.playback_timer = None
+        else:
+            # Check if we're at the end - if so, restart from beginning
+            if self.current_frame >= self.total_frames - 1:
+                self.current_frame = 0
+                self.display_frame(0)
+                self.update_time_display()
+                self.update_frame_display()
+            
+            # Resume/start from current position (just like YouTube)
+            self.is_playing = True
+            self.play_button.configure(text="⏸")
+            self.start_playback_loop()
+    
+    def start_playback_loop(self):
+        """Start simple timer-based playback loop with accurate timing"""
+        if not self.is_playing or not self.cap:
+            return
+        
+        # Check if we've reached the end
+        if self.current_frame >= self.total_frames - 1:
+            self.is_playing = False
+            self.play_button.configure(text="▶")
+            if self.fullscreen_player:
+                self.fullscreen_player.play_btn.configure(text="▶")
+            # Don't reset frame here - let toggle_playback handle replay
+            return
+        
+        # Advance to next frame
+        self.current_frame += 1
+        self.display_frame(self.current_frame)
+        
+        # Update UI periodically (every 5 frames for better responsiveness)
+        if self.current_frame % 5 == 0:
+            self.update_time_display()
+            self.update_frame_display()
+        
+        # Calculate accurate frame delay based on actual video FPS and playback speed
+        # Use milliseconds with decimal precision for accuracy
+        base_frame_time = 1000.0 / self.fps  # milliseconds per frame
+        adjusted_frame_time = base_frame_time / self.playback_speed
+        
+        # Ensure minimum delay for very high speeds to prevent UI freezing
+        frame_delay = max(1, int(adjusted_frame_time))
+        
+        # Schedule next frame with accurate timing
+        self.playback_timer = self.after(frame_delay, self.start_playback_loop)
+    
+    def seek_to_frame(self, frame_number):
+        """Seek to specific frame and maintain state"""
+        if not self.cap:
+            return
+        
+        self.current_frame = max(0, min(frame_number, self.total_frames - 1))
+        self.display_frame(self.current_frame)
+        self.update_time_display()
+        self.update_frame_display()
+        
+        # Update fullscreen player if it exists
+        if self.fullscreen_player and self.fullscreen_player.winfo_exists():
+            self.fullscreen_player.display_frame(self.current_frame)
+            if self.fullscreen_player.controls_visible:
+                self.fullscreen_player.update_progress_bar()
+    
+    def seek_to_position(self, value):
+        """Seek to specific position"""
+        if not self.cap:
+            return
+            
+        frame_number = int((value / 100) * (self.total_frames - 1))
+        self.seek_to_frame(frame_number)
+    
+    def set_speed(self, speed):
+        """Set playback speed with accurate timing updates"""
+        old_speed = self.playback_speed
+        self.playback_speed = max(0.25, min(speed, self.max_speed))
+        self.speed_indicator.configure(text=f"{self.playback_speed}×")
+        self.speed_slider.set(self.playback_speed)
+        
+        # Update speed button styles
+        for btn_speed, btn in self.speed_buttons.items():
+            if btn_speed == self.playback_speed:
+                btn.configure(fg_color=btn.cget("border_color"))
+            else:
+                btn.configure(fg_color="transparent")
+        
+        # If speed changed significantly and we're playing, restart the timer
+        # with new timing to ensure accuracy
+        if abs(self.playback_speed - old_speed) > 0.1 and self.is_playing:
+            if self.playback_timer:
+                self.after_cancel(self.playback_timer)
+                self.playback_timer = None
+            # Restart with new timing
+            self.start_playback_loop()
+    
+    def display_frame(self, frame_number):
+        """Display video frame with improved reliability"""
+        if not self.cap:
             return
             
         try:
-            canvas_width = target_canvas.winfo_width()
-            canvas_height = target_canvas.winfo_height()
+            # Ensure frame number is within valid range
+            frame_number = max(0, min(frame_number, self.total_frames - 1))
             
-            if canvas_width <= 1 or canvas_height <= 1:
-                self.after(100, lambda: self.display_frame_on_canvas(frame_number, target_canvas))
+            # Use OpenCV's built-in frame positioning (more reliable than manual tracking)
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = self.cap.read()
+            
+            if not ret:
                 return
                 
-            # Process frame
+            canvas_width = self.canvas.winfo_width()
+            canvas_height = self.canvas.winfo_height()
+            
+            if canvas_width <= 1 or canvas_height <= 1:
+                self.after(100, lambda: self.display_frame(frame_number))
+                return
+                
+            # Convert and resize frame
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame_height, frame_width = frame_rgb.shape[:2]
             
             # Calculate display size maintaining aspect ratio
             aspect_ratio = frame_width / frame_height
             if canvas_width / canvas_height > aspect_ratio:
-                display_height = canvas_height
+                display_height = canvas_height - 20
                 display_width = int(display_height * aspect_ratio)
             else:
-                display_width = canvas_width
+                display_width = canvas_width - 20
                 display_height = int(display_width / aspect_ratio)
                 
-            # Use appropriate interpolation
             interpolation = cv2.INTER_LINEAR if self.playback_speed <= 2.0 else cv2.INTER_NEAREST
             frame_resized = cv2.resize(frame_rgb, (display_width, display_height), interpolation=interpolation)
             
             # Convert and display
             image = Image.fromarray(frame_resized)
-            photo = ImageTk.PhotoImage(image)
+            self.photo = ImageTk.PhotoImage(image)
             
-            # Store reference to prevent garbage collection
-            if self.is_fullscreen:
-                self.fullscreen_photo = photo
-            else:
-                self.photo = photo
-            
-            target_canvas.delete("all")
-            target_canvas.create_image(
+            self.canvas.delete("all")
+            self.canvas.create_image(
                 canvas_width // 2,
                 canvas_height // 2,
-                image=photo,
+                image=self.photo,
                 anchor="center"
             )
+            
+            # Update progress
+            progress = (frame_number / max(self.total_frames - 1, 1)) * 100
+            self.progress_var.set(progress)
             
         except Exception as e:
-            print(f"Error displaying frame: {e}")
+            print(f"Frame display error: {e}")
+            # Don't crash, just skip this frame
     
-    def on_fullscreen_key_press(self, event):
-        """Handle key press events in fullscreen mode"""
-        key = event.keysym.lower()
-        
-        # Fullscreen-specific controls
-        if key == "escape" or key == "f11":
-            self.exit_fullscreen()
-            return
-        
-        # Regular playback controls
-        self.handle_playback_keys(key)
-    
-    def handle_playback_keys(self, key):
-        """Handle playback keyboard shortcuts"""
-        if key == "space":
-            self.toggle_playback()
-        elif key == "plus" or key == "equal":
-            self.change_speed(0.25)
-        elif key == "minus":
-            self.change_speed(-0.25)
-        elif key.isdigit():
-            speed_map = {"1": 0.25, "2": 0.5, "3": 1.0, "4": 1.5, "5": 2.0, "6": 3.0, "7": 4.0, "8": 8.0}
-            if key in speed_map:
-                self.set_speed(speed_map[key])
-        elif key == "left":
-            self.seek_relative(-10)  # 10 frames back
-        elif key == "right":
-            self.seek_relative(10)   # 10 frames forward
-        elif key == "home":
-            self.seek_to_frame(0)    # Go to start
-        elif key == "end":
-            self.seek_to_frame(self.total_frames - 1)  # Go to end
-    
-    def seek_relative(self, frame_delta):
-        """Seek relative to current position"""
-        if not self.cap:
-            return
-            
-        new_frame = max(0, min(self.current_frame + frame_delta, self.total_frames - 1))
-        self.seek_to_frame(new_frame)
-    
-    def seek_to_frame(self, frame_number):
-        """Seek to specific frame"""
-        if not self.cap:
-            return
-            
-        self.current_frame = max(0, min(frame_number, self.total_frames - 1))
-        self.display_current_frame()
-        self.update_time_display()
-        self.update_frame_display()
-        
-        # Update progress slider
-        progress = (self.current_frame / max(self.total_frames - 1, 1)) * 100
-        self.progress_var.set(progress)
-    
-    def show_fullscreen_instructions(self):
-        """Show fullscreen mode instructions"""
-        if not self.fullscreen_canvas:
-            return
-            
-        instructions = [
-            "FULLSCREEN MODE",
-            "",
-            "• Double-click or ESC to exit fullscreen",
-            "• Space: Play/Pause",
-            "• 1-8: Speed presets (0.25× to 8×)",
-            "• +/-: Adjust speed by 0.25×",
-            "• ←/→: Skip 10 frames back/forward",
-            "• Home/End: Go to start/end",
-            "",
-            "Instructions will disappear when video starts playing"
-        ]
-        
-        canvas_width = self.fullscreen_canvas.winfo_width()
-        canvas_height = self.fullscreen_canvas.winfo_height()
-        
-        # Semi-transparent background
-        self.fullscreen_canvas.create_rectangle(
-            canvas_width//2 - 200, canvas_height//2 - 150,
-            canvas_width//2 + 200, canvas_height//2 + 150,
-            fill="#000000", stipple="gray50", outline="#444444"
-        )
-        
-        # Instructions text
-        for i, instruction in enumerate(instructions):
-            color = "#ffffff" if instruction and not instruction.startswith("•") else "#cccccc"
-            font_size = 16 if instruction == "FULLSCREEN MODE" else 12
-            weight = "bold" if instruction == "FULLSCREEN MODE" else "normal"
-            
-            self.fullscreen_canvas.create_text(
-                canvas_width//2, canvas_height//2 - 120 + i*15,
-                text=instruction,
-                font=("Arial", font_size, weight),
-                fill=color,
-                anchor="center"
-            )
-        
-        # Hide instructions after 5 seconds or when playback starts
-        self.after(5000, self.hide_fullscreen_instructions)
-    
-    def hide_fullscreen_instructions(self):
-        """Hide fullscreen instructions"""
-        if self.fullscreen_canvas and not self.is_playing:
-            # Only redraw if not playing (playing will update the display anyway)
-            if self.cap and self.current_frame < self.total_frames:
-                self.display_current_frame()
-    
-    def on_key_press(self, event):
-        """Handle key press events in normal mode"""
-        if not self.has_focus:
-            return
-            
-        key = event.keysym.lower()
-        
-        # Check for fullscreen toggle
-        if key == "f11":
-            self.toggle_fullscreen()
-            return
-        
-        # Regular playback controls
-        self.handle_playback_keys(key)
-    
-    def change_speed(self, delta):
-        """Change playback speed by delta"""
-        new_speed = round(self.playback_speed + delta, 2)
-        new_speed = max(0.25, min(new_speed, self.max_speed))
-        self.set_speed(new_speed)
-
-    def set_speed(self, speed):
-        """Set playback speed with visual feedback"""
-        self.playback_speed = max(0.25, min(speed, self.max_speed))
-        self.frame_delay = max(1, int(33 / self.playback_speed))
-        
-        # Update speed button text (YouTube style)
-        if self.playback_speed == 1.0:
-            button_text = "1×"
-            button_color = VSCODE_COLORS["surface_light"]
-        else:
-            button_text = f"{self.playback_speed:g}×"
-            # Highlight non-normal speeds
-            if self.playback_speed > 1.0:
-                button_color = VSCODE_COLORS["warning"] if self.playback_speed <= 2.0 else VSCODE_COLORS["error"]
-            else:
-                button_color = VSCODE_COLORS["info"]
-            
-        self.speed_button.configure(text=button_text, fg_color=button_color)
-        
-        # Adjust UI update frequency based on speed
-        if self.playback_speed >= 4.0:
-            self.ui_update_interval = 200
-        elif self.playback_speed >= 2.0:
-            self.ui_update_interval = 150
-        else:
-            self.ui_update_interval = 100
-
-    def on_canvas_click(self, event):
-        """Handle canvas click to gain focus"""
-        self.canvas.focus_set()
-        
-    def on_focus_in(self, event):
-        """Handle focus gained"""
-        self.has_focus = True
-        self.focus_indicator.configure(text="🎯 Focused")
-        self.canvas.configure(highlightthickness=2)
-        
-    def on_focus_out(self, event):
-        """Handle focus lost"""
-        self.has_focus = False
-        self.focus_indicator.configure(text="")
-        self.canvas.configure(highlightthickness=1)
-
-    def toggle_playback(self):
-        """Toggle playback with visual feedback"""
-        if not self.cap:
-            return
-
-        if self.is_playing:
-            # Pause
-            self.is_playing = False
-            self.play_button.configure(text="▶")
-            self.stop_playback_thread()
-        else:
-            # Restart from beginning if at the end
-            if self.current_frame >= self.total_frames - 1:
-                self.current_frame = 0
-                self.display_current_frame()
-                self.update_time_display()
-                self.update_frame_display()
-            self.is_playing = True
-            self.play_button.configure(text="⏸")
-            self.start_playback()
-            
-    def start_playback(self):
-        """Start optimized playback"""
-        if self.is_playing and not self.play_thread:
-            self.play_thread = threading.Thread(target=self.playback_loop, daemon=True)
-            self.play_thread.start()
-            
-        # Hide fullscreen instructions when playback starts
-        if self.is_fullscreen:
-            self.hide_fullscreen_instructions()
-            
-    def playback_loop(self):
-        """Optimized playback loop for high-speed performance with progress updates"""
-        frame_count = 0
-        last_ui_update = 0
-        
-        while self.is_playing and self.current_frame < self.total_frames - 1:
-            loop_start = time.time()
-            
-            # Calculate how many frames to advance
-            if self.playback_speed >= 4.0:
-                frame_advance = max(1, int(self.playback_speed / 2))
-            else:
-                frame_advance = 1
-            
-            # Advance frame(s)
-            self.current_frame = min(self.current_frame + frame_advance, self.total_frames - 1)
-            
-            # Display frame on appropriate canvas
-            self.after_idle(self.display_current_frame)
-            
-            # Update UI less frequently at high speeds
-            current_time = time.time() * 1000
-            if current_time - last_ui_update >= self.ui_update_interval:
-                self.after_idle(self.update_time_display)
-                self.after_idle(self.update_frame_display)
-                self.after_idle(self.update_progress_bar)  # Add this line
-                last_ui_update = current_time
-            
-            # Dynamic sleep calculation
-            loop_time = (time.time() - loop_start) * 1000
-            target_delay = self.frame_delay / frame_advance
-            sleep_time = max(1, target_delay - loop_time) / 1000
-            
-            time.sleep(sleep_time)
-            frame_count += 1
-            
-        # End of video
-        if self.current_frame >= self.total_frames - 1:
-            self.after_idle(self.stop_playback)
-    def update_progress_bar(self):
-        """Update progress bar during playback"""
-        if not self.cap or self.total_frames <= 1:
-            return
-            
-        # Calculate progress percentage
-        progress = (self.current_frame / max(self.total_frames - 1, 1)) * 100
-        
-        # Update the progress variable (this will update the slider)
-        self.progress_var.set(progress)
-    def display_frame(self, frame_number):
-        """Display frame in normal mode canvas"""
-        self.display_frame_on_canvas(frame_number, self.canvas)
-
-    def seek_to_position(self, value):
-        """Seek to position from slider"""
-        if not self.cap:
-            return
-            
-        # Only seek if user is actively dragging (not during playback updates)
-        if self.is_playing and hasattr(self, '_user_seeking') and not self._user_seeking:
-            return
-            
-        frame_number = int((value / 100) * (self.total_frames - 1))
-        self.seek_to_frame(frame_number)
-    
-    def on_progress_drag_start(self, event):
-        """Handle start of progress bar dragging"""
-        self._user_seeking = True
-        
-    def on_progress_drag_end(self, event):
-        """Handle end of progress bar dragging"""
-        self._user_seeking = False
-
-    def stop_playback(self):
-        """Stop playback"""
-        self.is_playing = False
-        self.play_button.configure(text="▶")
-        self.stop_playback_thread()
-        
-    def stop_playback_thread(self):
-        """Stop playback thread"""
-        if self.play_thread:
-            if self.play_thread.is_alive():
-                try:
-                    self.play_thread.join(timeout=0.1)
-                except Exception:
-                    pass
-            self.play_thread = None
-
-        self.current_frame = 0
-        if self.cap:
-            self.display_current_frame()
-            self.update_time_display()
-            self.update_frame_display()
-
     def update_time_display(self):
         """Update time display"""
         if not self.cap:
@@ -8432,16 +8968,15 @@ class VideoPlayerWidget(ctk.CTkFrame):
     def update_frame_display(self):
         """Update frame counter"""
         self.frame_label.configure(text=f"Frame: {self.current_frame}/{self.total_frames}")
-
+    
     def show_placeholder(self):
-        """Modern placeholder with instructions"""
+        """Show placeholder with YouTube-style instructions"""
         self.canvas.delete("all")
         canvas_width = self.canvas.winfo_width() or 400
         canvas_height = self.canvas.winfo_height() or 300
         
         self.canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill="black", outline="")
         
-        # Modern placeholder design
         self.canvas.create_text(
             canvas_width/2, canvas_height/2 - 40,
             text="🎬",
@@ -8463,12 +8998,11 @@ class VideoPlayerWidget(ctk.CTkFrame):
             fill="#9ca3af"
         )
         
-        # Instructions including speed button
         instructions = [
-            "• Double-click video for fullscreen • Click speed button (1×) for speed menu",
-            "• Click video to focus, then use 1-8 keys for speed presets",
-            "• Use +/- keys to adjust speed • Arrow keys to skip frames",
-            "• Spacebar to play/pause • ESC to release focus or exit fullscreen"
+            "• Double-click or F11 for YouTube-style fullscreen",
+            "• ▶ Play/Pause maintains position • Auto-replay when ended",
+            "• 1-8 keys for speed presets • +/- for speed adjust",
+            "• Click progress bar to seek • Accurate speed playback"
         ]
         
         for i, instruction in enumerate(instructions):
@@ -8478,8 +9012,9 @@ class VideoPlayerWidget(ctk.CTkFrame):
                 font=("Arial", 10),
                 fill="#6b7280"
             )
+    
     def show_error(self, message):
-        """Show error with modern styling"""
+        """Show error message"""
         self.canvas.delete("all")
         canvas_width = self.canvas.winfo_width() or 400
         canvas_height = self.canvas.winfo_height() or 300
@@ -8502,53 +9037,27 @@ class VideoPlayerWidget(ctk.CTkFrame):
                 fill="#ef4444",
                 width=canvas_width-40
             )
-
-    def load_video(self, video_path):
-        """Load video with optimizations"""
-        self.video_path = video_path
-        
-        if self.cap:
-            self.cap.release()
-            
-        try:
-            self.cap = cv2.VideoCapture(video_path)
-            
-            if not self.cap.isOpened():
-                raise Exception("Could not open video file")
-                
-            # Set buffer size for better performance
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            
-            self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
-            
-            # Reset state
-            self.current_frame = 0
-            self.is_playing = False
-            self.play_button.configure(text="▶")
-            self.set_speed(1.0)  # Reset to normal speed
-            
-            self.display_current_frame()
-            self.update_time_display()
-            self.update_frame_display()
-            
-            return True
-            
-        except Exception as e:
-            self.show_error(f"Failed to load video:\n{str(e)}")
-            return False
-
+    
     def clear(self):
         """Clear video player"""
-        self.stop_playback()
-        
-        # Exit fullscreen if active
-        if self.is_fullscreen:
-            self.exit_fullscreen()
+        # Stop playback first
+        if self.is_playing:
+            self.is_playing = False
+            if self.playback_timer:
+                self.after_cancel(self.playback_timer)
+                self.playback_timer = None
         
         if self.cap:
             self.cap.release()
             self.cap = None
+            
+        # Close fullscreen if open
+        if self.fullscreen_player:
+            try:
+                self.fullscreen_player.destroy()
+            except:
+                pass
+            self.fullscreen_player = None
             
         self.video_path = None
         self.current_frame = 0
@@ -8562,8 +9071,10 @@ class VideoPlayerWidget(ctk.CTkFrame):
         self.progress_var.set(0)
         self.time_label.configure(text="00:00 / 00:00")
         self.frame_label.configure(text="Frame: 0/0")
+        self.play_button.configure(text="▶")
         
         self.show_placeholder()
+
 class PyPISearchEngine:
     """Advanced PyPI search engine with modern features"""
     
@@ -12102,115 +12613,61 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
                 f"Error creating environment: {str(e)}"
             )
 
+
+
+def setup_logging(app_dir=None):
+    """Setup logging configuration"""
+    if app_dir is None:
+        app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        os.makedirs(app_dir, exist_ok=True)
+    
+    log_file = os.path.join(app_dir, "manim_studio.log")
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ],
+        force=True  # Override any existing configuration
+    )
+    
+    logger = logging.getLogger(__name__)
+    return logger
+
 def main():
-    """Main application entry point"""
-    # NOTE: Do NOT import sys here - it's already imported at module level
-    # Any import of sys inside this function will cause UnboundLocalError
-
-    logger = None  # Initialize logger variable to avoid UnboundLocalError
-
-    debug_mode = "--debug" in sys.argv
-
-    # Initialize encoding early to avoid Unicode issues
-    try:
-        import startup
-        startup.initialize_encoding()
-    except Exception:
-        pass
+    """Enhanced main function with comprehensive error recovery and auto-repair"""
+    logger = None
     
     try:
-        # Hide console window on Windows for packaged executable
-        if sys.platform == "win32" and hasattr(sys, 'frozen'):
-            try:
-                import ctypes
-                from ctypes import wintypes
-                
-                kernel32 = ctypes.windll.kernel32
-                user32 = ctypes.windll.user32
-                
-                kernel32.GetConsoleWindow.restype = wintypes.HWND
-                kernel32.GetConsoleWindow.argtypes = []
-                user32.ShowWindow.restype = wintypes.BOOL
-                user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
-                
-                # Multiple methods to ensure console is hidden
-                try:
-                    console_window = kernel32.GetConsoleWindow()
-                    if console_window:
-                        # SW_HIDE = 0
-                        user32.ShowWindow(console_window, 0)
-                        
-                    # Additional method using SetWindowPos
-                    try:
-                        user32.SetWindowPos.restype = wintypes.BOOL
-                        user32.SetWindowPos.argtypes = [
-                            wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
-                            ctypes.c_int, ctypes.c_int, wintypes.UINT
-                        ]
-                        if console_window:
-                            # SWP_HIDEWINDOW = 0x0080
-                            user32.SetWindowPos(console_window, None, 0, 0, 0, 0, 0x0080)
-                    except:
-                        pass
-                        
-                    # Additional console hiding constants
-                    SW_HIDE = 0
-                    hwnd = kernel32.GetConsoleWindow()
-                    if hwnd:
-                        user32.ShowWindow(hwnd, SW_HIDE)
-                        
-                except Exception:
-                    pass
-                    
-            except Exception:
-                pass
-
-        # Ensure working directory is the application directory
-        os.chdir(BASE_DIR)
-
-        # Early load of fixes module to handle runtime issues
+        # Step 1: Apply fixes first (critical for preventing startup issues)
         try:
-            import fixes
-            if hasattr(fixes, "apply_fixes"):
-                fixes.apply_fixes()
-            elif hasattr(fixes, "apply_all_fixes"):
-                fixes.apply_all_fixes()
-            else:
-                print("Warning: apply_fixes function not found in fixes module")
-        except (ImportError, AttributeError) as e:
-            print(f"Warning: fixes module issue: {e}")
-            # Try alternative import method without using sys inside function
-            try:
-                import importlib.util
-                fixes_path = os.path.join(os.path.dirname(__file__), "fixes.py")
-                if os.path.exists(fixes_path):
-                    spec = importlib.util.spec_from_file_location("fixes", fixes_path)
-                    fixes = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(fixes)
-                    if hasattr(fixes, 'apply_fixes'):
-                        fixes.apply_fixes()
-                    elif hasattr(fixes, 'apply_all_fixes'):
-                        fixes.apply_all_fixes()
-                    else:
-                        print("Warning: apply_fixes function not found in fixes module")
+            fixes_path = os.path.join(os.path.dirname(__file__), "fixes.py")
+            if os.path.exists(fixes_path):
+                spec = importlib.util.spec_from_file_location("fixes", fixes_path)
+                fixes = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(fixes)
+                if hasattr(fixes, 'apply_fixes'):
+                    fixes.apply_fixes()
+                elif hasattr(fixes, 'apply_all_fixes'):
+                    fixes.apply_all_fixes()
                 else:
-                    print("Warning: fixes.py file not found")
-            except Exception as alt_e:
-                print(f"Warning: alternative fixes import failed: {alt_e}")
-            pass
+                    print("Warning: apply_fixes function not found in fixes module")
+            else:
+                print("Warning: fixes.py file not found")
         except Exception as e:
             print(f"Warning: fixes module error: {e}")
-            pass
 
-        # Force matplotlib backend to TkAgg
+        # Step 2: Force matplotlib backend to TkAgg (prevents GUI conflicts)
         try:
             import matplotlib
             matplotlib.use('TkAgg')
         except ImportError:
             print("Warning: matplotlib not available")
-            pass
         
-        # Create application directory
+        # Step 3: Create application directory and handle multiple instances
         app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
         os.makedirs(app_dir, exist_ok=True)
 
@@ -12222,92 +12679,221 @@ def main():
                     pid = int(f.read().strip() or 0)
                 if pid and psutil.pid_exists(pid):
                     print("ManimStudio is already running.")
+                    try:
+                        from tkinter import messagebox
+                        messagebox.showwarning("Already Running", 
+                            "ManimStudio is already running. Please close the existing instance first.")
+                    except:
+                        pass
                     return
-                else:
-                    os.remove(lock_file)
-
-            fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            with os.fdopen(fd, "w") as f:
-                f.write(str(os.getpid()))
-
-            def _cleanup_lock():
-                try:
-                    os.remove(lock_file)
-                except FileNotFoundError:
-                    pass
-
-            atexit.register(_cleanup_lock)
         except Exception:
-            pass
-        
-        # Set up logging - MOVED EARLIER to ensure logger is available
-        log_file = os.path.join(app_dir, "manim_studio.log")
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, encoding='utf-8'),
-                logging.StreamHandler()
-            ]
-        )
-        logger = logging.getLogger(__name__)  # Now logger is properly defined
-        
-        # Log startup information
-        logger.info("=== ManimStudio Starting ===")
+            pass  # Continue if lock check fails
+
+        # Create lock file
+        try:
+            with open(lock_file, "w") as f:
+                f.write(str(os.getpid()))
+        except Exception:
+            pass  # Continue if lock creation fails
+
+        # Step 4: Setup logging
+        logger = setup_logging(app_dir)
+        logger.info("Starting ManimStudio with enhanced error recovery...")
         logger.info(f"Python version: {sys.version}")
         logger.info(f"Platform: {sys.platform}")
-        logger.info(f"Frozen: {hasattr(sys, 'frozen')}")
-        logger.info(f"Base directory: {BASE_DIR}")
-        logger.info(f"App directory: {app_dir}")
-
-        # Check for Jedi availability
-        if not JEDI_AVAILABLE:
-            logger.warning("Jedi not available. IntelliSense features will be limited.")
-            print("Warning: Jedi not available. IntelliSense features will be limited.")
-            print("Install Jedi with: pip install jedi")
-
-        # Check LaTeX availability and pass result to UI
-        logger.info("Checking LaTeX installation...")
-        latex_path = check_latex_installation()
-        if latex_path:
-            logger.info(f"LaTeX found at: {latex_path}")
-        else:
-            logger.warning("LaTeX not found")
-
-        # Create and run application
-        logger.info("Creating main application...")
-        app = ManimStudioApp(latex_path=latex_path, debug=debug_mode)
+        logger.info(f"Executable: {sys.executable}")
         
-        # Show setup dialogs before launching the main UI
-        # Check environment setup without showing Getting Started dialog
+        # Step 5: Create app with enhanced error handling
+        try:
+            app = ManimStudioApp()
+            logger.info("ManimStudioApp created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create ManimStudioApp: {e}")
+            raise
+        
+        # Step 6: Enhanced environment validation and auto-repair
+        logger.info("Checking environment status...")
+        environment_ready = False
+        max_repair_attempts = 2
+        
+        for attempt in range(max_repair_attempts):
+            if app.venv_manager.is_environment_ready():
+                environment_ready = True
+                logger.info("✅ Environment is ready")
+                break
+            
+            logger.warning(f"Environment not ready (attempt {attempt + 1}/{max_repair_attempts})")
+            
+            # Check if we have an existing environment to repair
+            default_venv_path = os.path.join(app.venv_manager.venv_dir, "manim_studio_default")
+            if os.path.exists(default_venv_path):
+                logger.info("Found existing environment, attempting validation and repair...")
+                
+                def repair_log_callback(msg):
+                    logger.info(f"Repair: {msg}")
+                
+                # Try comprehensive validation and repair
+                if hasattr(app.venv_manager, 'validate_and_repair_environment'):
+                    if app.venv_manager.validate_and_repair_environment(repair_log_callback):
+                        logger.info("✅ Environment auto-repair successful!")
+                        app.venv_manager.activate_default_environment()
+                        app.venv_manager.needs_setup = False
+                        environment_ready = True
+                        break
+                    else:
+                        logger.warning("❌ Auto-repair failed")
+                        if attempt == 0:  # Only try recreating on first attempt
+                            logger.info("Attempting to recreate environment...")
+                            try:
+                                # Remove corrupted environment
+                                shutil.rmtree(default_venv_path, ignore_errors=True)
+                                # Force setup on next check
+                                app.venv_manager.needs_setup = True
+                            except Exception as e:
+                                logger.error(f"Failed to remove corrupted environment: {e}")
+                else:
+                    logger.warning("validate_and_repair_environment method not available")
+                    break
+            else:
+                logger.info("No existing environment found")
+                break
+        
+        # Step 7: Handle Windows console visibility (for packaged apps)
+        if sys.platform == "win32" and hasattr(sys, 'frozen'):
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                user32 = ctypes.windll.user32
+                
+                # Hide console window for GUI app
+                console_window = kernel32.GetConsoleWindow()
+                if console_window:
+                    user32.ShowWindow(console_window, 0)  # SW_HIDE
+            except Exception as e:
+                logger.warning(f"Could not hide console: {e}")
+        
+        # Step 8: Determine startup flow based on environment status
         settings_file = os.path.join(app_dir, "settings.json")
         
-        # Create settings file if it doesn't exist (mark as no longer first run)
-        if not os.path.exists(settings_file):
-            logger.info("First run detected, creating settings file")
-            try:
-                with open(settings_file, 'w') as f:
-                    import json
-                    json.dump({"first_run_complete": True}, f)
-            except Exception as e:
-                logger.warning(f"Could not create settings file: {e}")
-        
-        # Check if environment needs setup
-        if app.venv_manager.needs_setup:
-            logger.info("Environment setup needed, showing setup dialog")
-            app.root.withdraw()
-            app.venv_manager.show_setup_dialog()
-            if not app.venv_manager.is_environment_ready():
-                logger.error("Environment setup incomplete. Exiting.")
-                return
+        if environment_ready and os.path.exists(settings_file):
+            # Normal startup - environment ready and not first run
+            logger.info("Normal startup: environment ready and settings exist")
             app.root.deiconify()
+            
+        elif environment_ready and not os.path.exists(settings_file):
+            # First run with working environment
+            logger.info("First run with working environment")
+            app.root.withdraw()
+            try:
+                dialog = GettingStartedDialog(app)
+                app.root.wait_window(dialog)
+                # Verify environment is still ready after dialog
+                if not app.venv_manager.is_environment_ready():
+                    logger.error("Environment became unavailable after setup dialog")
+                    try:
+                        from tkinter import messagebox
+                        messagebox.showerror("Environment Error", 
+                            "Environment setup was incomplete. Please restart the application.")
+                    except:
+                        pass
+                    return
+                app.root.deiconify()
+            except Exception as e:
+                logger.error(f"Error in Getting Started dialog: {e}")
+                app.root.deiconify()  # Show main window anyway
+                
+        else:
+            # Environment not ready - show setup
+            logger.warning("Environment not ready, user intervention required")
+            app.root.withdraw()
+            
+            try:
+                from tkinter import messagebox
+                choice = messagebox.askyesno(
+                    "Environment Setup Required",
+                    "ManimStudio needs to set up its Python environment.\n\n"
+                    "This will install required packages like Manim, NumPy, etc.\n\n"
+                    "Would you like to proceed with automatic setup?\n\n"
+                    "(Selecting 'No' will close the application)",
+                    icon='question'
+                )
+                
+                if not choice:
+                    logger.info("User declined environment setup")
+                    return
+                    
+            except Exception as e:
+                logger.error(f"Failed to show setup dialog: {e}")
+                # Proceed with setup anyway
+                pass
+            
+            # Show setup dialog
+            try:
+                dialog = GettingStartedDialog(app)
+                app.root.wait_window(dialog)
+                
+                # Final verification
+                if not app.venv_manager.is_environment_ready():
+                    logger.error("Environment setup incomplete after dialog")
+                    try:
+                        from tkinter import messagebox
+                        messagebox.showerror("Setup Failed", 
+                            "Environment setup was not completed successfully.\n\n"
+                            "Please check the logs and try again, or contact support.")
+                    except:
+                        pass
+                    return
+                    
+                app.root.deiconify()
+                logger.info("Environment setup completed successfully")
+                
+            except Exception as e:
+                logger.error(f"Error during environment setup: {e}")
+                try:
+                    from tkinter import messagebox
+                    messagebox.showerror("Setup Error", 
+                        f"An error occurred during environment setup:\n\n{e}\n\n"
+                        "Please check the logs and try again.")
+                except:
+                    pass
+                return
 
+        # Step 9: Final pre-launch checks
+        logger.info("Performing final pre-launch checks...")
+        
+        # Verify critical components
+        try:
+            if app.venv_manager.is_environment_ready():
+                # Quick manim test
+                if hasattr(app.venv_manager, 'run_hidden_subprocess_nuitka_safe'):
+                    test_result = app.venv_manager.run_hidden_subprocess_nuitka_safe(
+                        [app.venv_manager.python_path, "-c", "import manim; print('Manim OK')"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    
+                    if test_result.returncode != 0:
+                        logger.warning("Manim import test failed, but continuing...")
+                    else:
+                        logger.info("✅ Manim import test passed")
+                        
+        except Exception as e:
+            logger.warning(f"Pre-launch check failed: {e}")
+        
+        # Step 10: Start main application loop
         logger.info("Starting application main loop...")
         app.run()
         
+    except KeyboardInterrupt:
+        if logger:
+            logger.info("Application interrupted by user")
+        else:
+            print("Application interrupted by user")
+            
     except Exception as e:
-        # Now logger is available or we handle the case when it's not
-        error_msg = f"Startup error: {e}"
+        # Comprehensive error handling
+        error_msg = f"Critical startup error: {e}"
         
         if logger:
             logger.error(error_msg)
@@ -12318,35 +12904,92 @@ def main():
             import traceback
             print(f"Traceback: {traceback.format_exc()}")
             
+        # Show user-friendly error dialog
         try:
             from tkinter import messagebox
-            messagebox.showerror("Startup Error", f"Failed to start application: {e}")
-        except:
-            print(f"Failed to start application: {e}")
+            import traceback
+            
+            # Determine error type for better user guidance
+            error_type = type(e).__name__
+            error_details = str(e)
+            
+            if "3221225477" in error_details or "0xC0000005" in error_details:
+                user_msg = (
+                    "ManimStudio encountered a memory access error (3221225477).\n\n"
+                    "This is usually caused by corrupted environment files.\n\n"
+                    "Recommended solutions:\n"
+                    "1. Run as Administrator\n"
+                    "2. Delete the environment folder and restart\n"
+                    "3. Check antivirus software isn't blocking files\n\n"
+                    f"Technical details: {error_details}"
+                )
+            elif "Permission" in error_details or "Access" in error_details:
+                user_msg = (
+                    "ManimStudio encountered a permission error.\n\n"
+                    "Please try:\n"
+                    "1. Running as Administrator\n"
+                    "2. Checking file permissions\n"
+                    "3. Disabling antivirus temporarily\n\n"
+                    f"Technical details: {error_details}"
+                )
+            elif "ImportError" in error_type or "ModuleNotFoundError" in error_type:
+                user_msg = (
+                    "ManimStudio encountered a module import error.\n\n"
+                    "This suggests the Python environment needs to be recreated.\n\n"
+                    "The application will attempt to fix this automatically on restart.\n\n"
+                    f"Technical details: {error_details}"
+                )
+            else:
+                user_msg = (
+                    "ManimStudio encountered an unexpected error.\n\n"
+                    "Please check the log files for detailed information.\n\n"
+                    f"Error type: {error_type}\n"
+                    f"Details: {error_details}"
+                )
+            
+            messagebox.showerror("ManimStudio Error", user_msg)
+            
+        except Exception as dialog_error:
+            print(f"Failed to show error dialog: {dialog_error}")
+            print(f"Original error: {e}")
     
     finally:
-        # Cleanup logging handlers to prevent issues on restart
-        if logger:
+        # Step 11: Cleanup operations
+        try:
+            # Cleanup logging handlers to prevent issues on restart
+            if logger:
+                try:
+                    for handler in logger.handlers[:]:
+                        handler.close()
+                        logger.removeHandler(handler)
+                except Exception as cleanup_error:
+                    print(f"Warning: Logger cleanup failed: {cleanup_error}")
+                    
+            # Remove lock file
             try:
-                for handler in logger.handlers[:]:
-                    handler.close()
-                    logger.removeHandler(handler)
-            except:
-                pass
-        
-        # Additional cleanup for Windows console
-        if sys.platform == "win32" and hasattr(sys, 'frozen'):
-            try:
-                import ctypes
-                kernel32 = ctypes.windll.kernel32
-                user32 = ctypes.windll.user32
-                
-                # Keep console hidden on exit
-                console_window = kernel32.GetConsoleWindow()
-                if console_window:
-                    # Don't show the console on exit - keep it hidden
-                    pass
-            except:
-                pass
+                app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+                lock_file = os.path.join(app_dir, "app.lock")
+                if os.path.exists(lock_file):
+                    os.remove(lock_file)
+            except Exception as lock_error:
+                print(f"Warning: Failed to remove lock file: {lock_error}")
+            
+            # Additional cleanup for Windows console
+            if sys.platform == "win32" and hasattr(sys, 'frozen'):
+                try:
+                    import ctypes
+                    kernel32 = ctypes.windll.kernel32
+                    
+                    # Keep console hidden on exit
+                    console_window = kernel32.GetConsoleWindow()
+                    if console_window:
+                        # Don't show the console on exit - keep it hidden
+                        pass
+                except Exception as console_error:
+                    print(f"Warning: Console cleanup failed: {console_error}")
+                    
+        except Exception as final_cleanup_error:
+            print(f"Warning: Final cleanup failed: {final_cleanup_error}")
+
 if __name__ == "__main__":
     main()
