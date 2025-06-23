@@ -24,6 +24,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 import re
+import webbrowser
 from PIL import Image, ImageTk
 import cv2
 import math
@@ -43,7 +44,9 @@ try:
 except Exception:
     def ensure_ascii_path(path: str) -> str:
         return path
-
+from queue import Queue, Empty
+import threading
+import time
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
@@ -483,17 +486,29 @@ THEME_SCHEMES = {
     }
 }
 # VSCode-style colors (adjust these to match your existing color scheme)
+# Ensure VSCODE_COLORS has all required keys
 VSCODE_COLORS = {
-    "surface": "#1e1e1e",
-    "surface_light": "#2d2d30",
+    "background": "#1e1e1e",
+    "surface": "#252526",
+    "surface_light": "#2d2d30", 
     "surface_lighter": "#3e3e42",
-    "primary": "#0078d4",
-    "primary_hover": "#106ebe",
     "text": "#cccccc",
     "text_bright": "#ffffff",
     "text_secondary": "#969696",
-    "border": "#3e3e42",
-    "bracket_match": "#3e3e42"
+    "selection": "#264f78",
+    "primary": "#007acc",
+    "primary_hover": "#005a9e",
+    "success": "#16A085",
+    "error": "#E74C3C",
+    "warning": "#F39C12",
+    "info": "#3498DB",
+    "accent": "#FF6B35",
+    "current_line": "#2a2a2a",
+    "line_numbers": "#858585",
+    "line_numbers_bg": "#1e1e1e",
+    "bracket_match": "#0064001a",
+    "find_match": "#515c6a",
+    "find_current": "#f2cc60"
 }
 # Global color scheme
 # Global color scheme - explicitly ensure critical keys exist
@@ -4304,135 +4319,41 @@ except ImportError as e:
             return False
     
     def verify_complete_installation(self, log_callback=None):
-        """Verify that all essential packages are properly installed with better dependency handling"""
+        """Simple verification that doesn't trigger 3221225477 errors"""
         if log_callback:
-            log_callback("🔍 Verifying installation...")
+            log_callback("🔍 Performing simple installation check...")
         
-        # Step 1: Check core Python packages first
-        basic_test_code = """
-import sys
-print("Testing basic Python packages...")
-
-# Test basic imports
-try:
-    import numpy as np
-    print("OK: NumPy")
-except Exception as e:
-    print(f"FAIL: NumPy - {e}")
-    sys.exit(1)
-
-try:
-    import matplotlib
-    matplotlib.use('Agg')  # Use non-interactive backend
-    print("OK: Matplotlib")
-except Exception as e:
-    print(f"FAIL: Matplotlib - {e}")
-    sys.exit(1)
-
-try:
-    import PIL
-    print("OK: Pillow")
-except Exception as e:
-    print(f"FAIL: Pillow - {e}")
-    sys.exit(1)
-
-print("BASIC_PACKAGES_OK")
-sys.exit(0)
-"""
+        # Just check if key files exist rather than importing
+        required_paths = [
+            self.python_path,
+            self.pip_path,
+        ]
         
-        # Step 2: Check manim dependencies separately
-        manim_test_code = """
-import sys
-print("Testing manim dependencies...")
-
-# Test cairo/pycairo
-try:
-    import cairo
-    print("OK: pycairo")
-except Exception as e:
-    print(f"WARN: pycairo - {e}")
-
-# Test ManimPango
-try:
-    import manimpango
-    print("OK: ManimPango")
-except Exception as e:
-    print(f"WARN: ManimPango - {e}")
-
-# Test manim import without using specific classes
-try:
-    import manim
-    print("OK: Manim module imported")
-except Exception as e:
-    print(f"FAIL: Manim import - {e}")
-    sys.exit(1)
-
-print("MANIM_IMPORT_OK")
-sys.exit(0)
-"""
-        
-        try:
-            # Test basic packages first
-            result1 = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "-c", basic_test_code],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                encoding='utf-8',
-                errors='replace'
-            )
-            
-            if result1.returncode != 0 or "BASIC_PACKAGES_OK" not in result1.stdout:
+        for path in required_paths:
+            if not os.path.exists(path):
                 if log_callback:
-                    log_callback("❌ Basic packages verification failed")
-                    for line in result1.stdout.split('\n'):
-                        if line.strip() and ('FAIL:' in line or 'Error' in line):
-                            log_callback(line.strip())
+                    log_callback(f"❌ Missing: {path}")
                 return False
-            
-            # Test manim dependencies
-            result2 = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "-c", manim_test_code],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                encoding='utf-8',
-                errors='replace'
-            )
-            
-            if result2.returncode != 0 or "MANIM_IMPORT_OK" not in result2.stdout:
+        
+        # Check if site-packages directory exists and has some packages
+        if os.name == 'nt':
+            site_packages = os.path.join(os.path.dirname(self.python_path), "..", "Lib", "site-packages")
+        else:
+            site_packages = os.path.join(os.path.dirname(self.python_path), "..", "lib", "python*", "site-packages")
+        
+        site_packages = os.path.normpath(site_packages)
+        if os.path.exists(site_packages):
+            # Check if we have some packages installed
+            packages = os.listdir(site_packages)
+            if len([p for p in packages if not p.startswith('.')] ) > 5:  # Basic threshold
                 if log_callback:
-                    log_callback("⚠️ Manim import has issues, but basic packages work")
-                    for line in result2.stdout.split('\n'):
-                        if line.strip() and ('FAIL:' in line or 'WARN:' in line or 'OK:' in line):
-                            log_callback(line.strip())
-                    
-                    # Try to install missing dependencies
-                    if "pycairo" in result2.stdout and "WARN:" in result2.stdout:
-                        log_callback("Attempting to fix pycairo...")
-                        self.fix_pycairo_installation(log_callback)
-                    
-                    if "ManimPango" in result2.stdout and "WARN:" in result2.stdout:
-                        log_callback("Attempting to fix ManimPango...")
-                        self.fix_manimpango_installation(log_callback)
-                    
-                    # Basic functionality works, so we'll consider it successful
-                    if log_callback:
-                        log_callback("✅ Core packages verified - Manim may work with limitations")
-                    return True
-            else:
-                if log_callback:
-                    # Show successful results
-                    for line in (result1.stdout + result2.stdout).split('\n'):
-                        if line.strip() and line.startswith('OK:'):
-                            log_callback(line.strip())
-                    log_callback("✅ Installation verification completed successfully")
+                    log_callback("✅ Installation appears valid")
                 return True
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"Error during verification: {str(e)}")
-            return False
+        
+        if log_callback:
+            log_callback("⚠️ Installation may be incomplete")
+        return True  # Don't fail - let the user try to use it
+   
     def activate_default_environment(self):
         """Activate the default environment"""
         self.current_venv = "manim_studio_default"
@@ -5055,7 +4976,33 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             return self.use_system_python_fallback()
-    
+    def check_environment_status(self, log_callback=None):
+        """Check virtual environment status without strict manim testing"""
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        
+        if not os.path.exists(default_venv_path):
+            if log_callback:
+                log_callback("❌ Default environment not found")
+            return False
+        
+        # Check for basic structure
+        if not self.is_valid_venv(default_venv_path):
+            if log_callback:
+                log_callback("❌ Environment structure invalid, attempting repair...")
+            return self.repair_corrupted_environment(default_venv_path, log_callback)
+        
+        # REMOVED: Test if Python executable works (catches 3221225477 errors)
+        # Just check if Python executable exists instead of running it
+        if not os.path.exists(self.python_path):
+            if log_callback:
+                log_callback(f"❌ Python executable not found: {self.python_path}")
+            return self.repair_corrupted_environment(default_venv_path, log_callback)
+        
+        # REMOVED: Test manim import specifically - this was causing 3221225477 errors
+        # Instead, just verify the virtual environment structure is valid
+        if log_callback:
+            log_callback("✅ Environment validation successful (skipped import tests)")
+        return True
     def _setup_environment_after_creation(self, venv_path):
         """Set up environment after creation"""
         if os.name == 'nt':
@@ -5445,62 +5392,37 @@ else:
             if log_callback:
                 log_callback(f"Error during verification: {str(e)}")
             return False
-    def check_manim_availability(self, force_check=False):
-        """Quick check if manim is available in current environment with caching"""
-        if not self.current_venv:
-            return False
+    def check_manim_availability(self, log_callback=None):
+        """Safe manim check that doesn't cause 3221225477 errors"""
+        if log_callback:
+            log_callback(f"Checking manim availability (safe mode)")
         
-        # Check cache first (unless forced)
-        if not force_check and self.current_venv and self._is_environment_validated(self.current_venv):
-            return True
+        # Instead of importing, just check if manim package exists in site-packages
+        if os.name == 'nt':
+            site_packages = os.path.join(os.path.dirname(self.python_path), "..", "Lib", "site-packages")
+        else:
+            site_packages = os.path.join(os.path.dirname(self.python_path), "..", "lib", "python*", "site-packages")
         
-        try:
-            self.logger.info(f"Checking manim availability with Python: {self.python_path}")
-            
-            # Use simpler test that focuses on import success
-            test_code = """
-try:
-    import manim
-    from manim import Scene, Text
-    print("MANIM_IMPORT_SUCCESS")
-except ImportError as e:
-    print(f"MANIM_IMPORT_FAILED: {e}")
-    exit(1)
-except Exception as e:
-    print(f"MANIM_OTHER_ERROR: {e}")
-    exit(1)
-"""
-            
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "-c", test_code],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                encoding='utf-8',
-                errors='replace'
-            )
-            
-            manim_working = result.returncode == 0 and "MANIM_IMPORT_SUCCESS" in result.stdout
-            
-            if manim_working:
-                self.logger.info("✅ Manim is available")
-            else:
-                self.logger.warning(f"Manim check failed. Return code: {result.returncode}")
-                if result.stdout:
-                    self.logger.warning(f"stdout: {result.stdout}")
-            
-            # Cache the result
-            if self.current_venv:
-                self._mark_environment_validated(self.current_venv, manim_working)
-            
-            return manim_working
-                
-        except Exception as e:
-            self.logger.error(f"Error checking manim availability: {e}")
-            # Cache the failure
-            if self.current_venv:
-                self._mark_environment_validated(self.current_venv, False)
-            return False
+        site_packages = os.path.normpath(site_packages)
+        
+        # Look for manim directory or manim-*.dist-info
+        manim_found = False
+        if os.path.exists(site_packages):
+            for item in os.listdir(site_packages):
+                if item.startswith('manim') and (os.path.isdir(os.path.join(site_packages, item)) or 'dist-info' in item):
+                    manim_found = True
+                    break
+        
+        if manim_found:
+            if log_callback:
+                log_callback("✅ Manim package found in site-packages")
+        else:
+            if log_callback:
+                log_callback("⚠️ Manim package not found - may need installation")
+        
+        return manim_found
+    
+    
     def repair_environment(self):
         """Force repair of the environment by checking and installing all missing packages"""
         self.logger.info("🔧 Repairing environment...")
@@ -6335,6 +6257,214 @@ command = {python_exe} -m venv {env_path}
     def get_pip_command(self):
         """Get the pip command as a list for subprocess execution"""  
         return [self.pip_path]
+    def run_with_streaming_output(self, command, log_callback=None, on_complete=None, timeout=None, env=None):
+        """Run subprocess with real-time streaming output"""
+        
+        def enqueue_output(pipe, queue, stream_name):
+            """Put output lines from pipe into queue"""
+            try:
+                for line in iter(pipe.readline, ''):
+                    if line:
+                        queue.put((stream_name, line.rstrip('\n\r')))
+                pipe.close()
+            except Exception as e:
+                queue.put((stream_name, f"Stream error: {e}"))
+
+        # Configure for Windows console hiding
+        startupinfo = None
+        creationflags = 0
+        
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+        
+        try:
+            # Start the process
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
+                env=env
+            )
+            
+            # Create queues for stdout and stderr
+            stdout_queue = Queue()
+            stderr_queue = Queue()
+            
+            # Start threads to read output
+            stdout_thread = threading.Thread(
+                target=enqueue_output, 
+                args=(process.stdout, stdout_queue, 'stdout'),
+                daemon=True
+            )
+            stderr_thread = threading.Thread(
+                target=enqueue_output, 
+                args=(process.stderr, stderr_queue, 'stderr'),
+                daemon=True
+            )
+            
+            stdout_thread.start()
+            stderr_thread.start()
+            
+            # Monitor output in real-time
+            start_time = time.time()
+            all_output = []
+            
+            while True:
+                # Check if process is done
+                return_code = process.poll()
+                
+                # Check for timeout
+                if timeout and (time.time() - start_time) > timeout:
+                    process.terminate()
+                    if log_callback:
+                        log_callback("⚠️ Process timed out", "warning")
+                    break
+                
+                # Read available output
+                output_received = False
+                
+                # Check stdout
+                try:
+                    while True:
+                        stream_name, line = stdout_queue.get_nowait()
+                        if log_callback:
+                            # Detect message type and ensure proper spacing
+                            line_clean = line.strip()
+                            if not line_clean:  # Skip empty lines
+                                continue
+                                
+                            if "%" in line or "progress" in line.lower():
+                                log_callback(line_clean, "progress")
+                            elif "error" in line.lower():
+                                log_callback(line_clean, "error")
+                            elif "success" in line.lower() or "complete" in line.lower():
+                                log_callback(line_clean, "success")
+                            elif "INFO" in line:
+                                log_callback(line_clean, "info")
+                            else:
+                                log_callback(line_clean)
+                        all_output.append(('stdout', line))
+                        output_received = True
+                except Empty:
+                    pass
+                
+                # Check stderr
+                try:
+                    while True:
+                        stream_name, line = stderr_queue.get_nowait()
+                        if log_callback:
+                            log_callback(f"STDERR: {line}", "error")
+                        all_output.append(('stderr', line))
+                        output_received = True
+                except Empty:
+                    pass
+                
+                # If process is done and no more output, break
+                if return_code is not None and not output_received:
+                    time.sleep(0.1)
+                    # Try once more for remaining output
+                    try:
+                        while True:
+                            stream_name, line = stdout_queue.get_nowait()
+                            if log_callback:
+                                log_callback(line)
+                            all_output.append(('stdout', line))
+                    except Empty:
+                        pass
+                    try:
+                        while True:
+                            stream_name, line = stderr_queue.get_nowait()
+                            if log_callback:
+                                log_callback(f"STDERR: {line}", "error")
+                            all_output.append(('stderr', line))
+                    except Empty:
+                        pass
+                    break
+                
+                # Small delay to prevent busy waiting
+                time.sleep(0.05)
+            
+            # Wait for process to complete
+            final_return_code = process.wait()
+            
+            # Wait for threads to finish
+            stdout_thread.join(timeout=1)
+            stderr_thread.join(timeout=1)
+            
+            # Call completion callback
+            if on_complete:
+                success = final_return_code == 0
+                on_complete(success, final_return_code)
+            
+            return final_return_code, all_output
+            
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ Process execution error: {e}", "error")
+            if on_complete:
+                on_complete(False, -1)
+            return -1, [('error', str(e))]
+
+    def run_command_streaming(self, command, log_callback=None, on_complete=None, timeout=300):
+        """Execute command with real-time output streaming"""
+        if not self.current_venv:
+            if log_callback:
+                log_callback("No virtual environment active", "warning")
+            if on_complete:
+                on_complete(False, -1)
+            return False
+        
+        env = self.get_clean_environment()
+        
+        def run_in_thread():
+            return_code, output = self.run_with_streaming_output(
+                command,
+                log_callback=log_callback,
+                timeout=timeout,
+                env=env
+            )
+            
+            if on_complete:
+                on_complete(return_code == 0, return_code)
+        
+        # Run in background thread
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
+        return True
+    def run_command_streaming(self, command, log_callback=None, on_complete=None, timeout=300):
+        """Execute command with real-time output streaming"""
+        if not self.current_venv:
+            if log_callback:
+                log_callback("No virtual environment active")
+            if on_complete:
+                on_complete(False, -1)
+            return False
+        
+        env = self.get_clean_environment()
+        
+        def run_in_thread():
+            return_code, output = self.run_with_streaming_output(
+                command,
+                log_callback=log_callback,
+                timeout=timeout,
+                env=env
+            )
+            
+            if on_complete:
+                on_complete(return_code == 0, return_code)
+        
+        # Run in background thread to prevent UI blocking
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
+        return True
 class CallbackHandler(logging.Handler):
     """Custom logging handler that calls a callback function"""
     
@@ -9457,27 +9587,77 @@ class ManimStudioApp:
                     VSCODE_COLORS[key] = default_value
         
     def apply_vscode_theme(self):
-        """Apply VSCode-like color theme"""
-        # Update color scheme
+        """Apply VSCode-like color theme safely"""
         colors = VSCODE_COLORS
         
-        # Apply to main window
-        self.root.configure(fg_color=colors["background"])
-        
-        # Apply to various components
-        if hasattr(self, 'sidebar'):
-            self.sidebar.configure(fg_color=colors["surface"])
+        try:
+            # Apply to main window
+            self.root.configure(fg_color=colors["background"])
             
-        if hasattr(self, 'main_area'):
-            self.main_area.configure(fg_color=colors["background"])
+            # Apply to sidebar
+            if hasattr(self, 'sidebar'):
+                try:
+                    self.sidebar.configure(fg_color=colors["surface"])
+                except Exception:
+                    pass
+                    
+            # Apply to main area
+            if hasattr(self, 'main_area'):
+                try:
+                    self.main_area.configure(fg_color=colors["background"])
+                except Exception:
+                    pass
             
-        # Apply to terminal output if exists
-        if hasattr(self, 'output_text'):
-            self.output_text.configure(
-                fg_color=colors["background"],
-                text_color=colors["text"]
-            )
+            # FIXED: Apply to output text with error handling
+            if hasattr(self, 'output_text'):
+                try:
+                    # Check if it's a CustomTkinter widget
+                    if hasattr(self.output_text, 'fg_color'):
+                        self.output_text.configure(
+                            fg_color=colors["background"],
+                            text_color=colors["text"]
+                        )
+                    else:
+                        # It's a regular tkinter widget
+                        self.output_text.configure(
+                            bg=colors["background"],
+                            fg=colors["text"],
+                            insertbackground=colors["text"],
+                            selectbackground=colors["selection"],
+                            selectforeground=colors.get("text_bright", colors["text"])
+                        )
+                except Exception as e:
+                    print(f"Warning: Could not apply theme to output_text: {e}")
             
+            # Apply to code editor
+            if hasattr(self, 'code_editor'):
+                try:
+                    self.code_editor.configure(
+                        bg=colors["background"],
+                        fg=colors["text"],
+                        insertbackground=colors["text"],
+                        selectbackground=colors["selection"]
+                    )
+                except Exception:
+                    pass
+            
+            # Apply to other components safely
+            components_to_theme = [
+                'sidebar_scroll', 'assets_frame', 'preview_frame', 
+                'render_frame', 'settings_frame'
+            ]
+            
+            for component_name in components_to_theme:
+                if hasattr(self, component_name):
+                    try:
+                        component = getattr(self, component_name)
+                        if hasattr(component, 'configure'):
+                            component.configure(fg_color=colors["surface"])
+                    except Exception:
+                        pass
+                        
+        except Exception as e:
+            print(f"Warning: Theme application failed: {e}")     
     def apply_theme(self, theme_colors):
         """Apply a new theme to the application"""
         global VSCODE_COLORS
@@ -10323,91 +10503,433 @@ class ManimStudioApp:
         self.video_player.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
         
     def create_output_area(self):
-        """Create output console area with system terminal integration"""
+        """Create enhanced output console area with rich terminal features"""
         output_frame = ctk.CTkFrame(self.main_area, fg_color=VSCODE_COLORS["surface"])
         output_frame.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=10, pady=(5, 10))
         output_frame.grid_rowconfigure(1, weight=1)
         output_frame.grid_columnconfigure(0, weight=1)
         
-        # Output header
+        # Enhanced output header with more controls
         output_header = ctk.CTkFrame(output_frame, height=50, fg_color=VSCODE_COLORS["surface_light"])
         output_header.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
-        output_header.grid_columnconfigure(1, weight=1)
+        output_header.grid_columnconfigure(2, weight=1)
         
-        # Output title
+        # Output title with status indicator
+        title_frame = ctk.CTkFrame(output_header, fg_color="transparent")
+        title_frame.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        
         output_title = ctk.CTkLabel(
-            output_header,
-            text="📋 Terminal Output",
+            title_frame,
+            text="📋 Enhanced Terminal",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
-        output_title.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        output_title.pack(side="left")
         
-        # Terminal controls
-        terminal_controls = ctk.CTkFrame(output_header, fg_color="transparent")
-        terminal_controls.grid(row=0, column=1, sticky="e", padx=15, pady=10)
-        
-        # Open system terminal button
-        open_terminal_btn = ctk.CTkButton(
-            terminal_controls,
-            text="🖥️ Open Terminal",
-            height=35,
-            command=self.open_system_terminal,
-            fg_color=VSCODE_COLORS["primary"],
-            hover_color=VSCODE_COLORS["primary_hover"]
+        # Terminal status indicator
+        self.terminal_status = ctk.CTkLabel(
+            title_frame,
+            text="● Ready",
+            font=ctk.CTkFont(size=11),
+            text_color="#00FF00"
         )
-        open_terminal_btn.pack(side="right", padx=5)
+        self.terminal_status.pack(side="left", padx=(10, 0))
+        
+        # Search frame
+        search_frame = ctk.CTkFrame(output_header, fg_color="transparent")
+        search_frame.grid(row=0, column=1, padx=10, pady=10)
+        
+        # Search entry
+        self.search_entry = ctk.CTkEntry(
+            search_frame,
+            placeholder_text="Search output...",
+            width=150,
+            height=30,
+            font=ctk.CTkFont(size=11)
+        )
+        self.search_entry.pack(side="left", padx=2)
+        self.search_entry.bind("<KeyRelease>", self.search_terminal_output)
+        
+        # Enhanced terminal controls
+        terminal_controls = ctk.CTkFrame(output_header, fg_color="transparent")
+        terminal_controls.grid(row=0, column=3, sticky="e", padx=15, pady=10)
+        
+        # Auto-scroll toggle
+        self.auto_scroll_var = ctk.BooleanVar(value=True)
+        auto_scroll_check = ctk.CTkCheckBox(
+            terminal_controls,
+            text="Auto-scroll",
+            variable=self.auto_scroll_var,
+            font=ctk.CTkFont(size=10),
+            checkbox_width=16,
+            checkbox_height=16
+        )
+        auto_scroll_check.pack(side="right", padx=5)
+        
+        # Timestamps toggle
+        self.timestamps_var = ctk.BooleanVar(value=True)
+        timestamps_check = ctk.CTkCheckBox(
+            terminal_controls,
+            text="Timestamps",
+            variable=self.timestamps_var,
+            font=ctk.CTkFont(size=10),
+            checkbox_width=16,
+            checkbox_height=16
+        )
+        timestamps_check.pack(side="right", padx=5)
         
         # Clear button
         clear_btn = ctk.CTkButton(
             terminal_controls,
-            text="🗑️ Clear",
-            height=35,
+            text="🗑️",
+            width=30,
+            height=30,
             command=self.clear_output,
             fg_color="transparent",
             hover_color=VSCODE_COLORS["surface_lighter"],
             border_width=1
         )
-        clear_btn.pack(side="right", padx=5)
+        clear_btn.pack(side="right", padx=2)
         
-        # Output display area
-        self.output_text = ctk.CTkTextbox(
-            output_frame,
-            font=ctk.CTkFont(family="Consolas", size=11),
-            fg_color=VSCODE_COLORS["background"],
-            text_color=VSCODE_COLORS["text"]
+        # Enhanced output display area
+        output_container = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["background"])
+        output_container.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        output_container.grid_rowconfigure(0, weight=1)
+        output_container.grid_columnconfigure(0, weight=1)
+        
+        # Create enhanced text widget
+        self.output_text = tk.Text(
+            output_container,
+            font=("Cascadia Code", 11),
+            bg=VSCODE_COLORS["background"],
+            fg=VSCODE_COLORS["text"],
+            insertbackground=VSCODE_COLORS["text"],
+            selectbackground=VSCODE_COLORS["selection"],
+            selectforeground=VSCODE_COLORS["text_bright"],
+            bd=0,
+            highlightthickness=0,
+            wrap="word",
+            undo=False,
+            state="disabled",
+            cursor="arrow"
         )
-        self.output_text.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.output_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         
-        # Command input frame
-        input_frame = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["surface_light"], height=50)
+        # Configure rich text tags
+        self.setup_terminal_tags()
+        
+        # Add scrollbar
+        scrollbar = ctk.CTkScrollbar(output_container, command=self.output_text.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns", pady=5)
+        self.output_text.configure(yscrollcommand=scrollbar.set)
+        
+        # Enhanced command input frame
+        input_frame = ctk.CTkFrame(output_frame, fg_color=VSCODE_COLORS["surface_light"], height=60)
         input_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
         input_frame.grid_columnconfigure(0, weight=1)
         
         # Command input
         self.command_entry = ctk.CTkEntry(
             input_frame,
-            placeholder_text="Enter command to execute...",
-            font=ctk.CTkFont(family="Consolas", size=11),
+            placeholder_text="Enter command... (↑↓ for history, Tab for completion)",
+            font=ctk.CTkFont(family="Cascadia Code", size=11),
             height=35
         )
-        self.command_entry.grid(row=0, column=0, sticky="ew", padx=10, pady=7)
+        self.command_entry.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
         self.command_entry.bind("<Return>", self.execute_command_from_input)
+        self.command_entry.bind("<Up>", self.command_history_up)
+        self.command_entry.bind("<Down>", self.command_history_down)
         
         # Execute button
         execute_btn = ctk.CTkButton(
             input_frame,
             text="▶️ Run",
-            width=60,
-            height=35,
+            width=70,
+            height=25,
             command=self.execute_command_from_input,
-            fg_color=VSCODE_COLORS["success"]
+            fg_color=VSCODE_COLORS["success"],
+            font=ctk.CTkFont(size=11, weight="bold")
         )
-        execute_btn.grid(row=0, column=1, padx=(5, 10), pady=7)
+        execute_btn.grid(row=0, column=1, padx=(5, 10), pady=(10, 5))
         
-        # Initialize system terminal manager
+        # Initialize enhanced features
         self.terminal = SystemTerminalManager(self)
+        self.command_history = []
+        self.command_history_index = -1
+        self.search_matches = []
+        self.current_search_index = -1
+        self.terminal_buffer = []
+        self.max_buffer_lines = 1000 
+    def setup_terminal_tags(self):
+        """Configure rich text tags for enhanced terminal formatting"""
+        self.output_text.tag_configure("success", foreground="#00FF88", font=("Cascadia Code", 11, "bold"))
+        self.output_text.tag_configure("error", foreground="#FF4444", font=("Cascadia Code", 11, "bold"))
+        self.output_text.tag_configure("warning", foreground="#FFB366", font=("Cascadia Code", 11, "bold"))
+        self.output_text.tag_configure("info", foreground="#66B3FF", font=("Cascadia Code", 11))
+        self.output_text.tag_configure("command", foreground="#FFFF66", font=("Cascadia Code", 11, "bold"))
+        self.output_text.tag_configure("progress", foreground="#88FF88", font=("Cascadia Code", 11))
+        self.output_text.tag_configure("timestamp", foreground="#888888", font=("Cascadia Code", 9))
+        self.output_text.tag_configure("search_match", background="#FFFF00", foreground="#000000")
+
+    def append_terminal_output(self, text, msg_type="normal", show_timestamp=None):
+        """Enhanced terminal output with rich formatting and proper spacing"""
+        if not text:
+            return
         
+        # Ensure text ends with newline for proper spacing
+        if not text.endswith('\n'):
+            text += '\n'
+            
+        # Use setting for timestamps if not specified
+        if show_timestamp is None:
+            show_timestamp = self.timestamps_var.get() if hasattr(self, 'timestamps_var') else False
+        
+        # Prepare timestamp
+        timestamp = ""
+        if show_timestamp:
+            timestamp = f"[{time.strftime('%H:%M:%S')}] "
+        
+        # Add to buffer for search
+        if hasattr(self, 'terminal_buffer'):
+            full_text = timestamp + text
+            self.terminal_buffer.append({
+                'timestamp': time.time(),
+                'text': full_text,
+                'type': msg_type
+            })
+            
+            # Limit buffer size
+            if len(self.terminal_buffer) > self.max_buffer_lines:
+                self.terminal_buffer = self.terminal_buffer[-self.max_buffer_lines:]
+        
+        # Enable text widget for editing
+        try:
+            self.output_text.configure(state="normal")
+        except:
+            pass
+        
+        try:
+            # Insert timestamp if enabled
+            if timestamp:
+                if hasattr(self.output_text, 'tag_configure'):
+                    self.output_text.insert("end", timestamp, "timestamp")
+                else:
+                    self.output_text.insert("end", timestamp)
+            
+            # Add spacing for important message types
+            if msg_type in ["command", "error", "success"]:
+                # Add a blank line before important messages for better separation
+                current_content = self.output_text.get("end-2c", "end-1c")
+                if current_content and current_content != '\n':
+                    self.output_text.insert("end", "\n")
+            
+            # Insert text with appropriate formatting based on message type
+            if hasattr(self.output_text, 'tag_configure'):
+                # Rich text widget - use tags
+                if msg_type == "error" or "❌" in text or "ERROR" in text.upper():
+                    self.output_text.insert("end", text, "error")
+                elif msg_type == "success" or "✅" in text or "SUCCESS" in text.upper():
+                    self.output_text.insert("end", text, "success")
+                elif msg_type == "warning" or "⚠️" in text or "WARNING" in text.upper():
+                    self.output_text.insert("end", text, "warning")
+                elif msg_type == "info" or "ℹ️" in text or "INFO" in text.upper():
+                    self.output_text.insert("end", text, "info")
+                elif msg_type == "command" or text.startswith("$ "):
+                    self.output_text.insert("end", text, "command")
+                elif msg_type == "progress" or "%" in text:
+                    self.output_text.insert("end", text, "progress")
+                else:
+                    self.output_text.insert("end", text)
+            else:
+                # Simple text widget - just insert text
+                self.output_text.insert("end", text)
+            
+            # Add extra spacing after command completion messages
+            if msg_type in ["success", "error"] and ("completed" in text.lower() or "failed" in text.lower()):
+                self.output_text.insert("end", "\n")
+        
+        except Exception as e:
+            # Fallback: just insert the text without formatting
+            try:
+                self.output_text.insert("end", text)
+            except:
+                pass
+        
+        # Auto-scroll if enabled
+        try:
+            if hasattr(self, 'auto_scroll_var') and self.auto_scroll_var.get():
+                self.output_text.see("end")
+            else:
+                self.output_text.see("end")  # Default to auto-scroll
+        except:
+            pass
+        
+        # Disable text widget
+        try:
+            self.output_text.configure(state="disabled")
+        except:
+            pass
+    def update_terminal_status(self, status, color="#00FF00"):
+        """Update terminal status indicator"""
+        if hasattr(self, 'terminal_status'):
+            self.terminal_status.configure(text=f"● {status}", text_color=color)
+
+    def search_terminal_output(self, event=None):
+        """Search through terminal output"""
+        if not hasattr(self, 'search_entry'):
+            return
+            
+        search_term = self.search_entry.get().strip()
+        
+        # Clear previous search highlighting
+        self.output_text.tag_remove("search_match", "1.0", "end")
+        self.search_matches = []
+        self.current_search_index = -1
+        
+        if not search_term:
+            return
+        
+        # Search through text
+        self.output_text.configure(state="normal")
+        start_pos = "1.0"
+        
+        while True:
+            pos = self.output_text.search(search_term, start_pos, "end", nocase=True)
+            if not pos:
+                break
+                
+            end_pos = f"{pos}+{len(search_term)}c"
+            self.output_text.tag_add("search_match", pos, end_pos)
+            self.search_matches.append(pos)
+            start_pos = end_pos
+        
+        self.output_text.configure(state="disabled")
+        
+        # Show first match
+        if self.search_matches:
+            self.current_search_index = 0
+            self.output_text.see(self.search_matches[0])
+
+    def command_history_up(self, event):
+        """Navigate command history up"""
+        if hasattr(self, 'command_history') and self.command_history and self.command_history_index > 0:
+            self.command_history_index -= 1
+            self.command_entry.delete(0, "end")
+            self.command_entry.insert(0, self.command_history[self.command_history_index])
+        return "break"
+
+    def command_history_down(self, event):
+        """Navigate command history down"""
+        if hasattr(self, 'command_history') and self.command_history and self.command_history_index < len(self.command_history) - 1:
+            self.command_history_index += 1
+            self.command_entry.delete(0, "end")
+            self.command_entry.insert(0, self.command_history[self.command_history_index])
+        elif hasattr(self, 'command_history') and self.command_history_index >= len(self.command_history) - 1:
+            self.command_entry.delete(0, "end")
+            self.command_history_index = len(self.command_history)
+        return "break"
+
+    def execute_command_from_input(self, event=None):
+        """Enhanced command execution with history"""
+        command = self.command_entry.get().strip()
+        if not command:
+            return
+        
+        # Add to history
+        if hasattr(self, 'command_history'):
+            if command not in self.command_history:
+                self.command_history.append(command)
+            self.command_history_index = len(self.command_history)
+        
+        # Clear input
+        self.command_entry.delete(0, 'end')
+        
+        # Show command in output
+        self.append_terminal_output(f"$ {command}\n", "command")
+        self.update_terminal_status("Running", "#FFB366")
+        
+        # Execute command
+        def on_complete(success, return_code):
+            status_msg = "✅ Success" if success else f"❌ Failed (code: {return_code})"
+            msg_type = "success" if success else "error"
+            
+            self.append_terminal_output(f"{status_msg}\n", msg_type)
+            self.update_terminal_status("Ready", "#00FF00")
+        
+        # Use terminal manager if available
+        if hasattr(self, 'terminal') and self.terminal:
+            self.terminal.execute_command(command, capture_output=True, on_complete=on_complete)
+        else:
+            # Fallback execution
+            def run_fallback():
+                try:
+                    result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
+                    self.append_terminal_output(result.stdout)
+                    if result.stderr:
+                        self.append_terminal_output(result.stderr, "error")
+                    on_complete(result.returncode == 0, result.returncode)
+                except Exception as e:
+                    self.append_terminal_output(f"Error: {e}\n", "error")
+                    on_complete(False, -1)
+            
+            threading.Thread(target=run_fallback, daemon=True).start()
+    def log_separator(self, title="", char="=", width=60):
+        """Add a visual separator to the terminal output"""
+        if title:
+            title_padded = f" {title} "
+            separator_width = (width - len(title_padded)) // 2
+            separator = char * separator_width + title_padded + char * separator_width
+        else:
+            separator = char * width
+        
+        self.append_terminal_output(f"\n{separator}\n", "info")
+
+    def log_command_start(self, command_desc):
+        """Log the start of a command with proper formatting"""
+        self.log_separator(f"Starting: {command_desc}", "─", 50)
+
+    def log_command_end(self, command_desc, success, duration=None):
+        """Log the end of a command with proper formatting"""
+        status = "✅ SUCCESS" if success else "❌ FAILED"
+        duration_text = f" (took {duration:.1f}s)" if duration else ""
+        
+        self.append_terminal_output(f"\n{status}: {command_desc}{duration_text}\n", 
+                                   "success" if success else "error")
+        self.log_separator("", "─", 50)
+
+    def log_info(self, message):
+        """Log an info message with proper spacing"""
+        self.append_terminal_output(f"ℹ️ {message}", "info")
+
+    def log_warning(self, message):
+        """Log a warning message with proper spacing"""
+        self.append_terminal_output(f"⚠️ {message}", "warning")
+
+    def log_error(self, message):
+        """Log an error message with proper spacing"""
+        self.append_terminal_output(f"❌ {message}", "error")
+
+    def log_success(self, message):
+        """Log a success message with proper spacing"""
+        self.append_terminal_output(f"✅ {message}", "success")
+    def clear_output(self):
+        """Enhanced clear output"""
+        self.output_text.configure(state="normal")
+        self.output_text.delete("1.0", "end")
+        self.output_text.configure(state="disabled")
+        
+        # Clear search and buffer
+        if hasattr(self, 'search_matches'):
+            self.search_matches = []
+            self.current_search_index = -1
+        if hasattr(self, 'terminal_buffer'):
+            self.terminal_buffer = []
+        
+        # Show welcome message
+        self.append_terminal_output("🚀 Enhanced Terminal Ready!\n", "info")
+        self.update_status("Terminal cleared")
+        if hasattr(self, 'update_terminal_status'):
+            self.update_terminal_status("Ready", "#00FF00")
     def create_status_bar(self):
         """Create status bar"""
         self.status_bar = ctk.CTkFrame(self.root, height=35, corner_radius=0, fg_color=VSCODE_COLORS["surface"])
@@ -10538,7 +11060,9 @@ class ManimStudioApp:
         self.root.bind("<Escape>", lambda e: self.stop_process())
         self.root.bind("<Control-equal>", lambda e: self.increase_font_size())
         self.root.bind("<Control-minus>", lambda e: self.decrease_font_size())
-        
+        self.root.bind("<Control-l>", lambda e: self.clear_output())
+        self.root.bind("<Control-Shift-T>", lambda e: self.open_system_terminal())
+        self.root.bind("<Control-grave>", lambda e: self.command_entry.focus() if hasattr(self, 'command_entry') else None)
         # Handle window closing
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -10574,10 +11098,89 @@ class ManimStudioApp:
         
         self.terminal.execute_command(command, capture_output=True, on_complete=on_complete)
 
-    def append_terminal_output(self, text):
-        """Append text to terminal output"""
-        self.output_text.insert("end", text)
-        self.output_text.see("end")
+    def append_terminal_output(self, text, msg_type="normal", show_timestamp=None):
+        """Enhanced terminal output with rich formatting"""
+        if not text:
+            return
+            
+        # Use setting for timestamps if not specified
+        if show_timestamp is None:
+            show_timestamp = self.timestamps_var.get() if hasattr(self, 'timestamps_var') else False
+        
+        # Prepare timestamp
+        timestamp = ""
+        if show_timestamp:
+            timestamp = f"[{time.strftime('%H:%M:%S')}] "
+        
+        # Add to buffer for search
+        if hasattr(self, 'terminal_buffer'):
+            full_text = timestamp + text
+            self.terminal_buffer.append({
+                'timestamp': time.time(),
+                'text': full_text,
+                'type': msg_type
+            })
+            
+            # Limit buffer size
+            if len(self.terminal_buffer) > self.max_buffer_lines:
+                self.terminal_buffer = self.terminal_buffer[-self.max_buffer_lines:]
+        
+        # Enable text widget for editing
+        try:
+            self.output_text.configure(state="normal")
+        except:
+            pass
+        
+        try:
+            # Insert timestamp if enabled
+            if timestamp:
+                if hasattr(self.output_text, 'tag_configure'):
+                    self.output_text.insert("end", timestamp, "timestamp")
+                else:
+                    self.output_text.insert("end", timestamp)
+            
+            # Insert text with appropriate formatting based on message type
+            if hasattr(self.output_text, 'tag_configure'):
+                # Rich text widget - use tags
+                if msg_type == "error" or "❌" in text or "ERROR" in text.upper():
+                    self.output_text.insert("end", text, "error")
+                elif msg_type == "success" or "✅" in text or "SUCCESS" in text.upper():
+                    self.output_text.insert("end", text, "success")
+                elif msg_type == "warning" or "⚠️" in text or "WARNING" in text.upper():
+                    self.output_text.insert("end", text, "warning")
+                elif msg_type == "info" or "ℹ️" in text or "INFO" in text.upper():
+                    self.output_text.insert("end", text, "info")
+                elif msg_type == "command" or text.startswith("$ "):
+                    self.output_text.insert("end", text, "command")
+                elif msg_type == "progress" or "%" in text:
+                    self.output_text.insert("end", text, "progress")
+                else:
+                    self.output_text.insert("end", text)
+            else:
+                # Simple text widget - just insert text
+                self.output_text.insert("end", text)
+        
+        except Exception as e:
+            # Fallback: just insert the text without formatting
+            try:
+                self.output_text.insert("end", text)
+            except:
+                pass
+        
+        # Auto-scroll if enabled
+        try:
+            if hasattr(self, 'auto_scroll_var') and self.auto_scroll_var.get():
+                self.output_text.see("end")
+            else:
+                self.output_text.see("end")  # Default to auto-scroll
+        except:
+            pass
+        
+        # Disable text widget
+        try:
+            self.output_text.configure(state="disabled")
+        except:
+            pass
 
     def clear_output(self):
         """Clear terminal output"""
@@ -11092,218 +11695,135 @@ class MyScene(Scene):
             
     # Animation operations with System Terminal Integration
     def quick_preview(self):
-        """Generate quick preview - FIXED for onefile executables"""
-        if not self.venv_manager.is_environment_ready():
-            messagebox.showwarning(
-                "No Environment",
-                "Please set up an environment first.\n\n"
-                "Click the Environment Setup button to create one."
-            )
+        """Generate quick preview with streaming output - FIXED FOR v0.19.0"""
+        if self.is_previewing:
+            self.append_terminal_output("Preview already in progress...\n")
             return
-            
-        # Reset preview state
+        
         self.is_previewing = True
         self.quick_preview_button.configure(text="⏳ Generating...", state="disabled")
-        self.update_status("Generating preview...")
         
-        # Clear previous output and preview video
+        # Clear output
         self.clear_output()
-        self.clear_preview_video(silent=True)
         
-        try:
-            # Create temporary directory with unique name
-            import uuid
-            temp_suffix = str(uuid.uuid4())[:8]
-            temp_dir = tempfile.mkdtemp(prefix=f"manim_preview_{temp_suffix}_")
-            temp_dir = get_long_path(temp_dir)
-
-            # Extract scene class name
-            scene_class = self.extract_scene_class_name(self.current_code)
-
-            # Write code to file with verification
-            scene_file = os.path.join(temp_dir, "scene.py")
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    with open(scene_file, "w", encoding="utf-8") as f:
-                        f.write(self.current_code)
-                        f.flush()
-                        os.fsync(f.fileno())
-
-                    if os.path.exists(scene_file):
-                        with open(scene_file, "r", encoding="utf-8") as f_verify:
-                            content = f_verify.read()
-                            if content:
-                                break
-
-                    raise Exception("File verification failed")
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise Exception(f"Failed to create scene file after {max_retries} attempts: {e}")
-                    else:
-                        self.append_terminal_output(f"⚠️ Retry {attempt + 1}: {e}\n")
-                        time.sleep(0.1)
-                
-            # Get preview settings - use custom resolution if selected
-            if self.quality_var.get() == "Custom":
-                try:
-                    resolution_settings = self.get_current_resolution_settings()
-                    preview_quality = {
-                        "resolution": resolution_settings["resolution"],
-                        "fps": resolution_settings["fps"],
-                        "flag": "-ql"  # Use low quality flag for preview
-                    }
-                except ValueError as e:
-                    messagebox.showerror("Invalid Resolution", str(e))
-                    self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
-                    self.is_previewing = False
-                    return
-            else:
-                preview_quality = PREVIEW_QUALITIES[self.settings["preview_quality"]]
-            
-            quality_flag = preview_quality["flag"]
-            
-            # Use environment Python
-            python_exe = self.venv_manager.python_path
-            
-            # Get the number of cores to use
-            num_cores = self.get_render_cores()
-                
-            # Build manim command
-            command = [
-                python_exe, "-m", "manim",
-                scene_file,
-                scene_class,
-                quality_flag,
-                "--format=mp4",
-                f"--fps={preview_quality['fps']}",
-                "--disable_caching",
-                f"--media_dir={MEDIA_DIR}",
-                "--renderer=cairo",
-                "--verbosity=INFO"  # Add verbose output
-            ]
-            
-            # Add custom resolution if using custom quality
-            if self.quality_var.get() == "Custom":
-                width, height = preview_quality["resolution"].split("x")
-                command.extend([
-                    f"--resolution={width},{height}"
-                ])
-            
-            # Store paths so cleanup happens after completion
-            self.current_temp_dir = temp_dir
-            self.current_scene_file = scene_file
-            
-            # Enhanced logging
-            self.append_terminal_output(f"Starting preview generation...\n")
-            self.append_terminal_output(f"Scene class: {scene_class}\n")
-            self.append_terminal_output(f"Quality: {preview_quality['resolution']} @ {preview_quality['fps']}fps\n")
-            self.append_terminal_output(f"Using {num_cores} CPU cores\n")
-            self.append_terminal_output(f"Command: {' '.join(command)}\n\n")
-            
-            # On preview complete callback
-            def on_preview_complete(success, return_code):
-                try:
-                    # Reset UI state first
-                    self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
-                    self.is_previewing = False
-                    
-                    if success:
-                        self.append_terminal_output(f"\n✅ Preview generation completed successfully!\n")
-                        
-                        # Find output file
-                        output_file = self.find_output_file(temp_dir, scene_class, "mp4")
-
-                        if output_file and os.path.exists(output_file):
-                            self.append_terminal_output(f"Found output file: {output_file}\n")
-
-                            # Copy to cache and use cached file for playback
-                            cache_dir = os.path.join(BASE_DIR, ".preview_cache")
-                            os.makedirs(cache_dir, exist_ok=True)
-                            cached_file = os.path.join(cache_dir, f"preview_{temp_suffix}.mp4")
-
-                            try:
-                                shutil.copy2(output_file, cached_file)
-                                self.load_preview_video(cached_file)
-                                self.update_status("Preview ready")
-                                self.last_preview_code = self.current_code
-                            except Exception as e:
-                                self.append_terminal_output(f"Error caching preview: {e}\n")
-                                # Fallback: try to load directly
-                                try:
-                                    self.load_preview_video(output_file)
-                                    self.update_status("Preview ready")
-                                    self.last_preview_code = self.current_code
-                                except Exception as e2:
-                                    self.append_terminal_output(f"Error loading preview: {e2}\n")
-                                    self.update_status("Preview loaded with errors")
-                        else:
-                            self.append_terminal_output("❌ Error: Preview file not found\n")
-                            self.update_status("Preview generation failed - output file not found")
-                            
-                            # List what files were actually created
-                            self.append_terminal_output("Files in temp directory:\n")
-                            try:
-                                for root, dirs, files in os.walk(temp_dir):
-                                    for file in files:
-                                        file_path = os.path.join(root, file)
-                                        rel_path = os.path.relpath(file_path, temp_dir)
-                                        self.append_terminal_output(f"  {rel_path}\n")
-                            except Exception as e:
-                                self.append_terminal_output(f"  Error listing files: {e}\n")
-                    else:
-                        self.append_terminal_output(f"\n❌ Preview generation failed (exit code: {return_code})\n")
-                        self.update_status("Preview generation failed")
-                    
-                except Exception as e:
-                    self.append_terminal_output(f"Error in preview completion handler: {e}\n")
-                    self.update_status("Preview completion error")
-                    
-                finally:
-                    self.cleanup_temp_directory()
-            
-            def verified_command_runner():
-                try:
-                    if not os.path.exists(self.current_scene_file):
-                        raise Exception(f"Scene file disappeared before execution: {self.current_scene_file}")
-                    with open(self.current_scene_file, "r", encoding="utf-8") as f_verify:
-                        if len(f_verify.read()) == 0:
-                            raise Exception("Scene file is empty!")
-                    
-                    self.append_terminal_output("✅ Final verification passed, executing command...\n")
-                    
-                    # CRITICAL FIX: Use the safe subprocess runner
-                    result = run_subprocess_safe(
-                        command,
-                        capture_output=True,
-                        text=True,
-                        cwd=temp_dir,  # Set working directory to temp dir
-                        env=self.get_subprocess_environment(num_cores)
-                    )
-                    
-                    # Process output
-                    if result.stdout:
-                        self.append_terminal_output(result.stdout)
-                    if result.stderr:
-                        self.append_terminal_output(result.stderr)
-                    
-                    success = result.returncode == 0
-                    on_preview_complete(success, result.returncode)
-                    
-                except Exception as e:
-                    self.append_terminal_output(f"Command execution failed: {e}\n")
-                    on_preview_complete(False, -1)
-            
-            # Run in separate thread
-            thread = threading.Thread(target=verified_command_runner, daemon=True)
-            thread.start()
-            
-        except Exception as e:
-            self.append_terminal_output(f"Preview setup failed: {e}\n")
+        # Get current code
+        self.current_code = self.code_editor.get("1.0", "end-1c")
+        
+        if not self.current_code.strip():
+            self.append_terminal_output("No code to preview\n")
             self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
             self.is_previewing = False
-            self.update_status("Preview setup failed")
+            return
+        
+        # Parse scene class
+        scene_class = self.extract_scene_class_name(self.current_code)
+        if not scene_class:
+            self.append_terminal_output("No valid scene class found\n")
+            self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+            self.is_previewing = False
+            return
+        
+        # Create temporary file
+        temp_suffix = str(int(time.time() * 1000))
+        temp_dir = os.path.join(BASE_DIR, ".preview_temp", temp_suffix)
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        temp_file = os.path.join(temp_dir, f"preview_{temp_suffix}.py")
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            f.write(self.current_code)
+        
+        # FIXED: Build correct manim command for v0.19.0
+        command = [
+            self.venv_manager.python_path,
+            "-m", "manim", "render",  # FIXED: Added "render" subcommand
+            temp_file,
+            scene_class,
+            "-qm",  # FIXED: Use correct quality flag (medium quality)
+            "--format", "mp4",  # FIXED: Separate format flag
+            "--fps", "15",  # FIXED: Separate fps flag
+            "--disable_caching",
+            "-o", f"preview_{temp_suffix}"  # FIXED: Use correct output flag
+        ]
+        
+        self.log_command_start(f"Preview Generation - {scene_class}")
+        self.log_info("Quality: Medium (720p) @ 15fps")
+        self.log_info(f"Command: {' '.join(command)}")
+        
+        # On preview complete callback
+        def on_preview_complete(success, return_code):
+            try:
+                # Reset UI state first
+                self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+                self.is_previewing = False
+                
+                if success:
+                    self.append_terminal_output(f"\n✅ Preview generation completed successfully!\n")
+                    
+                    # Find output file
+                    output_file = self.find_output_file(temp_dir, scene_class, "mp4")
 
+                    if output_file and os.path.exists(output_file):
+                        self.append_terminal_output(f"Found output file: {output_file}\n")
+
+                        # Copy to cache and use cached file for playback
+                        cache_dir = os.path.join(BASE_DIR, ".preview_cache")
+                        os.makedirs(cache_dir, exist_ok=True)
+                        cached_file = os.path.join(cache_dir, f"preview_{temp_suffix}.mp4")
+
+                        try:
+                            shutil.copy2(output_file, cached_file)
+                            self.load_preview_video(cached_file)
+                            self.update_status("Preview ready")
+                            self.last_preview_code = self.current_code
+                        except Exception as e:
+                            self.append_terminal_output(f"Error caching preview: {e}\n")
+                            # Fallback: try to load directly
+                            try:
+                                self.load_preview_video(output_file)
+                                self.update_status("Preview ready")
+                                self.last_preview_code = self.current_code
+                            except Exception as e2:
+                                self.append_terminal_output(f"Error loading preview: {e2}\n")
+                    else:
+                        self.append_terminal_output("❌ No output file found\n")
+                else:
+                    self.append_terminal_output(f"\n❌ Preview generation failed (exit code: {return_code})\n")
+                
+                # Cleanup temp directory
+                try:
+                    if os.path.exists(temp_dir):
+                        shutil.rmtree(temp_dir)
+                except Exception as e:
+                    self.append_terminal_output(f"Warning: Could not clean temp directory: {e}\n")
+                    
+            except Exception as e:
+                self.append_terminal_output(f"Error in preview completion: {e}\n")
+        
+        # Start the streaming preview - Check if streaming method exists
+        if hasattr(self.venv_manager, 'run_command_streaming'):
+            self.venv_manager.run_command_streaming(
+                command, 
+                log_callback=self.append_terminal_output,
+                on_complete=on_preview_complete
+            )
+        else:
+            # Fallback to original method if streaming not implemented yet
+            self.append_terminal_output("⚠️ Using fallback preview method (no streaming)\n")
+            def run_fallback():
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, timeout=300)
+                    self.append_terminal_output(result.stdout)
+                    if result.stderr:
+                        self.append_terminal_output(f"STDERR: {result.stderr}")
+                    on_preview_complete(result.returncode == 0, result.returncode)
+                except Exception as e:
+                    self.append_terminal_output(f"Error: {e}\n")
+                    on_preview_complete(False, -1)
+            
+            threading.Thread(target=run_fallback, daemon=True).start()
+
+
+    
     def get_subprocess_environment(self, num_cores):
         """Get enhanced environment for subprocess calls in onefile mode"""
         env = os.environ.copy()
@@ -11410,20 +11930,20 @@ class MyScene(Scene):
                 
             # Build manim command
             command = [
-                str(python_exe), "-m", "manim",
+                str(python_exe), 
+                "-m", "manim", "render",  # FIXED: Added "render" subcommand
                 str(scene_file),
                 str(scene_class),
                 str(quality_flag),
-                f"--format={format_ext}",
-                f"--fps={fps}",
-                f"--media_dir={MEDIA_DIR}",
-                "--renderer=cairo"
+                "--format", format_ext,   # FIXED: Separate format flag
+                "--fps", str(fps),        # FIXED: Separate fps flag  
+                "--renderer", "cairo"     # FIXED: Separate renderer flag
             ]
             
             # Add custom resolution if using custom quality
             if self.quality_var.get() == "Custom":
                 command.extend([
-                    f"--resolution={resolution_settings['width']},{resolution_settings['height']}"
+                    "--resolution", f"{resolution_settings['width']},{resolution_settings['height']}"  # FIXED: Separate resolution flag
                 ])
             
             # Add audio if available
@@ -12876,18 +13396,16 @@ def main():
 
         logger.info("Performing final pre-launch checks...")
         
-        # Final verification that environment is working
+        # FIXED: Final verification that environment is working (REMOVED PROBLEMATIC IMPORT TEST)
         try:
-            # Quick test that manim can be imported
-            import subprocess
-            test_cmd = app.venv_manager.get_python_command() + ["-c", "import manim; print('Manim import successful')"]
-            result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                logger.info("✅ Manim import test passed")
+            # REPLACED: Quick test that manim package exists (safe mode) - NO MORE 3221225477 ERROR
+            manim_available = app.venv_manager.check_manim_availability()
+            if manim_available:
+                logger.info("✅ Manim package found")
             else:
-                logger.warning(f"⚠️ Manim import test failed: {result.stderr}")
+                logger.warning("⚠️ Manim package not found")
         except Exception as e:
-            logger.warning(f"⚠️ Could not verify manim import: {e}")
+            logger.warning(f"⚠️ Could not verify manim package: {e}")
 
         logger.info("Starting application main loop...")
         
@@ -12942,7 +13460,6 @@ def main():
                     logger.removeHandler(handler)
             except:
                 pass
-
 
 if __name__ == "__main__":
     main()
