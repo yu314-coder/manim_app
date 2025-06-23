@@ -981,7 +981,7 @@ Working directory: {self.cwd}
             # Show executing indicator
             self.insert("end", f"Executing: {cmd}\n", "command")
             
-            process = popen_original(
+            process = subprocess.Popen(  # Use subprocess.Popen instead of popen_original
                 cmd,
                 shell=True,
                 stdout=subprocess.PIPE,
@@ -989,6 +989,8 @@ Working directory: {self.cwd}
                 text=True,
                 cwd=self.cwd,
                 env=self.env,
+                encoding='utf-8',          # ADD THIS
+                errors='replace',          # ADD THIS
                 universal_newlines=True
             )
 
@@ -4030,7 +4032,13 @@ else:
             self.logger.error(f"Error checking packages: {e}")
             # If we can't check, assume all are missing
             return self.essential_packages.copy()
-    
+    def run_manim_command_safe(self, command, **kwargs):
+        """Safe manim command runner with proper encoding"""
+        # Set default encoding for manim commands
+        kwargs.setdefault('encoding', 'utf-8')
+        kwargs.setdefault('errors', 'replace')
+        
+        return self.run_hidden_subprocess_nuitka_safe(command, **kwargs)
     def install_missing_packages(self, missing_packages, log_callback=None):
         """Install only the missing packages"""
         if not missing_packages:
@@ -6258,14 +6266,28 @@ command = {python_exe} -m venv {env_path}
         """Get the pip command as a list for subprocess execution"""  
         return [self.pip_path]
     def run_with_streaming_output(self, command, log_callback=None, on_complete=None, timeout=None, env=None):
-        """Run subprocess with real-time streaming output"""
+        """Run subprocess with line-buffered streaming output"""
         
         def enqueue_output(pipe, queue, stream_name):
-            """Put output lines from pipe into queue"""
+            """Put complete lines from pipe into queue"""
             try:
-                for line in iter(pipe.readline, ''):
-                    if line:
-                        queue.put((stream_name, line.rstrip('\n\r')))
+                line_buffer = ""
+                while True:
+                    char = pipe.read(1)
+                    if not char:
+                        # End of stream - flush any remaining buffer
+                        if line_buffer.strip():
+                            queue.put((stream_name, line_buffer.strip()))
+                        break
+                    
+                    line_buffer += char
+                    
+                    # When we hit a newline, send the complete line
+                    if char == '\n':
+                        if line_buffer.strip():  # Only send non-empty lines
+                            queue.put((stream_name, line_buffer.strip()))
+                        line_buffer = ""
+                        
                 pipe.close()
             except Exception as e:
                 queue.put((stream_name, f"Stream error: {e}"))
@@ -6287,8 +6309,10 @@ command = {python_exe} -m venv {env_path}
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1,
+                bufsize=0,  # Unbuffered for character-by-character reading
                 universal_newlines=True,
+                encoding='utf-8',           # FIXED: Explicit UTF-8 encoding
+                errors='replace',           # FIXED: Replace problematic characters
                 startupinfo=startupinfo,
                 creationflags=creationflags,
                 env=env
@@ -6335,22 +6359,16 @@ command = {python_exe} -m venv {env_path}
                 try:
                     while True:
                         stream_name, line = stdout_queue.get_nowait()
-                        if log_callback:
-                            # Detect message type and ensure proper spacing
-                            line_clean = line.strip()
-                            if not line_clean:  # Skip empty lines
-                                continue
-                                
-                            if "%" in line or "progress" in line.lower():
-                                log_callback(line_clean, "progress")
-                            elif "error" in line.lower():
-                                log_callback(line_clean, "error")
-                            elif "success" in line.lower() or "complete" in line.lower():
-                                log_callback(line_clean, "success")
+                        if log_callback and line.strip():  # Only send non-empty lines
+                            # Determine message type
+                            if "error" in line.lower() or "failed" in line.lower():
+                                log_callback(line, "error")
+                            elif "✅" in line or "success" in line.lower() or "File ready" in line:
+                                log_callback(line, "success")
                             elif "INFO" in line:
-                                log_callback(line_clean, "info")
+                                log_callback(line, "info")
                             else:
-                                log_callback(line_clean)
+                                log_callback(line)
                         all_output.append(('stdout', line))
                         output_received = True
                 except Empty:
@@ -6360,8 +6378,11 @@ command = {python_exe} -m venv {env_path}
                 try:
                     while True:
                         stream_name, line = stderr_queue.get_nowait()
-                        if log_callback:
-                            log_callback(f"STDERR: {line}", "error")
+                        if log_callback and line.strip():  # Only send non-empty lines
+                            # Clean up stderr formatting
+                            clean_line = line.replace("STDERR: ", "")
+                            if clean_line.strip():
+                                log_callback(clean_line, "error")
                         all_output.append(('stderr', line))
                         output_received = True
                 except Empty:
@@ -6374,7 +6395,7 @@ command = {python_exe} -m venv {env_path}
                     try:
                         while True:
                             stream_name, line = stdout_queue.get_nowait()
-                            if log_callback:
+                            if log_callback and line.strip():
                                 log_callback(line)
                             all_output.append(('stdout', line))
                     except Empty:
@@ -6382,22 +6403,24 @@ command = {python_exe} -m venv {env_path}
                     try:
                         while True:
                             stream_name, line = stderr_queue.get_nowait()
-                            if log_callback:
-                                log_callback(f"STDERR: {line}", "error")
+                            if log_callback and line.strip():
+                                clean_line = line.replace("STDERR: ", "")
+                                if clean_line.strip():
+                                    log_callback(clean_line, "error")
                             all_output.append(('stderr', line))
                     except Empty:
                         pass
                     break
                 
                 # Small delay to prevent busy waiting
-                time.sleep(0.05)
+                time.sleep(0.01)
             
             # Wait for process to complete
             final_return_code = process.wait()
             
             # Wait for threads to finish
-            stdout_thread.join(timeout=1)
-            stderr_thread.join(timeout=1)
+            stdout_thread.join(timeout=2)
+            stderr_thread.join(timeout=2)
             
             # Call completion callback
             if on_complete:
@@ -6412,7 +6435,6 @@ command = {python_exe} -m venv {env_path}
             if on_complete:
                 on_complete(False, -1)
             return -1, [('error', str(e))]
-
     def run_command_streaming(self, command, log_callback=None, on_complete=None, timeout=300):
         """Execute command with real-time output streaming"""
         if not self.current_venv:
@@ -9415,7 +9437,7 @@ class ManimStudioApp:
 
         # Initialize logger reference
         self.logger = logger
-
+        self.last_manim_output_path = None
         # Initialize virtual environment manager
         self.venv_manager = VirtualEnvironmentManager(self)
         
@@ -10672,103 +10694,51 @@ class ManimStudioApp:
         self.output_text.tag_configure("search_match", background="#FFFF00", foreground="#000000")
 
     def append_terminal_output(self, text, msg_type="normal", show_timestamp=None):
-        """Enhanced terminal output with rich formatting and proper spacing"""
-        if not text:
+        """Clean terminal output with proper spacing"""
+        if not text or not text.strip():
             return
         
-        # Ensure text ends with newline for proper spacing
-        if not text.endswith('\n'):
-            text += '\n'
-            
-        # Use setting for timestamps if not specified
-        if show_timestamp is None:
-            show_timestamp = self.timestamps_var.get() if hasattr(self, 'timestamps_var') else False
+        # Clean the text
+        clean_text = text.strip()
         
-        # Prepare timestamp
-        timestamp = ""
-        if show_timestamp:
-            timestamp = f"[{time.strftime('%H:%M:%S')}] "
+        # Add spacing between different types of messages
+        spacing = ""
+        if msg_type in ["command", "success", "error"]:
+            spacing = "\n\n\n"
         
-        # Add to buffer for search
-        if hasattr(self, 'terminal_buffer'):
-            full_text = timestamp + text
-            self.terminal_buffer.append({
-                'timestamp': time.time(),
-                'text': full_text,
-                'type': msg_type
-            })
-            
-            # Limit buffer size
-            if len(self.terminal_buffer) > self.max_buffer_lines:
-                self.terminal_buffer = self.terminal_buffer[-self.max_buffer_lines:]
+        # Format the final text
+        formatted_text = f"{spacing}{clean_text}\n"
         
-        # Enable text widget for editing
         try:
+            # Enable editing
             self.output_text.configure(state="normal")
-        except:
-            pass
-        
-        try:
-            # Insert timestamp if enabled
-            if timestamp:
-                if hasattr(self.output_text, 'tag_configure'):
-                    self.output_text.insert("end", timestamp, "timestamp")
-                else:
-                    self.output_text.insert("end", timestamp)
             
-            # Add spacing for important message types
-            if msg_type in ["command", "error", "success"]:
-                # Add a blank line before important messages for better separation
-                current_content = self.output_text.get("end-2c", "end-1c")
-                if current_content and current_content != '\n':
-                    self.output_text.insert("end", "\n")
-            
-            # Insert text with appropriate formatting based on message type
+            # Simple color coding
             if hasattr(self.output_text, 'tag_configure'):
-                # Rich text widget - use tags
-                if msg_type == "error" or "❌" in text or "ERROR" in text.upper():
-                    self.output_text.insert("end", text, "error")
-                elif msg_type == "success" or "✅" in text or "SUCCESS" in text.upper():
-                    self.output_text.insert("end", text, "success")
-                elif msg_type == "warning" or "⚠️" in text or "WARNING" in text.upper():
-                    self.output_text.insert("end", text, "warning")
-                elif msg_type == "info" or "ℹ️" in text or "INFO" in text.upper():
-                    self.output_text.insert("end", text, "info")
+                if msg_type == "error" or "❌" in text or "ERROR" in text:
+                    self.output_text.insert("end", formatted_text, "error")
+                elif msg_type == "success" or "✅" in text:
+                    self.output_text.insert("end", formatted_text, "success")
+                elif msg_type == "warning" or "⚠️" in text:
+                    self.output_text.insert("end", formatted_text, "warning")
                 elif msg_type == "command" or text.startswith("$ "):
-                    self.output_text.insert("end", text, "command")
-                elif msg_type == "progress" or "%" in text:
-                    self.output_text.insert("end", text, "progress")
+                    self.output_text.insert("end", formatted_text, "command")
+                elif msg_type == "info":
+                    self.output_text.insert("end", formatted_text, "info")
                 else:
-                    self.output_text.insert("end", text)
+                    self.output_text.insert("end", formatted_text)
             else:
-                # Simple text widget - just insert text
-                self.output_text.insert("end", text)
+                self.output_text.insert("end", formatted_text)
             
-            # Add extra spacing after command completion messages
-            if msg_type in ["success", "error"] and ("completed" in text.lower() or "failed" in text.lower()):
-                self.output_text.insert("end", "\n")
-        
-        except Exception as e:
-            # Fallback: just insert the text without formatting
-            try:
-                self.output_text.insert("end", text)
-            except:
-                pass
-        
-        # Auto-scroll if enabled
-        try:
-            if hasattr(self, 'auto_scroll_var') and self.auto_scroll_var.get():
-                self.output_text.see("end")
-            else:
-                self.output_text.see("end")  # Default to auto-scroll
-        except:
-            pass
-        
-        # Disable text widget
-        try:
+            # Auto-scroll
+            self.output_text.see("end")
+            
+            # Disable editing
             self.output_text.configure(state="disabled")
-        except:
-            pass
+            
+        except Exception:
+            print(formatted_text, end='')
+    
     def update_terminal_status(self, status, color="#00FF00"):
         """Update terminal status indicator"""
         if hasattr(self, 'terminal_status'):
@@ -10830,49 +10800,30 @@ class ManimStudioApp:
         return "break"
 
     def execute_command_from_input(self, event=None):
-        """Enhanced command execution with history"""
+        """Execute command from the input field"""
         command = self.command_entry.get().strip()
         if not command:
             return
         
-        # Add to history
-        if hasattr(self, 'command_history'):
-            if command not in self.command_history:
-                self.command_history.append(command)
-            self.command_history_index = len(self.command_history)
-        
         # Clear input
         self.command_entry.delete(0, 'end')
         
-        # Show command in output
-        self.append_terminal_output(f"$ {command}\n", "command")
-        self.update_terminal_status("Running", "#FFB366")
+        # Show command in output with proper spacing
+        self.append_terminal_output(f"$ {command}", "command")
+        
+        # Detect manim commands
+        is_manim_command = 'manim' in command.lower()
         
         # Execute command
         def on_complete(success, return_code):
-            status_msg = "✅ Success" if success else f"❌ Failed (code: {return_code})"
-            msg_type = "success" if success else "error"
-            
-            self.append_terminal_output(f"{status_msg}\n", msg_type)
-            self.update_terminal_status("Ready", "#00FF00")
+            if success:
+                self.append_terminal_output(f"\nCommand completed (exit code: {return_code})", "success")
+            else:
+                self.append_terminal_output(f"\nCommand failed (exit code: {return_code})", "error")
         
-        # Use terminal manager if available
-        if hasattr(self, 'terminal') and self.terminal:
-            self.terminal.execute_command(command, capture_output=True, on_complete=on_complete)
-        else:
-            # Fallback execution
-            def run_fallback():
-                try:
-                    result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
-                    self.append_terminal_output(result.stdout)
-                    if result.stderr:
-                        self.append_terminal_output(result.stderr, "error")
-                    on_complete(result.returncode == 0, result.returncode)
-                except Exception as e:
-                    self.append_terminal_output(f"Error: {e}\n", "error")
-                    on_complete(False, -1)
-            
-            threading.Thread(target=run_fallback, daemon=True).start()
+        # Use appropriate output type for manim
+        output_type = "output" if is_manim_command else "normal"
+        self.terminal.execute_command(command, capture_output=True, on_complete=on_complete)
     def log_separator(self, title="", char="=", width=60):
         """Add a visual separator to the terminal output"""
         if title:
@@ -11099,13 +11050,35 @@ class ManimStudioApp:
         self.terminal.execute_command(command, capture_output=True, on_complete=on_complete)
 
     def append_terminal_output(self, text, msg_type="normal", show_timestamp=None):
-        """Enhanced terminal output with rich formatting"""
+        """Enhanced terminal output with rich formatting and proper manim spacing"""
         if not text:
             return
             
         # Use setting for timestamps if not specified
         if show_timestamp is None:
             show_timestamp = self.timestamps_var.get() if hasattr(self, 'timestamps_var') else False
+        
+        # Detect manim output for special handling
+        is_manim_output = any(keyword in text.lower() for keyword in 
+                             ['manim', 'rendering', 'scene', 'animation', 'ffmpeg', 
+                              'frame rate', 'resolution', 'quality', 'writing to'])
+        
+        # Detect pip output
+        is_pip_output = any(keyword in text.lower() for keyword in 
+                           ['collecting', 'downloading', 'installing', 'requirement already satisfied',
+                            'successfully installed', 'pip install', 'upgrading'])
+        
+        # Handle text cleaning based on output type
+        if is_manim_output:
+            # For manim output, preserve internal spacing and line breaks
+            clean_text = text.rstrip('\n\r')  # Only remove trailing newlines
+            # Don't strip leading spaces as they might be important for manim's formatting
+        elif is_pip_output:
+            # For pip output, preserve formatting but clean up trailing whitespace
+            clean_text = text.rstrip()
+        else:
+            # For other output, clean normally
+            clean_text = text.strip()
         
         # Prepare timestamp
         timestamp = ""
@@ -11114,7 +11087,7 @@ class ManimStudioApp:
         
         # Add to buffer for search
         if hasattr(self, 'terminal_buffer'):
-            full_text = timestamp + text
+            full_text = timestamp + clean_text
             self.terminal_buffer.append({
                 'timestamp': time.time(),
                 'text': full_text,
@@ -11139,31 +11112,36 @@ class ManimStudioApp:
                 else:
                     self.output_text.insert("end", timestamp)
             
-            # Insert text with appropriate formatting based on message type
+            # Determine the appropriate tag for formatting
+            text_tag = self._get_text_tag(clean_text, msg_type, is_manim_output, is_pip_output)
+            
+            # Insert text with appropriate formatting
             if hasattr(self.output_text, 'tag_configure'):
                 # Rich text widget - use tags
-                if msg_type == "error" or "❌" in text or "ERROR" in text.upper():
-                    self.output_text.insert("end", text, "error")
-                elif msg_type == "success" or "✅" in text or "SUCCESS" in text.upper():
-                    self.output_text.insert("end", text, "success")
-                elif msg_type == "warning" or "⚠️" in text or "WARNING" in text.upper():
-                    self.output_text.insert("end", text, "warning")
-                elif msg_type == "info" or "ℹ️" in text or "INFO" in text.upper():
-                    self.output_text.insert("end", text, "info")
-                elif msg_type == "command" or text.startswith("$ "):
-                    self.output_text.insert("end", text, "command")
-                elif msg_type == "progress" or "%" in text:
-                    self.output_text.insert("end", text, "progress")
+                if is_manim_output:
+                    # For manim output, add proper line breaks and preserve formatting
+                    if not clean_text.startswith('\n') and self.output_text.get("end-1c") != '\n':
+                        self.output_text.insert("end", "\n")
+                    self.output_text.insert("end", clean_text, text_tag)
+                    if not clean_text.endswith('\n'):
+                        self.output_text.insert("end", "\n")
                 else:
-                    self.output_text.insert("end", text)
+                    # For other output types
+                    self.output_text.insert("end", clean_text, text_tag)
+                    if not clean_text.endswith('\n'):
+                        self.output_text.insert("end", "\n")
             else:
                 # Simple text widget - just insert text
-                self.output_text.insert("end", text)
+                self.output_text.insert("end", clean_text)
+                if not clean_text.endswith('\n'):
+                    self.output_text.insert("end", "\n")
         
         except Exception as e:
             # Fallback: just insert the text without formatting
             try:
-                self.output_text.insert("end", text)
+                self.output_text.insert("end", clean_text)
+                if not clean_text.endswith('\n'):
+                    self.output_text.insert("end", "\n")
             except:
                 pass
         
@@ -11171,17 +11149,62 @@ class ManimStudioApp:
         try:
             if hasattr(self, 'auto_scroll_var') and self.auto_scroll_var.get():
                 self.output_text.see("end")
-            else:
-                self.output_text.see("end")  # Default to auto-scroll
+            elif not hasattr(self, 'auto_scroll_var'):
+                # Default to auto-scroll if variable doesn't exist
+                self.output_text.see("end")
         except:
             pass
         
-        # Disable text widget
+        # Disable text widget editing
         try:
             self.output_text.configure(state="disabled")
         except:
             pass
-
+    
+    def _get_text_tag(self, text, msg_type, is_manim_output, is_pip_output):
+        """Helper method to determine the appropriate text tag for formatting"""
+        # Priority order for tag determination
+        
+        # 1. Check explicit message type first
+        if msg_type == "error" or "❌" in text or "ERROR" in text.upper():
+            return "error"
+        elif msg_type == "success" or "✅" in text or "SUCCESS" in text.upper():
+            return "success"
+        elif msg_type == "warning" or "⚠️" in text or "WARNING" in text.upper():
+            return "warning"
+        elif msg_type == "info" or "ℹ️" in text or "INFO" in text.upper():
+            return "info"
+        elif msg_type == "command" or text.startswith("$ "):
+            return "command"
+        elif msg_type == "progress" or "%" in text:
+            return "progress"
+        
+        # 2. Check for specific output types
+        elif is_manim_output:
+            # Use appropriate tag based on manim output content
+            if any(word in text.lower() for word in ['error', 'failed', 'exception']):
+                return "error"
+            elif any(word in text.lower() for word in ['warning', 'warn']):
+                return "warning"
+            elif any(word in text.lower() for word in ['done', 'completed', 'finished']):
+                return "success"
+            else:
+                return "output"  # Default for manim
+        
+        elif is_pip_output:
+            # Use appropriate tag based on pip output content
+            if "successfully installed" in text.lower():
+                return "success"
+            elif "requirement already satisfied" in text.lower():
+                return "info"
+            elif "error" in text.lower() or "failed" in text.lower():
+                return "error"
+            else:
+                return "output"  # Default for pip
+        
+        # 3. Default fallback
+        else:
+            return None  # Use default formatting
     def clear_output(self):
         """Clear terminal output"""
         self.output_text.delete("1.0", "end")
@@ -11703,8 +11726,9 @@ class MyScene(Scene):
         self.is_previewing = True
         self.quick_preview_button.configure(text="⏳ Generating...", state="disabled")
         
-        # Clear output
+        # Clear output and reset tracking
         self.clear_output()
+        self.last_manim_output_path = None  # Reset path tracking
         
         # Get current code
         self.current_code = self.code_editor.get("1.0", "end-1c")
@@ -11735,21 +11759,21 @@ class MyScene(Scene):
         # FIXED: Build correct manim command for v0.19.0
         command = [
             self.venv_manager.python_path,
-            "-m", "manim", "render",  # FIXED: Added "render" subcommand
+            "-m", "manim", "render",
             temp_file,
             scene_class,
-            "-qm",  # FIXED: Use correct quality flag (medium quality)
-            "--format", "mp4",  # FIXED: Separate format flag
-            "--fps", "15",  # FIXED: Separate fps flag
+            "-qm",  # Medium quality
+            "--format", "mp4",
+            "--fps", "15",
             "--disable_caching",
-            "-o", f"preview_{temp_suffix}"  # FIXED: Use correct output flag
+            "-o", f"preview_{temp_suffix}"
         ]
         
         self.log_command_start(f"Preview Generation - {scene_class}")
         self.log_info("Quality: Medium (720p) @ 15fps")
         self.log_info(f"Command: {' '.join(command)}")
         
-        # On preview complete callback
+        # On preview complete callback - ENHANCED VERSION
         def on_preview_complete(success, return_code):
             try:
                 # Reset UI state first
@@ -11757,13 +11781,13 @@ class MyScene(Scene):
                 self.is_previewing = False
                 
                 if success:
-                    self.append_terminal_output(f"\n✅ Preview generation completed successfully!\n")
+                    self.append_terminal_output(f"\n✅ Preview generation completed successfully!\n", "success")
                     
-                    # Find output file
+                    # Enhanced file finding with detailed logging
                     output_file = self.find_output_file(temp_dir, scene_class, "mp4")
 
                     if output_file and os.path.exists(output_file):
-                        self.append_terminal_output(f"Found output file: {output_file}\n")
+                        self.append_terminal_output(f"✅ Output file confirmed: {output_file}\n", "success")
 
                         # Copy to cache and use cached file for playback
                         cache_dir = os.path.join(BASE_DIR, ".preview_cache")
@@ -11772,52 +11796,91 @@ class MyScene(Scene):
 
                         try:
                             shutil.copy2(output_file, cached_file)
+                            self.append_terminal_output(f"📁 Cached to: {cached_file}\n", "info")
                             self.load_preview_video(cached_file)
                             self.update_status("Preview ready")
                             self.last_preview_code = self.current_code
                         except Exception as e:
-                            self.append_terminal_output(f"Error caching preview: {e}\n")
+                            self.append_terminal_output(f"❌ Error caching preview: {e}\n", "error")
                             # Fallback: try to load directly
                             try:
                                 self.load_preview_video(output_file)
                                 self.update_status("Preview ready")
                                 self.last_preview_code = self.current_code
                             except Exception as e2:
-                                self.append_terminal_output(f"Error loading preview: {e2}\n")
+                                self.append_terminal_output(f"❌ Error loading preview: {e2}\n", "error")
                     else:
-                        self.append_terminal_output("❌ No output file found\n")
+                        self.append_terminal_output("❌ No output file found after exhaustive search\n", "error")
+                        
+                        # Provide debugging information
+                        self.append_terminal_output("\n🔍 Debugging information:\n", "info")
+                        self.append_terminal_output(f"   Working directory: {os.getcwd()}\n", "info")
+                        self.append_terminal_output(f"   Temp directory: {temp_dir}\n", "info")
+                        self.append_terminal_output(f"   Scene class: {scene_class}\n", "info")
+                        
+                        # List contents of likely directories
+                        debug_dirs = [
+                            os.path.join(os.getcwd(), "media"),
+                            os.path.join(BASE_DIR, "media"),
+                            temp_dir
+                        ]
+                        
+                        for debug_dir in debug_dirs:
+                            if os.path.exists(debug_dir):
+                                self.append_terminal_output(f"   Contents of {debug_dir}:\n", "info")
+                                try:
+                                    for root, dirs, files in os.walk(debug_dir):
+                                        level = root.replace(debug_dir, '').count(os.sep)
+                                        indent = ' ' * 4 * (level + 1)
+                                        self.append_terminal_output(f"{indent}{os.path.basename(root)}/\n", "info")
+                                        subindent = ' ' * 4 * (level + 2)
+                                        for file in files:
+                                            self.append_terminal_output(f"{subindent}{file}\n", "info")
+                                except Exception as e:
+                                    self.append_terminal_output(f"   Error listing {debug_dir}: {e}\n", "warning")
                 else:
-                    self.append_terminal_output(f"\n❌ Preview generation failed (exit code: {return_code})\n")
+                    self.append_terminal_output(f"\n❌ Preview generation failed (exit code: {return_code})\n", "error")
                 
                 # Cleanup temp directory
                 try:
                     if os.path.exists(temp_dir):
                         shutil.rmtree(temp_dir)
                 except Exception as e:
-                    self.append_terminal_output(f"Warning: Could not clean temp directory: {e}\n")
+                    self.append_terminal_output(f"⚠️ Could not clean temp directory: {e}\n", "warning")
                     
             except Exception as e:
-                self.append_terminal_output(f"Error in preview completion: {e}\n")
+                self.append_terminal_output(f"❌ Error in preview completion: {e}\n", "error")
         
-        # Start the streaming preview - Check if streaming method exists
+        # Start the streaming preview with enhanced callback
         if hasattr(self.venv_manager, 'run_command_streaming'):
             self.venv_manager.run_command_streaming(
                 command, 
-                log_callback=self.append_terminal_output,
+                log_callback=self.enhanced_log_callback,  # ENHANCED: Use the new callback
                 on_complete=on_preview_complete
             )
         else:
-            # Fallback to original method if streaming not implemented yet
-            self.append_terminal_output("⚠️ Using fallback preview method (no streaming)\n")
+            # Fallback with enhanced output processing
+            self.append_terminal_output("⚠️ Using fallback preview method\n", "warning")
             def run_fallback():
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, timeout=300)
-                    self.append_terminal_output(result.stdout)
+                    result = subprocess.run(
+                        command, 
+                        capture_output=True, 
+                        text=True, 
+                        timeout=300,
+                        encoding='utf-8',
+                        errors='replace'
+                    )
+                    
+                    # Process all output through enhanced callback
+                    if result.stdout:
+                        self.enhanced_log_callback(result.stdout, "output")
                     if result.stderr:
-                        self.append_terminal_output(f"STDERR: {result.stderr}")
+                        self.enhanced_log_callback(result.stderr, "error")
+                        
                     on_preview_complete(result.returncode == 0, result.returncode)
                 except Exception as e:
-                    self.append_terminal_output(f"Error: {e}\n")
+                    self.append_terminal_output(f"❌ Fallback error: {e}\n", "error")
                     on_preview_complete(False, -1)
             
             threading.Thread(target=run_fallback, daemon=True).start()
@@ -12002,29 +12065,213 @@ class MyScene(Scene):
         return scene_classes[0] if scene_classes else "MyScene"
         
     def find_output_file(self, temp_dir, scene_class, format_ext):
-        """Find rendered output file"""
-        # Common output directories
-        search_dirs = [
-            os.path.join(MEDIA_DIR, "videos", "scene"),
-            os.path.join(MEDIA_DIR, "videos", scene_class)
+        """Find rendered output file - FIXED for correct manim v0.19.0 output structure"""
+        
+        self.append_terminal_output(f"🔍 Searching for output file...\n", "info")
+        self.append_terminal_output(f"   Scene class: {scene_class}\n", "info")
+        self.append_terminal_output(f"   Format: {format_ext}\n", "info")
+        self.append_terminal_output(f"   Temp dir: {temp_dir}\n", "info")
+        
+        # Method 1: Use the path extracted from manim output (most reliable)
+        if hasattr(self, 'last_manim_output_path') and self.last_manim_output_path:
+            if os.path.exists(self.last_manim_output_path):
+                self.append_terminal_output(f"✅ Found via manim log: {self.last_manim_output_path}\n", "success")
+                return self.last_manim_output_path
+            else:
+                self.append_terminal_output(f"⚠️ Manim log path doesn't exist: {self.last_manim_output_path}\n", "warning")
+        
+        # Method 2: Extract temp file prefix for directory name matching
+        temp_file_name = os.path.basename(temp_dir)  # e.g., "preview_1750668520778"
+        self.append_terminal_output(f"   Looking for directories containing: {temp_file_name}\n", "info")
+        
+        # Method 3: Search in probable manim output locations
+        
+        # Strategy A: Current working directory media folder (most common for manim v0.19.0)
+        search_bases = [
+            os.getcwd(),  # Current project directory
+            BASE_DIR,     # Application base directory
+            os.path.dirname(temp_dir),  # Parent of temp directory
+            temp_dir      # Temp directory itself
         ]
         
-        # Add quality-specific directories
-        quality_dirs = ["480p30", "720p30", "1080p60", "2160p60", "4320p60"]
-        for base_dir in search_dirs.copy():
-            for quality_dir in quality_dirs:
-                search_dirs.append(os.path.join(base_dir, quality_dir))
-                
-        # Search for output file
-        for search_dir in search_dirs:
-            if os.path.exists(search_dir):
-                for root, dirs, files in os.walk(search_dir):
-                    for file in files:
-                        if file.endswith(f".{format_ext}") and scene_class in file:
-                            return os.path.join(root, file)
-                            
-        return None
+        self.append_terminal_output(f"🔍 Searching in base directories:\n", "info")
+        for base in search_bases:
+            self.append_terminal_output(f"   - {base}\n", "info")
         
+        # Strategy A1: Look for media/videos/TEMP_NAME/QUALITY/ structure
+        for base_dir in search_bases:
+            media_dir = os.path.join(base_dir, "media", "videos")
+            if os.path.exists(media_dir):
+                self.append_terminal_output(f"📁 Checking media directory: {media_dir}\n", "info")
+                
+                # Look for temp directory name
+                temp_video_dir = os.path.join(media_dir, temp_file_name)
+                if os.path.exists(temp_video_dir):
+                    self.append_terminal_output(f"📁 Found temp video directory: {temp_video_dir}\n", "info")
+                    
+                    # Check quality subdirectories
+                    quality_dirs = ["720p15", "720p30", "480p15", "480p30", "1080p60", "1080p30", "2160p60", "480p", "720p", "1080p", "2160p"]
+                    for quality_dir in quality_dirs:
+                        quality_path = os.path.join(temp_video_dir, quality_dir)
+                        if os.path.exists(quality_path):
+                            self.append_terminal_output(f"📁 Checking quality directory: {quality_path}\n", "info")
+                            
+                            for file in os.listdir(quality_path):
+                                if file.endswith(f".{format_ext}"):
+                                    full_path = os.path.join(quality_path, file)
+                                    self.append_terminal_output(f"✅ Found output file: {full_path}\n", "success")
+                                    return full_path
+        
+        # Strategy B: Search for any directory containing temp_file_name
+        self.append_terminal_output(f"🔍 Searching for any directory containing {temp_file_name}...\n", "info")
+        for base_dir in search_bases:
+            if os.path.exists(base_dir):
+                for root, dirs, files in os.walk(base_dir):
+                    # Check if any directory in the path contains our temp name
+                    if temp_file_name in root:
+                        self.append_terminal_output(f"📁 Found matching directory: {root}\n", "info")
+                        for file in files:
+                            if file.endswith(f".{format_ext}"):
+                                full_path = os.path.join(root, file)
+                                self.append_terminal_output(f"✅ Found output file in matching directory: {full_path}\n", "success")
+                                return full_path
+        
+        # Strategy C: Look for files containing scene class name or temp identifier
+        self.append_terminal_output(f"🔍 Searching for files containing scene class or temp ID...\n", "info")
+        search_patterns = [temp_file_name, scene_class, f"preview_{temp_file_name.split('_')[-1]}"]
+        
+        for base_dir in search_bases:
+            if os.path.exists(base_dir):
+                for root, dirs, files in os.walk(base_dir):
+                    for file in files:
+                        if file.endswith(f".{format_ext}"):
+                            # Check if filename contains any of our search patterns
+                            for pattern in search_patterns:
+                                if pattern in file:
+                                    full_path = os.path.join(root, file)
+                                    self.append_terminal_output(f"✅ Found file with matching pattern '{pattern}': {full_path}\n", "success")
+                                    return full_path
+        
+        # Strategy D: Look for any recent files (last resort)
+        self.append_terminal_output(f"🔍 Looking for recently created {format_ext} files...\n", "info")
+        recent_files = []
+        current_time = time.time()
+        
+        for base_dir in search_bases:
+            if os.path.exists(base_dir):
+                for root, dirs, files in os.walk(base_dir):
+                    for file in files:
+                        if file.endswith(f".{format_ext}"):
+                            full_path = os.path.join(root, file)
+                            try:
+                                mtime = os.path.getmtime(full_path)
+                                age_seconds = current_time - mtime
+                                if age_seconds < 120:  # Created within last 2 minutes
+                                    recent_files.append((mtime, full_path))
+                                    self.append_terminal_output(f"📄 Recent file: {full_path} (age: {age_seconds:.1f}s)\n", "info")
+                            except:
+                                pass
+        
+        if recent_files:
+            # Sort by modification time (newest first)
+            recent_files.sort(reverse=True)
+            most_recent = recent_files[0][1]
+            self.append_terminal_output(f"✅ Using most recent file: {most_recent}\n", "success")
+            return most_recent
+        
+        # All strategies failed
+        self.append_terminal_output(f"❌ No output file found after exhaustive search\n", "error")
+        self.append_terminal_output(f"   Searched for: {format_ext} files\n", "error")
+        self.append_terminal_output(f"   Scene class: {scene_class}\n", "error")
+        self.append_terminal_output(f"   Temp identifier: {temp_file_name}\n", "error")
+        
+        return None
+    def extract_file_path_from_output(self, output_text):
+        """Extract the actual file path from manim output"""
+        import re
+        
+        # Method 1: Look for "File ready at" followed by quoted path
+        file_ready_match = re.search(r"File ready at\s*['\"]([^'\"]+)['\"]", output_text, re.MULTILINE | re.DOTALL)
+        if file_ready_match:
+            path = file_ready_match.group(1).strip()
+            if os.path.exists(path):
+                self.last_manim_output_path = path
+                return path
+        
+        # Method 2: Look for multi-line file path (manim sometimes splits long paths)
+        lines = output_text.split('\n')
+        collecting_path = False
+        path_parts = []
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            
+            # Start collecting when we see "File ready at"
+            if "File ready at" in line:
+                collecting_path = True
+                # Check if path starts on the same line
+                remaining_line = line.split("File ready at")[-1].strip()
+                if remaining_line:
+                    if remaining_line.startswith("'") or remaining_line.startswith('"'):
+                        path_parts = [remaining_line[1:]]  # Remove opening quote
+                    else:
+                        path_parts = [remaining_line]
+                continue
+            
+            # If we're collecting and this line has content
+            if collecting_path and line:
+                # Check for closing quote
+                if line.endswith("'") or line.endswith('"'):
+                    path_parts.append(line[:-1])  # Remove closing quote
+                    full_path = "".join(path_parts).strip()
+                    
+                    # Clean up the path
+                    full_path = full_path.replace("\\", os.sep).replace("/", os.sep)
+                    
+                    if os.path.exists(full_path):
+                        self.last_manim_output_path = full_path
+                        return full_path
+                    
+                    collecting_path = False
+                    path_parts = []
+                else:
+                    path_parts.append(line)
+                    
+                # Stop collecting after too many lines (avoid infinite collection)
+                if len(path_parts) > 10:
+                    collecting_path = False
+                    path_parts = []
+        
+        # Method 3: Look for any path-like strings in the output
+        path_patterns = [
+            r"([C-Z]:[\\\/](?:[^\\\/\n\r]+[\\\/])*[^\\\/\n\r]*\.mp4)",  # Windows paths
+            r"(\/(?:[^\/\n\r]+\/)*[^\/\n\r]*\.mp4)",  # Unix paths
+        ]
+        
+        for pattern in path_patterns:
+            matches = re.findall(pattern, output_text, re.MULTILINE)
+            for match in matches:
+                if os.path.exists(match):
+                    self.last_manim_output_path = match
+                    return match
+        
+        return None
+
+# ==============================================================================
+# Step 4: Add this enhanced log callback method
+# ==============================================================================
+
+    def enhanced_log_callback(self, text, msg_type="output"):
+        """Enhanced log callback that also parses manim output for file paths"""
+        # Call the original append_terminal_output
+        self.append_terminal_output(text, msg_type)
+        
+        # Try to extract file path from this output
+        if any(keyword in text for keyword in ["File ready at", ".mp4", ".mov", ".gif"]):
+            file_path = self.extract_file_path_from_output(text)
+            if file_path:
+                self.append_terminal_output(f"📁 Extracted output path: {file_path}\n", "info")
+
     def save_rendered_file(self, source_file, format_ext):
         """Save rendered file to user location"""
         # Ask user where to save
