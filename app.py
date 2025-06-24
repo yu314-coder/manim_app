@@ -70,7 +70,14 @@ except Exception:
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 os.environ['PYTHONLEGACYWINDOWSFSENCODING'] = '0'
 # Add this to the top of app.py after the imports section
-
+# ADD THIS RIGHT AFTER YOUR IMPORTS
+try:
+    import bundled_env_loader
+    print("📦 Using bundled environment")
+    USING_BUNDLED_ENV = True
+except ImportError:
+    print("🐍 Using standard environment")
+    USING_BUNDLED_ENV = False
 def get_executable_directory():
     """Get the directory where the executable is located"""
     if getattr(sys, 'frozen', False):
@@ -3583,7 +3590,10 @@ class VirtualEnvironmentManager:
     def __init__(self, parent_app=None):
         self.parent_app = parent_app
         self.logger = logging.getLogger(__name__)
-        
+        # ADD THIS CHECK
+        if USING_BUNDLED_ENV:
+            self.setup_bundled_environment()
+            return  # Exit early, don't do normal setup
         # Environment paths and configuration
         self.base_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
         self.app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
@@ -4984,7 +4994,19 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             import traceback
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             return self.use_system_python_fallback()
+    
     def check_environment_status(self, log_callback=None):
+        """Check environment status - bundled or virtual"""
+        
+        if USING_BUNDLED_ENV:
+            if log_callback:
+                log_callback("✅ Using bundled environment - ready to go!")
+            return True
+        else:
+            # Use existing check_environment_status logic
+            return self.original_check_environment_status(log_callback)
+
+    def original_check_environment_status(self, log_callback=None):
         """Check virtual environment status without strict manim testing"""
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
         
@@ -5011,6 +5033,56 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
         if log_callback:
             log_callback("✅ Environment validation successful (skipped import tests)")
         return True
+
+    def setup_bundled_environment(self):
+        """Set up bundled environment paths"""
+        print("🔧 Setting up bundled environment...")
+        
+        if getattr(sys, 'frozen', False):
+            app_dir = Path(sys.executable).parent
+        else:
+            app_dir = Path(__file__).parent
+        
+        venv_bundle = app_dir / "venv_bundle"
+        
+        if venv_bundle.exists():
+            # Set up all the paths
+            if os.name == 'nt':
+                self.python_path = str(venv_bundle / "Scripts" / "python.exe")
+                self.pip_path = str(venv_bundle / "Scripts" / "pip.exe")
+            else:
+                self.python_path = str(venv_bundle / "bin" / "python")
+                self.pip_path = str(venv_bundle / "bin" / "pip")
+            
+            # Set state variables
+            self.current_venv = "bundled_environment"
+            self.needs_setup = False
+            self.using_fallback = False
+            self.is_frozen = True
+            
+            # Initialize other required attributes that your existing code expects
+            self.base_dir = str(app_dir)
+            self.app_dir = str(app_dir)
+            self.venv_dir = str(venv_bundle.parent)
+            self.bundled_venv_dir = None
+            self.bundled_available = False
+            
+            # Essential packages list (empty since everything is bundled)
+            self.essential_packages = []
+            
+            # Set up logging if not already done
+            if not hasattr(self, 'logger'):
+                self.logger = logging.getLogger(__name__)
+            
+            print(f"✅ Bundled environment ready: {venv_bundle}")
+            
+            # Make sure directories exist
+            os.makedirs(self.app_dir, exist_ok=True)
+            
+        else:
+            print("❌ Bundled environment not found, falling back...")
+            # Fall back to normal initialization
+            self._initialize_environment()
     def _setup_environment_after_creation(self, venv_path):
         """Set up environment after creation"""
         if os.name == 'nt':
