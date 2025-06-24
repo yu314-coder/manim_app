@@ -82,13 +82,16 @@ def bundle_complete_environment(args):
         total_files = 0
         for item in source_site_packages.iterdir():
             if any(pkg.lower() in item.name.lower() for pkg in critical_packages):
-                if item.is_dir():
-                    shutil.copytree(item, dest_site_packages / item.name, ignore_errors=True)
-                else:
-                    shutil.copy2(item, dest_site_packages / item.name)
-                file_count = sum(1 for _ in (dest_site_packages / item.name).rglob('*') if _.is_file()) if item.is_dir() else 1
-                total_files += file_count
-                print(f"   📂 {item.name}: {file_count} files")
+                try:
+                    if item.is_dir():
+                        shutil.copytree(item, dest_site_packages / item.name)
+                    else:
+                        shutil.copy2(item, dest_site_packages / item.name)
+                    file_count = sum(1 for _ in (dest_site_packages / item.name).rglob('*') if _.is_file()) if item.is_dir() else 1
+                    total_files += file_count
+                    print(f"   📂 {item.name}: {file_count} files")
+                except Exception as e:
+                    print(f"   ⚠️ Warning: Could not copy {item.name}: {e}")
     else:
         # Full bundle
         essential_dirs = ["Lib/site-packages", "Scripts", "Include"]
@@ -100,36 +103,45 @@ def bundle_complete_environment(args):
                 dest_dir = bundle_dir / dir_name
                 print(f"📂 Copying {dir_name}...")
                 
-                if args.turbo:
-                    # Fast copy - ignore some non-essential files
-                    def ignore_patterns(dir, files):
-                        ignore = []
-                        for file in files:
-                            if file.endswith(('.pyc', '.pyo', '__pycache__', '.dist-info')):
-                                ignore.append(file)
-                        return ignore
+                try:
+                    if args.turbo:
+                        # Fast copy - ignore some non-essential files
+                        def ignore_patterns(dir, files):
+                            ignore = []
+                            for file in files:
+                                if file.endswith(('.pyc', '.pyo', '__pycache__', '.dist-info')):
+                                    ignore.append(file)
+                            return ignore
+                        
+                        shutil.copytree(source_dir, dest_dir, ignore=ignore_patterns)
+                    else:
+                        shutil.copytree(source_dir, dest_dir)
                     
-                    shutil.copytree(source_dir, dest_dir, ignore=ignore_patterns, ignore_errors=True)
-                else:
-                    shutil.copytree(source_dir, dest_dir, ignore_errors=True)
-                
-                file_count = sum(1 for _ in dest_dir.rglob('*') if _.is_file())
-                total_files += file_count
-                print(f"   ✅ {file_count} files copied")
+                    file_count = sum(1 for _ in dest_dir.rglob('*') if _.is_file())
+                    total_files += file_count
+                    print(f"   ✅ {file_count} files copied")
+                except Exception as e:
+                    print(f"   ⚠️ Warning: Could not copy {dir_name}: {e}")
     
-    # Copy Scripts directory for executables
+    # Copy Scripts directory for executable
     scripts_source = current_venv / "Scripts"
     if scripts_source.exists() and not (bundle_dir / "Scripts").exists():
         scripts_dest = bundle_dir / "Scripts"
-        shutil.copytree(scripts_source, scripts_dest, ignore_errors=True)
-        script_files = sum(1 for _ in scripts_dest.rglob('*') if _.is_file())
-        total_files += script_files
-        print(f"📂 Scripts: {script_files} files")
+        try:
+            shutil.copytree(scripts_source, scripts_dest)
+            script_files = sum(1 for _ in scripts_dest.rglob('*') if _.is_file())
+            total_files += script_files
+            print(f"📂 Scripts: {script_files} files")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not copy Scripts directory: {e}")
     
     # Copy pyvenv.cfg
     pyvenv_cfg = current_venv / "pyvenv.cfg"
     if pyvenv_cfg.exists():
-        shutil.copy2(pyvenv_cfg, bundle_dir / "pyvenv.cfg")
+        try:
+            shutil.copy2(pyvenv_cfg, bundle_dir / "pyvenv.cfg")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not copy pyvenv.cfg: {e}")
     
     # Create manifest
     manifest = {
@@ -149,8 +161,7 @@ def bundle_complete_environment(args):
 
 def create_environment_loader():
     """Create bundled environment loader script"""
-    loader_content = '''
-import os
+    loader_content = '''import os
 import sys
 from pathlib import Path
 
@@ -164,22 +175,39 @@ def setup_bundled_environment():
     venv_bundle = app_dir / "venv_bundle"
     
     if not venv_bundle.exists():
+        print("❌ venv_bundle directory not found")
         return False
     
     site_packages = venv_bundle / "Lib" / "site-packages"
     scripts_dir = venv_bundle / "Scripts"
     
+    print(f"📦 Setting up bundled environment from: {venv_bundle}")
+    
     if site_packages.exists():
+        # Add to Python path at the beginning
         sys.path.insert(0, str(site_packages))
-        os.environ['PYTHONPATH'] = str(site_packages) + os.pathsep + os.environ.get('PYTHONPATH', '')
+        print(f"✅ Added to Python path: {site_packages}")
+        
+        # Set PYTHONPATH environment variable
+        current_pythonpath = os.environ.get('PYTHONPATH', '')
+        if current_pythonpath:
+            os.environ['PYTHONPATH'] = str(site_packages) + os.pathsep + current_pythonpath
+        else:
+            os.environ['PYTHONPATH'] = str(site_packages)
     
     if scripts_dir.exists():
+        # Add scripts directory to PATH
         current_path = os.environ.get('PATH', '')
         os.environ['PATH'] = str(scripts_dir) + os.pathsep + current_path
+        print(f"✅ Added to PATH: {scripts_dir}")
     
+    # Set virtual environment variable
     os.environ['VIRTUAL_ENV'] = str(venv_bundle)
+    print(f"✅ Set VIRTUAL_ENV: {venv_bundle}")
+    
     return True
 
+# Automatically set up when imported (but not when running as main)
 if __name__ != "__main__":
     setup_bundled_environment()
 '''
@@ -444,11 +472,13 @@ Examples:
         print("✅ Includes all required packages and DLLs")
         print("✅ No runtime installation needed")
         print("✅ Should work on fresh computers")
+        print("✅ Portable - extract bundled environment next to exe")
         
         print(f"\n🧪 Testing instructions:")
         print("1. Copy dist/app.exe to a fresh computer")
         print("2. Run app.exe directly")
-        print("3. Should start without 3221225477 errors")
+        print("3. Environment will extract next to app.exe on first run")
+        print("4. Should start without 3221225477 errors")
         
         if args.turbo:
             print("\n⚠️ Note: Turbo builds are larger but faster to compile")
