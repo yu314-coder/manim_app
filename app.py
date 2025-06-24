@@ -86,7 +86,49 @@ def get_executable_directory():
     else:
         # Running as script
         return os.path.dirname(os.path.abspath(__file__))
+# Add this near the top of your app.py, after BASE_DIR is defined
 
+def setup_portable_logging():
+    """Set up logging to go next to the app.exe for portability"""
+    
+    # Determine where to put logs - next to executable for portability
+    if getattr(sys, 'frozen', False):
+        # Running as executable - logs next to app.exe
+        log_dir = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        # Running as script - logs next to script
+        log_dir = BASE_DIR
+    
+    # Create logs directory next to executable
+    logs_dir = os.path.join(log_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    # Set up log file paths
+    main_log = os.path.join(logs_dir, "manim_studio.log")
+    debug_log = os.path.join(logs_dir, "debug.log")
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(main_log, encoding='utf-8'),
+            logging.FileHandler(debug_log, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    # Log the setup
+    logger = logging.getLogger(__name__)
+    logger.info(f"📁 Portable logging initialized")
+    logger.info(f"   Log directory: {logs_dir}")
+    logger.info(f"   Main log: {main_log}")
+    logger.info(f"   Debug log: {debug_log}")
+    
+    return logs_dir
+
+# Call this early in your app initialization
+LOGS_DIR = setup_portable_logging()
 def run_subprocess_safe(command, **kwargs):
     """Enhanced subprocess runner for onefile executables"""
     if getattr(sys, 'frozen', False):
@@ -3590,10 +3632,15 @@ class VirtualEnvironmentManager:
     def __init__(self, parent_app=None):
         self.parent_app = parent_app
         self.logger = logging.getLogger(__name__)
-        # ADD THIS CHECK
+        
+        # Check for bundled environment first
         if USING_BUNDLED_ENV:
+            print("📦 Detected bundled environment")
             self.setup_bundled_environment()
             return  # Exit early, don't do normal setup
+        
+        # Normal initialization for non-bundled environments
+        print("🐍 Using standard environment setup")
         # Environment paths and configuration
         self.base_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
         self.app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
@@ -3714,47 +3761,119 @@ class VirtualEnvironmentManager:
         return False
 
     def get_venv_info(self, venv_name):
-        """Return basic information about a named environment."""
-        if venv_name.startswith("system_") or venv_name.startswith("current_"):
-            return {
+        """Get detailed information about a virtual environment (portable version)"""
+        # Handle bundled environment case (portable mode)
+        if USING_BUNDLED_ENV and venv_name == "manim_studio_default":
+            # In portable mode, environment is next to app.exe
+            if getattr(sys, 'frozen', False):
+                app_dir = Path(sys.executable).parent
+            else:
+                app_dir = Path(__file__).parent
+            
+            venv_path = app_dir / "manim_studio_default"
+            
+            info = {
                 'name': venv_name,
-                'path': sys.prefix,
-                'is_active': venv_name == self.current_venv,
-                'python_version': f"Python {sys.version.split()[0]}",
+                'path': str(venv_path),
+                'python_version': "Bundled Python",
+                'is_active': self.current_venv == venv_name,
                 'packages_count': 0,
                 'size': 0,
+                'is_bundled': True,  # Mark as bundled
+                'is_portable': True  # Mark as portable
             }
-
-        env_path = os.path.join(self.venv_dir, venv_name)
+            
+            # Get Python version if available
+            python_exe = venv_path / "Scripts" / "python.exe" if os.name == 'nt' else venv_path / "bin" / "python"
+            if python_exe.exists():
+                try:
+                    result = subprocess.run([str(python_exe), "--version"], capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        info['python_version'] = result.stdout.strip() + " (Portable)"
+                except:
+                    pass
+            
+            # Count packages
+            try:
+                if os.name == 'nt':
+                    site_packages = venv_path / "Lib" / "site-packages"
+                else:
+                    # Find site-packages directory
+                    lib_dirs = list((venv_path / "lib").glob("python*"))
+                    site_packages = lib_dirs[0] / "site-packages" if lib_dirs else None
+                
+                if site_packages and site_packages.exists():
+                    packages = [item for item in site_packages.iterdir() 
+                              if item.is_dir() and not item.name.startswith('.') 
+                              and not item.name.endswith('.dist-info')]
+                    info['packages_count'] = f"{len(packages)} (bundled)"
+            except:
+                info['packages_count'] = "Many (bundled)"
+            
+            # Get directory size
+            try:
+                total_size = sum(f.stat().st_size for f in venv_path.rglob('*') if f.is_file())
+                info['size'] = total_size
+            except:
+                info['size'] = 0
+            
+            return info
+        
+        # Normal environment handling (existing code)
         info = {
             'name': venv_name,
-            'path': env_path,
-            'is_active': venv_name == self.current_venv,
-            'python_version': None,
+            'path': '',
+            'python_version': '',
+            'is_active': self.current_venv == venv_name,
             'packages_count': 0,
             'size': 0,
+            'is_bundled': False,
+            'is_portable': False
         }
-        python_exe = os.path.join(env_path, "Scripts", "python.exe") if os.name == "nt" else os.path.join(env_path, "bin", "python")
-        pip_exe = os.path.join(env_path, "Scripts", "pip.exe") if os.name == "nt" else os.path.join(env_path, "bin", "pip")
+        
+        # Handle special environments
+        if venv_name.startswith("system_"):
+            info['path'] = "System Python"
+            info['python_version'] = sys.version.split()[0]
+            return info
+        elif venv_name.startswith("current_"):
+            info['path'] = "Current Python"
+            info['python_version'] = sys.version.split()[0]
+            return info
+        
+        # Regular virtual environment
+        venv_path = os.path.join(self.venv_dir, venv_name)
+        info['path'] = venv_path
+        
+        if not os.path.exists(venv_path):
+            return info
+        
         try:
+            # Get Python version
+            if os.name == 'nt':
+                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                site_packages = os.path.join(venv_path, "Lib", "site-packages")
+            else:
+                python_exe = os.path.join(venv_path, "bin", "python")
+                site_packages = os.path.join(venv_path, "lib", "python*/site-packages")
+            
             if os.path.exists(python_exe):
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    [python_exe, "--version"], capture_output=True, text=True, timeout=10
-                )
+                result = subprocess.run([python_exe, "--version"], capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     info['python_version'] = result.stdout.strip()
-            if os.path.exists(pip_exe):
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    [pip_exe, "list", "--format=json"], capture_output=True, text=True, timeout=15
-                )
-                if result.returncode == 0:
-                    try:
-                        import json
-                        info['packages_count'] = len(json.loads(result.stdout))
-                    except Exception:
-                        info['packages_count'] = 0
+            
+            # Count packages
+            if os.name == 'nt' and os.path.exists(site_packages):
+                info['packages_count'] = len([item for item in os.listdir(site_packages) if not item.startswith('.') and not item.endswith('.dist-info')])
+            else:
+                import glob
+                site_dirs = glob.glob(os.path.join(venv_path, "lib", "python*", "site-packages"))
+                if site_dirs:
+                    info['packages_count'] = len([item for item in os.listdir(site_dirs[0]) if not item.startswith('.') and not item.endswith('.dist-info')])
+            
+            # Get directory size
             total_size = 0
-            for dirpath, _, filenames in os.walk(env_path):
+            for dirpath, dirnames, filenames in os.walk(venv_path):
                 for fname in filenames:
                     fpath = os.path.join(dirpath, fname)
                     try:
@@ -3765,6 +3884,7 @@ class VirtualEnvironmentManager:
         except Exception as e:
             self.logger.error(f"Error getting venv info for {venv_name}: {e}")
         return info
+
 
     def show_setup_dialog(self):
         """Show environment setup dialog"""
@@ -3902,7 +4022,13 @@ class VirtualEnvironmentManager:
             
         return False
     def setup_environment(self, log_callback=None):
-        """Main setup method - creates and configures everything"""
+        """Main setup method - handle bundled vs normal environment"""
+        if USING_BUNDLED_ENV:
+            if log_callback:
+                log_callback("📦 Using bundled environment - no setup needed!")
+            return True
+        
+        # Original setup logic for non-bundled environments
         self.logger.info("Starting environment setup...")
         
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
@@ -3985,7 +4111,6 @@ class VirtualEnvironmentManager:
         self.logger.info("✅ Environment setup completed successfully!")
         self.needs_setup = False
         return True
-    
     def check_missing_packages(self):
         """Check which essential packages are missing from the current environment"""
         missing = []
@@ -5035,54 +5160,85 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
         return True
 
     def setup_bundled_environment(self):
-        """Set up bundled environment paths"""
-        print("🔧 Setting up bundled environment...")
+        """Set up bundled environment - Extract next to app.exe for portability"""
+        print("🔧 Setting up portable bundled environment...")
         
         if getattr(sys, 'frozen', False):
+            # Running as executable - extract next to app.exe
             app_dir = Path(sys.executable).parent
         else:
+            # Running as script - extract next to script
             app_dir = Path(__file__).parent
         
         venv_bundle = app_dir / "venv_bundle"
         
-        if venv_bundle.exists():
-            # Set up all the paths
-            if os.name == 'nt':
-                self.python_path = str(venv_bundle / "Scripts" / "python.exe")
-                self.pip_path = str(venv_bundle / "Scripts" / "pip.exe")
-            else:
-                self.python_path = str(venv_bundle / "bin" / "python")
-                self.pip_path = str(venv_bundle / "bin" / "pip")
-            
-            # Set state variables
-            self.current_venv = "bundled_environment"
-            self.needs_setup = False
-            self.using_fallback = False
-            self.is_frozen = True
-            
-            # Initialize other required attributes that your existing code expects
-            self.base_dir = str(app_dir)
-            self.app_dir = str(app_dir)
-            self.venv_dir = str(venv_bundle.parent)
-            self.bundled_venv_dir = None
-            self.bundled_available = False
-            
-            # Essential packages list (empty since everything is bundled)
-            self.essential_packages = []
-            
-            # Set up logging if not already done
-            if not hasattr(self, 'logger'):
-                self.logger = logging.getLogger(__name__)
-            
-            print(f"✅ Bundled environment ready: {venv_bundle}")
-            
-            # Make sure directories exist
-            os.makedirs(self.app_dir, exist_ok=True)
-            
-        else:
-            print("❌ Bundled environment not found, falling back...")
-            # Fall back to normal initialization
+        if not venv_bundle.exists():
+            print("❌ venv_bundle not found, falling back to normal setup")
             self._initialize_environment()
+            return
+        
+        # Target location: NEXT TO APP.EXE (portable setup)
+        target_venv = app_dir / "manim_studio_default"
+        
+        print(f"📁 Extracting bundled environment to: {target_venv}")
+        print(f"🚀 Portable mode: Everything stays with app.exe")
+        
+        # Remove existing environment if it exists
+        if target_venv.exists():
+            print("🗑️ Removing existing environment...")
+            shutil.rmtree(target_venv, ignore_errors=True)
+        
+        # Copy bundled environment to target location
+        try:
+            print("📦 Copying bundled environment...")
+            shutil.copytree(venv_bundle, target_venv)
+            print("✅ Bundled environment extracted successfully!")
+        except Exception as e:
+            print(f"❌ Failed to extract bundled environment: {e}")
+            self._initialize_environment()
+            return
+        
+        # Set up paths to the extracted environment
+        if os.name == 'nt':
+            self.python_path = str(target_venv / "Scripts" / "python.exe")
+            self.pip_path = str(target_venv / "Scripts" / "pip.exe")
+        else:
+            self.python_path = str(target_venv / "bin" / "python")
+            self.pip_path = str(target_venv / "bin" / "pip")
+        
+        # Verify extraction worked
+        if not os.path.exists(self.python_path):
+            print(f"❌ Python executable not found at: {self.python_path}")
+            self._initialize_environment()
+            return
+        
+        # Set up all paths for PORTABLE MODE - everything next to exe
+        self.app_dir = str(app_dir)  # Next to app.exe
+        self.venv_dir = str(app_dir)  # Environments next to app.exe
+        self.base_dir = str(app_dir)
+        
+        # Set up state
+        self.current_venv = "manim_studio_default"
+        self.needs_setup = False  # No setup needed - everything is bundled!
+        self.using_fallback = False
+        self.is_frozen = True
+        self.bundled_venv_dir = None
+        self.bundled_available = False
+        
+        # Essential packages list (empty since everything is bundled)
+        self.essential_packages = []
+        
+        # Set up logging if not already done
+        if not hasattr(self, 'logger'):
+            self.logger = logging.getLogger(__name__)
+        
+        print(f"✅ Portable bundled environment ready!")
+        print(f"   📁 App directory: {self.app_dir}")
+        print(f"   🐍 Python: {self.python_path}")
+        print(f"   📦 Environment: {target_venv}")
+        print("🚀 Ready to use - no package installation needed!")
+        print("📁 Everything is portable - copy the whole folder to move the app!")
+    
     def _setup_environment_after_creation(self, venv_path):
         """Set up environment after creation"""
         if os.name == 'nt':
@@ -5183,15 +5339,30 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             return False
     
     def list_venvs(self):
-        """List all available virtual environments"""
+        """List all available virtual environments (portable version)"""
         venvs = []
         
         # Add current environment if it's special
         if self.current_venv and self.current_venv.startswith(("system_", "current_")):
             venvs.append(self.current_venv)
         
-        # Add regular virtual environments
-        if os.path.exists(self.venv_dir):
+        # Handle bundled/portable environment
+        if USING_BUNDLED_ENV:
+            # In portable mode, check for environment next to app.exe
+            if getattr(sys, 'frozen', False):
+                app_dir = Path(sys.executable).parent
+            else:
+                app_dir = Path(__file__).parent
+            
+            bundled_env = app_dir / "manim_studio_default"
+            if bundled_env.exists() and self.is_valid_venv(str(bundled_env)):
+                venvs.append("manim_studio_default")
+            
+            # Don't look in the standard venv_dir for bundled apps
+            return sorted(venvs)
+        
+        # Regular virtual environments (non-bundled mode)
+        if hasattr(self, 'venv_dir') and os.path.exists(self.venv_dir):
             for item in os.listdir(self.venv_dir):
                 venv_path = os.path.join(self.venv_dir, item)
                 if os.path.isdir(venv_path) and self.is_valid_venv(venv_path):
@@ -5229,29 +5400,44 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             return True
         return False
     def activate_default_environment(self):
-        """Activate the manim_studio_default environment"""
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        """Activate the manim_studio_default environment (portable version)"""
         
-        if not os.path.exists(default_venv_path):
-            self.logger.error("manim_studio_default environment not found")
+        # Handle bundled/portable environment
+        if USING_BUNDLED_ENV:
+            # In portable mode, environment is next to app.exe
+            if getattr(sys, 'frozen', False):
+                app_dir = Path(sys.executable).parent
+            else:
+                app_dir = Path(__file__).parent
+            
+            default_venv_path = app_dir / "manim_studio_default"
+        else:
+            # Regular mode - environment in standard location
+            default_venv_path = Path(self.venv_dir) / "manim_studio_default"
+        
+        if not default_venv_path.exists():
+            self.logger.error(f"manim_studio_default environment not found at: {default_venv_path}")
             return False
             
-        if not self.is_valid_venv(default_venv_path):
+        if not self.is_valid_venv(str(default_venv_path)):
             self.logger.error("manim_studio_default environment is invalid")
             return False
         
         # Set up paths
         if os.name == 'nt':
-            self.python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
-            self.pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+            self.python_path = str(default_venv_path / "Scripts" / "python.exe")
+            self.pip_path = str(default_venv_path / "Scripts" / "pip.exe")
         else:
-            self.python_path = os.path.join(default_venv_path, "bin", "python")
-            self.pip_path = os.path.join(default_venv_path, "bin", "pip")
+            self.python_path = str(default_venv_path / "bin" / "python")
+            self.pip_path = str(default_venv_path / "bin" / "pip")
         
         self.current_venv = "manim_studio_default"
         self.needs_setup = False
         
-        self.logger.info("Successfully activated manim_studio_default environment")
+        if USING_BUNDLED_ENV:
+            self.logger.info(f"✅ Activated portable bundled environment: {default_venv_path}")
+        else:
+            self.logger.info(f"✅ Activated manim_studio_default environment: {default_venv_path}")
         return True
     def deactivate_venv(self):
         """Deactivate the current virtual environment"""
