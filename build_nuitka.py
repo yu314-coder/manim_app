@@ -85,61 +85,66 @@ def find_best_python_source():
     return current_dir.parent
 
 def copy_with_fallback(source, dest, fallback_search_name=None):
-    """Copy file with fallback search if source doesn't exist"""
-    if source.exists():
+    """Copy file with extensive fallback search if source doesn't exist"""
+    if source and source.exists():
         try:
             shutil.copy2(source, dest)
             return True
         except Exception as e:
             print(f"❌ Copy failed: {e}")
-    
+
     if fallback_search_name:
         print(f"🔍 Searching system for {fallback_search_name}...")
-        
-        # Search common locations
-        search_locations = [
+
+        # Common search locations
+        search_locations = {
             Path("C:/Windows/System32"),
             Path("C:/Windows/SysWOW64"),
             Path(sys.executable).parent,
             Path(sys.prefix),
             Path(sys.prefix) / "Scripts",
             Path(sys.prefix) / "DLLs",
-        ]
-        
-        # Add all Python installations
-        python_installs = find_python_installations()
-        for install in python_installs:
-            search_locations.extend([
+        }
+
+        # Python installations
+        for install in find_python_installations():
+            search_locations.update({
                 install,
                 install / "Scripts",
                 install / "DLLs",
-                install.parent / "DLLs"
-            ])
-        
-        # Search PATH directories
-        path_env = os.environ.get('PATH', '')
-        for path_dir in path_env.split(os.pathsep):
-            search_locations.append(Path(path_dir))
-        
-        # Remove duplicates
-        search_locations = list(set(search_locations))
-        
+                install.parent / "DLLs",
+            })
+
+        # PATH directories
+        for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+            if path_dir:
+                search_locations.add(Path(path_dir))
+
+        # Additional Program Files locations
+        if os.name == "nt":
+            for env_var in ["ProgramFiles", "ProgramFiles(x86)"]:
+                pf = os.environ.get(env_var)
+                if pf:
+                    search_locations.add(Path(pf))
+
+        # Perform case-insensitive search
+        target_lower = fallback_search_name.lower()
         for location in search_locations:
             try:
                 if location.exists():
-                    for found_file in location.rglob(fallback_search_name):
-                        if found_file.is_file():
+                    for found in location.rglob("*"):
+                        if found.is_file() and found.name.lower() == target_lower:
                             try:
-                                shutil.copy2(found_file, dest)
-                                print(f"✅ Found and copied {fallback_search_name} from: {found_file}")
+                                shutil.copy2(found, dest)
+                                print(f"✅ Found and copied {fallback_search_name} from: {found}")
                                 return True
-                            except Exception as e:
+                            except Exception:
                                 continue
-            except:
+            except Exception:
                 continue
-        
+
         print(f"❌ Could not find {fallback_search_name} anywhere on system")
-    
+
     return False
     """Check if build environment is ready"""
     print("🔍 Checking build environment...")
@@ -233,7 +238,7 @@ def bundle_complete_environment(args):
     total_files = 0
     
     # Step 2: Copy site-packages (most critical)
-    print("\n📦 Step 1: Copying Python packages...")
+    print("\n📦 Step 2: Copying Python packages...")
     source_site_packages = None
     possible_site_packages = [
         source_python / "Lib" / "site-packages",
@@ -289,8 +294,33 @@ def bundle_complete_environment(args):
         print("❌ No site-packages directory found!")
         return None
     
-    # Step 3: Copy and find Python executables
-    print("\n🐍 Step 2: Setting up Python executables...")
+    # Step 3: Copy Python standard library (excluding site-packages)
+    print("\n📚 Step 3: Copying Python standard library...")
+    source_stdlib = source_python / "Lib"
+    dest_stdlib = bundle_dir / "Lib"
+
+    if source_stdlib.exists():
+        try:
+            for item in source_stdlib.iterdir():
+                if item.name == "site-packages":
+                    continue
+                dest_path = dest_stdlib / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(item, dest_path)
+            stdlib_count = sum(1 for _ in dest_stdlib.rglob('*') if _.is_file())
+            total_files += stdlib_count
+            print(f"✅ Copied standard library: {stdlib_count} files")
+        except Exception as e:
+            print(f"❌ Failed to copy standard library: {e}")
+            return None
+    else:
+        print("❌ Standard library not found!")
+        return None
+
+    # Step 4: Copy and find Python executables
+    print("\n🐍 Step 4: Setting up Python executables...")
     scripts_dest = bundle_dir / "Scripts"
     
     # Copy Scripts directory if it exists
@@ -355,8 +385,8 @@ def bundle_complete_environment(args):
         except Exception as e:
             print(f"⚠️ Could not create python3.exe: {e}")
     
-    # Step 4: Copy DLLs and runtime files
-    print("\n📚 Step 3: Copying runtime libraries...")
+    # Step 5: Copy DLLs and runtime files
+    print("\n📚 Step 5: Copying runtime libraries...")
     
     # Copy DLLs directory if it exists
     source_dlls = source_python / "DLLs"
@@ -388,8 +418,8 @@ def bundle_complete_environment(args):
                 print(f"✅ Found critical DLL: {dll_name}")
                 total_files += 1
     
-    # Step 5: Copy configuration files
-    print("\n⚙️ Step 4: Copying configuration...")
+    # Step 6: Copy configuration files
+    print("\n⚙️ Step 6: Copying configuration...")
     
     # Copy pyvenv.cfg
     source_cfg = source_python / "pyvenv.cfg"
@@ -869,22 +899,30 @@ def setup_bundled_environment():
         print("ERROR: venv_bundle directory not found")
         return False
     
-    site_packages = venv_bundle / "Lib" / "site-packages"
+    stdlib_dir = venv_bundle / "Lib"
+    site_packages = stdlib_dir / "site-packages"
     scripts_dir = venv_bundle / "Scripts"
     
     print(f"Setting up bundled environment from: {venv_bundle}")
     
+    if stdlib_dir.exists():
+        sys.path.insert(0, str(stdlib_dir))
+        print(f"Added to Python path: {stdlib_dir}")
+
     if site_packages.exists():
-        # Add to Python path at the beginning
+        # Add to Python path after stdlib
         sys.path.insert(0, str(site_packages))
         print(f"Added to Python path: {site_packages}")
         
         # Set PYTHONPATH environment variable
         current_pythonpath = os.environ.get('PYTHONPATH', '')
+        new_paths = str(site_packages)
+        if stdlib_dir.exists():
+            new_paths = str(stdlib_dir) + os.pathsep + new_paths
         if current_pythonpath:
-            os.environ['PYTHONPATH'] = str(site_packages) + os.pathsep + current_pythonpath
+            os.environ['PYTHONPATH'] = new_paths + os.pathsep + current_pythonpath
         else:
-            os.environ['PYTHONPATH'] = str(site_packages)
+            os.environ['PYTHONPATH'] = new_paths
     
     if scripts_dir.exists():
         # Add scripts directory to PATH
@@ -922,6 +960,7 @@ def build_executable(args):
     print(f"\n🔍 Final bundle validation...")
     required_components = [
         ("Scripts/python.exe", "Python executable"),
+        ("Lib", "Python standard library"),
         ("Lib/site-packages", "Python packages"),
         ("pyvenv.cfg", "Virtual environment config")
     ]
@@ -1026,22 +1065,7 @@ def build_executable(args):
     
     print(f"📦 Including bundle: {bundle_dir_abs} -> venv_bundle")
     
-    # Package inclusion
-    if args.minimal:
-        # Minimal package inclusion
-        critical_packages = ["numpy", "cv2", "PIL", "cairo", "manim", "customtkinter", "tkinter"]
-    else:
-        # Full package inclusion
-        critical_packages = [
-            "numpy", "cv2", "PIL", "cairo", "manim", "moderngl", 
-            "customtkinter", "jedi", "matplotlib", "tkinter"
-        ]
-    
-    for package in critical_packages:
-        cmd.extend([
-            f"--include-package={package}",
-            f"--include-package-data={package}"
-        ])
+    # Do not compile packages directly - they are provided in venv_bundle
     
     # Core modules
     core_modules = [

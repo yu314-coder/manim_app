@@ -5191,7 +5191,7 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
         # Copy bundled environment to target location
         try:
             print("📦 Copying bundled environment...")
-            shutil.copytree(venv_bundle, target_venv)
+            shutil.copytree(venv_bundle, target_venv, dirs_exist_ok=True)
             print("✅ Bundled environment extracted successfully!")
         except Exception as e:
             print(f"❌ Failed to extract bundled environment: {e}")
