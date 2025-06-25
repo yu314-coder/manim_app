@@ -85,61 +85,66 @@ def find_best_python_source():
     return current_dir.parent
 
 def copy_with_fallback(source, dest, fallback_search_name=None):
-    """Copy file with fallback search if source doesn't exist"""
-    if source.exists():
+    """Copy file with extensive fallback search if source doesn't exist"""
+    if source and source.exists():
         try:
             shutil.copy2(source, dest)
             return True
         except Exception as e:
             print(f"❌ Copy failed: {e}")
-    
+
     if fallback_search_name:
         print(f"🔍 Searching system for {fallback_search_name}...")
-        
-        # Search common locations
-        search_locations = [
+
+        # Common search locations
+        search_locations = {
             Path("C:/Windows/System32"),
             Path("C:/Windows/SysWOW64"),
             Path(sys.executable).parent,
             Path(sys.prefix),
             Path(sys.prefix) / "Scripts",
             Path(sys.prefix) / "DLLs",
-        ]
-        
-        # Add all Python installations
-        python_installs = find_python_installations()
-        for install in python_installs:
-            search_locations.extend([
+        }
+
+        # Python installations
+        for install in find_python_installations():
+            search_locations.update({
                 install,
                 install / "Scripts",
                 install / "DLLs",
-                install.parent / "DLLs"
-            ])
-        
-        # Search PATH directories
-        path_env = os.environ.get('PATH', '')
-        for path_dir in path_env.split(os.pathsep):
-            search_locations.append(Path(path_dir))
-        
-        # Remove duplicates
-        search_locations = list(set(search_locations))
-        
+                install.parent / "DLLs",
+            })
+
+        # PATH directories
+        for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+            if path_dir:
+                search_locations.add(Path(path_dir))
+
+        # Additional Program Files locations
+        if os.name == "nt":
+            for env_var in ["ProgramFiles", "ProgramFiles(x86)"]:
+                pf = os.environ.get(env_var)
+                if pf:
+                    search_locations.add(Path(pf))
+
+        # Perform case-insensitive search
+        target_lower = fallback_search_name.lower()
         for location in search_locations:
             try:
                 if location.exists():
-                    for found_file in location.rglob(fallback_search_name):
-                        if found_file.is_file():
+                    for found in location.rglob("*"):
+                        if found.is_file() and found.name.lower() == target_lower:
                             try:
-                                shutil.copy2(found_file, dest)
-                                print(f"✅ Found and copied {fallback_search_name} from: {found_file}")
+                                shutil.copy2(found, dest)
+                                print(f"✅ Found and copied {fallback_search_name} from: {found}")
                                 return True
-                            except Exception as e:
+                            except Exception:
                                 continue
-            except:
+            except Exception:
                 continue
-        
+
         print(f"❌ Could not find {fallback_search_name} anywhere on system")
-    
+
     return False
     """Check if build environment is ready"""
     print("🔍 Checking build environment...")
