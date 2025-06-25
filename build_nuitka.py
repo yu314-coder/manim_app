@@ -1060,22 +1060,7 @@ def build_executable(args):
     
     print(f"📦 Including bundle: {bundle_dir_abs} -> venv_bundle")
     
-    # Package inclusion
-    if args.minimal:
-        # Minimal package inclusion
-        critical_packages = ["numpy", "cv2", "PIL", "cairo", "manim", "customtkinter", "tkinter"]
-    else:
-        # Full package inclusion
-        critical_packages = [
-            "numpy", "cv2", "PIL", "cairo", "manim", "moderngl", 
-            "customtkinter", "jedi", "matplotlib", "tkinter"
-        ]
-    
-    for package in critical_packages:
-        cmd.extend([
-            f"--include-package={package}",
-            f"--include-package-data={package}"
-        ])
+    # Do not compile packages directly - they are provided in venv_bundle
     
     # Core modules
     core_modules = [
