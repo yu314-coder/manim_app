@@ -233,7 +233,7 @@ def bundle_complete_environment(args):
     total_files = 0
     
     # Step 2: Copy site-packages (most critical)
-    print("\n📦 Step 1: Copying Python packages...")
+    print("\n📦 Step 2: Copying Python packages...")
     source_site_packages = None
     possible_site_packages = [
         source_python / "Lib" / "site-packages",
@@ -289,8 +289,33 @@ def bundle_complete_environment(args):
         print("❌ No site-packages directory found!")
         return None
     
-    # Step 3: Copy and find Python executables
-    print("\n🐍 Step 2: Setting up Python executables...")
+    # Step 3: Copy Python standard library (excluding site-packages)
+    print("\n📚 Step 3: Copying Python standard library...")
+    source_stdlib = source_python / "Lib"
+    dest_stdlib = bundle_dir / "Lib"
+
+    if source_stdlib.exists():
+        try:
+            for item in source_stdlib.iterdir():
+                if item.name == "site-packages":
+                    continue
+                dest_path = dest_stdlib / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(item, dest_path)
+            stdlib_count = sum(1 for _ in dest_stdlib.rglob('*') if _.is_file())
+            total_files += stdlib_count
+            print(f"✅ Copied standard library: {stdlib_count} files")
+        except Exception as e:
+            print(f"❌ Failed to copy standard library: {e}")
+            return None
+    else:
+        print("❌ Standard library not found!")
+        return None
+
+    # Step 4: Copy and find Python executables
+    print("\n🐍 Step 4: Setting up Python executables...")
     scripts_dest = bundle_dir / "Scripts"
     
     # Copy Scripts directory if it exists
@@ -355,8 +380,8 @@ def bundle_complete_environment(args):
         except Exception as e:
             print(f"⚠️ Could not create python3.exe: {e}")
     
-    # Step 4: Copy DLLs and runtime files
-    print("\n📚 Step 3: Copying runtime libraries...")
+    # Step 5: Copy DLLs and runtime files
+    print("\n📚 Step 5: Copying runtime libraries...")
     
     # Copy DLLs directory if it exists
     source_dlls = source_python / "DLLs"
@@ -388,8 +413,8 @@ def bundle_complete_environment(args):
                 print(f"✅ Found critical DLL: {dll_name}")
                 total_files += 1
     
-    # Step 5: Copy configuration files
-    print("\n⚙️ Step 4: Copying configuration...")
+    # Step 6: Copy configuration files
+    print("\n⚙️ Step 6: Copying configuration...")
     
     # Copy pyvenv.cfg
     source_cfg = source_python / "pyvenv.cfg"
@@ -869,22 +894,30 @@ def setup_bundled_environment():
         print("ERROR: venv_bundle directory not found")
         return False
     
-    site_packages = venv_bundle / "Lib" / "site-packages"
+    stdlib_dir = venv_bundle / "Lib"
+    site_packages = stdlib_dir / "site-packages"
     scripts_dir = venv_bundle / "Scripts"
     
     print(f"Setting up bundled environment from: {venv_bundle}")
     
+    if stdlib_dir.exists():
+        sys.path.insert(0, str(stdlib_dir))
+        print(f"Added to Python path: {stdlib_dir}")
+
     if site_packages.exists():
-        # Add to Python path at the beginning
+        # Add to Python path after stdlib
         sys.path.insert(0, str(site_packages))
         print(f"Added to Python path: {site_packages}")
         
         # Set PYTHONPATH environment variable
         current_pythonpath = os.environ.get('PYTHONPATH', '')
+        new_paths = str(site_packages)
+        if stdlib_dir.exists():
+            new_paths = str(stdlib_dir) + os.pathsep + new_paths
         if current_pythonpath:
-            os.environ['PYTHONPATH'] = str(site_packages) + os.pathsep + current_pythonpath
+            os.environ['PYTHONPATH'] = new_paths + os.pathsep + current_pythonpath
         else:
-            os.environ['PYTHONPATH'] = str(site_packages)
+            os.environ['PYTHONPATH'] = new_paths
     
     if scripts_dir.exists():
         # Add scripts directory to PATH
@@ -922,6 +955,7 @@ def build_executable(args):
     print(f"\n🔍 Final bundle validation...")
     required_components = [
         ("Scripts/python.exe", "Python executable"),
+        ("Lib", "Python standard library"),
         ("Lib/site-packages", "Python packages"),
         ("pyvenv.cfg", "Virtual environment config")
     ]
