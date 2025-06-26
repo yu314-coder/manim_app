@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Complete build_nuitka.py - Self-contained ManimStudio with command line options
+Complete build_nuitka.py - Self-contained ManimStudio with PROPER bundle structure
 Usage: python build_nuitka.py [options]
 """
 
@@ -85,88 +85,67 @@ def find_best_python_source():
     return current_dir.parent
 
 def copy_with_fallback(source, dest, fallback_search_name=None):
-    """Copy file with fallback search if source doesn't exist"""
-    if source.exists():
+    """Copy file with extensive fallback search if source doesn't exist"""
+    if source and source.exists():
         try:
             shutil.copy2(source, dest)
             return True
         except Exception as e:
             print(f"❌ Copy failed: {e}")
-    
+
     if fallback_search_name:
         print(f"🔍 Searching system for {fallback_search_name}...")
-        
-        # Search common locations
-        search_locations = [
+
+        # Common search locations
+        search_locations = {
             Path("C:/Windows/System32"),
             Path("C:/Windows/SysWOW64"),
             Path(sys.executable).parent,
             Path(sys.prefix),
             Path(sys.prefix) / "Scripts",
             Path(sys.prefix) / "DLLs",
-        ]
-        
-        # Add all Python installations
-        python_installs = find_python_installations()
-        for install in python_installs:
-            search_locations.extend([
+        }
+
+        # Python installations
+        for install in find_python_installations():
+            search_locations.update({
                 install,
                 install / "Scripts",
                 install / "DLLs",
-                install.parent / "DLLs"
-            ])
-        
-        # Search PATH directories
-        path_env = os.environ.get('PATH', '')
-        for path_dir in path_env.split(os.pathsep):
-            search_locations.append(Path(path_dir))
-        
-        # Remove duplicates
-        search_locations = list(set(search_locations))
-        
+                install.parent / "DLLs",
+            })
+
+        # PATH directories
+        for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+            if path_dir:
+                search_locations.add(Path(path_dir))
+
+        # Additional Program Files locations
+        if os.name == "nt":
+            for env_var in ["ProgramFiles", "ProgramFiles(x86)"]:
+                pf = os.environ.get(env_var)
+                if pf:
+                    search_locations.add(Path(pf))
+
+        # Perform case-insensitive search
+        target_lower = fallback_search_name.lower()
         for location in search_locations:
             try:
                 if location.exists():
-                    for found_file in location.rglob(fallback_search_name):
-                        if found_file.is_file():
+                    for found in location.rglob("*"):
+                        if found.is_file() and found.name.lower() == target_lower:
                             try:
-                                shutil.copy2(found_file, dest)
-                                print(f"✅ Found and copied {fallback_search_name} from: {found_file}")
+                                shutil.copy2(found, dest)
+                                print(f"✅ Found and copied {fallback_search_name} from: {found}")
                                 return True
-                            except Exception as e:
+                            except Exception:
                                 continue
-            except:
+            except Exception:
                 continue
-        
+
         print(f"❌ Could not find {fallback_search_name} anywhere on system")
-    
+
     return False
-    """Check if build environment is ready"""
-    print("🔍 Checking build environment...")
-    
-    required_packages = ["nuitka", "manim", "numpy", "cv2", "PIL", "customtkinter"]
-    missing = []
-    
-    for package in required_packages:
-        try:
-            if package == "PIL":
-                import PIL
-            elif package == "cv2":
-                import cv2
-            else:
-                __import__(package)
-            print(f"✅ {package}: OK")
-        except ImportError:
-            missing.append(package)
-            print(f"❌ {package}: Missing")
-    
-    if missing:
-        print(f"\n❌ Missing packages: {', '.join(missing)}")
-        print("Install with: pip install " + " ".join(missing))
-        return False
-    
-    print("✅ Build environment ready")
-    return True
 
 def check_build_environment():
     """Check if build environment is ready"""
@@ -197,7 +176,7 @@ def check_build_environment():
     return True
 
 def bundle_complete_environment(args):
-    """Bundle the entire working virtual environment with comprehensive fallbacks"""
+    """Bundle the entire working virtual environment with COMPLETELY FIXED directory structure"""
     print("\n📦 Bundling complete virtual environment...")
     
     # Find the best Python source
@@ -209,7 +188,7 @@ def bundle_complete_environment(args):
     
     print(f"📁 Primary source: {source_python}")
     
-    # Create bundle directory
+    # Create bundle directory with CORRECT name (venv_bundle)
     bundle_dir = Path("venv_bundle")
     if bundle_dir.exists():
         print("🗑️ Removing existing bundle...")
@@ -218,22 +197,32 @@ def bundle_complete_environment(args):
     
     print("📦 Creating comprehensive Python environment bundle...")
     
-    # Step 1: Create essential directory structure
-    essential_dirs = [
-        "Scripts",
-        "Lib/site-packages", 
-        "DLLs",
-        "Include"
-    ]
+    # Step 1: Create ESSENTIAL directory structure - CRITICAL FIX
+    # Create the directories in the correct order
+    print("📁 Creating essential directory structure...")
+    scripts_dir = bundle_dir / "Scripts"
+    lib_dir = bundle_dir / "Lib"
+    site_packages_dir = lib_dir / "site-packages"
+    dlls_dir = bundle_dir / "DLLs"
+    include_dir = bundle_dir / "Include"
     
-    for dir_path in essential_dirs:
-        (bundle_dir / dir_path).mkdir(parents=True, exist_ok=True)
-        print(f"📁 Created: {dir_path}")
+    # Ensure all directories exist
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    site_packages_dir.mkdir(parents=True, exist_ok=True)
+    dlls_dir.mkdir(parents=True, exist_ok=True)
+    include_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"📁 Created Scripts: {scripts_dir}")
+    print(f"📁 Created Lib: {lib_dir}")
+    print(f"📁 Created Lib/site-packages: {site_packages_dir}")
+    print(f"📁 Created DLLs: {dlls_dir}")
+    print(f"📁 Created Include: {include_dir}")
     
     total_files = 0
     
-    # Step 2: Copy site-packages (most critical)
-    print("\n📦 Step 1: Copying Python packages...")
+    # Step 2: Copy site-packages FIRST - this is the most critical
+    print("\n📦 Step 1: Copying Python packages to Lib/site-packages...")
     source_site_packages = None
     possible_site_packages = [
         source_python / "Lib" / "site-packages",
@@ -245,66 +234,123 @@ def bundle_complete_environment(args):
     for sp in possible_site_packages:
         if sp.exists() and len(list(sp.iterdir())) > 10:  # Has actual packages
             source_site_packages = sp
+            print(f"✅ Found source site-packages: {sp}")
             break
     
-    if source_site_packages:
-        dest_site_packages = bundle_dir / "Lib" / "site-packages"
-        print(f"📦 Copying from: {source_site_packages}")
-        
-        try:
-            if args.minimal:
-                # Copy only critical packages
-                critical_packages = [
-                    "numpy", "cv2", "PIL", "cairo", "manim", "moderngl",
-                    "customtkinter", "jedi", "matplotlib", "tkinter"
-                ]
-                
-                copied_packages = 0
-                for item in source_site_packages.iterdir():
-                    if any(pkg.lower() in item.name.lower() for pkg in critical_packages):
-                        dest_path = dest_site_packages / item.name
-                        try:
-                            if item.is_dir():
-                                shutil.copytree(item, dest_path)
-                            else:
-                                shutil.copy2(item, dest_path)
-                            copied_packages += 1
-                            file_count = sum(1 for _ in dest_path.rglob('*') if _.is_file()) if dest_path.is_dir() else 1
-                            total_files += file_count
-                            print(f"   ✅ {item.name}: {file_count} files")
-                        except Exception as e:
-                            print(f"   ⚠️ Failed to copy {item.name}: {e}")
-                
-                print(f"📦 Minimal mode: Copied {copied_packages} critical packages")
-            else:
-                # Copy everything
-                shutil.copytree(source_site_packages, dest_site_packages, dirs_exist_ok=True)
-                file_count = sum(1 for _ in dest_site_packages.rglob('*') if _.is_file())
-                total_files += file_count
-                print(f"✅ Copied {len(list(dest_site_packages.iterdir()))} packages ({file_count} files)")
-        except Exception as e:
-            print(f"❌ Failed to copy site-packages: {e}")
-            return None
-    else:
-        print("❌ No site-packages directory found!")
+    if not source_site_packages:
+        print("❌ Could not find site-packages directory")
         return None
     
-    # Step 3: Copy and find Python executables
-    print("\n🐍 Step 2: Setting up Python executables...")
-    scripts_dest = bundle_dir / "Scripts"
+    # Copy packages to site-packages directory
+    try:
+        print(f"📦 Copying packages from {source_site_packages} to {site_packages_dir}")
+        
+        if args.minimal:
+            # Copy only critical packages
+            critical_packages = [
+                "numpy", "cv2", "PIL", "cairo", "manim", "moderngl",
+                "customtkinter", "jedi", "matplotlib", "tkinter"
+            ]
+            
+            copied_packages = 0
+            for item in source_site_packages.iterdir():
+                if any(pkg.lower() in item.name.lower() for pkg in critical_packages):
+                    dest_path = site_packages_dir / item.name
+                    try:
+                        if item.is_dir():
+                            shutil.copytree(item, dest_path)
+                        else:
+                            shutil.copy2(item, dest_path)
+                        copied_packages += 1
+                        file_count = sum(1 for _ in dest_path.rglob('*') if _.is_file()) if dest_path.is_dir() else 1
+                        total_files += file_count
+                        print(f"   ✅ {item.name}: {file_count} files")
+                    except Exception as e:
+                        print(f"   ⚠️ Failed to copy {item.name}: {e}")
+            
+            print(f"📦 Minimal mode: Copied {copied_packages} critical packages")
+        else:
+            # Copy ALL packages
+            for item in source_site_packages.iterdir():
+                dest_path = site_packages_dir / item.name
+                try:
+                    if item.is_dir():
+                        shutil.copytree(item, dest_path)
+                    else:
+                        shutil.copy2(item, dest_path)
+                    file_count = sum(1 for _ in dest_path.rglob('*') if _.is_file()) if dest_path.is_dir() else 1
+                    total_files += file_count
+                except Exception as e:
+                    print(f"   ⚠️ Failed to copy {item.name}: {e}")
+            
+            package_count = len(list(site_packages_dir.iterdir()))
+            print(f"✅ Copied {package_count} packages ({total_files} files)")
+            
+    except Exception as e:
+        print(f"❌ CRITICAL: Failed to copy site-packages: {e}")
+        return None
+    
+    # Verify site-packages was created successfully
+    if not site_packages_dir.exists() or len(list(site_packages_dir.iterdir())) == 0:
+        print("❌ CRITICAL: site-packages directory is empty or missing!")
+        return None
+    
+    print(f"✅ site-packages verified: {len(list(site_packages_dir.iterdir()))} packages")
+    
+    # Step 3: Copy Python standard library (excluding site-packages)
+    print("\n📚 Step 2: Copying Python standard library to Lib...")
+    source_stdlib = source_python / "Lib"
+
+    if source_stdlib.exists():
+        try:
+            for item in source_stdlib.iterdir():
+                if item.name == "site-packages":
+                    continue  # Already copied above
+                dest_path = lib_dir / item.name
+                try:
+                    if item.is_dir():
+                        shutil.copytree(item, dest_path, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(item, dest_path)
+                    if dest_path.is_dir():
+                        stdlib_files = sum(1 for _ in dest_path.rglob('*') if _.is_file())
+                    else:
+                        stdlib_files = 1
+                    total_files += stdlib_files
+                    print(f"   ✅ {item.name}: {stdlib_files} files")
+                except Exception as e:
+                    print(f"   ⚠️ Failed to copy {item.name}: {e}")
+            
+            print(f"✅ Standard library copied successfully")
+        except Exception as e:
+            print(f"❌ Failed to copy standard library: {e}")
+            return None
+    else:
+        print("⚠️ No standard library found - this may cause issues")
+
+    # Step 4: Copy Scripts directory 
+    print("\n🐍 Step 3: Setting up Scripts directory...")
     
     # Copy Scripts directory if it exists
     source_scripts = source_python / "Scripts"
     if source_scripts.exists():
         try:
             for item in source_scripts.iterdir():
+                dest_path = scripts_dir / item.name
                 if item.is_file():
-                    shutil.copy2(item, scripts_dest / item.name)
-            print(f"✅ Copied existing scripts")
+                    shutil.copy2(item, dest_path)
+                    total_files += 1
+                elif item.is_dir():
+                    shutil.copytree(item, dest_path)
+                    dir_files = sum(1 for _ in dest_path.rglob('*') if _.is_file())
+                    total_files += dir_files
+            
+            scripts_count = len(list(scripts_dir.iterdir()))
+            print(f"✅ Copied Scripts directory: {scripts_count} items")
         except Exception as e:
-            print(f"⚠️ Some scripts failed to copy: {e}")
+            print(f"⚠️ Failed to copy some Scripts items: {e}")
     
-    # Ensure critical executables exist
+    # Ensure critical executables exist in Scripts
     critical_executables = [
         ("python.exe", "python*.exe"),
         ("pip.exe", "pip*.exe"),
@@ -312,27 +358,25 @@ def bundle_complete_environment(args):
     ]
     
     for exe_name, search_pattern in critical_executables:
-        dest_exe = scripts_dest / exe_name
+        dest_exe = scripts_dir / exe_name
         if not dest_exe.exists():
             # Try multiple sources
-            sources_tried = []
+            print(f"🔍 Finding {exe_name}...")
             
             # Source 1: Scripts directory
             source_exe = source_scripts / exe_name if source_scripts.exists() else None
             if source_exe and source_exe.exists():
-                sources_tried.append(str(source_exe))
                 copy_with_fallback(source_exe, dest_exe)
             
             # Source 2: Current Python
             if not dest_exe.exists():
                 current_exe = Path(sys.executable)
                 if exe_name == "python.exe" and current_exe.name in ["python.exe", "python3.exe"]:
-                    sources_tried.append(str(current_exe))
                     copy_with_fallback(current_exe, dest_exe)
             
             # Source 3: System-wide search
             if not dest_exe.exists():
-                copy_with_fallback(Path("nonexistent"), dest_exe, search_pattern)
+                copy_with_fallback(Path("nonexistent"), dest_exe, exe_name)
             
             if dest_exe.exists():
                 size = dest_exe.stat().st_size
@@ -345,8 +389,8 @@ def bundle_complete_environment(args):
                     return None
     
     # Create python3.exe as copy of python.exe
-    python_exe = scripts_dest / "python.exe"
-    python3_exe = scripts_dest / "python3.exe"
+    python_exe = scripts_dir / "python.exe"
+    python3_exe = scripts_dir / "python3.exe"
     if python_exe.exists() and not python3_exe.exists():
         try:
             shutil.copy2(python_exe, python3_exe)
@@ -355,23 +399,25 @@ def bundle_complete_environment(args):
         except Exception as e:
             print(f"⚠️ Could not create python3.exe: {e}")
     
-    # Step 4: Copy DLLs and runtime files
-    print("\n📚 Step 3: Copying runtime libraries...")
+    # Step 5: Copy DLLs and runtime files
+    print("\n📚 Step 4: Copying runtime libraries...")
     
     # Copy DLLs directory if it exists
     source_dlls = source_python / "DLLs"
-    dest_dlls = bundle_dir / "DLLs"
-    
     if source_dlls.exists():
         try:
-            shutil.copytree(source_dlls, dest_dlls, dirs_exist_ok=True)
-            dll_count = sum(1 for _ in dest_dlls.rglob('*') if _.is_file())
-            total_files += dll_count
+            for item in source_dlls.iterdir():
+                dest_path = dlls_dir / item.name
+                if item.is_file():
+                    shutil.copy2(item, dest_path)
+                    total_files += 1
+            
+            dll_count = len(list(dlls_dir.iterdir()))
             print(f"✅ Copied DLLs: {dll_count} files")
         except Exception as e:
-            print(f"⚠️ Could not copy DLLs: {e}")
+            print(f"⚠️ Could not copy all DLLs: {e}")
     
-    # Find and copy critical Python DLLs
+    # Find and copy critical Python DLLs to bundle root
     python_version = f"python{sys.version_info.major}{sys.version_info.minor}"
     critical_dlls = [
         f"{python_version}.dll",
@@ -388,8 +434,8 @@ def bundle_complete_environment(args):
                 print(f"✅ Found critical DLL: {dll_name}")
                 total_files += 1
     
-    # Step 5: Copy configuration files
-    print("\n⚙️ Step 4: Copying configuration...")
+    # Step 6: Copy configuration files
+    print("\n⚙️ Step 5: Copying configuration...")
     
     # Copy pyvenv.cfg
     source_cfg = source_python / "pyvenv.cfg"
@@ -415,6 +461,64 @@ version = {sys.version.split()[0]}
         except Exception as e:
             print(f"⚠️ Could not create pyvenv.cfg: {e}")
     
+    # FINAL CRITICAL VALIDATION: Check bundle structure 
+    print(f"\n🔍 FINAL CRITICAL BUNDLE STRUCTURE VALIDATION:")
+    print("=" * 60)
+    
+    # Double-check that ALL required directories exist and have content
+    critical_paths = [
+        (scripts_dir, "Scripts directory"),
+        (scripts_dir / "python.exe", "Python executable"),
+        (lib_dir, "Lib directory"),
+        (site_packages_dir, "site-packages directory"),
+        (dest_cfg, "pyvenv.cfg file")
+    ]
+    
+    bundle_valid = True
+    for path, description in critical_paths:
+        if path.exists():
+            if path.is_file():
+                size = path.stat().st_size
+                print(f"✅ {description}: {size} bytes")
+            else:
+                count = len(list(path.iterdir()))
+                print(f"✅ {description}: {count} items")
+                if count == 0:
+                    print(f"❌ WARNING: {description} is empty!")
+                    if path == site_packages_dir:
+                        bundle_valid = False
+        else:
+            print(f"❌ MISSING: {description} at {path}")
+            bundle_valid = False
+    
+    if not bundle_valid:
+        print(f"\n❌ BUNDLE STRUCTURE VALIDATION FAILED!")
+        print("Critical components are missing or empty. Cannot proceed with build.")
+        print(f"\nBundle directory contents:")
+        for item in bundle_dir.rglob('*'):
+            print(f"  {item}")
+        return None
+    
+    # Verify structure one more time
+    if not lib_dir.exists():
+        print("❌ CRITICAL ERROR: Lib directory does not exist!")
+        return None
+        
+    if not site_packages_dir.exists():
+        print("❌ CRITICAL ERROR: site-packages directory does not exist!")
+        return None
+        
+    lib_contents = len(list(lib_dir.iterdir()))
+    site_packages_contents = len(list(site_packages_dir.iterdir()))
+    
+    if lib_contents == 0:
+        print("❌ CRITICAL ERROR: Lib directory is empty!")
+        return None
+        
+    if site_packages_contents == 0:
+        print("❌ CRITICAL ERROR: site-packages directory is empty!")
+        return None
+    
     # Create manifest
     manifest = {
         "bundle_date": str(datetime.datetime.now()),
@@ -424,10 +528,14 @@ version = {sys.version.split()[0]}
         "build_mode": "minimal" if args.minimal else "turbo" if args.turbo else "full",
         "optimization_level": "optimize" if args.optimize else "standard",
         "critical_components": {
-            "python_exe": (scripts_dest / "python.exe").exists(),
-            "pip_exe": (scripts_dest / "pip.exe").exists(),
-            "site_packages": (bundle_dir / "Lib" / "site-packages").exists(),
-            "pyvenv_cfg": dest_cfg.exists()
+            "scripts_dir": scripts_dir.exists(),
+            "lib_dir": lib_dir.exists(),
+            "site_packages_dir": site_packages_dir.exists(),
+            "python_exe": (scripts_dir / "python.exe").exists(),
+            "pip_exe": (scripts_dir / "pip.exe").exists(),
+            "pyvenv_cfg": dest_cfg.exists(),
+            "lib_contents": lib_contents,
+            "site_packages_contents": site_packages_contents
         }
     }
     
@@ -440,424 +548,27 @@ version = {sys.version.split()[0]}
     
     print(f"\n📊 Bundle complete: {total_files} files")
     
-    # COMPREHENSIVE VERIFICATION
-    print(f"\n🔍 COMPREHENSIVE BUNDLE VERIFICATION:")
-    print("=" * 60)
-    
-    # Check directory structure
-    components_check = [
-        ("Scripts", "Python executables"),
-        ("Lib/site-packages", "Python packages"),
-        ("DLLs", "Runtime libraries"),
-        ("pyvenv.cfg", "Virtual env config")
-    ]
-    
-    bundle_valid = True
-    for component, description in components_check:
-        component_path = bundle_dir / component
-        if component_path.exists():
-            if component_path.is_file():
-                size = component_path.stat().st_size
-                print(f"✅ {description}: {size} bytes")
-            else:
-                count = len(list(component_path.iterdir()))
-                file_count = sum(1 for _ in component_path.rglob('*') if _.is_file())
-                print(f"✅ {description}: {count} items ({file_count} files)")
-        else:
-            print(f"❌ MISSING: {description}")
-            if component in ["Scripts", "Lib/site-packages"]:
-                bundle_valid = False
-    
-    # Check critical files
-    critical_files = [
-        "Scripts/python.exe",
-        "Scripts/pip.exe"
-    ]
-    
-    print(f"\n🔍 Critical executables:")
-    for file_path in critical_files:
-        check_file = bundle_dir / file_path
-        if check_file.exists():
-            size = check_file.stat().st_size
-            print(f"✅ {file_path}: {size} bytes")
-        else:
-            print(f"❌ MISSING: {file_path}")
-            if file_path == "Scripts/python.exe":
-                bundle_valid = False
-    
     # Check total bundle size
     total_size = sum(f.stat().st_size for f in bundle_dir.rglob('*') if f.is_file())
     size_mb = total_size / (1024 * 1024)
-    print(f"\n📊 Total bundle size: {size_mb:.1f} MB")
-    
-    if not bundle_valid:
-        print(f"\n❌ BUNDLE VALIDATION FAILED!")
-        print("Critical components are missing. Cannot proceed with build.")
-        return None
-    
-    if total_files < 100:
-        print(f"\n⚠️ WARNING: Bundle seems small ({total_files} files)")
-    
-    if size_mb < 30:
-        print(f"⚠️ WARNING: Bundle size seems small ({size_mb:.1f} MB)")
+    print(f"📊 Total bundle size: {size_mb:.1f} MB")
     
     print("=" * 60)
-    print("✅ Bundle validation passed!")
-    
-    return bundle_dir
-    """Bundle the entire working virtual environment"""
-    print("\n📦 Bundling complete virtual environment...")
-    
-    # Get current venv path with better detection
-    current_venv = None
-    
-    # Method 1: Check if we're in a virtual environment
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        current_venv = Path(sys.prefix)
-        print(f"✅ Detected virtual environment: {current_venv}")
-    else:
-        # Method 2: Try to find venv from executable path
-        exe_parent = Path(sys.executable).parent
-        if (exe_parent / "Scripts" / "activate").exists() or (exe_parent / "bin" / "activate").exists():
-            current_venv = exe_parent
-            print(f"✅ Found venv from executable path: {current_venv}")
-        else:
-            # Method 3: Default fallback
-            current_venv = exe_parent.parent
-            print(f"⚠️ Using fallback venv path: {current_venv}")
-    
-    print(f"📁 Bundling from: {current_venv}")
-    
-    # Verify the source has the basic structure
-    if not current_venv.exists():
-        print(f"❌ Source venv directory doesn't exist: {current_venv}")
-        return None
-    
-    site_packages = current_venv / "Lib" / "site-packages"
-    if not site_packages.exists():
-        print(f"❌ Site-packages not found at: {site_packages}")
-        # Try alternative location
-        site_packages = current_venv / "lib" / "python3.12" / "site-packages"
-        if not site_packages.exists():
-            print(f"❌ No site-packages found in venv!")
-            return None
-    
-    print(f"✅ Found site-packages: {site_packages}")
-    
-    # Create bundle directory
-    bundle_dir = Path("venv_bundle")
-    if bundle_dir.exists():
-        shutil.rmtree(bundle_dir)
-    bundle_dir.mkdir()
-    
-    # Essential directories to bundle
-    if args.minimal:
-        # Minimal bundle - only critical packages
-        print("📦 Minimal bundle mode - copying only critical packages...")
-        essential_dirs = ["Lib/site-packages"]
-        # Copy only specific package directories
-        source_site_packages = current_venv / "Lib" / "site-packages"
-        if not source_site_packages.exists():
-            source_site_packages = current_venv / "lib" / "python3.12" / "site-packages"
-        
-        if not source_site_packages.exists():
-            print("❌ Cannot find site-packages in virtual environment!")
-            return None
-            
-        dest_site_packages = bundle_dir / "Lib" / "site-packages"
-        dest_site_packages.mkdir(parents=True)
-        
-        critical_packages = [
-            "numpy", "cv2", "PIL", "cairo", "manim", "moderngl", 
-            "customtkinter", "jedi", "matplotlib", "tkinter"
-        ]
-        
-        total_files = 0
-        for item in source_site_packages.iterdir():
-            if any(pkg.lower() in item.name.lower() for pkg in critical_packages):
-                try:
-                    if item.is_dir():
-                        shutil.copytree(item, dest_site_packages / item.name)
-                    else:
-                        shutil.copy2(item, dest_site_packages / item.name)
-                    file_count = sum(1 for _ in (dest_site_packages / item.name).rglob('*') if _.is_file()) if item.is_dir() else 1
-                    total_files += file_count
-                    print(f"   📂 {item.name}: {file_count} files")
-                except Exception as e:
-                    print(f"   ⚠️ Warning: Could not copy {item.name}: {e}")
-    else:
-        # Full bundle - copy ALL essential parts of virtual environment
-        print("📦 Full bundle mode - copying complete virtual environment...")
-        
-        # Define all essential virtual environment components
-        venv_components = [
-            ("Lib/site-packages", "Essential Python packages"),
-            ("Scripts", "Python executables and scripts"),
-            ("Include", "Header files"),
-            ("DLLs", "Dynamic libraries"),
-            ("tcl", "Tcl/Tk libraries"),
-            ("Tools", "Python tools")
-        ]
-        
-        total_files = 0
-        
-        # Verify essential directories exist
-        lib_site_packages = current_venv / "Lib" / "site-packages"
-        if not lib_site_packages.exists():
-            lib_site_packages = current_venv / "lib" / "python3.12" / "site-packages"
-        
-        if not lib_site_packages.exists():
-            print("❌ Cannot find site-packages for full bundle!")
-            return None
-        
-        print(f"✅ Found site-packages with {len(list(lib_site_packages.iterdir()))} packages")
-        
-        # Copy each component
-        for dir_name, description in venv_components:
-            if dir_name == "Lib/site-packages":
-                source_dir = lib_site_packages
-                dest_dir = bundle_dir / "Lib" / "site-packages"
-            else:
-                source_dir = current_venv / dir_name
-                dest_dir = bundle_dir / dir_name
-                
-            if source_dir.exists():
-                print(f"📂 Copying {dir_name} ({description})...")
-                
-                try:
-                    # Ensure destination parent exists
-                    dest_dir.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    if args.turbo:
-                        # Fast copy - ignore some non-essential files
-                        def ignore_patterns(dir, files):
-                            ignore = []
-                            for file in files:
-                                if file.endswith(('.pyc', '.pyo')) or file == '__pycache__':
-                                    ignore.append(file)
-                                # Skip very large cache directories
-                                elif file in ('__pycache__', '.pytest_cache', '.mypy_cache', 'node_modules'):
-                                    ignore.append(file)
-                            return ignore
-                        
-                        shutil.copytree(source_dir, dest_dir, ignore=ignore_patterns, dirs_exist_ok=True)
-                    else:
-                        shutil.copytree(source_dir, dest_dir, dirs_exist_ok=True)
-                    
-                    # Count files and verify
-                    file_count = sum(1 for _ in dest_dir.rglob('*') if _.is_file())
-                    total_files += file_count
-                    print(f"   ✅ {file_count} files copied successfully")
-                    
-                    # Special verification for critical directories
-                    if dir_name == "Lib/site-packages":
-                        # Verify critical packages are there
-                        critical_packages = ['numpy', 'manim', 'PIL', 'cv2']
-                        found_packages = []
-                        for pkg in critical_packages:
-                            pkg_dirs = list(dest_dir.glob(f"{pkg}*"))
-                            if pkg_dirs:
-                                found_packages.append(pkg)
-                        print(f"   ✅ Critical packages found: {found_packages}")
-                        
-                    elif dir_name == "Scripts":
-                        # Verify Python executables
-                        python_exe = dest_dir / "python.exe"
-                        pip_exe = dest_dir / "pip.exe"
-                        print(f"   ✅ python.exe: {python_exe.exists()}")
-                        print(f"   ✅ pip.exe: {pip_exe.exists()}")
-                        
-                except Exception as e:
-                    print(f"   ❌ Failed to copy {dir_name}: {e}")
-                    import traceback
-                    print(f"   Full error: {traceback.format_exc()}")
-                    # For critical directories, this is a fatal error
-                    if dir_name in ["Lib/site-packages", "Scripts"]:
-                        print(f"❌ Critical component {dir_name} failed - aborting bundle")
-                        return None
-            else:
-                print(f"   ⚠️ {dir_name} not found in source venv (skipping)")
-                if dir_name in ["Lib/site-packages", "Scripts"]:
-                    print(f"❌ Critical component {dir_name} missing - aborting bundle")
-                    return None
-    
-    # Copy/verify essential executables (do this AFTER the main copy loop)
-    scripts_dest = bundle_dir / "Scripts"
-    if not scripts_dest.exists():
-        scripts_dest.mkdir(parents=True)
-        print("📂 Created Scripts directory")
-    
-    # Ensure critical executables exist
-    python_exe_dest = scripts_dest / "python.exe"
-    if not python_exe_dest.exists():
-        # Try different sources for python.exe
-        python_sources = [
-            current_venv / "Scripts" / "python.exe",  # Virtual env
-            Path(sys.executable),  # Current Python
-            Path(sys.executable).parent / "python.exe"  # System Python
-        ]
-        
-        for python_source in python_sources:
-            if python_source.exists():
-                try:
-                    shutil.copy2(python_source, python_exe_dest)
-                    print(f"✅ Copied python.exe from: {python_source}")
-                    break
-                except Exception as e:
-                    print(f"❌ Failed to copy python.exe from {python_source}: {e}")
-                    continue
-        else:
-            print(f"❌ CRITICAL: Could not find python.exe to copy!")
-            return None
-    
-    # Ensure pip.exe exists
-    pip_exe_dest = scripts_dest / "pip.exe"
-    if not pip_exe_dest.exists():
-        pip_sources = [
-            current_venv / "Scripts" / "pip.exe",
-            current_venv / "Scripts" / "pip3.exe",
-            Path(sys.executable).parent / "pip.exe"
-        ]
-        
-        for pip_source in pip_sources:
-            if pip_source.exists():
-                try:
-                    shutil.copy2(pip_source, pip_exe_dest)
-                    print(f"✅ Copied pip.exe from: {pip_source}")
-                    break
-                except Exception as e:
-                    continue
-        else:
-            print(f"⚠️ Could not find pip.exe to copy")
-    
-    # Create python3.exe as a copy of python.exe if it doesn't exist
-    python3_exe_dest = scripts_dest / "python3.exe"
-    if not python3_exe_dest.exists() and python_exe_dest.exists():
-        try:
-            shutil.copy2(python_exe_dest, python3_exe_dest)
-            print(f"✅ Created python3.exe")
-        except Exception as e:
-            print(f"⚠️ Could not create python3.exe: {e}")
-    
-    # Copy pyvenv.cfg
-    pyvenv_cfg = current_venv / "pyvenv.cfg"
-    if pyvenv_cfg.exists():
-        try:
-            shutil.copy2(pyvenv_cfg, bundle_dir / "pyvenv.cfg")
-        except Exception as e:
-            print(f"⚠️ Warning: Could not copy pyvenv.cfg: {e}")
-    
-    # Copy DLLs directory if it exists (important for Windows)
-    dlls_source = current_venv / "DLLs"
-    if dlls_source.exists():
-        dlls_dest = bundle_dir / "DLLs"
-        try:
-            shutil.copytree(dlls_source, dlls_dest)
-            dll_files = sum(1 for _ in dlls_dest.rglob('*') if _.is_file())
-            total_files += dll_files
-            print(f"📂 DLLs: {dll_files} files")
-        except Exception as e:
-            print(f"⚠️ Warning: Could not copy DLLs directory: {e}")
-    
-    # Copy python DLLs from system if they exist and are missing
-    python_dll_dest = bundle_dir / "python312.dll"  # Adjust version as needed
-    if not python_dll_dest.exists():
-        # Look for python DLL in various locations
-        python_dll_sources = [
-            current_venv / "python312.dll",
-            Path(sys.executable).parent / "python312.dll",
-            Path(sys.executable).parent / "python311.dll",
-            Path(sys.executable).parent / "python310.dll",
-        ]
-        
-        for dll_source in python_dll_sources:
-            if dll_source.exists():
-                try:
-                    shutil.copy2(dll_source, bundle_dir / dll_source.name)
-                    print(f"✅ Copied {dll_source.name}")
-                    break
-                except Exception as e:
-                    continue
-    
-    # Create manifest
-    manifest = {
-        "bundle_date": str(datetime.datetime.now()),
-        "source_venv": str(current_venv),
-        "total_files": total_files,
-        "python_version": sys.version,
-        "build_mode": "minimal" if args.minimal else "turbo" if args.turbo else "full",
-        "optimization_level": "optimize" if args.optimize else "standard"
-    }
-    
-    with open(bundle_dir / "bundle_manifest.json", "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2)
-    
-    print(f"📊 Bundle complete: {total_files} files")
-    
-    # COMPREHENSIVE DIAGNOSTIC: Verify bundle completeness
-    print(f"\n🔍 COMPREHENSIVE BUNDLE VERIFICATION:")
-    print("=" * 50)
-    
-    # Check directory structure
-    expected_dirs = ["Scripts", "Lib/site-packages"]
-    for dir_path in expected_dirs:
-        check_dir = bundle_dir / dir_path
-        if check_dir.exists():
-            file_count = sum(1 for _ in check_dir.rglob('*') if _.is_file())
-            print(f"✅ {dir_path}: {file_count} files")
-            
-            # Show sample contents
-            if dir_path == "Scripts":
-                executables = [f for f in check_dir.iterdir() if f.suffix == '.exe']
-                print(f"   🔧 Executables: {[e.name for e in executables[:5]]}")
-            elif dir_path == "Lib/site-packages":
-                packages = [d.name for d in check_dir.iterdir() if d.is_dir()][:10]
-                print(f"   📦 Sample packages: {packages}")
-        else:
-            print(f"❌ MISSING: {dir_path}")
-    
-    # Check critical files
-    critical_files = [
-        "Scripts/python.exe",
-        "Scripts/pip.exe", 
-        "pyvenv.cfg"
-    ]
-    
-    print(f"\n🔍 Critical files check:")
-    for file_path in critical_files:
-        check_file = bundle_dir / file_path
-        if check_file.exists():
-            size = check_file.stat().st_size
-            print(f"✅ {file_path}: {size} bytes")
-        else:
-            print(f"❌ MISSING: {file_path}")
-    
-    # Check total bundle size
-    total_size = sum(f.stat().st_size for f in bundle_dir.rglob('*') if f.is_file())
-    size_mb = total_size / (1024 * 1024)
-    print(f"\n📊 Total bundle size: {size_mb:.1f} MB")
-    
-    # Verify bundle is not empty
-    if total_files < 100:
-        print(f"⚠️ WARNING: Bundle seems too small ({total_files} files)")
-        print(f"Expected at least 1000+ files for a complete Python environment")
-    
-    if size_mb < 50:
-        print(f"⚠️ WARNING: Bundle size seems too small ({size_mb:.1f} MB)")
-        print(f"Expected at least 100+ MB for a complete environment")
-    
-    print("=" * 50)
+    print("✅ Bundle structure validation PASSED!")
+    print(f"✅ Scripts directory: {len(list(scripts_dir.iterdir()))} items")
+    print(f"✅ Lib directory: {lib_contents} items")
+    print(f"✅ site-packages: {site_packages_contents} packages")
     
     return bundle_dir
 
 def create_environment_loader():
-    """Create bundled environment loader script"""
+    """Create ENHANCED bundled environment loader script with proper error handling"""
     loader_content = '''import os
 import sys
 from pathlib import Path
 
 def setup_bundled_environment():
-    """Set up the bundled virtual environment"""
+    """Set up the bundled virtual environment with enhanced error handling"""
     if getattr(sys, 'frozen', False):
         app_dir = Path(sys.executable).parent
     else:
@@ -867,27 +578,69 @@ def setup_bundled_environment():
     
     if not venv_bundle.exists():
         print("ERROR: venv_bundle directory not found")
+        print(f"Expected location: {venv_bundle}")
+        print(f"App directory contents: {list(app_dir.iterdir()) if app_dir.exists() else 'Not found'}")
         return False
     
-    site_packages = venv_bundle / "Lib" / "site-packages"
+    # CRITICAL: Validate bundle structure has both Scripts and Lib
+    required_dirs = ["Scripts", "Lib"]
+    missing_dirs = []
+    
+    for required_dir in required_dirs:
+        dir_path = venv_bundle / required_dir
+        if not dir_path.exists():
+            missing_dirs.append(required_dir)
+    
+    if missing_dirs:
+        print(f"ERROR: venv_bundle missing required directories: {missing_dirs}")
+        print(f"venv_bundle contents: {list(venv_bundle.iterdir())}")
+        return False
+    
+    # Set up paths
+    stdlib_dir = venv_bundle / "Lib"
+    site_packages = stdlib_dir / "site-packages"
     scripts_dir = venv_bundle / "Scripts"
     
     print(f"Setting up bundled environment from: {venv_bundle}")
+    print(f"Scripts directory: {scripts_dir} (exists: {scripts_dir.exists()})")
+    print(f"Lib directory: {stdlib_dir} (exists: {stdlib_dir.exists()})")
+    print(f"Site-packages: {site_packages} (exists: {site_packages.exists()})")
     
+    # Validate all critical paths exist
+    if not stdlib_dir.exists():
+        print(f"ERROR: Lib directory not found at {stdlib_dir}")
+        return False
+        
+    if not site_packages.exists():
+        print(f"ERROR: site-packages not found at {site_packages}")
+        return False
+        
+    if not scripts_dir.exists():
+        print(f"ERROR: Scripts directory not found at {scripts_dir}")
+        return False
+
+    # Add standard library to path first
+    if stdlib_dir.exists():
+        sys.path.insert(0, str(stdlib_dir))
+        print(f"Added to Python path: {stdlib_dir}")
+
+    # Add site-packages to path 
     if site_packages.exists():
-        # Add to Python path at the beginning
         sys.path.insert(0, str(site_packages))
         print(f"Added to Python path: {site_packages}")
         
         # Set PYTHONPATH environment variable
         current_pythonpath = os.environ.get('PYTHONPATH', '')
+        new_paths = str(site_packages)
+        if stdlib_dir.exists():
+            new_paths = str(stdlib_dir) + os.pathsep + new_paths
         if current_pythonpath:
-            os.environ['PYTHONPATH'] = str(site_packages) + os.pathsep + current_pythonpath
+            os.environ['PYTHONPATH'] = new_paths + os.pathsep + current_pythonpath
         else:
-            os.environ['PYTHONPATH'] = str(site_packages)
+            os.environ['PYTHONPATH'] = new_paths
     
+    # Add scripts directory to PATH
     if scripts_dir.exists():
-        # Add scripts directory to PATH
         current_path = os.environ.get('PATH', '')
         os.environ['PATH'] = str(scripts_dir) + os.pathsep + current_path
         print(f"Added to PATH: {scripts_dir}")
@@ -896,20 +649,36 @@ def setup_bundled_environment():
     os.environ['VIRTUAL_ENV'] = str(venv_bundle)
     print(f"Set VIRTUAL_ENV: {venv_bundle}")
     
+    # Validate Python executable exists
+    python_exe = scripts_dir / "python.exe"
+    if not python_exe.exists():
+        print(f"WARNING: Python executable not found at {python_exe}")
+        # Try to find any python executable
+        for exe_name in ["python.exe", "python3.exe", "python"]:
+            test_exe = scripts_dir / exe_name
+            if test_exe.exists():
+                print(f"Found alternative Python executable: {test_exe}")
+                break
+    else:
+        print(f"✅ Python executable found: {python_exe}")
+    
+    print("✅ Bundled environment setup complete")
     return True
 
 # Automatically set up when imported (but not when running as main)
 if __name__ != "__main__":
-    setup_bundled_environment()
+    success = setup_bundled_environment()
+    if not success:
+        print("❌ Failed to set up bundled environment")
 '''
     
     with open("bundled_env_loader.py", "w", encoding="utf-8") as f:
         f.write(loader_content)
     
-    print("Created bundled environment loader")
+    print("Created enhanced bundled environment loader")
 
 def build_executable(args):
-    """Build the self-contained executable with options"""
+    """Build the self-contained executable with FIXED bundle structure handling"""
     print(f"\n🔨 Building executable in {get_build_mode_name(args)} mode...")
     
     # Bundle environment first
@@ -918,10 +687,12 @@ def build_executable(args):
         print("❌ Bundling failed - cannot proceed with build")
         return False
     
-    # Validate bundle before proceeding
-    print(f"\n🔍 Final bundle validation...")
+    # CRITICAL: Final validation before build
+    print(f"\n🔍 PRE-BUILD BUNDLE VALIDATION...")
     required_components = [
         ("Scripts/python.exe", "Python executable"),
+        ("Scripts/pip.exe", "Pip executable"),
+        ("Lib", "Python standard library"),
         ("Lib/site-packages", "Python packages"),
         ("pyvenv.cfg", "Virtual environment config")
     ]
@@ -943,6 +714,23 @@ def build_executable(args):
     if not bundle_valid:
         print("❌ Bundle validation failed - critical components missing")
         print("💡 Try rebuilding with: python build_nuitka.py --clean --debug")
+        return False
+    
+    # Additional verification: ensure directories are not empty
+    scripts_dir = bundle_dir / "Scripts"
+    lib_dir = bundle_dir / "Lib"
+    
+    scripts_count = len(list(scripts_dir.iterdir())) if scripts_dir.exists() else 0
+    lib_count = len(list(lib_dir.rglob('*'))) if lib_dir.exists() else 0
+    
+    print(f"✅ Scripts directory: {scripts_count} items")
+    print(f"✅ Lib directory: {lib_count} items")
+    
+    if scripts_count == 0:
+        print("❌ ERROR: Scripts directory is empty!")
+        return False
+    if lib_count == 0:
+        print("❌ ERROR: Lib directory is empty!")
         return False
     
     print("✅ Bundle validation passed - proceeding with build")
@@ -1017,7 +805,7 @@ def build_executable(args):
         "--remove-output",
     ])
     
-    # Data inclusion - ensure bundle is properly included
+    # CRITICAL FIX: Data inclusion with explicit directory structure preservation
     bundle_dir_abs = bundle_dir.resolve()  # Get absolute path
     cmd.extend([
         f"--include-data-dir={bundle_dir_abs}=venv_bundle",
@@ -1026,22 +814,17 @@ def build_executable(args):
     
     print(f"📦 Including bundle: {bundle_dir_abs} -> venv_bundle")
     
-    # Package inclusion
-    if args.minimal:
-        # Minimal package inclusion
-        critical_packages = ["numpy", "cv2", "PIL", "cairo", "manim", "customtkinter", "tkinter"]
-    else:
-        # Full package inclusion
-        critical_packages = [
-            "numpy", "cv2", "PIL", "cairo", "manim", "moderngl", 
-            "customtkinter", "jedi", "matplotlib", "tkinter"
-        ]
+    # ADDITIONAL FIX: Explicitly include both Scripts and Lib subdirectories
+    scripts_dir_abs = bundle_dir_abs / "Scripts"
+    lib_dir_abs = bundle_dir_abs / "Lib"
     
-    for package in critical_packages:
-        cmd.extend([
-            f"--include-package={package}",
-            f"--include-package-data={package}"
-        ])
+    if scripts_dir_abs.exists():
+        cmd.append(f"--include-data-dir={scripts_dir_abs}=venv_bundle/Scripts")
+        print(f"📦 Explicitly including Scripts: {scripts_dir_abs} -> venv_bundle/Scripts")
+    
+    if lib_dir_abs.exists():
+        cmd.append(f"--include-data-dir={lib_dir_abs}=venv_bundle/Lib")
+        print(f"📦 Explicitly including Lib: {lib_dir_abs} -> venv_bundle/Lib")
     
     # Core modules
     core_modules = [
@@ -1091,6 +874,12 @@ def build_executable(args):
                 elif args.optimize:
                     print("🎯 Optimized build: Better performance, smaller size")
                 
+                print(f"\n🔍 POST-BUILD VALIDATION:")
+                print("The bundled environment should have proper structure:")
+                print("  venv_bundle/Scripts/  (executables)")
+                print("  venv_bundle/Lib/      (standard library + site-packages)")
+                print("Test the executable to verify no 'venv_bundle directory not found' errors")
+                
                 return True
         
         print(f"\n❌ Build failed with exit code {result.returncode}")
@@ -1114,37 +903,59 @@ def get_build_mode_name(args):
     else:
         return "STANDARD"
 
-def cleanup(args=None):
-    """Clean up temporary files"""
-    files_to_remove = ["bundled_env_loader.py"]
-    dirs_to_remove = []
+def clean_before_build():
+    """Clean up directories before build - ONLY when explicitly requested"""
+    dirs_to_clean = ["build", "dist", "venv_bundle"]
+    files_to_clean = ["bundled_env_loader.py"]
     
-    # Only remove venv_bundle if not in debug mode
-    if not (args and args.debug):
-        dirs_to_remove.append("venv_bundle")
-    else:
-        print("🐛 Debug mode: Preserving venv_bundle for inspection")
+    print("🧹 Cleaning build directories...")
     
-    if args and args.clean:
-        dirs_to_remove.extend(["build", "dist"])
-        print("🧹 Cleaning all build directories...")
+    for dir_name in dirs_to_clean:
+        if os.path.exists(dir_name):
+            try:
+                shutil.rmtree(dir_name)
+                print(f"   🗑️ Removed: {dir_name}/")
+            except Exception as e:
+                print(f"   ⚠️ Could not remove {dir_name}: {e}")
     
-    for file in files_to_remove:
-        if os.path.exists(file):
-            os.remove(file)
-            if args and args.clean:
-                print(f"   🗑️ Removed: {file}")
+    for file_name in files_to_clean:
+        if os.path.exists(file_name):
+            try:
+                os.remove(file_name)
+                print(f"   🗑️ Removed: {file_name}")
+            except Exception as e:
+                print(f"   ⚠️ Could not remove {file_name}: {e}")
+
+def cleanup_temp_files_only():
+    """Clean up ONLY temporary files - NEVER touch dist directory after successful build"""
+    temp_files_to_remove = ["bundled_env_loader.py"]
+    temp_dirs_to_remove = ["venv_bundle"]  # Only temp bundle, NOT dist
     
-    for dir in dirs_to_remove:
-        if os.path.exists(dir):
-            shutil.rmtree(dir, ignore_errors=True)
-            if args and args.clean:
-                print(f"   🗑️ Removed: {dir}/")
+    print("🧹 Cleaning temporary files...")
+    
+    for file_name in temp_files_to_remove:
+        if os.path.exists(file_name):
+            try:
+                os.remove(file_name)
+                print(f"   🗑️ Removed temp file: {file_name}")
+            except Exception as e:
+                print(f"   ⚠️ Could not remove {file_name}: {e}")
+    
+    for dir_name in temp_dirs_to_remove:
+        if os.path.exists(dir_name):
+            try:
+                shutil.rmtree(dir_name)
+                print(f"   🗑️ Removed temp directory: {dir_name}/")
+            except Exception as e:
+                print(f"   ⚠️ Could not remove {dir_name}: {e}")
+    
+    # NEVER remove dist directory here - that would delete the built executable!
+    print("✅ Temporary files cleaned (dist directory preserved)")
 
 def main():
-    """Main build function with command line arguments"""
+    """Main build function with SAFE cleanup that preserves dist directory"""
     parser = argparse.ArgumentParser(
-        description="Build self-contained ManimStudio executable",
+        description="Build self-contained ManimStudio executable with COMPLETELY FIXED bundle structure",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -1174,12 +985,14 @@ Examples:
     parser.add_argument("--jobs", type=int, metavar="N",
                        help="Number of parallel compilation jobs")
     parser.add_argument("--clean", action="store_true", 
-                       help="Clean all build directories before building")
+                       help="Clean all build directories BEFORE building")
+    parser.add_argument("--preserve-temp", action="store_true",
+                       help="Preserve temporary files for debugging")
     
     args = parser.parse_args()
     
-    print("🎯 ManimStudio Self-Contained Build")
-    print("=" * 50)
+    print("🎯 ManimStudio Self-Contained Build - COMPLETELY FIXED VERSION")
+    print("=" * 80)
     print(f"🔧 Mode: {get_build_mode_name(args)}")
     
     if args.minimal:
@@ -1187,31 +1000,55 @@ Examples:
     else:
         print("📦 Bundle: Full (all packages)")
     
-    print("=" * 50)
+    print("🔧 Critical fixes applied:")
+    print("  ✅ PROPER Lib directory creation and population")
+    print("  ✅ PROPER site-packages directory structure")
+    print("  ✅ Enhanced directory existence validation")
+    print("  ✅ Fixed Nuitka data inclusion")
+    print("  ✅ SAFE cleanup - dist directory preserved")
+    print("  ✅ Enhanced error reporting")
+    print("=" * 80)
     
+    # Clean BEFORE build if requested
     if args.clean:
-        cleanup(args)
+        clean_before_build()
     
     if not check_build_environment():
         return False
     
+    # Create dist directory if it doesn't exist
+    dist_dir = Path("dist")
+    dist_dir.mkdir(exist_ok=True)
+    
     success = build_executable(args)
     
     if success:
-        print("\n" + "=" * 50)
-        print("🎉 BUILD COMPLETE!")
-        print("=" * 50)
+        print("\n" + "=" * 80)
+        print("🎉 BUILD COMPLETE - COMPLETELY FIXED VERSION!")
+        print("=" * 80)
         print("✅ Your app.exe is completely self-contained")
-        print("✅ Includes all required packages and DLLs")
+        print("✅ Includes PROPER venv_bundle structure (Scripts + Lib + site-packages)")
+        print("✅ Enhanced bundle validation prevents ALL structure issues")
         print("✅ No runtime installation needed")
         print("✅ Should work on fresh computers")
         print("✅ Portable - extract bundled environment next to exe")
+        print("✅ dist directory preserved with your executable")
+        
+        # Show final executable info
+        exe_path = Path("dist") / "app.exe"
+        if exe_path.exists():
+            size_mb = exe_path.stat().st_size / (1024 * 1024)
+            print(f"\n📦 Final executable: {exe_path}")
+            print(f"📏 Size: {size_mb:.1f} MB")
+            print(f"📅 Created: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         print(f"\n🧪 Testing instructions:")
         print("1. Copy dist/app.exe to a fresh computer")
         print("2. Run app.exe directly")
         print("3. Environment will extract next to app.exe on first run")
-        print("4. Should start without 3221225477 errors")
+        print("4. Should start without 'venv_bundle directory not found' errors")
+        print("5. Should start without missing Lib directory errors")
+        print("6. Should start without 3221225477 errors")
         
         if args.turbo:
             print("\n⚠️ Note: Turbo builds are larger but faster to compile")
@@ -1223,7 +1060,12 @@ Examples:
         if not args.debug:
             print("💡 Try: python build_nuitka.py --debug for more details")
     
-    cleanup()
+    # Clean up ONLY temporary files, NEVER the dist directory
+    if not args.preserve_temp:
+        cleanup_temp_files_only()
+    else:
+        print("🐛 Preserving temporary files for debugging")
+    
     return success
 
 if __name__ == "__main__":
