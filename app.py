@@ -3926,73 +3926,27 @@ class VirtualEnvironmentManager:
         return True
         
     def _detect_if_frozen(self):
-        """Enhanced detection of frozen executable"""
-        # Standard PyInstaller detection
-        if getattr(sys, 'frozen', False):
-            return True
-        
-        # Additional checks for our specific case
-        exe_path = os.path.abspath(sys.executable)
-        exe_name = os.path.basename(exe_path).lower()
-        
-        # Check if executable name suggests it's our app
-        app_names = ["manimstudio", "manim_studio", "app", "main"]
-        if any(name in exe_name for name in app_names):
-            return True
-        
-        # Check if executable is in a 'dist' directory (common for PyInstaller)
-        if "dist" in exe_path.lower():
-            return True
-        
-        # Check for Nuitka onefile indicators
-        if "onefile" in exe_path or "temp" in exe_path:
-            return True
-        
-        return False
+        """Detect if running as compiled executable"""
+        return getattr(sys, 'frozen', False)
     
     def _detect_bundled_environment(self):
-        """Detect if there's a bundled virtual environment"""
-        bundled_paths = [
-            os.path.join(self.base_dir, "venv.zip"),
-            os.path.join(self.base_dir, "bundled", "venv.zip"),
-            os.path.join(self.base_dir, "resources", "venv.zip")
-        ]
-        
-        for path in bundled_paths:
-            if os.path.exists(path):
-                self.bundled_venv_dir = Path(path).parent
+        """Detect if bundled environment is available"""
+        if getattr(sys, 'frozen', False):
+            # Running as executable - check for bundled directory
+            base_dir = os.path.dirname(sys.executable)
+            bundled_path = os.path.join(base_dir, "venv_bundle")
+            if os.path.exists(bundled_path):
+                self.bundled_venv_dir = bundled_path
                 self.bundled_available = True
-                self.logger.info(f"Found bundled environment: {path}")
-                break
+                print(f"✅ Found bundled environment at: {bundled_path}")
+            else:
+                print(f"⚠️ No bundled environment found at: {bundled_path}")
+        else:
+            print("🐍 Running as script - no bundled environment expected")
     
-    def _initialize_environment(self):
-        """Initialize and detect current environment"""
-        self.logger.info("Initializing environment detection...")
-        
-        # First check for manim_studio_default specifically
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-        if os.path.exists(default_venv_path) and self.is_valid_venv(default_venv_path):
-            self.logger.info("Found manim_studio_default environment")
-            if os.name == 'nt':
-                self.python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
-                self.pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
-            else:
-                self.python_path = os.path.join(default_venv_path, "bin", "python")
-                self.pip_path = os.path.join(default_venv_path, "bin", "pip")
-                
-            # Verify manim is available
-            if self.check_manim_availability():
-                self.current_venv = "manim_studio_default"
-                self.needs_setup = False
-                return True
-            else:
-                self.logger.warning("manim_studio_default exists but manim not available")
-
-        # Check for local environment alongside the application
-        if self.check_local_directory_venv():
-            return True
-
-        # CRITICAL: Don't check current virtual environment when frozen
+    def _detect_current_environment(self):
+        """Detect current virtual environment (only when not frozen)"""
+        # Don't check current virtual environment when frozen
         # because sys.executable points to our .exe file
         if not self.is_frozen:
             # Only check if we're in a virtual environment when running as script
@@ -4021,6 +3975,76 @@ class VirtualEnvironmentManager:
             return False  # Still need setup, but we have backup
             
         return False
+    def _initialize_environment(self):
+        """Initialize environment when bundled setup fails"""
+        print("🐍 Falling back to standard environment setup")
+        
+        # Environment paths and configuration
+        self.base_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
+        self.app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        self.venv_dir = os.path.join(self.app_dir, "venvs")
+        self.bundled_dir = os.path.join(self.base_dir, "bundled")
+        
+        # Create necessary directories
+        os.makedirs(self.venv_dir, exist_ok=True)
+        os.makedirs(self.app_dir, exist_ok=True)
+        
+        # Current environment state
+        self.current_venv = None
+        self.python_path = sys.executable
+        self.pip_path = "pip"
+        self.needs_setup = True
+        self.using_fallback = False
+        self.is_frozen = self._detect_if_frozen()
+        
+        # Bundled environment detection
+        self.bundled_venv_dir = None
+        self.bundled_available = False
+        self._detect_bundled_environment()
+        
+        # Essential packages for ManimStudio - COMPLETE LIST
+        self.essential_packages = [
+            # Core animation
+            "manim",
+            "numpy",
+            "scipy",
+            "matplotlib",
+            
+            # Graphics and rendering
+            "Pillow",  # PIL
+            "opencv-python",  # cv2
+            "cairo-lang",  # For SVG support
+            "manimpango",  # Text rendering
+            "skia-python",  # Alternative renderer
+            
+            # GUI
+            "customtkinter",
+            
+            # Math and geometry
+            "sympy",
+            "networkx",
+            
+            # Code editing
+            "jedi",  # Code completion
+            
+            # 3D graphics
+            "moderngl",
+            "PyGLM",
+            "pathops",
+            
+            # Audio/Video
+            "ffmpeg-python",
+            
+            # Utilities
+            "requests",
+            "rich",  # Pretty printing
+            "click",  # CLI
+            "watchdog",  # File watching
+            "psutil",  # System monitoring
+        ]
+        
+        # Auto-detect environment
+        self._detect_current_environment()
     def setup_environment(self, log_callback=None):
         """Main setup method - handle bundled vs normal environment"""
         if USING_BUNDLED_ENV:
@@ -5161,168 +5185,69 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
 
 
     def setup_bundled_environment(self):
-        """Set up bundled environment with COMPLETE attribute initialization and proper error handling"""
-        print("🚀 Setting up bundled environment...")
+        """FIXED: Set up bundled environment - Extract next to app.exe for TRUE portability"""
+        print("🔧 Setting up PORTABLE bundled environment...")
         
-        # CRITICAL: Initialize basic attributes FIRST before doing anything else
         if getattr(sys, 'frozen', False):
+            # FIXED: Running as executable - everything next to app.exe
             app_dir = Path(sys.executable).parent
         else:
+            # Running as script - extract next to script
             app_dir = Path(__file__).parent
-        
-        # Initialize ALL required attributes for bundled mode
-        self.app_dir = str(app_dir)
-        self.venv_dir = str(app_dir)  # In bundled mode, everything is next to exe
-        self.base_dir = str(app_dir)
-        self.bundled_venv_dir = None
-        self.bundled_available = False
-        self.is_frozen = True
-        self.using_fallback = False
-        self.needs_setup = True  # Initially true, will be set to False if successful
-        self.essential_packages = []  # Empty for bundled mode
-        
-        # Set up logging if not already done
-        if not hasattr(self, 'logger'):
-            self.logger = logging.getLogger(__name__)
-        
-        # Look for venv_bundle (the correct name from build process)
+            
         venv_bundle = app_dir / "venv_bundle"
         
-        print(f"🔍 Looking for bundled environment at: {venv_bundle}")
-        print(f"📁 App directory: {app_dir}")
-        print(f"📂 Directory contents: {list(app_dir.iterdir()) if app_dir.exists() else 'Not found'}")
-        
         if not venv_bundle.exists():
-            print("❌ venv_bundle not found, checking for alternative names...")
-            
-            # Check for alternative bundle names
-            alternative_names = ["venv_bundled", "manim_studio_default", "bundled_env"]
-            bundle_found = None
-            
-            for alt_name in alternative_names:
-                alt_path = app_dir / alt_name
-                if alt_path.exists():
-                    print(f"✅ Found alternative bundle: {alt_path}")
-                    venv_bundle = alt_path
-                    bundle_found = True
-                    break
-            
-            if not bundle_found:
-                print("❌ No bundled environment found")
-                print("⚠️ Falling back to normal environment setup")
-                # Initialize remaining attributes needed for normal setup
-                self.current_venv = None
-                self.python_path = sys.executable
-                self.pip_path = "pip"
-                self.needs_setup = True
-                
-                # Call normal initialization - now all attributes exist
-                try:
-                    self._initialize_environment()
-                except Exception as e:
-                    print(f"❌ Normal environment initialization failed: {e}")
-                    self.logger.error(f"Environment initialization failed: {e}")
-                return
+            print("❌ venv_bundle not found, falling back to normal setup")
+            self._initialize_environment()
+            return
         
-        # Validate bundle structure - CRITICAL: Check for both Scripts and Lib
-        print(f"🔍 Validating bundle structure at: {venv_bundle}")
-        
-        required_dirs = {
-            "Scripts": venv_bundle / "Scripts",
-            "Lib": venv_bundle / "Lib",
-            "site-packages": venv_bundle / "Lib" / "site-packages"
-        }
-        
-        missing_dirs = []
-        for dir_name, dir_path in required_dirs.items():
-            if dir_path.exists():
-                item_count = len(list(dir_path.iterdir())) if dir_path.is_dir() else 0
-                print(f"✅ {dir_name}: {dir_path} ({item_count} items)")
-            else:
-                print(f"❌ MISSING: {dir_name} at {dir_path}")
-                missing_dirs.append(dir_name)
-        
-        if missing_dirs:
-            print(f"❌ Bundle structure invalid - missing: {missing_dirs}")
-            print(f"Bundle contents: {list(venv_bundle.iterdir()) if venv_bundle.exists() else 'None'}")
-            
-            # Try to find if the structure is flattened
-            print("🔍 Checking for flattened structure...")
-            if (venv_bundle / "python.exe").exists():
-                print("⚠️ Found flattened structure - Scripts files are in root")
-                # Create proper structure
-                try:
-                    self._fix_flattened_bundle_structure(venv_bundle)
-                    # Re-validate after fixing
-                    missing_dirs = []
-                    for dir_name, dir_path in required_dirs.items():
-                        if not dir_path.exists():
-                            missing_dirs.append(dir_name)
-                    
-                    if missing_dirs:
-                        print(f"❌ Structure fix failed - still missing: {missing_dirs}")
-                        raise Exception("Could not fix bundle structure")
-                        
-                except Exception as e:
-                    print(f"❌ Failed to fix bundle structure: {e}")
-                    print("⚠️ Falling back to normal environment setup")
-                    # Fallback to normal setup
-                    self.current_venv = None
-                    self.python_path = sys.executable
-                    self.pip_path = "pip"
-                    self.needs_setup = True
-                    try:
-                        self._initialize_environment()
-                    except Exception as e2:
-                        print(f"❌ Normal environment initialization also failed: {e2}")
-                        self.logger.error(f"Both bundled and normal initialization failed: {e2}")
-                    return
-            else:
-                print("❌ Cannot recover bundle structure, falling back to normal setup")
-                # Fallback to normal setup
-                self.current_venv = None
-                self.python_path = sys.executable
-                self.pip_path = "pip"
-                self.needs_setup = True
-                try:
-                    self._initialize_environment()
-                except Exception as e:
-                    print(f"❌ Normal environment initialization failed: {e}")
-                    self.logger.error(f"Environment initialization failed: {e}")
-                return
-        
-        # Target location: NEXT TO APP.EXE (portable setup)
+        # CRITICAL FIX: Target location NEXT TO APP.EXE (true portability)
         target_venv = app_dir / "manim_studio_default"
         
-        print(f"📁 Extracting bundled environment to: {target_venv}")
-        print(f"🚀 Portable mode: Everything stays with app.exe")
+        print(f"📁 Source bundle: {venv_bundle}")
+        print(f"📁 Target location: {target_venv}")
+        print(f"🚀 TRUE PORTABLE mode: Everything stays with app.exe")
+        
+        # Enhanced validation before extraction
+        required_dirs = ["Scripts", "Lib/site-packages"]
+        missing_dirs = []
+        
+        for req_dir in required_dirs:
+            if not (venv_bundle / req_dir).exists():
+                missing_dirs.append(req_dir)
+        
+        if missing_dirs:
+            print(f"❌ Bundle validation failed - missing: {missing_dirs}")
+            print(f"Bundle contents: {list(venv_bundle.iterdir())}")
+            self._initialize_environment()
+            return
         
         # Remove existing environment if it exists
         if target_venv.exists():
             print("🗑️ Removing existing environment...")
-            try:
-                shutil.rmtree(target_venv, ignore_errors=True)
-            except Exception as e:
-                print(f"⚠️ Could not fully remove existing environment: {e}")
+            shutil.rmtree(target_venv, ignore_errors=True)
         
         # Copy bundled environment to target location
         try:
             print("📦 Copying bundled environment...")
             shutil.copytree(venv_bundle, target_venv)
             print("✅ Bundled environment extracted successfully!")
+            
+            # Verify extraction worked
+            if not (target_venv / "Lib" / "site-packages").exists():
+                print("❌ Extraction verification failed - site-packages missing")
+                self._initialize_environment()
+                return
+                
+            if not (target_venv / "Scripts" / "python.exe").exists():
+                print("❌ Extraction verification failed - python.exe missing")
+                self._initialize_environment()
+                return
+                
         except Exception as e:
             print(f"❌ Failed to extract bundled environment: {e}")
-            print("⚠️ Falling back to normal environment setup")
-            # Fallback to normal setup
-            self.current_venv = None
-            self.python_path = sys.executable
-            self.pip_path = "pip"
-            self.needs_setup = True
-            try:
-                self._initialize_environment()
-            except Exception as e2:
-                print(f"❌ Normal environment initialization also failed: {e2}")
-                self.logger.error(f"Both bundled and normal initialization failed: {e2}")
+            self._initialize_environment()
             return
         
         # Set up paths to the extracted environment
@@ -5333,58 +5258,37 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             self.python_path = str(target_venv / "bin" / "python")
             self.pip_path = str(target_venv / "bin" / "pip")
         
-        # Verify extraction worked
+        # Verify paths exist
         if not os.path.exists(self.python_path):
             print(f"❌ Python executable not found at: {self.python_path}")
-            
-            # Try to find alternative python executable
-            scripts_dir = target_venv / "Scripts"
-            if scripts_dir.exists():
-                for exe_name in ["python.exe", "python3.exe", "python"]:
-                    alt_python = scripts_dir / exe_name
-                    if alt_python.exists():
-                        self.python_path = str(alt_python)
-                        print(f"✅ Found alternative Python executable: {self.python_path}")
-                        break
-                else:
-                    print("❌ No Python executable found")
-                    print("⚠️ Falling back to normal environment setup")
-                    # Fallback to normal setup
-                    self.current_venv = None
-                    self.python_path = sys.executable
-                    self.pip_path = "pip"
-                    self.needs_setup = True
-                    try:
-                        self._initialize_environment()
-                    except Exception as e:
-                        print(f"❌ Normal environment initialization failed: {e}")
-                        self.logger.error(f"Environment initialization failed: {e}")
-                    return
-            else:
-                print("❌ Scripts directory not found")
-                print("⚠️ Falling back to normal environment setup")
-                # Fallback to normal setup
-                self.current_venv = None
-                self.python_path = sys.executable
-                self.pip_path = "pip"
-                self.needs_setup = True
-                try:
-                    self._initialize_environment()
-                except Exception as e:
-                    print(f"❌ Normal environment initialization failed: {e}")
-                    self.logger.error(f"Environment initialization failed: {e}")
-                return
+            self._initialize_environment()
+            return
         
-        # Set up state for successful bundled environment
+        # Set up PORTABLE paths - everything next to exe
+        self.app_dir = str(app_dir)  # Next to app.exe
+        self.venv_dir = str(app_dir)  # Environments next to app.exe
+        self.base_dir = str(app_dir)
+        
+        # Set up state
         self.current_venv = "manim_studio_default"
         self.needs_setup = False  # No setup needed - everything is bundled!
+        self.using_fallback = False
+        self.is_frozen = True
+        self.bundled_venv_dir = None
+        self.bundled_available = False
         
-        print(f"✅ Portable bundled environment ready!")
+        # Essential packages list (empty since everything is bundled)
+        self.essential_packages = []
+        
+        # Set up logging if not already done
+        if not hasattr(self, 'logger'):
+            self.logger = logging.getLogger(__name__)
+        
+        print(f"🎉 PORTABLE bundled environment ready!")
         print(f"   📁 App directory: {self.app_dir}")
         print(f"   🐍 Python: {self.python_path}")
         print(f"   📦 Environment: {target_venv}")
-        print("🚀 Ready to use - no package installation needed!")
-
+        print("🚀 Truly portable - no package installation needed!")
     def _fix_flattened_bundle_structure(self, bundle_path):
         """Fix flattened bundle structure by creating proper Scripts and Lib directories"""
         print("🔧 Fixing flattened bundle structure...")
