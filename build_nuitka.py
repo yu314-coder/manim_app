@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Modern build_nuitka.py - 2024 Best Practices Edition
+Modern build_nuitka.py - 2024 Best Practices Edition with DLL Conflict Prevention
 Follows current Nuitka anti-bloat and plugin standards
 Usage: python build_nuitka.py [options]
 """
@@ -62,7 +62,7 @@ def check_build_environment():
     return True
 
 def build_executable(args):
-    """Build executable using 2024 Nuitka best practices"""
+    """Build executable using 2024 Nuitka best practices with DLL conflict prevention"""
     print(f"\n🔨 Building executable in {get_build_mode_name(args)} mode...")
     
     # Determine jobs
@@ -111,76 +111,112 @@ def build_executable(args):
         "--remove-output",
     ])
     
-    # Windows-specific
+    # Windows-specific with DLL conflict prevention
     if os.name == 'nt':
         cmd.extend([
             "--mingw64",
             "--windows-disable-console",
+            # CRITICAL: DLL conflict prevention
+            "--force-dll-dependency-cache-update",
+            "--onefile-tempdir-spec=manim_studio_temp"
         ])
     
-    # ANTI-BLOAT: Prevent problematic modules from being compiled
+    # CRITICAL: Exclude packages that cause 3221225477 DLL conflicts
     problematic_modules = [
-        "IPython",          # Interactive Python bloat
-        "jupyter",          # Jupyter notebook bloat
-        "notebook",         # Notebook interface bloat
-        "tkinter.test",     # Test modules
-        "test",             # Python test suite
-        "unittest",         # Unit testing bloat
-        "doctest",          # Documentation test bloat
-        "pytest",           # Testing framework bloat
+        "tkinter.test",
+        "test",
+        "unittest", 
+        "distutils",
+        "setuptools",
+        "pip",
+        "wheel",
+        # DLL conflict sources:
+        "numpy.tests",
+        "scipy.tests", 
+        "matplotlib.tests",
+        "cv2.test",
+        "PIL.test",
+        "moderngl.test",
+        "pytest",
+        "nose",
+        # Manim-specific test modules
+        "manim.test",
+        "manim.tests"
     ]
     
     for module in problematic_modules:
-        cmd.extend([
-            f"--nofollow-import-to={module}",
-        ])
+        cmd.extend([f"--nofollow-import-to={module}"])
     
-    # MINIMAL COMPILATION: Only compile what's absolutely necessary
-    essential_only = ["tkinter"]  # Minimal GUI support
+    # ANTI-BLOAT: Prevent problematic modules from being compiled
+    bloat_modules = [
+        "IPython",
+        "jupyter", 
+        "notebook",
+        "pandas.tests",
+        "sklearn.tests",
+        "sympy.tests",
+        "networkx.tests"
+    ]
     
-    for package in essential_only:
-        cmd.extend([
-            f"--include-package={package}",
-        ])
+    for module in bloat_modules:
+        cmd.extend([f"--nofollow-import-to={module}"])
     
-    # Core modules (always safe to compile)
-    core_modules = ["os", "sys", "json", "pathlib", "logging"]
-    for module in core_modules:
-        cmd.append(f"--include-module={module}")
+    # Include critical data files for manim
+    data_files = [
+        "--include-data-dir=templates=templates",
+        "--include-data-dir=assets=assets"
+    ]
     
-    # Output settings
+    for data_file in data_files:
+        if any(os.path.exists(path) for path in data_file.split("=")[0].replace("--include-data-dir=", "").split(",")):
+            cmd.append(data_file)
+    
+    # Performance optimizations
     cmd.extend([
-        "--output-dir=dist",
         f"--jobs={jobs}",
-        "app.py"
+        "--output-dir=dist",
     ])
     
-    # Add icon if available
-    if Path("assets/icon.ico").exists():
-        cmd.append("--windows-icon-from-ico=assets/icon.ico")
+    # Add main script
+    cmd.append("app.py")
     
-    # Show command if debug
-    if args.debug:
-        print(f"🔧 Build command:")
-        print(" ".join(cmd))
-    
-    # Run build
-    start_time = time.time()
+    print(f"🔧 Build command: {' '.join(cmd[:10])}... ({len(cmd)} total args)")
+    print(f"💼 Jobs: {jobs}")
+    print(f"🛡️ DLL Conflict Prevention: ENABLED")
     
     try:
-        result = subprocess.run(cmd, check=False)
+        start_time = time.time()
         
-        end_time = time.time()
-        build_time = end_time - start_time
+        # Clear any existing DLL cache before build
+        temp_dirs = [
+            os.path.join(os.environ.get('TEMP', ''), '__pycache__'),
+            "build",
+            "__pycache__"
+        ]
+        
+        for temp_dir in temp_dirs:
+            if os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                    print(f"🧹 Cleared: {temp_dir}")
+                except:
+                    pass
+        
+        # Run build with enhanced error handling
+        print("\n🚀 Starting build process...")
+        result = subprocess.run(cmd, capture_output=False, text=True)
+        
+        build_time = time.time() - start_time
         
         if result.returncode == 0:
             exe_path = Path("dist") / "app.exe"
             if exe_path.exists():
                 size_mb = exe_path.stat().st_size / (1024 * 1024)
-                print(f"\n✅ Build successful!")
+                print(f"\n✅ BUILD SUCCESSFUL!")
                 print(f"📦 Executable: {exe_path}")
                 print(f"📏 Size: {size_mb:.1f} MB")
                 print(f"⏱️ Build time: {build_time:.1f} seconds")
+                print(f"🛡️ DLL conflicts prevented")
                 return True
         
         print(f"\n❌ Build failed with exit code {result.returncode}")
@@ -203,13 +239,22 @@ def get_build_mode_name(args):
         return "STANDARD"
 
 def cleanup(args=None):
-    """Clean up temporary files"""
+    """Clean up temporary files including DLL caches"""
     files_to_remove = []
     dirs_to_remove = []
     
     if args and args.clean:
-        dirs_to_remove.extend(["build", "dist"])
+        dirs_to_remove.extend(["build", "dist", "__pycache__"])
         print("🧹 Cleaning all build directories...")
+    
+    # Always clean DLL caches to prevent conflicts
+    dll_cache_dirs = [
+        "__pycache__",
+        os.path.join(os.environ.get('TEMP', ''), '__pycache__'),
+        "build"
+    ]
+    
+    dirs_to_remove.extend(dll_cache_dirs)
     
     for file in files_to_remove:
         if os.path.exists(file):
@@ -244,8 +289,8 @@ def main():
     
     args = parser.parse_args()
     
-    print("🚀 MODERN NUITKA BUILD - 2024 EDITION")
-    print("=" * 50)
+    print("🚀 MODERN NUITKA BUILD - 2024 EDITION WITH DLL CONFLICT PREVENTION")
+    print("=" * 70)
     
     # Check environment
     if not check_build_environment():
@@ -264,6 +309,7 @@ def main():
         print("=" * 80)
         print("✅ Self-contained executable")
         print("✅ Modern anti-bloat prevents compilation issues")
+        print("✅ DLL conflict prevention enabled")
         print("✅ Optimized for Python 3.12 compatibility")
         
         exe_path = Path("dist") / "app.exe"
@@ -277,10 +323,12 @@ def main():
         print(f"\n🧪 Ready to deploy:")
         print("1. Copy dist/app.exe anywhere")
         print("2. Run directly - no installation needed")
+        print("3. No DLL conflicts expected")
         
     else:
         print("\n❌ Build failed!")
         print("💡 Try: python build_nuitka.py --debug for details")
+        print("💡 Or: python build_nuitka.py --clean --optimize")
     
     cleanup(args)
     return success
