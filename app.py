@@ -39,6 +39,9 @@ import atexit
 import multiprocessing
 import importlib.util
 import importlib 
+import venv
+import hashlib
+import traceback
 try:
     from fixes import ensure_ascii_path
 except Exception:
@@ -69,6 +72,23 @@ except Exception:
 
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 os.environ['PYTHONLEGACYWINDOWSFSENCODING'] = '0'
+
+# CRITICAL FIX: Add DLL isolation for Nuitka builds
+if getattr(sys, 'frozen', False):
+    # Running as Nuitka executable - apply DLL isolation
+    os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+    os.environ['PYTHONUNBUFFERED'] = '1'
+    
+    # Force system temp directory (avoid onefile temp issues)
+    system_temp = os.environ.get('TEMP', tempfile.gettempdir())
+    if 'onefile' in system_temp.lower() or 'temp' in system_temp.lower():
+        # Use a stable temp directory
+        stable_temp = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'Temp', 'ManimStudio')
+        os.makedirs(stable_temp, exist_ok=True)
+        os.environ['TEMP'] = stable_temp
+        os.environ['TMP'] = stable_temp
+
+# Add this to the top of app.py after the imports section
 
 def get_executable_directory():
     """Get the directory where the executable is located"""
@@ -122,7 +142,7 @@ def setup_portable_logging():
 # Call this early in your app initialization
 LOGS_DIR = setup_portable_logging()
 def run_subprocess_safe(command, **kwargs):
-    """Enhanced subprocess runner for onefile executables"""
+    """Enhanced subprocess runner for onefile executables with DLL isolation"""
     if getattr(sys, 'frozen', False):
         # Running as onefile executable - need special handling
         
@@ -142,7 +162,10 @@ def run_subprocess_safe(command, **kwargs):
             'TEMP': system_temp,
             'TMP': system_temp,
             'PYTHONDONTWRITEBYTECODE': '1',
-            'PYTHONUNBUFFERED': '1'
+            'PYTHONUNBUFFERED': '1',
+            # CRITICAL: Prevent DLL conflicts
+            'PYTHONPATH': '',  # Clear Python path
+            'PYTHONHOME': '',  # Clear Python home
         })
         
         kwargs['env'] = env
@@ -153,6 +176,14 @@ def run_subprocess_safe(command, **kwargs):
         # Set working directory to a stable location
         if 'cwd' not in kwargs:
             kwargs['cwd'] = system_temp
+            
+        # Add startup info to hide console windows
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            kwargs['startupinfo'] = startupinfo
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
     
     try:
         return subprocess.run(command, **kwargs)
@@ -285,6 +316,7 @@ try:
 except ImportError:
     print("Warning: matplotlib not available")
     pass
+
 # Configure CustomTkinter with modern appearance
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -3625,15 +3657,13 @@ class VirtualEnvironmentManager:
         self.parent_app = parent_app
         self.logger = logging.getLogger(__name__)
         
-        
-        
-        # Normal initialization for non-bundled environments
+        # Normal initialization for all environments
         print("🐍 Using standard environment setup")
+        
         # Environment paths and configuration
         self.base_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
         self.app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
         self.venv_dir = os.path.join(self.app_dir, "venvs")
-        self.bundled_dir = os.path.join(self.base_dir, "bundled")
         
         # Create necessary directories
         os.makedirs(self.venv_dir, exist_ok=True)
@@ -3646,8 +3676,6 @@ class VirtualEnvironmentManager:
         self.needs_setup = True
         self.using_fallback = False
         self.is_frozen = self._detect_if_frozen()
-        
-     
         
         # Essential packages for ManimStudio - COMPLETE LIST
         self.essential_packages = [
@@ -3681,8 +3709,8 @@ class VirtualEnvironmentManager:
             "moderngl-window"
         ]
         
-        # Auto-detect existing environment (this will be called by ManimStudioApp)
-        # Don't auto-detect here to avoid conflicts with app-level detection
+        # Initialize environment detection
+        self._initialize_environment()
     def safe_after(self, delay, callback=None):
         """Safely schedule a callback on the main Tk root."""
         if self.parent_app and hasattr(self.parent_app, 'root'):
@@ -3748,61 +3776,6 @@ class VirtualEnvironmentManager:
     def get_venv_info(self, venv_name):
         """Get detailed information about a virtual environment (portable version)"""
         # Handle bundled environment case (portable mode)
-        if USING_BUNDLED_ENV and venv_name == "manim_studio_default":
-            # In portable mode, environment is next to app.exe
-            if getattr(sys, 'frozen', False):
-                app_dir = Path(sys.executable).parent
-            else:
-                app_dir = Path(__file__).parent
-            
-            venv_path = app_dir / "manim_studio_default"
-            
-            info = {
-                'name': venv_name,
-                'path': str(venv_path),
-                'python_version': "Bundled Python",
-                'is_active': self.current_venv == venv_name,
-                'packages_count': 0,
-                'size': 0,
-                'is_bundled': True,  # Mark as bundled
-                'is_portable': True  # Mark as portable
-            }
-            
-            # Get Python version if available
-            python_exe = venv_path / "Scripts" / "python.exe" if os.name == 'nt' else venv_path / "bin" / "python"
-            if python_exe.exists():
-                try:
-                    result = subprocess.run([str(python_exe), "--version"], capture_output=True, text=True, timeout=5)
-                    if result.returncode == 0:
-                        info['python_version'] = result.stdout.strip() + " (Portable)"
-                except:
-                    pass
-            
-            # Count packages
-            try:
-                if os.name == 'nt':
-                    site_packages = venv_path / "Lib" / "site-packages"
-                else:
-                    # Find site-packages directory
-                    lib_dirs = list((venv_path / "lib").glob("python*"))
-                    site_packages = lib_dirs[0] / "site-packages" if lib_dirs else None
-                
-                if site_packages and site_packages.exists():
-                    packages = [item for item in site_packages.iterdir() 
-                              if item.is_dir() and not item.name.startswith('.') 
-                              and not item.name.endswith('.dist-info')]
-                    info['packages_count'] = f"{len(packages)} (bundled)"
-            except:
-                info['packages_count'] = "Many (bundled)"
-            
-            # Get directory size
-            try:
-                total_size = sum(f.stat().st_size for f in venv_path.rglob('*') if f.is_file())
-                info['size'] = total_size
-            except:
-                info['size'] = 0
-            
-            return info
         
         # Normal environment handling (existing code)
         info = {
@@ -3911,14 +3884,73 @@ class VirtualEnvironmentManager:
         return True
         
     def _detect_if_frozen(self):
-        """Detect if running as compiled executable"""
-        return getattr(sys, 'frozen', False)
+        """Enhanced detection of frozen executable"""
+        # Standard PyInstaller detection
+        if getattr(sys, 'frozen', False):
+            return True
+        
+        # Additional checks for our specific case
+        exe_path = os.path.abspath(sys.executable)
+        exe_name = os.path.basename(exe_path).lower()
+        
+        # Check if executable name suggests it's our app
+        app_names = ["manimstudio", "manim_studio", "app", "main"]
+        if any(name in exe_name for name in app_names):
+            return True
+        
+        # Check if executable is in a 'dist' directory (common for PyInstaller)
+        if "dist" in exe_path.lower():
+            return True
+        
+        # Check for Nuitka onefile indicators
+        if "onefile" in exe_path or "temp" in exe_path:
+            return True
+        
+        return False
     
-   
+    def _detect_bundled_environment(self):
+        """Detect if there's a bundled virtual environment"""
+        bundled_paths = [
+            os.path.join(self.base_dir, "venv.zip"),
+            os.path.join(self.base_dir, "bundled", "venv.zip"),
+            os.path.join(self.base_dir, "resources", "venv.zip")
+        ]
+        
+        for path in bundled_paths:
+            if os.path.exists(path):
+                self.bundled_venv_dir = Path(path).parent
+                self.bundled_available = True
+                self.logger.info(f"Found bundled environment: {path}")
+                break
     
-    def _detect_current_environment(self):
-        """Detect current virtual environment (only when not frozen)"""
-        # Don't check current virtual environment when frozen
+    def _initialize_environment(self):
+        """Initialize and detect current environment"""
+        self.logger.info("Initializing environment detection...")
+        
+        # First check for manim_studio_default specifically
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        if os.path.exists(default_venv_path) and self.is_valid_venv(default_venv_path):
+            self.logger.info("Found manim_studio_default environment")
+            if os.name == 'nt':
+                self.python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+                self.pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+            else:
+                self.python_path = os.path.join(default_venv_path, "bin", "python")
+                self.pip_path = os.path.join(default_venv_path, "bin", "pip")
+                
+            # Verify manim is available
+            if self.check_manim_availability():
+                self.current_venv = "manim_studio_default"
+                self.needs_setup = False
+                return True
+            else:
+                self.logger.warning("manim_studio_default exists but manim not available")
+
+        # Check for local environment alongside the application
+        if self.check_local_directory_venv():
+            return True
+
+        # CRITICAL: Don't check current virtual environment when frozen
         # because sys.executable points to our .exe file
         if not self.is_frozen:
             # Only check if we're in a virtual environment when running as script
@@ -3947,76 +3979,8 @@ class VirtualEnvironmentManager:
             return False  # Still need setup, but we have backup
             
         return False
-    def _initialize_environment(self):
-        """Initialize environment when bundled setup fails"""
-        print("🐍 Falling back to standard environment setup")
-        
-        # Environment paths and configuration
-        self.base_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
-        self.app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
-        self.venv_dir = os.path.join(self.app_dir, "venvs")
-        self.bundled_dir = os.path.join(self.base_dir, "bundled")
-        
-        # Create necessary directories
-        os.makedirs(self.venv_dir, exist_ok=True)
-        os.makedirs(self.app_dir, exist_ok=True)
-        
-        # Current environment state
-        self.current_venv = None
-        self.python_path = sys.executable
-        self.pip_path = "pip"
-        self.needs_setup = True
-        self.using_fallback = False
-        self.is_frozen = self._detect_if_frozen()
-        
-        
-        
-        # Essential packages for ManimStudio - COMPLETE LIST
-        self.essential_packages = [
-            # Core animation
-            "manim",
-            "numpy",
-            "scipy",
-            "matplotlib",
-            
-            # Graphics and rendering
-            "Pillow",  # PIL
-            "opencv-python",  # cv2
-            "cairo-lang",  # For SVG support
-            "manimpango",  # Text rendering
-            "skia-python",  # Alternative renderer
-            
-            # GUI
-            "customtkinter",
-            
-            # Math and geometry
-            "sympy",
-            "networkx",
-            
-            # Code editing
-            "jedi",  # Code completion
-            
-            # 3D graphics
-            "moderngl",
-            "PyGLM",
-            "pathops",
-            
-            # Audio/Video
-            "ffmpeg-python",
-            
-            # Utilities
-            "requests",
-            "rich",  # Pretty printing
-            "click",  # CLI
-            "watchdog",  # File watching
-            "psutil",  # System monitoring
-        ]
-        
-        # Auto-detect environment
-        self._detect_current_environment()
     def setup_environment(self, log_callback=None):
         """Main setup method - handle bundled vs normal environment"""
-        
         
         # Original setup logic for non-bundled environments
         self.logger.info("Starting environment setup...")
@@ -4064,7 +4028,14 @@ class VirtualEnvironmentManager:
                         self.logger.warning("Failed to install some packages, will recreate environment...")
                         # Fall through to recreate environment
         
-      
+        # Step 2: Try bundled environment if available
+        if self.bundled_available:
+            self.logger.info("Attempting to extract bundled environment...")
+            if self.extract_bundled_environment():
+                self.logger.info("✅ Bundled environment extracted successfully!")
+                self.activate_default_environment()
+                self.needs_setup = False
+                return True
         
         # Step 3: Create new environment (if no existing or repair failed)
         if os.path.exists(default_venv_path):
@@ -4719,6 +4690,72 @@ except ImportError as e:
         except ImportError:
             return False
     
+    def check_bundled_environment(self):
+        """Check for bundled environment"""
+        if self.bundled_available:
+            self.logger.info("Bundled environment is available")
+            return True
+        return False
+    
+    def extract_bundled_environment(self):
+        """Extract bundled environment to the venvs directory"""
+        if not self.bundled_available:
+            return False
+            
+        try:
+            venv_zip_path = os.path.join(self.bundled_venv_dir, "venv.zip")
+            extract_path = os.path.join(self.venv_dir, "manim_studio_default")
+            
+            self.logger.info(f"Extracting bundled environment to: {extract_path}")
+            
+            # Remove existing directory if it exists
+            if os.path.exists(extract_path):
+                shutil.rmtree(extract_path)
+            
+            # Extract the zip file
+            with zipfile.ZipFile(venv_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_path)
+            
+            # Set up paths
+            if os.name == 'nt':
+                self.python_path = os.path.join(extract_path, "Scripts", "python.exe")
+                self.pip_path = os.path.join(extract_path, "Scripts", "pip.exe")
+            else:
+                self.python_path = os.path.join(extract_path, "bin", "python")
+                self.pip_path = os.path.join(extract_path, "bin", "pip")
+            
+            # Verify extraction
+            if not os.path.exists(self.python_path):
+                self.logger.error("Python executable not found after extraction")
+                return False
+            
+            # Set permissions on Unix-like systems
+            if os.name != 'nt':
+                os.chmod(self.python_path, 0o755)
+                if os.path.exists(self.pip_path):
+                    os.chmod(self.pip_path, 0o755)
+            
+            # Read manifest and install any missing packages if needed
+            manifest_path = os.path.join(self.bundled_venv_dir, "manifest.json")
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, 'r') as f:
+                        manifest = json.load(f)
+                        essential_packages = manifest.get('essential_packages', [])
+                        
+                        # Install missing packages if any
+                        missing = self.check_missing_packages()
+                        if missing:
+                            self.install_missing_packages(missing)
+                            
+                except Exception as e:
+                    self.logger.error(f"Error reading or processing manifest: {e}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting bundled environment: {e}")
+            return False
     
     def verify_current_environment(self):
         """Verify that current environment has essential packages"""
@@ -5038,224 +5075,10 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             return self.use_system_python_fallback()
     
     def check_environment_status(self, log_callback=None):
-        """Enhanced environment check with DLL conflict prevention"""
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        """Check environment status - bundled or virtual"""
         
-        if not os.path.exists(default_venv_path):
-            if log_callback:
-                log_callback("❌ Default environment not found")
-            return False
-        
-        # Check for basic structure
-        if not self.is_valid_venv(default_venv_path):
-            if log_callback:
-                log_callback("❌ Environment structure invalid, attempting repair...")
-            return self.repair_corrupted_environment(default_venv_path, log_callback)
-        
-        # SAFE: Only check if Python executable exists (don't run it to avoid 3221225477)
-        if not os.path.exists(self.python_path):
-            if log_callback:
-                log_callback(f"❌ Python executable not found: {self.python_path}")
-            return self.repair_corrupted_environment(default_venv_path, log_callback)
-        
-        # SAFE: Check if critical packages are installed without importing them
-        try:
-            site_packages = os.path.join(default_venv_path, "Lib", "site-packages")
-            if os.path.exists(site_packages):
-                manim_exists = any(
-                    name.startswith("manim") for name in os.listdir(site_packages)
-                    if os.path.isdir(os.path.join(site_packages, name))
-                )
-                
-                if not manim_exists:
-                    if log_callback:
-                        log_callback("⚠️ Manim package not found, will reinstall")
-                    return self.repair_corrupted_environment(default_venv_path, log_callback)
-            else:
-                if log_callback:
-                    log_callback("❌ Site-packages directory missing")
-                return self.repair_corrupted_environment(default_venv_path, log_callback)
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"⚠️ Could not verify packages: {e}")
-        
-        if log_callback:
-            log_callback("✅ Environment validation successful (safe mode)")
-        return True
+        return self.original_check_environment_status(log_callback)
 
-    def fix_dll_conflicts(self, log_callback=None):
-        """Fix DLL conflicts that cause 3221225477 errors"""
-        try:
-            if log_callback:
-                log_callback("🔧 Fixing DLL conflicts...")
-            
-            # CRITICAL: Check if current_venv is properly set
-            if not hasattr(self, 'current_venv') or not self.current_venv:
-                if log_callback:
-                    log_callback("⚠️ Virtual environment not initialized yet, skipping DLL fix")
-                return True
-            
-            if not os.path.exists(self.current_venv):
-                if log_callback:
-                    log_callback(f"⚠️ Virtual environment path does not exist: {self.current_venv}")
-                return True
-            
-            # Method 1: Clear problematic DLL cache
-            dll_cache_dirs = [
-                os.path.join(os.environ.get('TEMP', ''), '__pycache__'),
-                os.path.join(self.current_venv, '__pycache__'),
-                os.path.join(self.current_venv, 'Lib', 'site-packages', '__pycache__')
-            ]
-            
-            for cache_dir in dll_cache_dirs:
-                if os.path.exists(cache_dir):
-                    try:
-                        shutil.rmtree(cache_dir)
-                        if log_callback:
-                            log_callback(f"✅ Cleared cache: {cache_dir}")
-                    except Exception as e:
-                        if log_callback:
-                            log_callback(f"⚠️ Could not clear cache {cache_dir}: {e}")
-            
-            # Check if pip_path is available
-            if not hasattr(self, 'pip_path') or not self.pip_path or not os.path.exists(self.pip_path):
-                if log_callback:
-                    log_callback("⚠️ Pip not available yet, skipping package reinstalls")
-                return True
-            
-            # Method 2: Force reinstall packages known to cause DLL conflicts
-            conflicting_packages = [
-                "numpy",
-                "opencv-python", 
-                "Pillow",
-                "moderngl",
-                "pycairo",
-                "manimpango",
-                "mapbox-earcut",
-                "scipy"
-            ]
-            
-            for package in conflicting_packages:
-                try:
-                    # Check if package is installed first
-                    check_cmd = [self.pip_path, "show", package]
-                    check_result = self.run_hidden_subprocess_nuitka_safe(
-                        check_cmd, capture_output=True, timeout=30
-                    )
-                    
-                    if check_result.returncode == 0:  # Package is installed
-                        # Uninstall first
-                        uninstall_cmd = [self.pip_path, "uninstall", package, "-y"]
-                        self.run_hidden_subprocess_nuitka_safe(
-                            uninstall_cmd, capture_output=True, timeout=60
-                        )
-                        
-                        # Reinstall with --force-reinstall and --no-cache-dir
-                        install_cmd = [
-                            self.pip_path, "install", package, 
-                            "--force-reinstall", "--no-cache-dir", "--no-deps"
-                        ]
-                        result = self.run_hidden_subprocess_nuitka_safe(
-                            install_cmd, capture_output=True, timeout=300
-                        )
-                        
-                        if result.returncode == 0:
-                            if log_callback:
-                                log_callback(f"✅ Fixed DLL conflicts for {package}")
-                        else:
-                            if log_callback:
-                                log_callback(f"⚠️ Could not reinstall {package}")
-                    
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"⚠️ Could not process {package}: {e}")
-            
-            # Method 3: Reinstall manim last (if it exists)
-            try:
-                check_cmd = [self.pip_path, "show", "manim"]
-                check_result = self.run_hidden_subprocess_nuitka_safe(
-                    check_cmd, capture_output=True, timeout=30
-                )
-                
-                if check_result.returncode == 0:  # Manim is installed
-                    manim_cmd = [
-                        self.pip_path, "install", "manim", 
-                        "--force-reinstall", "--no-cache-dir"
-                    ]
-                    result = self.run_hidden_subprocess_nuitka_safe(
-                        manim_cmd, capture_output=True, timeout=600
-                    )
-                    
-                    if result.returncode == 0:
-                        if log_callback:
-                            log_callback("✅ Manim reinstalled successfully")
-                    else:
-                        if log_callback:
-                            log_callback("⚠️ Manim reinstall had issues (non-critical)")
-                        
-            except Exception as e:
-                if log_callback:
-                    log_callback(f"⚠️ Manim reinstall check failed: {e}")
-            
-            if log_callback:
-                log_callback("✅ DLL conflict prevention completed")
-            return True
-            
-        except Exception as e:
-            if log_callback:
-                log_callback(f"❌ DLL conflict fix failed: {e}")
-            return False
-    
-    def fix_environment_paths(self, log_callback=None):
-        """Fix Python path issues that cause DLL conflicts"""
-        try:
-            if log_callback:
-                log_callback("🛠️ Fixing environment paths...")
-            
-            # Get the virtual environment's Python executable
-            venv_python = os.path.join(self.current_venv, "Scripts", "python.exe")
-            
-            if not os.path.exists(venv_python):
-                if log_callback:
-                    log_callback("❌ Virtual environment Python not found")
-                return False
-            
-            # Test if we can run basic Python commands without DLL errors
-            test_commands = [
-                [venv_python, "--version"],
-                [venv_python, "-c", "import sys; print('Python OK')"],
-                [venv_python, "-c", "import os; print('OS OK')"]
-            ]
-            
-            for cmd in test_commands:
-                try:
-                    result = self.run_hidden_subprocess_nuitka_safe(
-                        cmd, capture_output=True, text=True, timeout=10
-                    )
-                    
-                    if result.returncode != 0:
-                        if log_callback:
-                            log_callback(f"❌ Path test failed: {' '.join(cmd)}")
-                        return False
-                        
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"❌ Path test error: {e}")
-                    return False
-            
-            # Update the stored paths
-            self.python_path = venv_python
-            self.pip_path = os.path.join(self.current_venv, "Scripts", "pip.exe")
-            
-            if log_callback:
-                log_callback("✅ Environment paths validated")
-            return True
-            
-        except Exception as e:
-            if log_callback:
-                log_callback(f"❌ Path fix failed: {e}")
-            return False
     def original_check_environment_status(self, log_callback=None):
         """Check virtual environment status without strict manim testing"""
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
@@ -5284,54 +5107,86 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             log_callback("✅ Environment validation successful (skipped import tests)")
         return True
 
-
-    
-    def debug_environment_setup(self):
-        """Debug function to check environment setup issues"""
-        print("\n🐛 ENVIRONMENT SETUP DEBUG")
-        print("=" * 50)
+    def setup_bundled_environment(self):
+        """Set up bundled environment - Extract next to app.exe for portability"""
+        print("🔧 Setting up portable bundled environment...")
         
-        print(f"Current state:")
-        print(f"  frozen: {getattr(sys, 'frozen', False)}")
-        print(f"  current_venv: {getattr(self, 'current_venv', 'None')}")
-        print(f"  python_path: {getattr(self, 'python_path', 'None')}")
-        print(f"  venv_dir: {getattr(self, 'venv_dir', 'None')}")
-        print(f"  app_dir: {getattr(self, 'app_dir', 'None')}")
-        print(f"  needs_setup: {getattr(self, 'needs_setup', 'None')}")
+        if getattr(sys, 'frozen', False):
+            # Running as executable - extract next to app.exe
+            app_dir = Path(sys.executable).parent
+        else:
+            # Running as script - extract next to script
+            app_dir = Path(__file__).parent
         
-        # Check USING_BUNDLED_ENV
-
+        venv_bundle = app_dir / "venv_bundle"
         
-        # Run diagnostic if available
+        if not venv_bundle.exists():
+            print("❌ venv_bundle not found, falling back to normal setup")
+            self._initialize_environment()
+            return
         
-
-    
-    def debug_environment_setup(self):
-        """Debug function to check environment setup issues"""
-        print("\n🐛 ENVIRONMENT SETUP DEBUG")
-        print("=" * 50)
+        # Target location: NEXT TO APP.EXE (portable setup)
+        target_venv = app_dir / "manim_studio_default"
         
-        print(f"Current state:")
-        print(f"  frozen: {getattr(sys, 'frozen', False)}")
-        print(f"  current_venv: {getattr(self, 'current_venv', 'None')}")
-        print(f"  python_path: {getattr(self, 'python_path', 'None')}")
-        print(f"  venv_dir: {getattr(self, 'venv_dir', 'None')}")
-        print(f"  app_dir: {getattr(self, 'app_dir', 'None')}")
+        print(f"📁 Extracting bundled environment to: {target_venv}")
+        print(f"🚀 Portable mode: Everything stays with app.exe")
         
-        # Check USING_BUNDLED_ENV
+        # Remove existing environment if it exists
+        if target_venv.exists():
+            print("🗑️ Removing existing environment...")
+            shutil.rmtree(target_venv, ignore_errors=True)
+        
+        # Copy bundled environment to target location
         try:
-            from __main__ import USING_BUNDLED_ENV
-            print(f"  USING_BUNDLED_ENV: {USING_BUNDLED_ENV}")
-        except ImportError:
-            print(f"  USING_BUNDLED_ENV: Not defined")
+            print("📦 Copying bundled environment...")
+            shutil.copytree(venv_bundle, target_venv, dirs_exist_ok=True)
+            print("✅ Bundled environment extracted successfully!")
+        except Exception as e:
+            print(f"❌ Failed to extract bundled environment: {e}")
+            self._initialize_environment()
+            return
         
-        # Run diagnostic if available
-        try:
-            self.diagnose_bundle_structure()
-        except:
-            print("  (Bundle diagnostic not available)")
-
-
+        # Set up paths to the extracted environment
+        if os.name == 'nt':
+            self.python_path = str(target_venv / "Scripts" / "python.exe")
+            self.pip_path = str(target_venv / "Scripts" / "pip.exe")
+        else:
+            self.python_path = str(target_venv / "bin" / "python")
+            self.pip_path = str(target_venv / "bin" / "pip")
+        
+        # Verify extraction worked
+        if not os.path.exists(self.python_path):
+            print(f"❌ Python executable not found at: {self.python_path}")
+            self._initialize_environment()
+            return
+        
+        # Set up all paths for PORTABLE MODE - everything next to exe
+        self.app_dir = str(app_dir)  # Next to app.exe
+        self.venv_dir = str(app_dir)  # Environments next to app.exe
+        self.base_dir = str(app_dir)
+        
+        # Set up state
+        self.current_venv = "manim_studio_default"
+        self.needs_setup = False  # No setup needed - everything is bundled!
+        self.using_fallback = False
+        self.is_frozen = True
+        self.bundled_venv_dir = None
+        self.bundled_available = False
+        
+        # Essential packages list (empty since everything is bundled)
+        self.essential_packages = []
+        
+        # Set up logging if not already done
+        if not hasattr(self, 'logger'):
+            self.logger = logging.getLogger(__name__)
+        
+        print(f"✅ Portable bundled environment ready!")
+        print(f"   📁 App directory: {self.app_dir}")
+        print(f"   🐍 Python: {self.python_path}")
+        print(f"   📦 Environment: {target_venv}")
+        print("🚀 Ready to use - no package installation needed!")
+        print("📁 Everything is portable - copy the whole folder to move the app!")
+    
     def _setup_environment_after_creation(self, venv_path):
         """Set up environment after creation"""
         if os.name == 'nt':
@@ -5439,20 +5294,7 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
         if self.current_venv and self.current_venv.startswith(("system_", "current_")):
             venvs.append(self.current_venv)
         
-        # Handle bundled/portable environment
-        if USING_BUNDLED_ENV:
-            # In portable mode, check for environment next to app.exe
-            if getattr(sys, 'frozen', False):
-                app_dir = Path(sys.executable).parent
-            else:
-                app_dir = Path(__file__).parent
-            
-            bundled_env = app_dir / "manim_studio_default"
-            if bundled_env.exists() and self.is_valid_venv(str(bundled_env)):
-                venvs.append("manim_studio_default")
-            
-            # Don't look in the standard venv_dir for bundled apps
-            return sorted(venvs)
+        
         
         # Regular virtual environments (non-bundled mode)
         if hasattr(self, 'venv_dir') and os.path.exists(self.venv_dir):
@@ -5495,18 +5337,8 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
     def activate_default_environment(self):
         """Activate the manim_studio_default environment (portable version)"""
         
-        # Handle bundled/portable environment
-        if USING_BUNDLED_ENV:
-            # In portable mode, environment is next to app.exe
-            if getattr(sys, 'frozen', False):
-                app_dir = Path(sys.executable).parent
-            else:
-                app_dir = Path(__file__).parent
-            
-            default_venv_path = app_dir / "manim_studio_default"
-        else:
-            # Regular mode - environment in standard location
-            default_venv_path = Path(self.venv_dir) / "manim_studio_default"
+        
+        default_venv_path = Path(self.venv_dir) / "manim_studio_default"
         
         if not default_venv_path.exists():
             self.logger.error(f"manim_studio_default environment not found at: {default_venv_path}")
@@ -5527,10 +5359,7 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
         self.current_venv = "manim_studio_default"
         self.needs_setup = False
         
-        if USING_BUNDLED_ENV:
-            self.logger.info(f"✅ Activated portable bundled environment: {default_venv_path}")
-        else:
-            self.logger.info(f"✅ Activated manim_studio_default environment: {default_venv_path}")
+        self.logger.info(f"✅ Activated manim_studio_default environment: {default_venv_path}")
         return True
     def deactivate_venv(self):
         """Deactivate the current virtual environment"""
@@ -5780,112 +5609,7 @@ else:
                 log_callback("⚠️ Manim package not found - may need installation")
         
         return manim_found
-    def check_manim_availability_safe(self):
-        """Safely check if manim is available without importing it"""
-        try:
-            # Check if current_venv is properly set
-            if not hasattr(self, 'current_venv') or not self.current_venv:
-                return False
-            
-            site_packages = os.path.join(self.current_venv, "Lib", "site-packages")
-            if not os.path.exists(site_packages):
-                return False
-            
-            # Check if manim directory exists
-            try:
-                manim_dirs = [name for name in os.listdir(site_packages) 
-                             if name.startswith("manim") and os.path.isdir(os.path.join(site_packages, name))]
-                
-                return len(manim_dirs) > 0
-            except (OSError, PermissionError):
-                return False
-            
-        except Exception:
-            return False
-
-    def fix_dll_conflicts(self, log_callback=None):
-        """Fix DLL conflicts that cause 3221225477 errors"""
-        try:
-            if log_callback:
-                log_callback("🔧 Fixing DLL conflicts...")
-            
-            # Method 1: Clear problematic DLL cache
-            dll_cache_dirs = [
-                os.path.join(os.environ.get('TEMP', ''), '__pycache__'),
-                os.path.join(self.current_venv, '__pycache__'),
-                os.path.join(self.current_venv, 'Lib', 'site-packages', '__pycache__')
-            ]
-            
-            for cache_dir in dll_cache_dirs:
-                if os.path.exists(cache_dir):
-                    try:
-                        shutil.rmtree(cache_dir)
-                        if log_callback:
-                            log_callback(f"✅ Cleared cache: {cache_dir}")
-                    except:
-                        pass
-            
-            # Method 2: Force reinstall packages known to cause DLL conflicts
-            conflicting_packages = [
-                "numpy",
-                "opencv-python", 
-                "Pillow",
-                "moderngl",
-                "pycairo",
-                "manimpango",
-                "mapbox-earcut",
-                "scipy"
-            ]
-            
-            for package in conflicting_packages:
-                try:
-                    # Uninstall first
-                    uninstall_cmd = [self.pip_path, "uninstall", package, "-y"]
-                    self.run_hidden_subprocess_nuitka_safe(
-                        uninstall_cmd, capture_output=True, timeout=60
-                    )
-                    
-                    # Reinstall with --force-reinstall and --no-cache-dir
-                    install_cmd = [
-                        self.pip_path, "install", package, 
-                        "--force-reinstall", "--no-cache-dir", "--no-deps"
-                    ]
-                    result = self.run_hidden_subprocess_nuitka_safe(
-                        install_cmd, capture_output=True, timeout=300
-                    )
-                    
-                    if result.returncode == 0:
-                        if log_callback:
-                            log_callback(f"✅ Fixed DLL conflicts for {package}")
-                    
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"⚠️ Could not fix {package}: {e}")
-            
-            # Method 3: Reinstall manim last
-            try:
-                manim_cmd = [
-                    self.pip_path, "install", "manim", 
-                    "--force-reinstall", "--no-cache-dir"
-                ]
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    manim_cmd, capture_output=True, timeout=600
-                )
-                
-                if result.returncode == 0:
-                    if log_callback:
-                        log_callback("✅ Manim reinstalled successfully")
-                        
-            except Exception as e:
-                if log_callback:
-                    log_callback(f"❌ Manim reinstall failed: {e}")
-            
-            return True
-            
-        except Exception as e:
-            if log_callback:
-                log_callback(f"❌ DLL conflict fix failed: {e}")
-            return False
+    
     
     def repair_environment(self):
         """Force repair of the environment by checking and installing all missing packages"""
@@ -7077,6 +6801,136 @@ class IntelliSenseEngine:
         return None
 
 
+class ResponsiveUI:
+    """Responsive UI manager for different screen sizes and DPI settings"""
+    
+    def __init__(self, root):
+        self.root = root
+        self.screen_width = root.winfo_screenwidth()
+        self.screen_height = root.winfo_screenheight()
+        self.dpi_scale = self._get_dpi_scale()
+        self.dpi = self.get_dpi()
+        self.scale_factor = self.calculate_scale_factor()
+        
+    def _get_dpi_scale(self):
+        """Get DPI scaling factor"""
+        try:
+            if os.name == 'nt':
+                # Windows DPI awareness
+                import ctypes
+                user32 = ctypes.windll.user32
+                user32.SetProcessDPIAware()
+                dpi = user32.GetDpiForSystem()
+                return dpi / 96.0
+            else:
+                # Unix-like systems
+                return 1.0
+        except:
+            return 1.0
+
+    def get_dpi(self):
+        """Get system DPI"""
+        try:
+            return self.root.winfo_fpixels('1i')
+        except:
+            return 96  # Default DPI
+            
+    def calculate_scale_factor(self):
+        """Calculate UI scale factor based on screen size and DPI"""
+        # Base scale on screen width, with adjustments for DPI
+        if self.screen_width <= 1024:
+            base_scale = 0.8
+        elif self.screen_width <= 1366:
+            base_scale = 0.9
+        elif self.screen_width <= 1920:
+            base_scale = 1.0
+        else:
+            base_scale = 1.1
+            
+        # Adjust for high DPI
+        if self.dpi > 120:
+            base_scale *= 1.1
+        elif self.dpi > 150:
+            base_scale *= 1.25
+            
+        return max(0.7, min(1.5, base_scale))
+
+    def get_optimal_window_size(self, preferred_width, preferred_height):
+        """Get optimal window size based on screen dimensions"""
+        # Calculate maximum usable screen space (leave room for taskbar)
+        max_width = int(self.screen_width * 0.9)
+        max_height = int(self.screen_height * 0.85)
+        
+        # Scale preferred size by DPI
+        scaled_width = int(preferred_width * self.dpi_scale)
+        scaled_height = int(preferred_height * self.dpi_scale)
+        
+        # Ensure window fits on screen
+        final_width = min(scaled_width, max_width)
+        final_height = min(scaled_height, max_height)
+        
+        return final_width, final_height
+    
+    def scale_dimension(self, value):
+        """Scale a dimension value"""
+        return int(value * self.scale_factor)
+    
+    def get_font_size(self, base_size):
+        """Get responsive font size"""
+        scaled = int(base_size * self.scale_factor)
+        return max(8, min(32, scaled))
+    
+    def get_window_size(self, base_width, base_height):
+        """Get responsive window size with screen constraints (alias for compatibility)"""
+        # Use percentage of screen for very small screens
+        if self.screen_width < 1024 or self.screen_height < 768:
+            width = int(self.screen_width * 0.9)
+            height = int(self.screen_height * 0.85)
+        else:
+            width = self.scale_dimension(base_width)
+            height = self.scale_dimension(base_height)
+            
+        # Ensure window fits on screen
+        width = min(width, self.screen_width - 100)
+        height = min(height, self.screen_height - 100)
+        
+        return width, height
+        
+    def get_optimal_sidebar_width(self, base_width=350):
+        """Get responsive sidebar width"""
+        if self.screen_width < 1024:
+            return self.scale_dimension(280)
+        elif self.screen_width < 1366:
+            return self.scale_dimension(320)
+        else:
+            return self.scale_dimension(base_width)
+    
+    def get_optimal_font_sizes(self):
+        """Get optimal font sizes for different elements"""
+        return {
+            "small": self.get_font_size(10),
+            "normal": self.get_font_size(12),
+            "medium": self.get_font_size(13),
+            "large": self.get_font_size(16),
+            "header": self.get_font_size(18)
+        }
+    
+    def get_optimal_spacing(self):
+        """Get optimal spacing values"""
+        return {
+            "small": self.scale_dimension(5),
+            "normal": self.scale_dimension(10),
+            "medium": self.scale_dimension(15),
+            "large": self.scale_dimension(20)
+        }
+        
+    def get_padding(self, base_padding):
+        """Get scaled padding"""
+        return max(2, int(base_padding * self.dpi_scale))
+    
+    def get_sidebar_width(self, base_width=350):
+        """Get responsive sidebar width (alias for compatibility)"""
+        return self.get_optimal_sidebar_width(base_width)
 class AutocompletePopup(tk.Toplevel):
     """Professional autocomplete popup window"""
     
@@ -8496,6 +8350,7 @@ VSCODE_COLORS = {
     "bracket_match": "#3e3e42"
 }
 
+
 class FullscreenVideoPlayer(tk.Toplevel):
     """YouTube-style fullscreen video player with proper state management"""
     
@@ -9868,15 +9723,32 @@ class ManimStudioApp:
     def __init__(self, latex_path: Optional[str] = None, debug: bool = False):
         # Initialize main window
         self.root = ctk.CTk()
+        
+        # Initialize enhanced responsive UI system
+        self.responsive = ResponsiveUI(self.root)
+        
+        # Set window title
         self.root.title(f"{APP_NAME} - Professional Edition v{APP_VERSION}")
-        screen_w = self.root.winfo_screenwidth()
-        screen_h = self.root.winfo_screenheight()
-        width = min(1600, screen_w - 100)
-        height = min(1000, screen_h - 100)
+        
+        # Get optimal window size based on screen detection
+        width, height = self.responsive.get_optimal_window_size(1600, 1000)
         self.root.geometry(f"{width}x{height}")
         
-        # Set minimum size
-        self.root.minsize(1200, 800)
+        # Set responsive minimum size
+        min_width, min_height = self.responsive.get_optimal_window_size(1200, 800)
+        self.root.minsize(min_width, min_height)
+        
+        # Center window on screen
+        x = (self.responsive.screen_width - width) // 2
+        y = (self.responsive.screen_height - height) // 2
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Apply DPI awareness for Windows
+        try:
+            if hasattr(self.root, 'tk') and hasattr(self.root.tk, 'call'):
+                self.root.tk.call('tk', 'scaling', self.responsive.scale_factor)
+        except:
+            pass
         
         # Try to set icon
         try:
@@ -10320,56 +10192,71 @@ class ManimStudioApp:
         self.auto_preview_checkbox.pack(side="right", padx=15)
         
     def create_sidebar(self):
-        """Create sidebar with settings and controls"""
-        self.sidebar = ctk.CTkFrame(self.root, width=350, corner_radius=0, fg_color=VSCODE_COLORS["surface"])
+        """Create sidebar with optimal sizing based on screen detection"""
+        # Get optimal sidebar width based on screen analysis
+        sidebar_width = self.responsive.get_optimal_sidebar_width()
+        
+        self.sidebar = ctk.CTkFrame(
+            self.root, 
+            width=sidebar_width, 
+            corner_radius=0, 
+            fg_color=VSCODE_COLORS["surface"]
+        )
         self.sidebar.grid(row=1, column=0, sticky="nsew")
         self.sidebar.grid_rowconfigure(0, weight=1)
         
-        # Sidebar content with scrolling
+        # Sidebar content with optimal spacing
+        spacing = self.responsive.get_optimal_spacing()
         self.sidebar_scroll = ctk.CTkScrollableFrame(self.sidebar, fg_color=VSCODE_COLORS["surface"])
-        self.sidebar_scroll.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.sidebar_scroll.grid(row=0, column=0, sticky="nsew", 
+                                padx=spacing["normal"], pady=spacing["normal"])
         
-        # Create sections
+        # Create sections with responsive sizing
         self.create_render_section()
         self.create_preview_section()
         self.create_assets_section()
         
     def create_render_section(self):
-        """Create render settings section"""
+        """Create render settings section with responsive sizing"""
+        # Get optimal font sizes and spacing
+        fonts = self.responsive.get_optimal_font_sizes()
+        spacing = self.responsive.get_optimal_spacing()
+        
         # Section header
         render_header = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
-        render_header.pack(fill="x", pady=(0, 10))
+        render_header.pack(fill="x", pady=(0, spacing["normal"]))
         
         header_title = ctk.CTkLabel(
             render_header,
             text="🎬 Render Settings",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(size=fonts["large"], weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
-        header_title.pack(side="left", padx=15, pady=12)
+        header_title.pack(side="left", padx=spacing["medium"], pady=spacing["medium"])
         
         # Render settings frame
         render_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
-        render_frame.pack(fill="x", pady=(0, 20))
+        render_frame.pack(fill="x", pady=(0, spacing["large"]))
         
-        # Quality setting
+        # Quality setting with responsive sizing
         quality_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
-        quality_frame.pack(fill="x", padx=15, pady=10)
+        quality_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
         
         ctk.CTkLabel(
             quality_frame,
             text="Quality",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
             text_color=VSCODE_COLORS["text"]
         ).pack(anchor="w")
         
+        combo_height = self.responsive.scale_dimension(36)
         self.quality_combo = ctk.CTkComboBox(
             quality_frame,
             values=list(QUALITY_PRESETS.keys()),
             variable=self.quality_var,
             command=self.on_quality_change,
-            height=36,
-            font=ctk.CTkFont(size=12)
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"])
         )
         self.quality_combo.pack(fill="x", pady=(5, 0))
         
@@ -10474,12 +10361,12 @@ class ManimStudioApp:
         
         # Format setting
         format_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
-        format_frame.pack(fill="x", padx=15, pady=10)
+        format_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
         
         ctk.CTkLabel(
             format_frame,
             text="Export Format",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
             text_color=VSCODE_COLORS["text"]
         ).pack(anchor="w")
         
@@ -10488,19 +10375,19 @@ class ManimStudioApp:
             values=list(EXPORT_FORMATS.keys()),
             variable=self.format_var,
             command=self.on_format_change,
-            height=36,
-            font=ctk.CTkFont(size=12)
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"])
         )
         self.format_combo.pack(fill="x", pady=(5, 0))
         
         # FPS setting
         fps_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
-        fps_frame.pack(fill="x", padx=15, pady=10)
+        fps_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
         
         ctk.CTkLabel(
             fps_frame,
             text="Frame Rate (FPS)",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
             text_color=VSCODE_COLORS["text"]
         ).pack(anchor="w")
         
@@ -10509,14 +10396,14 @@ class ManimStudioApp:
             values=["15", "24", "30", "60"],
             variable=self.fps_var,
             command=self.on_fps_change,
-            height=36,
-            font=ctk.CTkFont(size=12)
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"])
         )
         self.fps_combo.pack(fill="x", pady=(5, 0))
         
         # CPU Usage setting
         cpu_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
-        cpu_frame.pack(fill="x", padx=15, pady=10)
+        cpu_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
 
         cpu_header = ctk.CTkFrame(cpu_frame, fg_color="transparent")
         cpu_header.pack(fill="x")
@@ -10525,7 +10412,7 @@ class ManimStudioApp:
         ctk.CTkLabel(
             cpu_header,
             text="CPU Usage",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
             text_color=VSCODE_COLORS["text"]
         ).grid(row=0, column=0, sticky="w")
 
@@ -10545,8 +10432,8 @@ class ManimStudioApp:
             values=list(CPU_USAGE_PRESETS.keys()),
             variable=self.cpu_usage_var,
             command=self.on_cpu_usage_change,
-            height=36,
-            font=ctk.CTkFont(size=12)
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"])
         )
         self.cpu_usage_combo.pack(fill="x", pady=(5, 0))
 
@@ -10594,26 +10481,26 @@ class ManimStudioApp:
             render_frame,
             text="🚀 Render Animation",
             command=self.render_animation,
-            height=50,
-            font=ctk.CTkFont(size=16, weight="bold"),
+            height=self.responsive.scale_dimension(50),
+            font=ctk.CTkFont(size=fonts["large"], weight="bold"),
             fg_color=VSCODE_COLORS["primary"],
             hover_color=VSCODE_COLORS["primary_hover"]
         )
-        self.render_button.pack(fill="x", padx=15, pady=15)
+        self.render_button.pack(fill="x", padx=spacing["medium"], pady=spacing["medium"])
         
         # Progress bar
         self.progress_bar = ctk.CTkProgressBar(render_frame)
-        self.progress_bar.pack(fill="x", padx=15, pady=(0, 10))
+        self.progress_bar.pack(fill="x", padx=spacing["medium"], pady=(0, spacing["normal"]))
         self.progress_bar.set(0)
         
         # Progress label
         self.progress_label = ctk.CTkLabel(
             render_frame,
             text="Ready to render",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=fonts["normal"]),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.progress_label.pack(pady=(0, 15))
+        self.progress_label.pack(pady=(0, spacing["medium"]))
         
     def validate_custom_resolution(self, event=None):
         """Validate custom resolution inputs"""
@@ -11320,23 +11207,61 @@ class ManimStudioApp:
         """Log a success message with proper spacing"""
         self.append_terminal_output(f"✅ {message}", "success")
     def clear_output(self):
-        """Enhanced clear output"""
-        self.output_text.configure(state="normal")
-        self.output_text.delete("1.0", "end")
-        self.output_text.configure(state="disabled")
-        
-        # Clear search and buffer
-        if hasattr(self, 'search_matches'):
-            self.search_matches = []
-            self.current_search_index = -1
-        if hasattr(self, 'terminal_buffer'):
-            self.terminal_buffer = []
-        
-        # Show welcome message
-        self.append_terminal_output("🚀 Enhanced Terminal Ready!\n", "info")
-        self.update_status("Terminal cleared")
-        if hasattr(self, 'update_terminal_status'):
-            self.update_terminal_status("Ready", "#00FF00")
+        """Clear all terminal output and virtual terminal data"""
+        try:
+            # Enable text widget for editing
+            self.output_text.configure(state="normal")
+            
+            # Clear the visual text display
+            self.output_text.delete("1.0", "end")
+            
+            # Disable text widget to prevent user editing
+            self.output_text.configure(state="disabled")
+            
+            # Clear virtual terminal buffer
+            if hasattr(self, 'terminal_buffer'):
+                self.terminal_buffer = []
+            
+            # Clear search-related data
+            if hasattr(self, 'search_matches'):
+                self.search_matches = []
+                self.current_search_index = -1
+            
+            # Clear any search highlighting
+            self.output_text.tag_remove("search_match", "1.0", "end")
+            
+            # Clear search entry if it exists
+            if hasattr(self, 'search_entry'):
+                self.search_entry.delete(0, "end")
+            
+            # Reset terminal status
+            if hasattr(self, 'update_terminal_status'):
+                self.update_terminal_status("Ready", "#00FF00")
+            
+            # Clear any pending output queues if they exist
+            if hasattr(self, '_output_queue'):
+                while not self._output_queue.empty():
+                    try:
+                        self._output_queue.get_nowait()
+                    except:
+                        break
+            
+            # Reset any terminal state variables
+            if hasattr(self, 'last_manim_output_path'):
+                self.last_manim_output_path = None
+            
+            # Update main status
+            self.update_status("Terminal cleared - all output history removed")
+            
+        except Exception as e:
+            # Fallback if anything goes wrong
+            try:
+                self.output_text.configure(state="normal")
+                self.output_text.delete("1.0", "end")
+                self.output_text.configure(state="disabled")
+                self.update_status(f"Terminal cleared (with errors: {e})")
+            except:
+                pass
     def create_status_bar(self):
         """Create status bar"""
         self.status_bar = ctk.CTkFrame(self.root, height=35, corner_radius=0, fg_color=VSCODE_COLORS["surface"])
@@ -11662,9 +11587,61 @@ class ManimStudioApp:
         else:
             return None  # Use default formatting
     def clear_output(self):
-        """Clear terminal output"""
-        self.output_text.delete("1.0", "end")
-        self.update_status("Output cleared")
+        """Clear all terminal output and virtual terminal data"""
+        try:
+            # Enable text widget for editing
+            self.output_text.configure(state="normal")
+            
+            # Clear the visual text display
+            self.output_text.delete("1.0", "end")
+            
+            # Disable text widget to prevent user editing
+            self.output_text.configure(state="disabled")
+            
+            # Clear virtual terminal buffer
+            if hasattr(self, 'terminal_buffer'):
+                self.terminal_buffer = []
+            
+            # Clear search-related data
+            if hasattr(self, 'search_matches'):
+                self.search_matches = []
+                self.current_search_index = -1
+            
+            # Clear any search highlighting
+            self.output_text.tag_remove("search_match", "1.0", "end")
+            
+            # Clear search entry if it exists
+            if hasattr(self, 'search_entry'):
+                self.search_entry.delete(0, "end")
+            
+            # Reset terminal status
+            if hasattr(self, 'update_terminal_status'):
+                self.update_terminal_status("Ready", "#00FF00")
+            
+            # Clear any pending output queues if they exist
+            if hasattr(self, '_output_queue'):
+                while not self._output_queue.empty():
+                    try:
+                        self._output_queue.get_nowait()
+                    except:
+                        break
+            
+            # Reset any terminal state variables
+            if hasattr(self, 'last_manim_output_path'):
+                self.last_manim_output_path = None
+            
+            # Update main status
+            self.update_status("Terminal cleared - all output history removed")
+            
+        except Exception as e:
+            # Fallback if anything goes wrong
+            try:
+                self.output_text.configure(state="normal")
+                self.output_text.delete("1.0", "end")
+                self.output_text.configure(state="disabled")
+                self.update_status(f"Terminal cleared (with errors: {e})")
+            except:
+                pass
 
     def clear_preview_video(self, silent=False):
         """Clear preview video from player and disk"""
@@ -13611,11 +13588,11 @@ class MyScene(Scene):
         try:
             log_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "manim_studio.log")
             open(log_path, "w").close()
+            self.log_display.delete("1.0", "end")
+            self.log_display.insert("1.0", "Logs cleared successfully.")
         except Exception as e:
             self.log_display.delete("1.0", "end")
             self.log_display.insert("1.0", f"Error clearing log: {e}")
-            return
-        self.log_display.delete("1.0", "end")
     def create_setup_tab(self):
         """Create setup tab content"""
         content = ctk.CTkScrollableFrame(self.step1)
@@ -13928,95 +13905,185 @@ def setup_logging(app_dir=None):
     return logger
 
 def main():
-    """Main application entry point with DLL conflict fixes"""
-    logger = None
+    """Main application entry point"""
+    # NOTE: Do NOT import sys here - it's already imported at module level
+    # Any import of sys inside this function will cause UnboundLocalError
+
+    logger = None  # Initialize logger variable to avoid UnboundLocalError
+
+    debug_mode = "--debug" in sys.argv
+
+    # Initialize encoding early to avoid Unicode issues
+    try:
+        import startup
+        startup.initialize_encoding()
+    except Exception:
+        pass
     
     try:
-        # Early logging setup
-        logger = setup_logging()
-        logger.info("=" * 60)
-        logger.info("MANIM STUDIO - Starting application")
-        logger.info("=" * 60)
-        
-        # CRITICAL: Set safe environment variables to prevent DLL conflicts
-        os.environ['PYTHONPATH'] = ""  # Clear to prevent conflicts
-        if 'VIRTUAL_ENV' in os.environ:
-            venv_scripts = os.path.join(os.environ['VIRTUAL_ENV'], 'Scripts')
-            os.environ['PATH'] = f"{venv_scripts};{os.environ['PATH']}"
-        
-        logger.info("Environment variables configured for DLL safety")
-        
-        # Initialize application
-        logger.info("Initializing ManimStudio application...")
-        app = ManimStudioApp()
-        
-        # CRITICAL: Pre-startup DLL conflict prevention (ONLY if environment is ready)
-        logger.info("Performing DLL conflict prevention...")
-        try:
-            if hasattr(app.venv_manager, 'fix_dll_conflicts') and hasattr(app.venv_manager, 'current_venv') and app.venv_manager.current_venv:
-                app.venv_manager.fix_dll_conflicts(
-                    log_callback=lambda msg: logger.info(f"DLL Fix: {msg}")
-                )
-            else:
-                logger.info("DLL Fix: Skipped - environment not ready yet")
-        except Exception as e:
-            logger.warning(f"DLL fix warning (non-critical): {e}")
-        
-        # Check if we need to set up environment
-        logger.info("Checking environment setup requirements...")
-        
-        if getattr(app.venv_manager, 'needs_setup', True):
-            logger.info("Environment setup required - starting setup process")
-            
-            # Simple setup without splash screen
+        # Hide console window on Windows for packaged executable
+        if sys.platform == "win32" and hasattr(sys, 'frozen'):
             try:
-                def setup_log_callback(message):
-                    logger.info(f"Setup: {message}")
-                    print(f"Setup: {message}")  # Also print to console for user feedback
+                import ctypes
+                from ctypes import wintypes
                 
-                print("Setting up Python environment...")
-                print("This may take a few minutes on first run.")
+                kernel32 = ctypes.windll.kernel32
+                user32 = ctypes.windll.user32
                 
-                # Perform environment setup with enhanced DLL handling
-                logger.info("Starting environment setup...")
-                success = app.venv_manager.setup_environment(setup_log_callback)
+                console_window = kernel32.GetConsoleWindow()
+                if console_window:
+                    # SW_HIDE = 0
+                    user32.ShowWindow(console_window, 0)
+                        
+            except Exception:
+                pass
+
+        # Ensure working directory is the application directory
+        os.chdir(BASE_DIR)
+
+        # Early load of fixes module to handle runtime issues
+        try:
+            import fixes
+            if hasattr(fixes, "apply_fixes"):
+                fixes.apply_fixes()
+            elif hasattr(fixes, "apply_all_fixes"):
+                fixes.apply_all_fixes()
+        except (ImportError, AttributeError):
+            pass
+
+        # Set up application directories
+        if getattr(sys, 'frozen', False):
+            # Running as executable
+            app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        else:
+            # Running as script
+            app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+
+        os.makedirs(app_dir, exist_ok=True)
+
+        # Simple single instance check
+        lock_file = os.path.join(app_dir, "manim_studio.lock")
+        try:
+            if os.path.exists(lock_file):
+                try:
+                    with open(lock_file, "r") as f:
+                        pid = int(f.read().strip())
+                    # Simple check - if we can read the PID, assume another instance is running
+                    print("Another instance may be running. Continuing anyway...")
+                except:
+                    # Remove invalid lock file
+                    try:
+                        os.remove(lock_file)
+                    except:
+                        pass
+            
+            # Create new lock file
+            with open(lock_file, "w") as f:
+                f.write(str(os.getpid()))
                 
-                if not success:
-                    logger.error("Environment setup failed")
-                    error_msg = ("Failed to set up Python environment.\n"
-                               "This may be due to:\n"
-                               "- Network connectivity issues\n" 
-                               "- Antivirus software blocking installation\n"
-                               "- Insufficient disk space\n"
-                               "- DLL conflicts\n\n"
-                               "Try running as administrator or check the logs.")
-                    
+            # Cleanup function
+            import atexit
+            def cleanup_lock():
+                try:
+                    os.remove(lock_file)
+                except:
+                    pass
+            atexit.register(cleanup_lock)
+            
+        except Exception:
+            # If lock file operations fail, continue anyway
+            pass
+        
+        # Set up logging - MOVED EARLIER to ensure logger is available
+        log_file = os.path.join(app_dir, "manim_studio.log")
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, encoding='utf-8'),
+                logging.StreamHandler()
+            ]
+        )
+        logger = logging.getLogger(__name__)  # Now logger is properly defined
+        
+        # Log startup information
+        logger.info("=== ManimStudio Starting ===")
+        logger.info(f"Python version: {sys.version}")
+        logger.info(f"Platform: {sys.platform}")
+        logger.info(f"Frozen: {hasattr(sys, 'frozen')}")
+        logger.info(f"Base directory: {BASE_DIR}")
+        logger.info(f"App directory: {app_dir}")
+
+        # Check for Jedi availability
+        if not JEDI_AVAILABLE:
+            logger.warning("Jedi not available. IntelliSense features will be limited.")
+            print("Warning: Jedi not available. IntelliSense features will be limited.")
+            print("Install Jedi with: pip install jedi")
+
+        # Check LaTeX availability and pass result to UI
+        logger.info("Checking LaTeX installation...")
+        latex_path = check_latex_installation()
+        if latex_path:
+            logger.info(f"LaTeX found at: {latex_path}")
+        else:
+            logger.warning("LaTeX not found")
+
+        # Create and run application
+        logger.info("Creating main application...")
+        app = ManimStudioApp(latex_path=latex_path, debug=debug_mode)
+        
+        # Check environment and show setup if needed
+        logger.info("Checking environment status...")
+        if not app.venv_manager.is_environment_ready():
+            logger.info("Environment not ready - showing setup dialog")
+            app.root.withdraw()
+            try:
+                # Show environment setup dialog directly
+                dialog = EnvironmentSetupDialog(app.root, app.venv_manager)
+                app.root.wait_window(dialog)
+                
+                # Check if setup was completed
+                if not app.venv_manager.is_environment_ready():
+                    logger.error("Environment setup incomplete after dialog")
                     try:
                         from tkinter import messagebox
-                        messagebox.showerror("Setup Failed", error_msg)
+                        messagebox.showwarning(
+                            "Setup Incomplete", 
+                            "Environment setup was not completed.\n"
+                            "ManimStudio requires a working environment to function.\n\n"
+                            "Please try again or run with --debug flag."
+                        )
                     except:
-                        print(error_msg)
+                        pass
                     return
-                        
+                    
+                logger.info("Environment setup completed successfully")
+                
             except Exception as e:
-                logger.error(f"Setup process error: {e}")
+                logger.error(f"Error in environment setup: {e}")
+                try:
+                    from tkinter import messagebox
+                    messagebox.showerror(
+                        "Setup Error", 
+                        f"Error during environment setup: {e}\n\n"
+                        "Please try again or check the log file."
+                    )
+                except:
+                    pass
                 return
         else:
             logger.info("Environment ready - proceeding to main application")
 
         logger.info("Performing final pre-launch checks...")
         
-        # FIXED: Final verification that environment is working (SAFE MODE - NO IMPORT TESTS)
+        # FIXED: Final verification that environment is working (REMOVED PROBLEMATIC IMPORT TEST)
         try:
-            # SAFE: Check if manim package exists without importing it
-            if hasattr(app.venv_manager, 'check_manim_availability_safe'):
-                manim_available = app.venv_manager.check_manim_availability_safe()
-                if manim_available:
-                    logger.info("✅ Manim package found")
-                else:
-                    logger.warning("⚠️ Manim package not found - will attempt repair on demand")
+            # REPLACED: Quick test that manim package exists (safe mode) - NO MORE 3221225477 ERROR
+            manim_available = app.venv_manager.check_manim_availability()
+            if manim_available:
+                logger.info("✅ Manim package found")
             else:
-                logger.info("✅ Environment validation skipped (method not available)")
+                logger.warning("⚠️ Manim package not found")
         except Exception as e:
             logger.warning(f"⚠️ Could not verify manim package: {e}")
 
