@@ -109,6 +109,9 @@ def build_executable(args):
         "--python-flag=no_site",
         "--python-flag=-O",
         "--remove-output",
+        # CRITICAL: Prevent 3221225477 errors
+        "--python-flag=no_warnings",
+        "--python-flag=no_debug_ranges",
     ])
     
     # Windows-specific with DLL conflict prevention
@@ -118,7 +121,9 @@ def build_executable(args):
             "--windows-disable-console",
             # CRITICAL: DLL conflict prevention
             "--force-dll-dependency-cache-update",
-            "--onefile-tempdir-spec=manim_studio_temp"
+            "--onefile-tempdir-spec=manim_studio_temp",
+            # Prevent DLL loading issues
+            "--windows-onefile-tempdir-spec=manim_studio_%PID%_temp",
         ])
     
     # CRITICAL: Exclude packages that cause 3221225477 DLL conflicts
@@ -139,15 +144,33 @@ def build_executable(args):
         "moderngl.test",
         "pytest",
         "nose",
-        # Manim-specific test modules
+        # Manim-specific test modules that cause DLL conflicts
         "manim.test",
-        "manim.tests"
+        "manim.tests",
+        "manim.utils.testing",
+        # Jedi in frozen builds causes issues
+        "jedi",
+        "parso",
+        # Additional problematic modules
+        "IPython",
+        "jupyter",
+        "notebook",
+        "pandas.tests",
+        "sklearn.tests",
+        "sympy.tests",
+        "networkx.tests",
+        # Audio/video test modules
+        "moviepy.test",
+        "imageio.test",
+        # Subprocess test modules
+        "subprocess.test",
+        "multiprocessing.test",
     ]
     
     for module in problematic_modules:
         cmd.extend([f"--nofollow-import-to={module}"])
     
-    # ANTI-BLOAT: Prevent problematic modules from being compiled
+    # ENHANCED: More aggressive anti-bloat for DLL conflict prevention
     bloat_modules = [
         "IPython",
         "jupyter", 
@@ -155,11 +178,42 @@ def build_executable(args):
         "pandas.tests",
         "sklearn.tests",
         "sympy.tests",
-        "networkx.tests"
+        "networkx.tests",
+        # Additional modules that cause DLL conflicts
+        "torch.test",
+        "tensorflow.test",
+        "keras.test",
+        "conda",
+        "anaconda",
+        # Development tools
+        "black",
+        "flake8",
+        "mypy",
+        "pylint",
+        # Documentation generators
+        "sphinx",
+        "mkdocs",
+        # Testing frameworks
+        "coverage",
+        "hypothesis",
     ]
     
     for module in bloat_modules:
         cmd.extend([f"--nofollow-import-to={module}"])
+    
+    # CRITICAL: Force specific modules to be excluded completely
+    force_exclude = [
+        "test",
+        "tests", 
+        "testing",
+        "__pycache__",
+        "*.pyc",
+        "*.pyo",
+        "*.pyd",  # Prevent conflicting compiled extensions
+    ]
+    
+    for pattern in force_exclude:
+        cmd.extend([f"--noinclude-pytest-mode={pattern}"])
     
     # Include critical data files for manim
     data_files = [
@@ -175,6 +229,8 @@ def build_executable(args):
     cmd.extend([
         f"--jobs={jobs}",
         "--output-dir=dist",
+        # CRITICAL: Memory management for large builds
+        "--low-memory",
     ])
     
     # Add main script
@@ -182,16 +238,21 @@ def build_executable(args):
     
     print(f"🔧 Build command: {' '.join(cmd[:10])}... ({len(cmd)} total args)")
     print(f"💼 Jobs: {jobs}")
-    print(f"🛡️ DLL Conflict Prevention: ENABLED")
+    print(f"🛡️ DLL Conflict Prevention: ENHANCED")
+    print(f"🚫 Excluded {len(problematic_modules)} problematic modules")
     
     try:
         start_time = time.time()
         
-        # Clear any existing DLL cache before build
+        # ENHANCED: Clear more DLL cache locations
         temp_dirs = [
             os.path.join(os.environ.get('TEMP', ''), '__pycache__'),
+            os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Nuitka'),
             "build",
-            "__pycache__"
+            "__pycache__",
+            ".nuitka",
+            # Clear Python bytecode cache
+            os.path.join(os.path.dirname(sys.executable), "__pycache__"),
         ]
         
         for temp_dir in temp_dirs:
@@ -202,9 +263,19 @@ def build_executable(args):
                 except:
                     pass
         
+        # CRITICAL: Set environment variables to prevent DLL conflicts
+        build_env = os.environ.copy()
+        build_env.update({
+            'PYTHONDONTWRITEBYTECODE': '1',
+            'PYTHONUNBUFFERED': '1',
+            'NUITKA_CACHE_DIR': os.path.join(os.getcwd(), '.nuitka_cache'),
+            # Prevent setuptools from interfering
+            'SETUPTOOLS_USE_DISTUTILS': 'stdlib',
+        })
+        
         # Run build with enhanced error handling
         print("\n🚀 Starting build process...")
-        result = subprocess.run(cmd, capture_output=False, text=True)
+        result = subprocess.run(cmd, capture_output=False, text=True, env=build_env)
         
         build_time = time.time() - start_time
         
@@ -216,7 +287,8 @@ def build_executable(args):
                 print(f"📦 Executable: {exe_path}")
                 print(f"📏 Size: {size_mb:.1f} MB")
                 print(f"⏱️ Build time: {build_time:.1f} seconds")
-                print(f"🛡️ DLL conflicts prevented")
+                print(f"🛡️ Enhanced DLL conflict prevention applied")
+                print(f"🚫 {len(problematic_modules)} problematic modules excluded")
                 return True
         
         print(f"\n❌ Build failed with exit code {result.returncode}")
@@ -247,14 +319,27 @@ def cleanup(args=None):
         dirs_to_remove.extend(["build", "dist", "__pycache__"])
         print("🧹 Cleaning all build directories...")
     
-    # Always clean DLL caches to prevent conflicts
+    # ENHANCED: Clean more DLL cache locations
     dll_cache_dirs = [
         "__pycache__",
         os.path.join(os.environ.get('TEMP', ''), '__pycache__'),
-        "build"
+        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Nuitka'),
+        "build",
+        ".nuitka",
+        ".nuitka_cache",
+        # Python installation cache
+        os.path.join(os.path.dirname(sys.executable), "__pycache__"),
+        # Site-packages cache
+        os.path.join(os.path.dirname(sys.executable), "Lib", "site-packages", "__pycache__"),
     ]
     
     dirs_to_remove.extend(dll_cache_dirs)
+    
+    # ENHANCED: Also remove .pyc and .pyo files
+    for root, dirs, files in os.walk('.'):
+        for file in files:
+            if file.endswith(('.pyc', '.pyo')):
+                files_to_remove.append(os.path.join(root, file))
     
     for file in files_to_remove:
         if os.path.exists(file):
