@@ -3711,178 +3711,15 @@ class VirtualEnvironmentManager:
         
         # Initialize environment detection
         self._initialize_environment()
+
     def safe_after(self, delay, callback=None):
         """Safely schedule a callback on the main Tk root."""
-        if self.parent_app and hasattr(self.parent_app, 'root'):
+        if self.parent_app and hasattr(self.parent_app, 'root') and self.parent_app.root:
             try:
-                self.parent_app.root.after(delay, callback)
-            except RuntimeError:
+                self.parent_app.root.after(delay, callback) if callback else None
+            except Exception:
                 pass
-        
-        # Essential packages for ManimStudio - COMPLETE LIST
-        # Essential packages for ManimStudio - Complete list
-        self.essential_packages = [
-            # Core animation
-            "manim>=0.17.0",
-            "numpy>=1.22.0", 
-            "matplotlib>=3.5.0",
-            "scipy>=1.8.0",
-            
-            # Critical dependencies
-            "pycairo>=1.20.0",
-            "ManimPango>=0.4.0",
-            
-            # Image/Video processing
-            "Pillow>=9.0.0",
-            "opencv-python>=4.6.0",
-            "imageio>=2.19.0",
-            "moviepy>=1.0.3",
-            "imageio-ffmpeg",
-            
-            # Development tools
-            "jedi>=0.18.0",
-            "customtkinter>=5.0.0",
-            
-            # Additional useful packages
-            "requests",
-            "rich",
-            "tqdm",
-            "colour",
-            "moderngl",
-            "moderngl-window"
-        ]
-        
-        # Initialize environment detection
-        self._initialize_environment()
 
-    def fix_mapbox_earcut_issue(self):
-        """Attempt to reinstall mapbox_earcut to resolve DLL problems."""
-        try:
-            pip_cmd = self.get_pip_command()
-            # force reinstall of known good version
-            cmd = pip_cmd + ["install", "--force-reinstall", "mapbox-earcut"]
-            result = self.run_hidden_subprocess_nuitka_safe(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=180,
-            )
-            if result.returncode == 0:
-                return True
-        except Exception as e:
-            self.logger.error(f"Error fixing mapbox_earcut: {e}")
-        return False
-
-    def get_venv_info(self, venv_name):
-        """Get detailed information about a virtual environment (portable version)"""
-        # Handle bundled environment case (portable mode)
-        
-        # Normal environment handling (existing code)
-        info = {
-            'name': venv_name,
-            'path': '',
-            'python_version': '',
-            'is_active': self.current_venv == venv_name,
-            'packages_count': 0,
-            'size': 0,
-            'is_bundled': False,
-            'is_portable': False
-        }
-        
-        # Handle special environments
-        if venv_name.startswith("system_"):
-            info['path'] = "System Python"
-            info['python_version'] = sys.version.split()[0]
-            return info
-        elif venv_name.startswith("current_"):
-            info['path'] = "Current Python"
-            info['python_version'] = sys.version.split()[0]
-            return info
-        
-        # Regular virtual environment
-        venv_path = os.path.join(self.venv_dir, venv_name)
-        info['path'] = venv_path
-        
-        if not os.path.exists(venv_path):
-            return info
-        
-        try:
-            # Get Python version
-            if os.name == 'nt':
-                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-                site_packages = os.path.join(venv_path, "Lib", "site-packages")
-            else:
-                python_exe = os.path.join(venv_path, "bin", "python")
-                site_packages = os.path.join(venv_path, "lib", "python*/site-packages")
-            
-            if os.path.exists(python_exe):
-                result = subprocess.run([python_exe, "--version"], capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    info['python_version'] = result.stdout.strip()
-            
-            # Count packages
-            if os.name == 'nt' and os.path.exists(site_packages):
-                info['packages_count'] = len([item for item in os.listdir(site_packages) if not item.startswith('.') and not item.endswith('.dist-info')])
-            else:
-                import glob
-                site_dirs = glob.glob(os.path.join(venv_path, "lib", "python*", "site-packages"))
-                if site_dirs:
-                    info['packages_count'] = len([item for item in os.listdir(site_dirs[0]) if not item.startswith('.') and not item.endswith('.dist-info')])
-            
-            # Get directory size
-            total_size = 0
-            for dirpath, dirnames, filenames in os.walk(venv_path):
-                for fname in filenames:
-                    fpath = os.path.join(dirpath, fname)
-                    try:
-                        total_size += os.path.getsize(fpath)
-                    except OSError:
-                        pass
-            info['size'] = total_size
-        except Exception as e:
-            self.logger.error(f"Error getting venv info for {venv_name}: {e}")
-        return info
-
-
-    def show_setup_dialog(self):
-        """Show environment setup dialog"""
-        if self.parent_app is None:
-            return
-        dialog = EnvironmentSetupDialog(self.parent_app.root, self)
-        self.parent_app.root.wait_window(dialog)
-        
-        # After dialog closes, ensure main window is visible
-        self.parent_app.root.after(10, lambda: self.parent_app.root.deiconify())
-
-    def is_environment_ready(self):
-        """Enhanced environment readiness check with error handling"""
-        if self.needs_setup:
-            return False
-        
-        # Quick validation with repair attempt
-        if not self.validate_and_repair_environment():
-            # If validation fails, try to auto-repair once
-            try:
-                self.logger.info("Environment validation failed, attempting auto-repair...")
-                default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-                
-                if os.path.exists(default_venv_path):
-                    if self.repair_corrupted_environment(default_venv_path):
-                        self.activate_default_environment()
-                        self.needs_setup = False
-                        return True
-                
-                # If repair fails, mark as needs setup
-                self.needs_setup = True
-                return False
-                
-            except Exception as e:
-                self.logger.error(f"Auto-repair failed: {e}")
-                self.needs_setup = True
-                return False
-        
-        return True
-        
     def _detect_if_frozen(self):
         """Enhanced detection of frozen executable"""
         # Standard PyInstaller detection
@@ -3907,22 +3744,7 @@ class VirtualEnvironmentManager:
             return True
         
         return False
-    
-    def _detect_bundled_environment(self):
-        """Detect if there's a bundled virtual environment"""
-        bundled_paths = [
-            os.path.join(self.base_dir, "venv.zip"),
-            os.path.join(self.base_dir, "bundled", "venv.zip"),
-            os.path.join(self.base_dir, "resources", "venv.zip")
-        ]
-        
-        for path in bundled_paths:
-            if os.path.exists(path):
-                self.bundled_venv_dir = Path(path).parent
-                self.bundled_available = True
-                self.logger.info(f"Found bundled environment: {path}")
-                break
-    
+
     def _initialize_environment(self):
         """Initialize and detect current environment"""
         self.logger.info("Initializing environment detection...")
@@ -3930,59 +3752,34 @@ class VirtualEnvironmentManager:
         # First check for manim_studio_default specifically
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
         if os.path.exists(default_venv_path) and self.is_valid_venv(default_venv_path):
-            self.logger.info("Found manim_studio_default environment")
-            if os.name == 'nt':
-                self.python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
-                self.pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
-            else:
-                self.python_path = os.path.join(default_venv_path, "bin", "python")
-                self.pip_path = os.path.join(default_venv_path, "bin", "pip")
-                
-            # Verify manim is available
-            if self.check_manim_availability():
-                self.current_venv = "manim_studio_default"
-                self.needs_setup = False
-                return True
-            else:
-                self.logger.warning("manim_studio_default exists but manim not available")
-
-        # Check for local environment alongside the application
-        if self.check_local_directory_venv():
-            return True
-
-        # CRITICAL: Don't check current virtual environment when frozen
-        # because sys.executable points to our .exe file
-        if not self.is_frozen:
-            # Only check if we're in a virtual environment when running as script
-            if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
-                venv_name = os.path.basename(sys.prefix)
-                self.current_venv = f"current_{venv_name}"
-                self.python_path = sys.executable
-                self.pip_path = os.path.join(os.path.dirname(sys.executable), "pip")
-                
-                # Check if this environment has essential packages
-                if self.verify_current_environment():
-                    self.logger.info(f"Using current virtual environment: {venv_name}")
-                    self.needs_setup = False
-                    return True
+            self.logger.info("Found existing manim_studio_default environment")
+            self.activate_default_environment()
             
-            # Check system Python for Manim (only when not frozen)
-            if self.check_system_python():
+            # Check if environment needs repair/updates
+            missing_packages = self.check_missing_packages()
+            if missing_packages:
+                self.logger.info(f"Environment needs updates: {missing_packages}")
+                self.needs_setup = True
+            else:
+                self.logger.info("Environment is complete and ready")
+                self.needs_setup = False
+                
+            return True
+        
+        # If not frozen, check for system Python with manim
+        if not self.is_frozen:
+            if self.use_system_python():
+                self.logger.info("Using system Python with Manim")
                 self.needs_setup = False
                 return True
         else:
-            self.logger.info("Running as executable - skipping current environment detection")
-        
-        # Check for bundled environment
-        if self.check_bundled_environment():
-            self.logger.info("Found bundled environment, will extract when needed")
-            return False  # Still need setup, but we have backup
+            self.logger.info("Running as executable - skipping system Python check")
             
         return False
+
     def setup_environment(self, log_callback=None):
-        """Main setup method - handle bundled vs normal environment"""
+        """Main setup method - create and configure manim_studio_default environment"""
         
-        # Original setup logic for non-bundled environments
         self.logger.info("Starting environment setup...")
         
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
@@ -4028,16 +3825,7 @@ class VirtualEnvironmentManager:
                         self.logger.warning("Failed to install some packages, will recreate environment...")
                         # Fall through to recreate environment
         
-        # Step 2: Try bundled environment if available
-        if self.bundled_available:
-            self.logger.info("Attempting to extract bundled environment...")
-            if self.extract_bundled_environment():
-                self.logger.info("✅ Bundled environment extracted successfully!")
-                self.activate_default_environment()
-                self.needs_setup = False
-                return True
-        
-        # Step 3: Create new environment (if no existing or repair failed)
+        # Step 2: Create new environment (if no existing or repair failed)
         if os.path.exists(default_venv_path):
             self.logger.info("Removing problematic environment for fresh install...")
             try:
@@ -4047,156 +3835,338 @@ class VirtualEnvironmentManager:
                 self.logger.warning(f"Could not remove existing environment: {e}")
                 return False
         
-        # Step 4: Create new environment
+        # Step 3: Create new environment
         if not self.create_virtual_environment():
             return False
             
-        # Step 5: Install all packages
+        # Step 4: Install all packages
         if not self.install_all_packages(log_callback):
             return False
 
-        # Step 6: Verify installation
+        # Step 5: Verify installation
         if not self.verify_complete_installation(log_callback):
             return False
             
-        # Step 7: Activate environment
+        # Step 6: Activate environment
         self.activate_default_environment()
         
         self.logger.info("✅ Environment setup completed successfully!")
         self.needs_setup = False
         return True
-    def check_missing_packages(self):
-        """Check which essential packages are missing from the current environment"""
-        missing = []
-        
-        # Create a script to check all packages at once
-        check_script = f"""
-import sys
-import importlib
 
-packages_to_check = {self.essential_packages}
-missing_packages = []
-
-for package_spec in packages_to_check:
-    # Extract package name (remove version specifiers)
-    package_name = package_spec.split('>=')[0].split('==')[0].split('<')[0].split('>')[0]
-    
-    try:
-        if package_name == "opencv-python":
-            import cv2  # opencv-python imports as cv2
-        elif package_name == "Pillow":
-            import PIL  # Pillow imports as PIL
-        elif package_name == "imageio-ffmpeg":
-            import imageio_ffmpeg
-        elif package_name == "moderngl-window":
-            import moderngl_window
-        else:
-            importlib.import_module(package_name)
-    except ImportError:
-        missing_packages.append(package_spec)
-
-if missing_packages:
-    print("MISSING:" + ",".join(missing_packages))
-else:
-    print("ALL_INSTALLED")
-"""
+    def create_virtual_environment(self, log_callback=None):
+        """Create the manim_studio_default virtual environment"""
+        env_name = "manim_studio_default"
+        env_path = os.path.join(self.venv_dir, env_name)
         
         try:
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "-c", check_script],
+            # Remove existing environment if it exists
+            if os.path.exists(env_path):
+                if log_callback:
+                    log_callback("Removing existing environment...")
+                shutil.rmtree(env_path)
+                time.sleep(1)
+            
+            # Find system Python
+            python_exe = self.find_system_python()
+            if not python_exe:
+                error_msg = "No suitable Python installation found"
+                if log_callback:
+                    log_callback(f"❌ {error_msg}")
+                self.logger.error(error_msg)
+                return False
+            
+            if log_callback:
+                log_callback(f"Creating environment with: {python_exe}")
+            
+            # Create environment with proper Windows subprocess handling
+            create_cmd = [python_exe, "-m", "venv", env_path, "--clear"]
+            
+            # Windows subprocess setup
+            startupinfo = None
+            creationflags = 0
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = subprocess.CREATE_NO_WINDOW
+            
+            result = subprocess.run(
+                create_cmd,
                 capture_output=True,
                 text=True,
-                timeout=60
+                startupinfo=startupinfo,
+                creationflags=creationflags
             )
             
-            if result.returncode == 0:
-                output = result.stdout.strip()
-                if output.startswith("MISSING:"):
-                    missing = output.replace("MISSING:", "").split(",")
-                    missing = [pkg.strip() for pkg in missing if pkg.strip()]
-                
-            return missing
+            if result.returncode != 0:
+                error_msg = f"Failed to create virtual environment: {result.stderr}"
+                if log_callback:
+                    log_callback(f"❌ {error_msg}")
+                self.logger.error(error_msg)
+                return False
             
-        except Exception as e:
-            self.logger.error(f"Error checking packages: {e}")
-            # If we can't check, assume all are missing
-            return self.essential_packages.copy()
-    def run_manim_command_safe(self, command, **kwargs):
-        """Safe manim command runner with proper encoding"""
-        # Set default encoding for manim commands
-        kwargs.setdefault('encoding', 'utf-8')
-        kwargs.setdefault('errors', 'replace')
-        
-        return self.run_hidden_subprocess_nuitka_safe(command, **kwargs)
-    def install_missing_packages(self, missing_packages, log_callback=None):
-        """Install only the missing packages"""
-        if not missing_packages:
+            # Verify creation
+            if not os.path.exists(env_path):
+                if log_callback:
+                    log_callback("❌ Environment directory not created")
+                return False
+            
+            # Set up environment after creation
+            if not self._setup_environment_after_creation(env_path):
+                return False
+            
+            if log_callback:
+                log_callback("✅ Virtual environment created successfully")
             return True
 
-        self.logger.info(f"Installing {len(missing_packages)} missing packages...")
-        if log_callback:
-            log_callback(f"Installing {len(missing_packages)} missing packages...")
-
-        success_count = 0
-        total_packages = len(missing_packages)
-
-        for i, package in enumerate(missing_packages):
-            self.logger.info(f"Installing missing package: {package} ({i+1}/{total_packages})...")
+        except Exception as e:
+            error_msg = f"Environment creation failed: {str(e)}"
             if log_callback:
-                log_callback(f"Installing missing package: {package} ({i+1}/{total_packages})...")
+                log_callback(f"❌ {error_msg}")
+            self.logger.error(error_msg)
+            return False
 
-            if log_callback:
-                ok = self.install_single_package_with_logging(package, log_callback)
-            else:
-                ok = self.install_single_package(package)
-
-            if ok:
-                success_count += 1
-                self.logger.info(f"✅ {package} installed successfully")
-            else:
-                self.logger.error(f"❌ Failed to install {package}")
-
-        self.logger.info(f"Missing packages installation: {success_count}/{total_packages} successful")
-        if log_callback:
-            log_callback(f"Missing packages installation: {success_count}/{total_packages} successful")
+    def _setup_environment_after_creation(self, venv_path):
+        """Set up environment after creation"""
+        if os.name == 'nt':
+            python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
+        else:
+            python_exe = os.path.join(venv_path, "bin", "python")
+            pip_exe = os.path.join(venv_path, "bin", "pip")
+            
+        self.logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
+        self.logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
         
-        # Consider it successful if at least 80% of packages installed
-        success_rate = success_count / total_packages if total_packages > 0 else 0
-        return success_rate >= 0.8
-    
-    def upgrade_pip_in_existing_env(self, log_callback=None):
-        """Upgrade pip in the existing environment"""
+        if not os.path.exists(python_exe):
+            self.logger.error("Python executable not found in created environment")
+            return False
+            
+        # Ensure pip is available
+        if not os.path.exists(pip_exe):
+            self.logger.info("Pip not found, installing...")
+            try:
+                # Try to install pip using ensurepip
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    [python_exe, "-m", "ensurepip", "--upgrade"],
+                    capture_output=True, 
+                    text=True, 
+                    timeout=60
+                )
+                if result.returncode != 0:
+                    self.logger.error("Failed to install pip with ensurepip")
+                    return False
+            except Exception as e:
+                self.logger.error(f"Error installing pip: {e}")
+                return False
+            
+        # Activate it for further operations
+        self.python_path = python_exe
+        self.pip_path = pip_exe
+        self.current_venv = "manim_studio_default"
+        
+        return True
+
+    def find_system_python(self):
+        """Find the best system Python installation with 64-bit preference"""
+        candidates = []
+        
+        if os.name == 'nt':
+            # Windows candidates - prioritize 64-bit installations
+            if not self.is_frozen:
+                candidates.append(sys.executable)
+            candidates.extend([
+                "python",
+                "python3"
+            ])
+            
+            # Force 64-bit Python paths first
+            for version in ['3.12', '3.11', '3.10', '3.9']:
+                # 64-bit installations in Program Files
+                candidates.append(rf"C:\Program Files\Python{version.replace('.', '')}\python.exe")
+                # 32-bit installations in Program Files (x86)
+                candidates.append(rf"C:\Program Files (x86)\Python{version.replace('.', '')}\python.exe")
+            
+        else:
+            # Unix-like systems
+            candidates.extend([
+                sys.executable,
+                "python3",
+                "python",
+                "/usr/bin/python3",
+                "/usr/local/bin/python3"
+            ])
+        
+        # Test each candidate
+        for candidate in candidates:
+            try:
+                if self.validate_python_installation(candidate):
+                    self.logger.info(f"Selected Python: {candidate}")
+                    return candidate
+            except Exception:
+                continue
+        
+        self.logger.error("No suitable Python installation found")
+        return None
+
+    def validate_python_installation(self, python_path):
+        """Validate that a Python installation is suitable"""
         try:
-            self.logger.info("Upgrading pip in existing environment...")
-            if log_callback:
-                log_callback("Upgrading pip in existing environment...")
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
+            if not os.path.exists(python_path):
+                return False
+            
+            # Test that Python runs and is compatible
+            result = subprocess.run(
+                [python_path, "-c", "import sys; print(sys.version_info[:2])"],
                 capture_output=True,
                 text=True,
-                timeout=120
+                timeout=30
             )
+            
+            if result.returncode != 0:
+                return False
+            
+            # Check Python version (3.8+)
+            version_str = result.stdout.strip()
+            if "3," in version_str:
+                version_parts = version_str.strip("()").split(", ")
+                major = int(version_parts[0])
+                minor = int(version_parts[1])
+                if major == 3 and minor >= 8:
+                    return True
+            
+            return False
+        except Exception:
+            return False
 
-            if log_callback and result.stdout:
-                for line in result.stdout.splitlines():
-                    log_callback(line)
-            if log_callback and result.stderr:
-                for line in result.stderr.splitlines():
-                    log_callback(line)
+    def activate_default_environment(self):
+        """Activate the manim_studio_default environment"""
+        
+        default_venv_path = Path(self.venv_dir) / "manim_studio_default"
+        
+        if not default_venv_path.exists():
+            self.logger.error(f"manim_studio_default environment not found at: {default_venv_path}")
+            return False
+            
+        if not self.is_valid_venv(str(default_venv_path)):
+            self.logger.error("manim_studio_default environment is invalid")
+            return False
+        
+        # Set up paths
+        if os.name == 'nt':
+            self.python_path = str(default_venv_path / "Scripts" / "python.exe")
+            self.pip_path = str(default_venv_path / "Scripts" / "pip.exe")
+        else:
+            self.python_path = str(default_venv_path / "bin" / "python")
+            self.pip_path = str(default_venv_path / "bin" / "pip")
+        
+        self.current_venv = "manim_studio_default"
+        self.needs_setup = False
+        
+        self.logger.info(f"✅ Activated manim_studio_default environment: {default_venv_path}")
+        return True
 
-            if result.returncode == 0:
-                self.logger.info("✅ Pip upgraded successfully")
-                if log_callback:
-                    log_callback("✅ Pip upgraded successfully")
+    def use_system_python(self):
+        """Check if system Python has Manim installed (only when not frozen)"""
+        # Don't use system Python when running as executable
+        if self.is_frozen:
+            self.logger.info("Running as executable - skipping system Python check")
+            return False
+            
+        try:
+            import manim
+            # Manim is available in system Python
+            self.current_venv = "system_python"
+            self.python_path = sys.executable
+            self.pip_path = "pip"
+            self.logger.info("Using system Python with Manim")
+            return True
+        except ImportError:
+            return False
+
+    def is_valid_venv(self, venv_path):
+        """Check if a directory is a valid virtual environment"""
+        if os.name == 'nt':
+            return (os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")) and
+                    os.path.exists(os.path.join(venv_path, "Scripts", "pip.exe")))
+        else:
+            return (os.path.exists(os.path.join(venv_path, "bin", "python")) and
+                    os.path.exists(os.path.join(venv_path, "bin", "pip")))
+
+    def list_venvs(self):
+        """List all available virtual environments"""
+        venvs = []
+        if os.path.exists(self.venv_dir):
+            for item in os.listdir(self.venv_dir):
+                venv_path = os.path.join(self.venv_dir, item)
+                if os.path.isdir(venv_path) and self.is_valid_venv(venv_path):
+                    venvs.append(item)
+                    
+        return sorted(venvs)
+
+    def activate_venv(self, name):
+        """Activate a virtual environment"""
+        if name.startswith(("system_", "current_")):
+            return True
+            
+        if name in self.list_venvs():
+            self.current_venv = name
+            venv_path = os.path.join(self.venv_dir, name)
+            
+            if os.name == 'nt':
+                scripts_path = os.path.join(venv_path, "Scripts")
+                self.python_path = os.path.join(scripts_path, "python.exe")
+                self.pip_path = os.path.join(scripts_path, "pip.exe")
             else:
-                self.logger.warning(f"Pip upgrade warning: {result.stderr}")
-                if log_callback:
-                    log_callback(f"Pip upgrade warning: {result.stderr}")
+                bin_path = os.path.join(venv_path, "bin")
+                self.python_path = os.path.join(bin_path, "python")
+                self.pip_path = os.path.join(bin_path, "pip")
+                
+            return True
+        return False
 
-        except Exception as e:
-            self.logger.warning(f"Could not upgrade pip: {e}")
-            if log_callback:
-                log_callback(f"Could not upgrade pip: {e}")
+    def deactivate_venv(self):
+        """Deactivate the current virtual environment"""
+        self.current_venv = None
+        self.python_path = sys.executable
+        self.pip_path = "pip"
+        return True
+
+    def check_missing_packages(self):
+        """Check which essential packages are missing"""
+        missing = []
+        
+        if not self.python_path or not os.path.exists(self.python_path):
+            return self.essential_packages.copy()
+        
+        for package in self.essential_packages:
+            if not self.is_package_installed(package):
+                missing.append(package)
+        
+        return missing
+
+    def is_package_installed(self, package_name):
+        """Check if a package is installed in the current environment"""
+        try:
+            # Extract package name from version specifiers
+            clean_name = package_name.split('>=')[0].split('==')[0].split('<=')[0].strip()
+            
+            # Use pip list to check if package is installed
+            result = subprocess.run(
+                [self.pip_path, "list", "--format=freeze"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0:
+                installed_packages = result.stdout.lower()
+                return clean_name.lower() in installed_packages
+            
+            return False
+        except Exception:
+            return False
 
     def install_all_packages(self, log_callback=None):
         """Install all essential packages one by one"""
@@ -4239,6 +4209,43 @@ else:
         else:
             self.logger.error("Too many package installations failed")
             return False
+
+    def install_missing_packages(self, missing_packages, log_callback=None):
+        """Install only the missing packages"""
+        if not missing_packages:
+            return True
+
+        self.logger.info(f"Installing {len(missing_packages)} missing packages...")
+        if log_callback:
+            log_callback(f"Installing {len(missing_packages)} missing packages...")
+
+        success_count = 0
+        total_packages = len(missing_packages)
+
+        for i, package in enumerate(missing_packages):
+            self.logger.info(f"Installing missing package: {package} ({i+1}/{total_packages})...")
+            if log_callback:
+                log_callback(f"Installing missing package: {package} ({i+1}/{total_packages})...")
+
+            if log_callback:
+                ok = self.install_single_package_with_logging(package, log_callback)
+            else:
+                ok = self.install_single_package(package)
+
+            if ok:
+                success_count += 1
+                self.logger.info(f"✅ {package} installed successfully")
+            else:
+                self.logger.error(f"❌ Failed to install {package}")
+
+        self.logger.info(f"Missing packages installation: {success_count}/{total_packages} successful")
+        if log_callback:
+            log_callback(f"Missing packages installation: {success_count}/{total_packages} successful")
+        
+        # Consider it successful if at least 80% of packages installed
+        success_rate = success_count / total_packages if total_packages > 0 else 0
+        return success_rate >= 0.8
+
     def install_single_package(self, package):
         """Install a single package with retries and better error handling"""
         max_retries = 3
@@ -4268,970 +4275,26 @@ else:
                     if self.verify_single_package(package):
                         return True
                     else:
-                        self.logger.warning(f"{package} installed but cannot import")
-                        if attempt < max_retries - 1:
-                            time.sleep(2)
-                            continue
+                        self.logger.warning(f"Package {package} installed but verification failed")
+                        continue
                 else:
-                    self.logger.warning(f"Attempt {attempt+1} failed for {package}")
-                    self.logger.debug(f"Error output: {result.stderr}")
-                    if attempt < max_retries - 1:
-                        time.sleep(2)  # Wait before retry
-                        
+                    error_output = result.stderr or result.stdout
+                    self.logger.warning(f"Attempt {attempt+1} failed for {package}: {error_output}")
+                    if attempt == max_retries - 1:
+                        self.logger.error(f"All attempts failed for {package}")
+                    
             except subprocess.TimeoutExpired:
                 self.logger.warning(f"Timeout installing {package} (attempt {attempt+1})")
-                if attempt < max_retries - 1:
-                    time.sleep(5)
             except Exception as e:
-                self.logger.warning(f"Error installing {package} (attempt {attempt+1}): {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(2)
-                    
+                self.logger.warning(f"Exception installing {package} (attempt {attempt+1}): {e}")
+        
         return False
-    
-    def _get_install_strategies(self, package, attempt):
-        """Get installation strategies with Windows 64-bit compatibility"""
-        base_cmd = [self.python_path, "-m", "pip", "install"]
-        
-        # Common flags for all strategies
-        common_flags = ["--no-cache-dir", "--timeout", "300"]
-        
-        # Windows-specific flags for 64-bit compatibility
-        windows_flags = []
-        if os.name == 'nt':
-            # Force 64-bit wheels when available
-            arch = platform.machine().lower()
-            if arch in ['amd64', 'x86_64']:
-                windows_flags.extend([
-                    "--only-binary=:all:",  # Prefer wheels over source
-                    "--platform", "win_amd64",  # Force 64-bit platform
-                ])
-        
-        strategies = [
-            # Strategy 1: Basic install with Windows compatibility
-            base_cmd + [package] + common_flags + windows_flags,
-            
-            # Strategy 2: With upgrade flag
-            base_cmd + [package, "--upgrade"] + common_flags + windows_flags,
-            
-            # Strategy 3: Force reinstall with pre-compiled wheels only
-            base_cmd + [package, "--force-reinstall", "--only-binary=:all:"] + common_flags
-        ]
-        
-        # For specific problematic packages on Windows, use special handling
-        if os.name == 'nt' and any(pkg in package.lower() for pkg in ['opencv', 'numpy', 'scipy', 'pillow']):
-            # Add strategy for pre-compiled wheels from reliable sources
-            strategies.insert(0, base_cmd + [package, "--only-binary=:all:", "--find-links", "https://download.pytorch.org/whl/torch_stable.html"] + common_flags)
-        
-        return strategies
-    
-    def verify_single_package(self, package_spec):
-        """Verify that a single package can be imported"""
-        # Extract package name (remove version specifiers)
-        package_name = package_spec.split('>=')[0].split('==')[0].split('<')[0].split('>')[0]
-        
-        verify_script = f"""
-try:
-    if "{package_name}" == "opencv-python":
-        import cv2
-    elif "{package_name}" == "Pillow":
-        import PIL
-    elif "{package_name}" == "imageio-ffmpeg":
-        import imageio_ffmpeg
-    elif "{package_name}" == "moderngl-window":
-        import moderngl_window
-    else:
-        import {package_name}
-    print("OK")
-except ImportError as e:
-    print(f"FAIL: {{e}}")
-    exit(1)
-"""
-        
-        try:
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "-c", verify_script],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0 and "OK" in result.stdout
-        except Exception:
-            return False
-    
-    def create_virtual_environment(self):
-        """Create the virtual environment"""
-        env_path = os.path.join(self.venv_dir, "manim_studio_default")
-        
-        self.logger.info(f"Creating virtual environment at: {env_path}")
-        
-        try:
-            # Find system Python
-            python_exe = self.find_system_python()
-            if not python_exe:
-                self.logger.error("No Python installation found!")
-                return False
-                
-            # Create virtual environment
-            create_cmd = [python_exe, "-m", "venv", env_path, "--clear"]
-            result = self.run_hidden_subprocess_nuitka_safe(
-                create_cmd,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                cwd=os.path.expanduser("~")
-            )
-            
-            if result.returncode != 0:
-                self.logger.error(f"Failed to create virtual environment: {result.stderr}")
-                return False
-                
-            # Set up paths
-            if os.name == 'nt':
-                self.python_path = os.path.join(env_path, "Scripts", "python.exe")
-                self.pip_path = os.path.join(env_path, "Scripts", "pip.exe")
-            else:
-                self.python_path = os.path.join(env_path, "bin", "python")
-                self.pip_path = os.path.join(env_path, "bin", "pip")
-                
-            # Verify executables exist
-            if not os.path.exists(self.python_path):
-                self.logger.error(f"Python executable not found: {self.python_path}")
-                return False
-                
-            # Install/upgrade pip first
-            self.logger.info("Upgrading pip...")
-            pip_upgrade_cmd = [self.python_path, "-m", "pip", "install", "--upgrade", "pip"]
-            result = self.run_hidden_subprocess_nuitka_safe(pip_upgrade_cmd, capture_output=True, text=True, timeout=180)
-            
-            if result.returncode == 0:
-                self.logger.info("✅ Pip upgraded successfully")
-            else:
-                self.logger.warning(f"Pip upgrade warning: {result.stderr}")
-                
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error creating virtual environment: {e}")
-            return False
-    
-    def verify_complete_installation(self, log_callback=None):
-        """Simple verification that doesn't trigger 3221225477 errors"""
-        if log_callback:
-            log_callback("🔍 Performing simple installation check...")
-        
-        # Just check if key files exist rather than importing
-        required_paths = [
-            self.python_path,
-            self.pip_path,
-        ]
-        
-        for path in required_paths:
-            if not os.path.exists(path):
-                if log_callback:
-                    log_callback(f"❌ Missing: {path}")
-                return False
-        
-        # Check if site-packages directory exists and has some packages
-        if os.name == 'nt':
-            site_packages = os.path.join(os.path.dirname(self.python_path), "..", "Lib", "site-packages")
-        else:
-            site_packages = os.path.join(os.path.dirname(self.python_path), "..", "lib", "python*", "site-packages")
-        
-        site_packages = os.path.normpath(site_packages)
-        if os.path.exists(site_packages):
-            # Check if we have some packages installed
-            packages = os.listdir(site_packages)
-            if len([p for p in packages if not p.startswith('.')] ) > 5:  # Basic threshold
-                if log_callback:
-                    log_callback("✅ Installation appears valid")
-                return True
-        
-        if log_callback:
-            log_callback("⚠️ Installation may be incomplete")
-        return True  # Don't fail - let the user try to use it
-   
-    def activate_default_environment(self):
-        """Activate the default environment"""
-        self.current_venv = "manim_studio_default"
-        env_path = os.path.join(self.venv_dir, "manim_studio_default")
-        
-        if os.name == 'nt':
-            self.python_path = os.path.join(env_path, "Scripts", "python.exe")
-            self.pip_path = os.path.join(env_path, "Scripts", "pip.exe")
-        else:
-            self.python_path = os.path.join(env_path, "bin", "python")
-            self.pip_path = os.path.join(env_path, "bin", "pip")
-            
-        self.logger.info(f"Activated environment: {self.current_venv}")
-        return True
-    
-    def find_system_python(self):
-        """Find the best system Python installation with 64-bit preference"""
-        candidates = []
-        
-        if os.name == 'nt':
-            # Windows candidates - prioritize 64-bit installations
-            if not self.is_frozen:
-                candidates.append(sys.executable)
-            candidates.extend([
-                "python",
-                "python3"
-            ])
-            
-            # Force 64-bit Python paths first
-            for version in ['3.12', '3.11', '3.10', '3.9']:
-                # 64-bit installations in Program Files
-                candidates.append(rf"C:\Program Files\Python{version.replace('.', '')}\python.exe")
-                # 64-bit installations in AppData
-                appdata = os.environ.get('LOCALAPPDATA', '')
-                if appdata:
-                    candidates.append(os.path.join(appdata, 'Programs', 'Python', f'Python{version.replace(".", "")}', 'python.exe'))
-            
-            # Fallback to any Python (32-bit) only if no 64-bit found
-            for version in ['3.12', '3.11', '3.10', '3.9']:
-                candidates.append(rf"C:\Python{version.replace('.', '')}\python.exe")
-                
-        else:
-            # Unix-like candidates
-            if not self.is_frozen:
-                candidates.append(sys.executable)
-            candidates.extend([
-                "python3",
-                "python",
-                "/usr/bin/python3",
-                "/usr/local/bin/python3",
-                "/opt/python3/bin/python3"
-            ])
-        
-        for candidate in candidates:
-            try:
-                python_path = None
-                if os.path.isfile(candidate):
-                    python_path = candidate
-                elif shutil.which(candidate):
-                    python_path = shutil.which(candidate)
-                else:
-                    continue
 
-                if self.is_frozen and os.path.samefile(python_path, sys.executable):
-                    self.logger.debug("Skipping frozen executable candidate")
-                    continue
-                
-                # Check Python version
-                result = subprocess.run([python_path, "--version"], capture_output=True, text=True, timeout=10)
-                if result.returncode != 0 or "Python 3." not in result.stdout:
-                    continue
-                
-                # Check architecture (64-bit preferred on Windows)
-                if os.name == 'nt':
-                    arch_result = subprocess.run([python_path, "-c", "import platform; print(platform.machine())"], 
-                                                capture_output=True, text=True, timeout=10)
-                    if arch_result.returncode == 0:
-                        arch = arch_result.stdout.strip()
-                        self.logger.info(f"Found Python: {python_path} - {result.stdout.strip()} - Architecture: {arch}")
-                        
-                        # Prefer 64-bit on 64-bit systems
-                        if platform.machine().endswith('64') and not arch.endswith('64'):
-                            self.logger.info(f"Skipping 32-bit Python on 64-bit system: {python_path}")
-                            continue
-                            
-                        return python_path
-                else:
-                    self.logger.info(f"Found Python: {python_path} - {result.stdout.strip()}")
-                    return python_path
-                    
-            except Exception as e:
-                self.logger.debug(f"Error checking Python candidate {candidate}: {e}")
-                continue
-                
-        return None
-    
-    def get_clean_environment(self):
-        """Get a clean environment for subprocess calls with 64-bit focus"""
-        env = os.environ.copy()
-        
-        # Remove any existing virtual environment variables
-        env.pop('VIRTUAL_ENV', None)
-        env.pop('VIRTUAL_ENV_PROMPT', None)
-        
-        # Set clean Python environment
-        env['PYTHONDONTWRITEBYTECODE'] = '1'
-        env['PYTHONUNBUFFERED'] = '1'
-        
-        # Set temp directory to system temp to avoid path issues
-        system_temp = tempfile.gettempdir()
-        env['TEMP'] = system_temp
-        env['TMP'] = system_temp
-        
-        # Windows-specific PATH cleaning for 64-bit compatibility
-        if os.name == 'nt':
-            # Clean PATH to avoid 16-bit legacy tools
-            path_dirs = env.get('PATH', '').split(os.pathsep)
-            clean_path_dirs = []
-            
-            # Prioritize 64-bit system directories
-            system_paths = [
-                os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32'),
-                os.path.join(os.environ.get('SystemRoot', 'C:\\Windows')),
-                os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'WindowsPowerShell', 'v1.0'),
-                os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'Git', 'bin'),
-                os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'Microsoft VS Code', 'bin')
-            ]
-            
-            # Add system paths first
-            for sys_path in system_paths:
-                if os.path.exists(sys_path) and sys_path not in clean_path_dirs:
-                    clean_path_dirs.append(sys_path)
-            
-            # Filter existing PATH, avoiding problematic directories
-            problematic_dirs = [
-                'SysWOW64',  # 32-bit compatibility layer
-                'System',    # 16-bit legacy
-                'C:\\Windows\\System',  # 16-bit legacy
-            ]
-            
-            for path_dir in path_dirs:
-                if path_dir and os.path.exists(path_dir):
-                    # Skip problematic directories
-                    if any(prob in path_dir for prob in problematic_dirs):
-                        self.logger.debug(f"Skipping problematic PATH entry: {path_dir}")
-                        continue
-                    
-                    # Skip duplicate entries
-                    if path_dir not in clean_path_dirs:
-                        clean_path_dirs.append(path_dir)
-            
-            env['PATH'] = os.pathsep.join(clean_path_dirs)
-            
-            # Force 64-bit architecture preference
-            env['PROCESSOR_ARCHITECTURE'] = 'AMD64'
-            if 'PROCESSOR_ARCHITEW6432' in env:
-                del env['PROCESSOR_ARCHITEW6432']
-        
-        return env
-    
-    def run_hidden_subprocess_nuitka_safe(self, command, capture_output=False, text=True, 
-                                         timeout=None, cwd=None, env=None, encoding='utf-8', errors='replace'):
-        """Run subprocess with proper encoding handling for Windows"""
-        startupinfo = None
-        creationflags = 0
-        
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            creationflags = subprocess.CREATE_NO_WINDOW
-        
-        try:
-            if text and encoding:
-                # Handle text with explicit encoding
-                result = subprocess.run(
-                    command,
-                    capture_output=capture_output,
-                    text=text,
-                    timeout=timeout,
-                    cwd=cwd,
-                    env=env,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags,
-                    encoding=encoding,
-                    errors=errors
-                )
-            else:
-                # Fallback to original behavior
-                result = subprocess.run(
-                    command,
-                    capture_output=capture_output,
-                    text=text,
-                    timeout=timeout,
-                    cwd=cwd,
-                    env=env,
-                    startupinfo=startupinfo,
-                    creationflags=creationflags
-                )
-            return result
-        except subprocess.TimeoutExpired:
-            self.logger.error(f"Command timed out after {timeout} seconds: {' '.join(command)}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error running command {' '.join(command)}: {e}")
-            raise
-    def check_local_directory_venv(self):
-        """Check for a virtual environment in the application directory"""
-        candidates = ["venv", "env"]
-        for name in candidates:
-            venv_path = os.path.join(self.base_dir, name)
-            if os.path.isdir(venv_path) and self.is_valid_venv(venv_path):
-                self.logger.info(f"Found local environment: {venv_path}")
-                if self.verify_environment_packages(venv_path):
-                    self.logger.info("Local environment verified")
-                    self.activate_venv_path(venv_path)
-                    return True
-                else:
-                    self.logger.warning("Local environment missing required packages")
-        return False
-    
-    def check_system_python(self):
-        """Check if system Python has Manim installed (only when not frozen)"""
-        # Don't use system Python when running as executable
-        if self.is_frozen:
-            self.logger.info("Running as executable - skipping system Python check")
-            return False
-            
-        try:
-            import manim
-            # Manim is available in system Python
-            self.current_venv = "system_python"
-            self.python_path = sys.executable
-            self.pip_path = "pip"
-            self.logger.info("Using system Python with Manim")
-            return True
-        except ImportError:
-            return False
-    
-    def check_bundled_environment(self):
-        """Check for bundled environment"""
-        if self.bundled_available:
-            self.logger.info("Bundled environment is available")
-            return True
-        return False
-    
-    def extract_bundled_environment(self):
-        """Extract bundled environment to the venvs directory"""
-        if not self.bundled_available:
-            return False
-            
-        try:
-            venv_zip_path = os.path.join(self.bundled_venv_dir, "venv.zip")
-            extract_path = os.path.join(self.venv_dir, "manim_studio_default")
-            
-            self.logger.info(f"Extracting bundled environment to: {extract_path}")
-            
-            # Remove existing directory if it exists
-            if os.path.exists(extract_path):
-                shutil.rmtree(extract_path)
-            
-            # Extract the zip file
-            with zipfile.ZipFile(venv_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_path)
-            
-            # Set up paths
-            if os.name == 'nt':
-                self.python_path = os.path.join(extract_path, "Scripts", "python.exe")
-                self.pip_path = os.path.join(extract_path, "Scripts", "pip.exe")
-            else:
-                self.python_path = os.path.join(extract_path, "bin", "python")
-                self.pip_path = os.path.join(extract_path, "bin", "pip")
-            
-            # Verify extraction
-            if not os.path.exists(self.python_path):
-                self.logger.error("Python executable not found after extraction")
-                return False
-            
-            # Set permissions on Unix-like systems
-            if os.name != 'nt':
-                os.chmod(self.python_path, 0o755)
-                if os.path.exists(self.pip_path):
-                    os.chmod(self.pip_path, 0o755)
-            
-            # Read manifest and install any missing packages if needed
-            manifest_path = os.path.join(self.bundled_venv_dir, "manifest.json")
-            if os.path.exists(manifest_path):
-                try:
-                    with open(manifest_path, 'r') as f:
-                        manifest = json.load(f)
-                        essential_packages = manifest.get('essential_packages', [])
-                        
-                        # Install missing packages if any
-                        missing = self.check_missing_packages()
-                        if missing:
-                            self.install_missing_packages(missing)
-                            
-                except Exception as e:
-                    self.logger.error(f"Error reading or processing manifest: {e}")
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error extracting bundled environment: {e}")
-            return False
-    
-    def verify_current_environment(self):
-        """Verify that current environment has essential packages"""
-        try:
-            # Test essential packages
-            essential_test = ["manim", "numpy", "customtkinter"]
-            for package in essential_test:
-                try:
-                    __import__(package)
-                except ImportError:
-                    self.logger.info(f"Missing package {package} in current environment")
-                    return False
-            return True
-        except Exception as e:
-            self.logger.error(f"Error verifying current environment: {e}")
-            return False
-    
-    def verify_environment_packages(self, venv_path):
-        """Verify that environment has essential packages"""
-        try:
-            # Get python path
-            if os.name == 'nt':
-                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-            else:
-                python_exe = os.path.join(venv_path, "bin", "python")
-            
-            if not os.path.exists(python_exe):
-                self.logger.error(f"Python executable not found: {python_exe}")
-                return False
-            
-            # Validate that this is not our own executable
-            if not self.validate_python_installation(python_exe):
-                return False
-                
-            # Test essential packages directly without temporary files
-            essential_packages = ["manim", "numpy", "customtkinter", "PIL"]
-            
-            # Create a single test command
-            test_code = f"""
-import sys
-missing = []
-packages = {essential_packages}
-for pkg in packages:
-    try:
-        if pkg == 'PIL':
-            import PIL
-        else:
-            __import__(pkg)
-        print(f'[OK] {{pkg}}')
-    except ImportError:
-        missing.append(pkg)
-        print(f'[FAIL] {{pkg}}')
-
-if missing:
-    print(f'MISSING:{{",".join(missing)}}')
-    sys.exit(1)
-else:
-    print('ALL_OK')
-    sys.exit(0)
-"""
-            
-            # Execute directly without temporary file
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [python_exe, "-c", test_code],
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-            
-            if result.returncode == 0 and "ALL_OK" in result.stdout:
-                self.logger.info("All essential packages verified")
-                return True
-            else:
-                self.logger.warning(f"Package verification failed: {result.stdout}")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"Error verifying environment packages: {e}")
-            return False
-    
-    def validate_python_installation(self, python_exe):
-        """Validate that Python installation is proper and 64-bit compatible"""
-        try:
-            # Don't validate our own executable as Python
-            if self.is_frozen and os.path.samefile(python_exe, sys.executable):
-                self.logger.debug("Skipping validation of frozen executable")
-                return False
-                
-            # Check if it's actually Python
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [python_exe, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if result.returncode != 0 or "Python" not in result.stdout:
-                return False
-            
-            # Check architecture compatibility on Windows
-            if os.name == 'nt':
-                arch_script = """
-import platform
-import sys
-print(f"Architecture: {platform.machine()}")
-print(f"Platform: {platform.platform()}")
-print(f"64bit: {platform.architecture()[0]}")
-print(f"Pointer size: {sys.maxsize > 2**32}")
-"""
-                
-                arch_result = self.run_hidden_subprocess_nuitka_safe(
-                    [python_exe, "-c", arch_script],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                
-                if arch_result.returncode == 0:
-                    output = arch_result.stdout
-                    self.logger.info(f"Python architecture info:\n{output}")
-                    
-                    # Check for 64-bit compatibility
-                    system_arch = platform.machine()
-                    if system_arch.endswith('64'):
-                        # On 64-bit system, prefer 64-bit Python
-                        if '64bit' not in output or 'Pointer size: False' in output:
-                            self.logger.warning(f"32-bit Python on 64-bit system: {python_exe}")
-                            # Still allow it, but log the warning
-                        else:
-                            self.logger.info(f"64-bit Python confirmed: {python_exe}")
-                    
-                    return True
-                else:
-                    self.logger.warning(f"Could not determine Python architecture: {python_exe}")
-                    return True  # Allow it anyway
-            
-            return True
-            
-        except Exception as e:
-            self.logger.debug(f"Python validation failed: {e}")
-            return False
-    
-    def use_system_python_fallback(self):
-        """Use system Python as fallback when environment setup fails"""
-        self.logger.info("Using system Python as fallback")
-        try:
-            # Try to import manim - might work if it's installed system-wide
-            __import__("manim")
-            self.current_venv = "system_python_fallback"
-            self.python_path = sys.executable
-            self.pip_path = "pip"
-            self.needs_setup = False
-            self.using_fallback = True
-            self.logger.info("System Python fallback activated with manim available")
-            return True
-        except ImportError:
-            # Manim not available in system Python
-            self.logger.warning("Cannot use system Python as fallback - manim not available")
-            # Still mark as using fallback to avoid repeated failures
-            self.using_fallback = True
-            return False
-    
-    def create_default_environment(self, log_callback=None):
-        """Create the default virtual environment with enhanced logging and error handling"""
-        env_name = "manim_studio_default"
-        env_path = os.path.join(self.venv_dir, env_name)
-        
-        try:
-            if log_callback:
-                log_callback(f"Creating virtual environment: {env_name}")
-                log_callback(f"Location: {env_path}")
-            
-            # Remove existing environment if it exists
-            if os.path.exists(env_path):
-                if log_callback:
-                    log_callback("Removing existing environment...")
-                shutil.rmtree(env_path, ignore_errors=True)
-            
-            # Find the best Python executable
-            python_exe = self._find_best_python()
-            if not python_exe:
-                if log_callback:
-                    log_callback("❌ No suitable Python installation found")
-                return False
-            
-            if log_callback:
-                log_callback(f"Using Python: {python_exe}")
-            
-            # Create virtual environment with proper subprocess handling
-            create_cmd = [python_exe, "-m", "venv", env_path]
-            
-            if log_callback:
-                log_callback("Creating virtual environment...")
-            
-            # Use proper subprocess configuration
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-            
-            result = subprocess.run(
-                create_cmd,
-                capture_output=True,
-                text=True,
-                startupinfo=startupinfo,
-                creationflags=creationflags
-            )
-            
-            if result.returncode != 0:
-                error_msg = f"Failed to create virtual environment: {result.stderr}"
-                if log_callback:
-                    log_callback(f"❌ {error_msg}")
-                self.logger.error(error_msg)
-                return False
-            
-            # Verify creation
-            if not os.path.exists(env_path):
-                if log_callback:
-                    log_callback("❌ Environment directory not created")
-                return False
-            
-            # Activate the environment
-            if self.activate_venv(env_name):
-                if log_callback:
-                    log_callback("✅ Virtual environment created and activated successfully")
-                return True
-            else:
-                if log_callback:
-                    log_callback("❌ Failed to activate environment")
-                return False
-
-        except Exception as e:
-            error_msg = f"Environment creation failed: {str(e)}"
-            if log_callback:
-                log_callback(f"❌ {error_msg}")
-            self.logger.error(error_msg)
-            return False
-    def create_environment_unified(self, name, location, packages=None, log_callback=None):
-        """Unified environment creation method"""
-        if packages is None:
-            packages = self.essential_packages[:10]  # Core packages only
-            
-        env_path = os.path.join(location, name)
-
-        if log_callback:
-            log_callback(f"Creating virtual environment: {name}")
-            log_callback(f"Location: {env_path}")
-
-        try:
-            # Find the best Python installation
-            if log_callback:
-                log_callback("Searching for Python installations...")
-                
-            python_exe = self.find_system_python()
-            if not python_exe:
-                error_msg = "❌ CRITICAL: No Python installation found!\n\n"
-                error_msg += "Please install Python from https://python.org and restart the application."
-                if log_callback:
-                    log_callback(error_msg)
-                return False
-
-            # Create virtual environment
-            if log_callback:
-                log_callback(f"Creating environment with Python: {python_exe}")
-                
-            create_cmd = [python_exe, "-m", "venv", env_path, "--clear"]
-            result = self.run_hidden_subprocess_nuitka_safe(
-                create_cmd,
-                capture_output=True,
-                text=True,
-                timeout=180,
-                cwd=os.path.expanduser("~")
-            )
-
-            if result.returncode != 0:
-                if log_callback:
-                    log_callback(f"Failed to create environment: {result.stderr}")
-                return False
-
-            # Set up environment paths
-            if not self._setup_environment_after_creation(env_path):
-                return False
-                
-            # Install packages
-            if packages:
-                if log_callback:
-                    log_callback(f"Installing {len(packages)} packages...")
-                    
-                for i, package in enumerate(packages):
-                    if log_callback:
-                        log_callback(f"Installing {package} ({i+1}/{len(packages)})...")
-                    
-                    if not self.install_single_package_with_logging(package, log_callback):
-                        if log_callback:
-                            log_callback(f"Warning: Failed to install {package}")
-
-            # Verify installation
-            if self.verify_environment_packages(env_path):
-                if log_callback:
-                    log_callback("Environment setup complete and verified")
-                self.needs_setup = False
-                return True
-            else:
-                if log_callback:
-                    log_callback("Environment verification failed after setup")
-                return self.use_system_python_fallback()
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"Error during environment creation: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
-            return self.use_system_python_fallback()
-    
-    def check_environment_status(self, log_callback=None):
-        """Check environment status - bundled or virtual"""
-        
-        return self.original_check_environment_status(log_callback)
-
-    def original_check_environment_status(self, log_callback=None):
-        """Check virtual environment status without strict manim testing"""
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-        
-        if not os.path.exists(default_venv_path):
-            if log_callback:
-                log_callback("❌ Default environment not found")
-            return False
-        
-        # Check for basic structure
-        if not self.is_valid_venv(default_venv_path):
-            if log_callback:
-                log_callback("❌ Environment structure invalid, attempting repair...")
-            return self.repair_corrupted_environment(default_venv_path, log_callback)
-        
-        # REMOVED: Test if Python executable works (catches 3221225477 errors)
-        # Just check if Python executable exists instead of running it
-        if not os.path.exists(self.python_path):
-            if log_callback:
-                log_callback(f"❌ Python executable not found: {self.python_path}")
-            return self.repair_corrupted_environment(default_venv_path, log_callback)
-        
-        # REMOVED: Test manim import specifically - this was causing 3221225477 errors
-        # Instead, just verify the virtual environment structure is valid
-        if log_callback:
-            log_callback("✅ Environment validation successful (skipped import tests)")
-        return True
-
-    def setup_bundled_environment(self):
-        """Set up bundled environment - Extract next to app.exe for portability"""
-        print("🔧 Setting up portable bundled environment...")
-        
-        if getattr(sys, 'frozen', False):
-            # Running as executable - extract next to app.exe
-            app_dir = Path(sys.executable).parent
-        else:
-            # Running as script - extract next to script
-            app_dir = Path(__file__).parent
-        
-        venv_bundle = app_dir / "venv_bundle"
-        
-        if not venv_bundle.exists():
-            print("❌ venv_bundle not found, falling back to normal setup")
-            self._initialize_environment()
-            return
-        
-        # Target location: NEXT TO APP.EXE (portable setup)
-        target_venv = app_dir / "manim_studio_default"
-        
-        print(f"📁 Extracting bundled environment to: {target_venv}")
-        print(f"🚀 Portable mode: Everything stays with app.exe")
-        
-        # Remove existing environment if it exists
-        if target_venv.exists():
-            print("🗑️ Removing existing environment...")
-            shutil.rmtree(target_venv, ignore_errors=True)
-        
-        # Copy bundled environment to target location
-        try:
-            print("📦 Copying bundled environment...")
-            shutil.copytree(venv_bundle, target_venv, dirs_exist_ok=True)
-            print("✅ Bundled environment extracted successfully!")
-        except Exception as e:
-            print(f"❌ Failed to extract bundled environment: {e}")
-            self._initialize_environment()
-            return
-        
-        # Set up paths to the extracted environment
-        if os.name == 'nt':
-            self.python_path = str(target_venv / "Scripts" / "python.exe")
-            self.pip_path = str(target_venv / "Scripts" / "pip.exe")
-        else:
-            self.python_path = str(target_venv / "bin" / "python")
-            self.pip_path = str(target_venv / "bin" / "pip")
-        
-        # Verify extraction worked
-        if not os.path.exists(self.python_path):
-            print(f"❌ Python executable not found at: {self.python_path}")
-            self._initialize_environment()
-            return
-        
-        # Set up all paths for PORTABLE MODE - everything next to exe
-        self.app_dir = str(app_dir)  # Next to app.exe
-        self.venv_dir = str(app_dir)  # Environments next to app.exe
-        self.base_dir = str(app_dir)
-        
-        # Set up state
-        self.current_venv = "manim_studio_default"
-        self.needs_setup = False  # No setup needed - everything is bundled!
-        self.using_fallback = False
-        self.is_frozen = True
-        self.bundled_venv_dir = None
-        self.bundled_available = False
-        
-        # Essential packages list (empty since everything is bundled)
-        self.essential_packages = []
-        
-        # Set up logging if not already done
-        if not hasattr(self, 'logger'):
-            self.logger = logging.getLogger(__name__)
-        
-        print(f"✅ Portable bundled environment ready!")
-        print(f"   📁 App directory: {self.app_dir}")
-        print(f"   🐍 Python: {self.python_path}")
-        print(f"   📦 Environment: {target_venv}")
-        print("🚀 Ready to use - no package installation needed!")
-        print("📁 Everything is portable - copy the whole folder to move the app!")
-    
-    def _setup_environment_after_creation(self, venv_path):
-        """Set up environment after creation"""
-        if os.name == 'nt':
-            python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-            pip_exe = os.path.join(venv_path, "Scripts", "pip.exe")
-        else:
-            python_exe = os.path.join(venv_path, "bin", "python")
-            pip_exe = os.path.join(venv_path, "bin", "pip")
-            
-        self.logger.info(f"Python path: {python_exe}, exists: {os.path.exists(python_exe)}")
-        self.logger.info(f"Pip path: {pip_exe}, exists: {os.path.exists(pip_exe)}")
-        
-        if not os.path.exists(python_exe):
-            self.logger.error("Python executable not found in created environment")
-            return self.use_system_python_fallback()
-            
-        # Ensure pip is available
-        if not os.path.exists(pip_exe):
-            self.logger.info("Pip not found, installing...")
-            try:
-                # Try to install pip using ensurepip
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    [python_exe, "-m", "ensurepip", "--upgrade"],
-                    capture_output=True, 
-                    text=True, 
-                    timeout=60
-                )
-                if result.returncode != 0:
-                    self.logger.error("Failed to install pip with ensurepip")
-                    return self.use_system_python_fallback()
-            except Exception as e:
-                self.logger.error(f"Error installing pip: {e}")
-                return self.use_system_python_fallback()
-            
-        # Activate it for further operations
-        self.python_path = python_exe
-        self.pip_path = pip_exe
-        self.current_venv = "manim_studio_default"
-        
-        return True
-    
     def install_single_package_with_logging(self, package, log_callback):
-        """Install a single package with logging to callback"""
+        """Install a single package with logging to callback - FIXED VERSION"""
         try:
             # Get number of cores for CPU control
+            import multiprocessing
             cores = min(4, multiprocessing.cpu_count())
             
             # Create environment variables for CPU control
@@ -5270,6 +4333,8 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             for line in process.stdout:
                 if line and log_callback:
                     log_callback(line.rstrip())
+            
+            # FIXED: Use wait() instead of poll() to get the actual exit code
             exit_code = process.wait()
 
             if exit_code == 0:
@@ -5285,301 +4350,134 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             if log_callback:
                 log_callback(f"Error installing {package}: {str(e)}")
             return False
-    
-    def list_venvs(self):
-        """List all available virtual environments (portable version)"""
-        venvs = []
-        
-        # Add current environment if it's special
-        if self.current_venv and self.current_venv.startswith(("system_", "current_")):
-            venvs.append(self.current_venv)
-        
-        
-        
-        # Regular virtual environments (non-bundled mode)
-        if hasattr(self, 'venv_dir') and os.path.exists(self.venv_dir):
-            for item in os.listdir(self.venv_dir):
-                venv_path = os.path.join(self.venv_dir, item)
-                if os.path.isdir(venv_path) and self.is_valid_venv(venv_path):
-                    venvs.append(item)
-                    
-        return sorted(venvs)
-        
-    def is_valid_venv(self, venv_path):
-        """Check if a directory is a valid virtual environment"""
-        if os.name == 'nt':
-            return (os.path.exists(os.path.join(venv_path, "Scripts", "python.exe")) and
-                    os.path.exists(os.path.join(venv_path, "Scripts", "pip.exe")))
-        else:
-            return (os.path.exists(os.path.join(venv_path, "bin", "python")) and
-                    os.path.exists(os.path.join(venv_path, "bin", "pip")))
-        
-    def activate_venv(self, name):
-        """Activate a virtual environment"""
-        if name.startswith(("system_", "current_")):
-            return True
-            
-        if name in self.list_venvs():
-            self.current_venv = name
-            venv_path = os.path.join(self.venv_dir, name)
-            
-            if os.name == 'nt':
-                scripts_path = os.path.join(venv_path, "Scripts")
-                self.python_path = os.path.join(scripts_path, "python.exe")
-                self.pip_path = os.path.join(scripts_path, "pip.exe")
-            else:
-                bin_path = os.path.join(venv_path, "bin")
-                self.python_path = os.path.join(bin_path, "python")
-                self.pip_path = os.path.join(bin_path, "pip")
-                
-            return True
-        return False
-    def activate_default_environment(self):
-        """Activate the manim_studio_default environment (portable version)"""
-        
-        
-        default_venv_path = Path(self.venv_dir) / "manim_studio_default"
-        
-        if not default_venv_path.exists():
-            self.logger.error(f"manim_studio_default environment not found at: {default_venv_path}")
-            return False
-            
-        if not self.is_valid_venv(str(default_venv_path)):
-            self.logger.error("manim_studio_default environment is invalid")
-            return False
-        
-        # Set up paths
-        if os.name == 'nt':
-            self.python_path = str(default_venv_path / "Scripts" / "python.exe")
-            self.pip_path = str(default_venv_path / "Scripts" / "pip.exe")
-        else:
-            self.python_path = str(default_venv_path / "bin" / "python")
-            self.pip_path = str(default_venv_path / "bin" / "pip")
-        
-        self.current_venv = "manim_studio_default"
-        self.needs_setup = False
-        
-        self.logger.info(f"✅ Activated manim_studio_default environment: {default_venv_path}")
-        return True
-    def deactivate_venv(self):
-        """Deactivate the current virtual environment"""
-        self.current_venv = None
-        self.python_path = sys.executable
-        self.pip_path = "pip"
-        return True
 
-    def activate_venv_path(self, venv_path):
-        """Activate a virtual environment located at an arbitrary path"""
-        if not self.is_valid_venv(venv_path):
-            return False
+    def _get_install_strategies(self, package, attempt):
+        """Get different installation strategies for retries"""
+        base_cmd = [self.pip_path, "install"]
+        common_flags = ["--no-cache-dir", "--disable-pip-version-check"]
+        
+        strategies = [
+            # Standard installation
+            base_cmd + [package] + common_flags,
+            
+            # With upgrade and force reinstall
+            base_cmd + [package, "--upgrade", "--force-reinstall"] + common_flags,
+            
+            # Force reinstall with pre-compiled wheels only
+            base_cmd + [package, "--force-reinstall", "--only-binary=:all:"] + common_flags
+        ]
+        
+        # For specific problematic packages on Windows, use special handling
+        if os.name == 'nt' and any(pkg in package.lower() for pkg in ['opencv', 'numpy', 'scipy', 'pillow']):
+            # Add strategy for pre-compiled wheels from reliable sources
+            strategies.insert(0, base_cmd + [package, "--only-binary=:all:", "--find-links", "https://download.pytorch.org/whl/torch_stable.html"] + common_flags)
+        
+        return strategies
 
-        if os.name == 'nt':
-            self.python_path = os.path.join(venv_path, "Scripts", "python.exe")
-            self.pip_path = os.path.join(venv_path, "Scripts", "pip.exe")
-        else:
-            self.python_path = os.path.join(venv_path, "bin", "python")
-            self.pip_path = os.path.join(venv_path, "bin", "pip")
-
-        self.current_venv = f"external_{os.path.basename(venv_path)}"
-        return True
-    
-    def install_package(self, package_name, callback=None):
-        """Install a package using system terminal"""
-        if not self.current_venv:
-            if callback:
-                callback(False, "", "No virtual environment active")
-            return False, "No virtual environment active"
+    def verify_single_package(self, package_spec):
+        """Verify that a single package can be imported"""
+        # Extract package name (remove version specifiers)
+        package_name = package_spec.split('>=')[0].split('==')[0].split('<')[0].split('>')[0]
         
-        def on_install_complete(success, return_code):
-            stdout = "Installation completed" if success else ""
-            stderr = "" if success else f"Installation failed with code {return_code}"
-            if callback:
-                callback(success, stdout, stderr)
-        
-        # Use threading-safe command execution
-        try:
-            self.run_command_with_threading_fix(
-                [self.pip_path, "install", package_name],
-                on_complete=on_install_complete
-            )
-            return True, "Installation started"
-        except Exception as e:
-            if callback:
-                callback(False, "", str(e))
-            return False, str(e)
-    
-    def run_command_with_threading_fix(self, command, on_complete=None):
-        """Execute command with proper threading for UI integration"""
-        if not hasattr(self, 'parent_app') or not self.parent_app:
-            # Direct execution without UI integration
-            try:
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=300
-                )
-                if on_complete:
-                    on_complete(result.returncode == 0, result.returncode)
-                return result.returncode == 0
-            except Exception as e:
-                if on_complete:
-                    on_complete(False, -1)
-                return False
-        
-        def run_in_thread():
-            try:
-                # Execute command and capture output
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    env=self.get_clean_environment()
-                )
-                
-                # Stream output to parent app if available
-                if hasattr(self.parent_app, 'append_terminal_output'):
-                    if result.stdout:
-                        self.safe_after(0, lambda: self.parent_app.append_terminal_output(result.stdout))
-                    if result.stderr:
-                        self.safe_after(0, lambda: self.parent_app.append_terminal_output(result.stderr))
-
-                if on_complete:
-                    self.safe_after(0, lambda: on_complete(result.returncode == 0, result.returncode))
-                        
-            except Exception as e:
-                error_msg = f"Command execution error: {e}\n"
-                self.logger.error(error_msg)
-                if hasattr(self.parent_app, 'append_terminal_output'):
-                    self.safe_after(0, lambda: self.parent_app.append_terminal_output(error_msg))
-                if on_complete:
-                    self.safe_after(0, lambda: on_complete(False, -1))
-        
-        # Run in background thread
-        threading.Thread(target=run_in_thread, daemon=True).start()
-    
-    def upgrade_pip(self, log_callback=None):
-        """Upgrade pip in the current environment using system terminal"""
-        if not self.current_venv:
-            if log_callback:
-                log_callback("No virtual environment active")
-            return False
-            
-        try:
-            if log_callback:
-                log_callback("Upgrading pip...")
-            
-            # Create environment with proper subprocess handling
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-            
-            process = subprocess.Popen(
-                [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                startupinfo=startupinfo,
-                creationflags=creationflags,
-            )
-            
-            # Stream output
-            for line in process.stdout:
-                if line and log_callback:
-                    log_callback(line.rstrip())
-            
-            exit_code = process.wait()
-            
-            if exit_code == 0:
-                if log_callback:
-                    log_callback("Pip upgraded successfully")
-                return True
-            else:
-                if log_callback:
-                    log_callback(f"Warning: Failed to upgrade pip (exit code {exit_code})")
-                return False
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"Error upgrading pip: {str(e)}")
-            return False
-    def verify_installation(self, log_callback=None):
-        """Verify that the installation is working correctly using direct subprocess"""
-        test_packages = ["manim", "numpy", "matplotlib", "customtkinter", "jedi"]
-        
-        if log_callback:
-            log_callback("Verifying installation...")
-        
-        # Test packages directly without temporary files
-        test_code = f"""
-import sys
-test_packages = {test_packages}
-failed = []
-
-for package in test_packages:
-    try:
-        __import__(package)
-        print(f"✓ {{package}} - OK")
-    except ImportError as e:
-        print(f"✗ {{package}} - FAILED: {{e}}")
-        failed.append(package)
-
-if failed:
-    print(f"Failed packages: {{failed}}")
-    sys.exit(1)
-else:
-    print("All packages verified successfully!")
-    sys.exit(0)
+        verify_script = f"""
+try:
+    if "{package_name}" == "opencv-python":
+        import cv2
+    elif "{package_name}" == "Pillow":
+        import PIL
+    elif "{package_name}" == "imageio-ffmpeg":
+        import imageio_ffmpeg
+    elif "{package_name}" == "moderngl-window":
+        import moderngl_window
+    else:
+        import {package_name}
+    print("OK")
+except ImportError as e:
+    print(f"FAIL: {{e}}")
+    exit(1)
 """
         
         try:
-            # Execute verification in the virtual environment
-            startupinfo = None
-            creationflags = 0
-            
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_HIDE
-                creationflags = subprocess.CREATE_NO_WINDOW
-            
-            process = subprocess.Popen(
-                [self.python_path, "-c", test_code],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+            result = self.run_hidden_subprocess_nuitka_safe(
+                [self.python_path, "-c", verify_script],
+                capture_output=True,
                 text=True,
-                startupinfo=startupinfo,
-                creationflags=creationflags
+                timeout=30
             )
-            
-            # Stream output if callback provided
-            if log_callback:
-                for line in process.stdout:
-                    if line.strip():
-                        log_callback(line.strip())
-            
-            exit_code = process.wait()
-            
-            if exit_code == 0:
-                if log_callback:
-                    log_callback("✅ Installation verification completed successfully")
-                return True
-            else:
-                if log_callback:
-                    log_callback("❌ Installation verification failed")
-                return False
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"Error during verification: {str(e)}")
+            return result.returncode == 0 and "OK" in result.stdout
+        except Exception:
             return False
+
+    def upgrade_pip_in_existing_env(self, log_callback=None):
+        """Upgrade pip in the existing environment"""
+        try:
+            self.logger.info("Upgrading pip in existing environment...")
+            if log_callback:
+                log_callback("Upgrading pip in existing environment...")
+            result = self.run_hidden_subprocess_nuitka_safe(
+                [self.python_path, "-m", "pip", "install", "--upgrade", "pip"],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+
+            if log_callback and result.stdout:
+                for line in result.stdout.splitlines():
+                    log_callback(line)
+            if log_callback and result.stderr:
+                for line in result.stderr.splitlines():
+                    log_callback(line)
+
+            if result.returncode == 0:
+                self.logger.info("✅ Pip upgraded successfully")
+                if log_callback:
+                    log_callback("✅ Pip upgraded successfully")
+            else:
+                self.logger.warning(f"Pip upgrade warning: {result.stderr}")
+                if log_callback:
+                    log_callback(f"Pip upgrade warning: {result.stderr}")
+
+        except Exception as e:
+            self.logger.warning(f"Could not upgrade pip: {e}")
+            if log_callback:
+                log_callback(f"Could not upgrade pip: {e}")
+
+    def verify_complete_installation(self, log_callback=None):
+        """Verify the complete installation by testing essential packages"""
+        if log_callback:
+            log_callback("🔍 Performing simple installation check...")
+        
+        # Just check if key files exist rather than importing
+        required_paths = [
+            self.python_path,
+            self.pip_path,
+        ]
+        
+        for path in required_paths:
+            if not os.path.exists(path):
+                if log_callback:
+                    log_callback(f"❌ Missing: {path}")
+                return False
+        
+        # Check if site-packages directory exists and has some packages
+        if os.name == 'nt':
+            site_packages = os.path.join(os.path.dirname(self.python_path), "..", "Lib", "site-packages")
+        else:
+            site_packages = os.path.join(os.path.dirname(self.python_path), "..", "lib", "python*", "site-packages")
+        
+        site_packages = os.path.normpath(site_packages)
+        if os.path.exists(site_packages):
+            # Check if we have some packages installed
+            packages = os.listdir(site_packages)
+            if len([p for p in packages if not p.startswith('.')] ) > 5:  # Basic threshold
+                if log_callback:
+                    log_callback("✅ Installation appears valid")
+                return True
+        
+        if log_callback:
+            log_callback("⚠️ Installation may be incomplete")
+        return True  # Don't fail - let the user try to use it
+
     def check_manim_availability(self, log_callback=None):
         """Safe manim check that doesn't cause 3221225477 errors"""
         if log_callback:
@@ -5609,8 +4507,7 @@ else:
                 log_callback("⚠️ Manim package not found - may need installation")
         
         return manim_found
-    
-    
+
     def repair_environment(self):
         """Force repair of the environment by checking and installing all missing packages"""
         self.logger.info("🔧 Repairing environment...")
@@ -5646,7 +4543,7 @@ else:
             self.activate_default_environment()
             self.needs_setup = False
             return True
-    
+
     def get_environment_info(self):
         """Get detailed information about the current environment"""
         info = {
@@ -5657,7 +4554,6 @@ else:
             'manim_available': self.check_manim_availability(),
             'environment_valid': False,
             'missing_packages': [],
-            'bundled_available': self.bundled_available,
             'is_frozen': self.is_frozen
         }
         
@@ -5669,352 +4565,51 @@ else:
                 info['missing_packages'] = self.check_missing_packages()
         
         return info
-    
-    def export_requirements(self, filepath):
-        """Export current environment requirements to a file"""
-        if not self.current_venv:
-            return False
-            
-        try:
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [self.pip_path, "freeze"],
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-            
-            if result.returncode == 0:
-                with open(filepath, 'w') as f:
-                    f.write(result.stdout)
-                return True
-            else:
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"Error exporting requirements: {e}")
-            return False
-    
-    def import_requirements(self, filepath, log_callback=None):
-        """Install packages from a requirements file"""
-        if not self.current_venv:
-            return False
-            
-        if not os.path.exists(filepath):
-            return False
-            
-        try:
-            if log_callback:
-                log_callback(f"Installing packages from {filepath}...")
-                
-            def on_install_complete(success, return_code):
-                if log_callback:
-                    if success:
-                        log_callback("Requirements installed successfully")
-                    else:
-                        log_callback(f"Requirements installation failed (exit code {return_code})")
-            
-            self.run_command_with_threading_fix(
-                [self.pip_path, "install", "-r", filepath],
-                on_complete=on_install_complete
-            )
-            return True
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"Error installing requirements: {str(e)}")
-            return False
 
-    def list_packages(self, env_name=None):
-        """List installed packages for the given or current environment."""
-        if env_name and not env_name.startswith(("system_", "current_")):
-            venv_path = os.path.join(self.venv_dir, env_name)
-            if os.name == "nt":
-                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
-            else:
-                python_exe = os.path.join(venv_path, "bin", "python")
-        else:
-            python_exe = self.python_path
-
-        try:
-            result = self.run_hidden_subprocess_nuitka_safe(
-                [python_exe, "-m", "pip", "list", "--format=json"],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-
-            if result.returncode == 0:
-                packages = json.loads(result.stdout)
-                return True, packages
-            else:
-                return False, result.stderr
-
-        except Exception as e:
-            return False, str(e)
-
-    def cleanup_old_environments(self, keep_current=True):
-        """Clean up old virtual environments to save disk space"""
-        cleaned = []
+    def get_clean_environment(self):
+        """Get clean environment variables for subprocess"""
+        env = os.environ.copy()
         
-        if not os.path.exists(self.venv_dir):
-            return cleaned
-    
-    def diagnose_architecture_issues(self):
-        """Diagnose and report architecture-related issues"""
-        diagnosis = {
-            'system_arch': platform.machine(),
-            'system_platform': platform.platform(),
-            'python_arch': platform.architecture(),
-            'is_64bit_system': platform.machine().endswith('64'),
-            'current_python_64bit': sys.maxsize > 2**32,
-            'issues': [],
-            'recommendations': []
-        }
+        # Add virtual environment to PATH if active
+        if self.current_venv and self.python_path:
+            venv_bin_dir = os.path.dirname(self.python_path)
+            env['PATH'] = venv_bin_dir + os.pathsep + env.get('PATH', '')
+            env['VIRTUAL_ENV'] = os.path.dirname(venv_bin_dir)
         
-        # Check for common issues
+        return env
+
+    def run_hidden_subprocess_nuitka_safe(self, command, **kwargs):
+        """Run subprocess with proper Windows hiding and Nuitka compatibility"""
+        # Set up Windows process hiding
+        startupinfo = None
+        creationflags = 0
+        
         if os.name == 'nt':
-            if diagnosis['is_64bit_system'] and not diagnosis['current_python_64bit']:
-                diagnosis['issues'].append("32-bit Python on 64-bit Windows system")
-                diagnosis['recommendations'].append("Install 64-bit Python from python.org")
-            
-            # Check PATH for problematic entries
-            path_dirs = os.environ.get('PATH', '').split(os.pathsep)
-            problematic_paths = []
-            for path_dir in path_dirs:
-                if any(prob in path_dir.lower() for prob in ['syswow64', 'system32\\wbem']):
-                    problematic_paths.append(path_dir)
-            
-            if problematic_paths:
-                diagnosis['issues'].append(f"Problematic PATH entries: {problematic_paths}")
-                diagnosis['recommendations'].append("Clean PATH to prioritize 64-bit directories")
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
         
-        # Test current Python
-        if self.python_path:
-            try:
-                result = self.run_hidden_subprocess_nuitka_safe(
-                    [self.python_path, "-c", "import platform; print(f'{platform.machine()}-{platform.architecture()[0]}')"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                if result.returncode == 0:
-                    diagnosis['current_python_details'] = result.stdout.strip()
-                else:
-                    diagnosis['issues'].append("Cannot determine current Python architecture")
-            except Exception as e:
-                diagnosis['issues'].append(f"Error testing current Python: {e}")
+        # Default arguments for system commands
+        kwargs.setdefault('encoding', 'utf-8')
+        kwargs.setdefault('errors', 'replace')
         
-        return diagnosis
-    
-    def fix_architecture_issues(self):
-        """Attempt to fix common architecture issues"""
-        diagnosis = self.diagnose_architecture_issues()
-        fixes_applied = []
-        
-        if os.name == 'nt' and diagnosis['is_64bit_system']:
-            # Try to find and use 64-bit Python
-            python_64 = self.find_system_python()
-            if python_64:
-                # Validate it's actually 64-bit
-                try:
-                    result = self.run_hidden_subprocess_nuitka_safe(
-                        [python_64, "-c", "import sys; print(sys.maxsize > 2**32)"],
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
-                    if result.returncode == 0 and "True" in result.stdout:
-                        self.logger.info(f"Found 64-bit Python: {python_64}")
-                        fixes_applied.append(f"Using 64-bit Python: {python_64}")
-                        return python_64, fixes_applied
-                except Exception as e:
-                    self.logger.warning(f"Error validating 64-bit Python: {e}")
-        
-        return None, fixes_applied
-            
-        current_env_path = None
-        if keep_current and self.current_venv:
-            current_env_path = os.path.join(self.venv_dir, self.current_venv)
-            
-        for item in os.listdir(self.venv_dir):
-            env_path = os.path.join(self.venv_dir, item)
-            
-            if os.path.isdir(env_path):
-                # Don't delete current environment if keep_current is True
-                if keep_current and current_env_path and os.path.samefile(env_path, current_env_path):
-                    continue
-                    
-                # Check if it's an old environment (simple heuristic)
-                if item.startswith("temp_") or "backup" in item.lower():
-                    try:
-                        shutil.rmtree(env_path)
-                        cleaned.append(item)
-                        self.logger.info(f"Cleaned up old environment: {item}")
-                    except Exception as e:
-                        self.logger.warning(f"Could not clean up {item}: {e}")
-                        
-        return cleaned
-    def create_thread_safe_log_callback(self, original_callback):
-        """Create a thread-safe version of a log callback"""
-        import queue
-        import threading
-        
-        if not hasattr(self, '_log_queue'):
-            self._log_queue = queue.Queue()
-            self._setup_log_queue_processor(original_callback)
-        
-        def thread_safe_callback(message):
-            self._log_queue.put(message)
-        
-        return thread_safe_callback
-    
-    def _setup_log_queue_processor(self, original_callback):
-        """Setup queue processor on main thread"""
-        def process_queue():
-            try:
-                while True:
-                    message = self._log_queue.get_nowait()
-                    # Call original callback on main thread
-                    if hasattr(self.parent_app, 'after'):
-                        self.parent_app.after(0, lambda m=message: original_callback(m))
-                    else:
-                        original_callback(message)
-            except:
-                pass  # Queue empty
-            
-            # Schedule next check
-            if hasattr(self.parent_app, 'after'):
-                self.parent_app.after(100, process_queue)
-        
-        if hasattr(self.parent_app, 'after'):
-            self.parent_app.after(100, process_queue)
-    def _find_best_python(self):
-        """Find the best Python executable available on the system"""
         try:
-            # First try the current Python executable when not frozen
-            current_python = sys.executable
-            if not self.is_frozen and current_python and os.path.exists(current_python):
-                self.logger.info(f"Using current Python executable: {current_python}")
-                return current_python
-            
-            # Common Python executable names to search for
-            python_names = []
-            
-            if os.name == 'nt':  # Windows
-                python_names = [
-                    "python.exe", "python3.exe", 
-                    "python3.11.exe", "python3.10.exe", "python3.9.exe", "python3.8.exe"
-                ]
-            else:  # Unix/Linux/macOS
-                python_names = [
-                    "python3", "python", 
-                    "python3.11", "python3.10", "python3.9", "python3.8"
-                ]
-            
-            # Search in PATH
-            for python_name in python_names:
-                python_path = shutil.which(python_name)
-                if python_path and os.path.exists(python_path):
-                    # Skip our own executable when frozen
-                    if self.is_frozen:
-                        try:
-                            if os.path.samefile(python_path, sys.executable):
-                                self.logger.debug("Skipping frozen executable candidate")
-                                continue
-                        except Exception:
-                            if os.path.abspath(python_path) == os.path.abspath(sys.executable):
-                                continue
-
-                    # Verify it's a working Python installation
-                    try:
-                        result = subprocess.run(
-                            [python_path, "--version"],
-                            capture_output=True,
-                            text=True,
-                            timeout=10
-                        )
-                        if result.returncode == 0:
-                            self.logger.info(f"Found Python: {python_path} - {result.stdout.strip()}")
-                            return python_path
-                    except Exception as e:
-                        self.logger.warning(f"Failed to verify Python {python_path}: {e}")
-                        continue
-            
-            # If still not found, try common installation paths
-            common_paths = []
-            
-            if os.name == 'nt':  # Windows
-                # Check common Windows Python installation paths
-                for version in ['311', '310', '39', '38']:
-                    common_paths.extend([
-                        f"C:\\Python{version}\\python.exe",
-                        f"C:\\Program Files\\Python {version[0]}.{version[1:]}\\python.exe",
-                        f"C:\\Program Files (x86)\\Python {version[0]}.{version[1:]}\\python.exe",
-                        os.path.expanduser(f"~\\AppData\\Local\\Programs\\Python\\Python{version}\\python.exe")
-                    ])
-            else:  # Unix/Linux/macOS
-                common_paths = [
-                    "/usr/bin/python3", "/usr/bin/python",
-                    "/usr/local/bin/python3", "/usr/local/bin/python",
-                    "/opt/python3/bin/python3", "/opt/python/bin/python"
-                ]
-            
-            for path in common_paths:
-                if os.path.exists(path):
-                    # Skip our own executable when frozen
-                    if self.is_frozen:
-                        try:
-                            if os.path.samefile(path, sys.executable):
-                                self.logger.debug("Skipping frozen executable candidate")
-                                continue
-                        except Exception:
-                            if os.path.abspath(path) == os.path.abspath(sys.executable):
-                                continue
-
-                    try:
-                        result = subprocess.run(
-                            [path, "--version"],
-                            capture_output=True,
-                            text=True,
-                            timeout=10
-                        )
-                        if result.returncode == 0:
-                            self.logger.info(f"Found Python at common path: {path} - {result.stdout.strip()}")
-                            return path
-                    except Exception as e:
-                        continue
-            
-            # Last resort: try 'python' command directly
-            try:
-                result = subprocess.run(
-                    ["python", "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    python_path = shutil.which("python")
-                    if python_path:
-                        if self.is_frozen:
-                            try:
-                                if os.path.samefile(python_path, sys.executable):
-                                    self.logger.debug("Skipping frozen executable candidate")
-                                    python_path = None
-                            except Exception:
-                                if os.path.abspath(python_path) == os.path.abspath(sys.executable):
-                                    python_path = None
-                        if python_path:
-                            self.logger.info(f"Using 'python' command: {python_path}")
-                            return python_path
-            except Exception:
-                pass
-            
-            self.logger.error("No suitable Python installation found")
-            return None
-            
+            result = subprocess.run(
+                command,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
+                **kwargs
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            timeout = kwargs.get('timeout', 'unknown')
+            self.logger.error(f"Command timed out after {timeout} seconds: {' '.join(command)}")
+            raise
         except Exception as e:
-            self.logger.error(f"Error finding Python executable: {e}")
-            return None
+            self.logger.error(f"Error running command {' '.join(command)}: {e}")
+            raise
+
     def get_pip_command(self):
         """Get pip command for current environment"""
         if not self.current_venv:
@@ -6022,12 +4617,55 @@ else:
         
         # Return list for subprocess
         return [self.pip_path]
-    def _auto_detect_environment(self):
-        """Auto-detect and activate existing manim_studio_default environment"""
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+
+    def show_setup_dialog(self):
+        """Show environment setup dialog"""
+        if self.parent_app is None:
+            return
+        dialog = EnvironmentSetupDialog(self.parent_app.root, self)
+        self.parent_app.root.wait_window(dialog)
         
-        if os.path.exists(default_venv_path) and self.is_valid_venv(default_venv_path):
-            self.logger.info(f"Found existing manim_studio_default environment")
+        # After dialog closes, ensure main window is visible
+        self.parent_app.root.after(10, lambda: self.parent_app.root.deiconify())
+
+    def is_environment_ready(self):
+        """Enhanced environment readiness check with error handling"""
+        if self.needs_setup:
+            return False
+        
+        # Quick validation with repair attempt
+        if not self.validate_and_repair_environment():
+            # If validation fails, try to auto-repair once
+            try:
+                self.logger.info("Environment validation failed, attempting auto-repair...")
+                default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+                
+                if os.path.exists(default_venv_path):
+                    if self.repair_corrupted_environment(default_venv_path):
+                        self.activate_default_environment()
+                        self.needs_setup = False
+                        return True
+                
+                # If repair fails, mark as needs setup
+                self.needs_setup = True
+                return False
+                
+            except Exception as e:
+                self.logger.error(f"Auto-repair failed: {e}")
+                self.needs_setup = True
+                return False
+        
+        return True
+
+    def validate_and_repair_environment(self):
+        """Validate environment and attempt repair if needed"""
+        try:
+            default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+            
+            # Check if environment exists and is valid
+            if not os.path.exists(default_venv_path) or not self.is_valid_venv(default_venv_path):
+                self.logger.info("Environment validation failed - missing or invalid")
+                return False
             
             # Set up paths
             if os.name == 'nt':
@@ -6037,636 +4675,156 @@ else:
                 self.python_path = os.path.join(default_venv_path, "bin", "python")
                 self.pip_path = os.path.join(default_venv_path, "bin", "pip")
             
-            # Verify executables exist
-            if os.path.exists(self.python_path) and os.path.exists(self.pip_path):
-                # Check if manim is available and working
-                if self.check_manim_availability():
-                    self.logger.info("✅ manim_studio_default environment is ready")
-                    self.current_venv = "manim_studio_default"
-                    self.needs_setup = False
-                else:
-                    self.logger.info("manim_studio_default exists but manim needs repair/installation")
-                    self.current_venv = "manim_studio_default"
-                    # needs_setup stays True to trigger repair
-            else:
-                self.logger.warning("manim_studio_default environment has missing executables")
-    def fix_pycairo_installation(self, log_callback=None):
-        """Attempt to fix pycairo installation issues"""
-        try:
-            if log_callback:
-                log_callback("Reinstalling pycairo...")
-            
-            # Try reinstalling pycairo
-            cmd = [self.python_path, "-m", "pip", "install", "--force-reinstall", "--no-cache-dir", "pycairo"]
-            result = self.run_hidden_subprocess_nuitka_safe(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=180,
-                encoding='utf-8',
-                errors='replace'
-            )
-            
-            if result.returncode == 0:
-                if log_callback:
-                    log_callback("✅ pycairo reinstalled successfully")
-                return True
-            else:
-                if log_callback:
-                    log_callback("⚠️ pycairo reinstallation had issues")
+            # Validate executables exist
+            if not os.path.exists(self.python_path) or not os.path.exists(self.pip_path):
+                self.logger.info("Environment validation failed - missing executables")
                 return False
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"Error fixing pycairo: {e}")
-            return False
-    
-    def fix_manimpango_installation(self, log_callback=None):
-        """Attempt to fix ManimPango installation issues"""
-        try:
-            if log_callback:
-                log_callback("Reinstalling ManimPango...")
             
-            # Try installing Cython first (common fix)
-            cython_cmd = [self.python_path, "-m", "pip", "install", "Cython"]
-            cython_result = self.run_hidden_subprocess_nuitka_safe(
-                cython_cmd,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                encoding='utf-8',
-                errors='replace'
-            )
-            
-            # Then reinstall ManimPango
-            cmd = [self.python_path, "-m", "pip", "install", "--force-reinstall", "--no-cache-dir", "ManimPango"]
-            result = self.run_hidden_subprocess_nuitka_safe(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=180,
-                encoding='utf-8',
-                errors='replace'
-            )
-            
-            if result.returncode == 0:
-                if log_callback:
-                    log_callback("✅ ManimPango reinstalled successfully")
-                return True
-            else:
-                if log_callback:
-                    log_callback("⚠️ ManimPango reinstallation had issues")
+            # Check if essential packages are missing
+            missing = self.check_missing_packages()
+            if missing:
+                self.logger.info(f"Environment needs repair - missing packages: {missing}")
                 return False
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"Error fixing ManimPango: {e}")
-            return False
-    def _get_config_file_path(self):
-        """Get path to environment config file"""
-        return os.path.join(self.app_dir, "environment_config.json")
-    
-    def _get_environment_hash(self, env_path):
-        """Generate a hash of the environment to detect changes"""
-        import hashlib
-        
-        # Create hash based on environment directory modification time and critical files
-        hash_input = ""
-        
-        try:
-            # Add environment directory modification time
-            if os.path.exists(env_path):
-                hash_input += str(os.path.getmtime(env_path))
             
-            # Add Python executable modification time
-            python_exe = os.path.join(env_path, "Scripts" if os.name == 'nt' else "bin", "python.exe" if os.name == 'nt' else "python")
-            if os.path.exists(python_exe):
-                hash_input += str(os.path.getmtime(python_exe))
-            
-            # Add site-packages directory modification time (where packages are installed)
-            site_packages = os.path.join(env_path, "Lib", "site-packages" if os.name == 'nt' else "lib/python*/site-packages")
-            if os.name != 'nt':
-                # For Unix, we need to find the actual python version directory
-                lib_dir = os.path.join(env_path, "lib")
-                if os.path.exists(lib_dir):
-                    for item in os.listdir(lib_dir):
-                        if item.startswith("python") and os.path.isdir(os.path.join(lib_dir, item)):
-                            site_packages = os.path.join(lib_dir, item, "site-packages")
-                            break
-            
-            if os.path.exists(site_packages):
-                hash_input += str(os.path.getmtime(site_packages))
-            
-            return hashlib.md5(hash_input.encode()).hexdigest()
-        except Exception as e:
-            self.logger.warning(f"Error generating environment hash: {e}")
-            return ""
-    
-    def _load_environment_config(self):
-        """Load environment configuration from file"""
-        config_file = self._get_config_file_path()
-        
-        try:
-            if os.path.exists(config_file):
-                with open(config_file, 'r') as f:
-                    return json.load(f)
-        except Exception as e:
-            self.logger.warning(f"Error loading environment config: {e}")
-        
-        return {}
-    
-    def _save_environment_config(self, config):
-        """Save environment configuration to file"""
-        config_file = self._get_config_file_path()
-        
-        try:
-            with open(config_file, 'w') as f:
-                json.dump(config, f, indent=2)
-        except Exception as e:
-            self.logger.error(f"Error saving environment config: {e}")
-    
-    def _is_environment_validated(self, env_name):
-        """Check if environment has been validated recently and hasn't changed"""
-        config = self._load_environment_config()
-        env_config = config.get(env_name, {})
-        
-        if not env_config:
-            return False
-        
-        # Check if we have validation info
-        last_validated = env_config.get('last_validated')
-        last_hash = env_config.get('environment_hash')
-        manim_working = env_config.get('manim_working', False)
-        
-        if not all([last_validated, last_hash]):
-            return False
-        
-        # Check if environment has changed since last validation
-        env_path = os.path.join(self.venv_dir, env_name)
-        current_hash = self._get_environment_hash(env_path)
-        
-        if current_hash != last_hash:
-            self.logger.info(f"Environment {env_name} has changed since last validation")
-            return False
-        
-        # Check if validation is recent (within last 24 hours) and manim was working
-        import time
-        if time.time() - last_validated < 86400 and manim_working:  # 24 hours
-            self.logger.info(f"✅ Environment {env_name} validated from cache (manim working)")
+            # All good
+            self.activate_default_environment()
             return True
+            
+        except Exception as e:
+            self.logger.error(f"Environment validation error: {e}")
+            return False
+
+    def repair_corrupted_environment(self, venv_path, log_callback=None):
+        """Repair a corrupted environment"""
+        try:
+            self.logger.info(f"Attempting to repair environment: {venv_path}")
+            
+            # Set up paths for repair
+            if os.name == 'nt':
+                self.python_path = os.path.join(venv_path, "Scripts", "python.exe")
+                self.pip_path = os.path.join(venv_path, "Scripts", "pip.exe")
+            else:
+                self.python_path = os.path.join(venv_path, "bin", "python")
+                self.pip_path = os.path.join(venv_path, "bin", "pip")
+            
+            # Check if we can repair
+            if not os.path.exists(self.python_path):
+                return False
+            
+            # Install missing packages
+            missing = self.check_missing_packages()
+            if missing:
+                return self.install_missing_packages(missing, log_callback)
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Repair failed: {e}")
+            return False
+
+    # Helper methods for UI integration
+    def update_package_progress(self, progress, message):
+        """Update package installation progress (for UI integration)"""
+        if hasattr(self.parent_app, 'update_package_progress'):
+            self.parent_app.update_package_progress(progress, message)
+
+    def log_message(self, message):
+        """Log message (for UI integration)"""
+        if hasattr(self.parent_app, 'log_message'):
+            self.parent_app.log_message(message)
+        else:
+            self.logger.info(message)
+
+    # Additional utility methods
+    def get_venv_info(self, venv_name):
+        """Get information about a virtual environment"""
+        venv_path = os.path.join(self.venv_dir, venv_name)
         
-        return False
-    
-    def _mark_environment_validated(self, env_name, manim_working):
-        """Mark environment as validated with current status"""
-        config = self._load_environment_config()
-        
-        env_path = os.path.join(self.venv_dir, env_name)
-        current_hash = self._get_environment_hash(env_path)
-        
-        import time
-        config[env_name] = {
-            'last_validated': time.time(),
-            'environment_hash': current_hash,
-            'manim_working': manim_working,
-            'validation_version': '1.0'  # For future compatibility
+        info = {
+            'name': venv_name,
+            'path': venv_path,
+            'valid': self.is_valid_venv(venv_path),
+            'python_version': None,
+            'packages_count': 0,
+            'size': 0
         }
         
-        self._save_environment_config(config)
-        self.logger.info(f"Marked environment {env_name} as validated (manim: {'working' if manim_working else 'not working'})")
-    def validate_and_repair_environment(self, log_callback=None):
-        """Enhanced validation with automatic repair for corrupted environments"""
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-        
-        if not os.path.exists(default_venv_path):
-            if log_callback:
-                log_callback("❌ Default environment not found")
-            return False
-        
-        # Check for basic structure
-        if not self.is_valid_venv(default_venv_path):
-            if log_callback:
-                log_callback("❌ Environment structure invalid, attempting repair...")
-            return self.repair_corrupted_environment(default_venv_path, log_callback)
-        
-        # Test if Python executable works (catches 3221225477 errors)
-        try:
-            test_result = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            if test_result.returncode != 0:
-                if log_callback:
-                    log_callback(f"❌ Python executable test failed: {test_result.stderr}")
-                return self.repair_corrupted_environment(default_venv_path, log_callback)
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"❌ Critical error testing Python: {str(e)}")
-            return self.repair_corrupted_environment(default_venv_path, log_callback)
-        
-        # Test manim import specifically (main cause of environment issues)
-        try:
-            manim_test = self.run_hidden_subprocess_nuitka_safe(
-                [self.python_path, "-c", "import manim; print('MANIM_OK')"],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if manim_test.returncode != 0 or "MANIM_OK" not in manim_test.stdout:
-                if log_callback:
-                    log_callback("❌ Manim import failed, repairing environment...")
-                # Force reinstall manim and dependencies
-                self.force_reinstall_manim(log_callback)
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"❌ Manim test failed: {str(e)}")
-            return False
-        
-        if log_callback:
-            log_callback("✅ Environment validation successful")
-        return True
-    def repair_corrupted_environment(self, env_path, log_callback=None):
-        """Repair corrupted environment by recreating critical components"""
-        try:
-            if log_callback:
-                log_callback("🔧 Attempting environment repair...")
-            
-            # Step 1: Backup and clear problematic cache files
-            cache_dirs = [
-                os.path.join(env_path, "Lib", "site-packages", "__pycache__"),
-                os.path.join(env_path, "Scripts", "__pycache__"),
-                os.path.join(env_path, "pyvenv.cfg.bak")
-            ]
-            
-            for cache_dir in cache_dirs:
-                if os.path.exists(cache_dir):
-                    try:
-                        if os.path.isdir(cache_dir):
-                            shutil.rmtree(cache_dir, ignore_errors=True)
-                        else:
-                            os.remove(cache_dir)
-                    except Exception as e:
-                        if log_callback:
-                            log_callback(f"Warning: Could not clear {cache_dir}: {e}")
-            
-            # Step 2: Regenerate pyvenv.cfg if corrupted
-            pyvenv_cfg = os.path.join(env_path, "pyvenv.cfg")
-            if os.path.exists(pyvenv_cfg):
-                try:
-                    with open(pyvenv_cfg, 'r') as f:
-                        content = f.read()
-                    if len(content.strip()) < 10:  # Corrupted file
-                        os.remove(pyvenv_cfg)
-                        self.regenerate_pyvenv_cfg(env_path)
-                except Exception:
-                    os.remove(pyvenv_cfg)
-                    self.regenerate_pyvenv_cfg(env_path)
-            
-            # Step 3: Fix permissions (Windows specific)
-            if os.name == 'nt':
-                try:
-                    import stat
-                    scripts_dir = os.path.join(env_path, "Scripts")
-                    for file in os.listdir(scripts_dir):
-                        file_path = os.path.join(scripts_dir, file)
-                        if file.endswith('.exe'):
-                            os.chmod(file_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"Warning: Permission fix failed: {e}")
-            
-            # Step 4: Test repair
-            if self.is_valid_venv(env_path):
-                if log_callback:
-                    log_callback("✅ Environment repair successful")
-                return True
-            else:
-                if log_callback:
-                    log_callback("❌ Repair failed, environment needs recreation")
-                return False
-                
-        except Exception as e:
-            if log_callback:
-                log_callback(f"❌ Repair process failed: {str(e)}")
-            return False
-    def force_reinstall_manim(self, log_callback=None):
-        """Force reinstall manim and related packages to fix DLL issues"""
-        try:
-            if log_callback:
-                log_callback("🔄 Force reinstalling manim and dependencies...")
-            
-            # Critical packages that often cause 3221225477 errors
-            critical_packages = [
-                "manim",
-                "numpy",
-                "opencv-python", 
-                "Pillow",
-                "moderngl",
-                "pycairo",
-                "manimpango",
-                "mapbox-earcut"  # Common cause of DLL errors
-            ]
-            
-            pip_cmd = [self.pip_path, "install", "--force-reinstall", "--no-cache-dir"]
-            
-            for package in critical_packages:
-                try:
-                    cmd = pip_cmd + [package]
-                    result = self.run_hidden_subprocess_nuitka_safe(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
-                    
-                    if result.returncode == 0:
-                        if log_callback:
-                            log_callback(f"✅ Reinstalled {package}")
-                    else:
-                        if log_callback:
-                            log_callback(f"⚠️ Failed to reinstall {package}: {result.stderr}")
-                            
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"❌ Error reinstalling {package}: {str(e)}")
-            
-            return True
-            
-        except Exception as e:
-            if log_callback:
-                log_callback(f"❌ Force reinstall failed: {str(e)}")
-            return False
-    def regenerate_pyvenv_cfg(self, env_path):
-        """Regenerate pyvenv.cfg file for corrupted environments"""
-        try:
-            python_exe = self.find_system_python()
-            if not python_exe:
-                return False
-            
-            # Get Python version info
-            version_result = self.run_hidden_subprocess_nuitka_safe(
-                [python_exe, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
-                capture_output=True,
-                text=True
-            )
-            
-            if version_result.returncode != 0:
-                return False
-            
-            version = version_result.stdout.strip()
-            python_home = os.path.dirname(os.path.dirname(python_exe))
-            
-            pyvenv_content = f"""home = {python_home}
-include-system-site-packages = false
-version = {version}
-executable = {python_exe}
-command = {python_exe} -m venv {env_path}
-"""
-            
-            pyvenv_cfg = os.path.join(env_path, "pyvenv.cfg")
-            with open(pyvenv_cfg, 'w') as f:
-                f.write(pyvenv_content)
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to regenerate pyvenv.cfg: {e}")
-            return False
-    def get_python_command(self):
-        """Get the Python command as a list for subprocess execution"""
-        return [self.python_path]
-
-    def get_pip_command(self):
-        """Get the pip command as a list for subprocess execution"""  
-        return [self.pip_path]
-    def run_with_streaming_output(self, command, log_callback=None, on_complete=None, timeout=None, env=None):
-        """Run subprocess with line-buffered streaming output"""
-        
-        def enqueue_output(pipe, queue, stream_name):
-            """Put complete lines from pipe into queue"""
+        if info['valid']:
             try:
-                line_buffer = ""
-                while True:
-                    char = pipe.read(1)
-                    if not char:
-                        # End of stream - flush any remaining buffer
-                        if line_buffer.strip():
-                            queue.put((stream_name, line_buffer.strip()))
-                        break
-                    
-                    line_buffer += char
-                    
-                    # When we hit a newline, send the complete line
-                    if char == '\n':
-                        if line_buffer.strip():  # Only send non-empty lines
-                            queue.put((stream_name, line_buffer.strip()))
-                        line_buffer = ""
-                        
-                pipe.close()
+                # Get Python version
+                if os.name == 'nt':
+                    python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+                else:
+                    python_exe = os.path.join(venv_path, "bin", "python")
+                
+                result = subprocess.run(
+                    [python_exe, "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    info['python_version'] = result.stdout.strip()
+                
+                # Count packages
+                if os.name == 'nt':
+                    site_packages = os.path.join(venv_path, "Lib", "site-packages")
+                else:
+                    import glob
+                    site_dirs = glob.glob(os.path.join(venv_path, "lib", "python*", "site-packages"))
+                    site_packages = site_dirs[0] if site_dirs else None
+                
+                if site_packages and os.path.exists(site_packages):
+                    info['packages_count'] = len([item for item in os.listdir(site_packages) 
+                                               if not item.startswith('.') and not item.endswith('.dist-info')])
+                
+                # Get directory size
+                total_size = 0
+                for dirpath, dirnames, filenames in os.walk(venv_path):
+                    for fname in filenames:
+                        fpath = os.path.join(dirpath, fname)
+                        try:
+                            total_size += os.path.getsize(fpath)
+                        except OSError:
+                            pass
+                info['size'] = total_size
+                
             except Exception as e:
-                queue.put((stream_name, f"Stream error: {e}"))
+                self.logger.error(f"Error getting venv info for {venv_name}: {e}")
+        
+        return info
 
-        # Configure for Windows console hiding
-        startupinfo = None
-        creationflags = 0
-        
-        if sys.platform == "win32":
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            creationflags = subprocess.CREATE_NO_WINDOW
-        
+    def verify_environment_packages(self, venv_path):
+        """Verify that environment has essential packages"""
         try:
-            # Start the process
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=0,  # Unbuffered for character-by-character reading
-                universal_newlines=True,
-                encoding='utf-8',           # FIXED: Explicit UTF-8 encoding
-                errors='replace',           # FIXED: Replace problematic characters
-                startupinfo=startupinfo,
-                creationflags=creationflags,
-                env=env
-            )
+            # Get python path
+            if os.name == 'nt':
+                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+            else:
+                python_exe = os.path.join(venv_path, "bin", "python")
             
-            # Create queues for stdout and stderr
-            stdout_queue = Queue()
-            stderr_queue = Queue()
+            if not os.path.exists(python_exe):
+                self.logger.error(f"Python executable not found: {python_exe}")
+                return False
             
-            # Start threads to read output
-            stdout_thread = threading.Thread(
-                target=enqueue_output, 
-                args=(process.stdout, stdout_queue, 'stdout'),
-                daemon=True
-            )
-            stderr_thread = threading.Thread(
-                target=enqueue_output, 
-                args=(process.stderr, stderr_queue, 'stderr'),
-                daemon=True
-            )
+            # Test essential packages
+            test_packages = ["manim", "numpy", "customtkinter"]
+            for package in test_packages:
+                result = subprocess.run(
+                    [python_exe, "-c", f"import {package}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if result.returncode != 0:
+                    self.logger.warning(f"Package {package} not found or not working")
+                    return False
             
-            stdout_thread.start()
-            stderr_thread.start()
-            
-            # Monitor output in real-time
-            start_time = time.time()
-            all_output = []
-            
-            while True:
-                # Check if process is done
-                return_code = process.poll()
-                
-                # Check for timeout
-                if timeout and (time.time() - start_time) > timeout:
-                    process.terminate()
-                    if log_callback:
-                        log_callback("⚠️ Process timed out", "warning")
-                    break
-                
-                # Read available output
-                output_received = False
-                
-                # Check stdout
-                try:
-                    while True:
-                        stream_name, line = stdout_queue.get_nowait()
-                        if log_callback and line.strip():  # Only send non-empty lines
-                            # Determine message type
-                            if "error" in line.lower() or "failed" in line.lower():
-                                log_callback(line, "error")
-                            elif "✅" in line or "success" in line.lower() or "File ready" in line:
-                                log_callback(line, "success")
-                            elif "INFO" in line:
-                                log_callback(line, "info")
-                            else:
-                                log_callback(line)
-                        all_output.append(('stdout', line))
-                        output_received = True
-                except Empty:
-                    pass
-                
-                # Check stderr
-                try:
-                    while True:
-                        stream_name, line = stderr_queue.get_nowait()
-                        if log_callback and line.strip():  # Only send non-empty lines
-                            # Clean up stderr formatting
-                            clean_line = line.replace("STDERR: ", "")
-                            if clean_line.strip():
-                                log_callback(clean_line, "error")
-                        all_output.append(('stderr', line))
-                        output_received = True
-                except Empty:
-                    pass
-                
-                # If process is done and no more output, break
-                if return_code is not None and not output_received:
-                    time.sleep(0.1)
-                    # Try once more for remaining output
-                    try:
-                        while True:
-                            stream_name, line = stdout_queue.get_nowait()
-                            if log_callback and line.strip():
-                                log_callback(line)
-                            all_output.append(('stdout', line))
-                    except Empty:
-                        pass
-                    try:
-                        while True:
-                            stream_name, line = stderr_queue.get_nowait()
-                            if log_callback and line.strip():
-                                clean_line = line.replace("STDERR: ", "")
-                                if clean_line.strip():
-                                    log_callback(clean_line, "error")
-                            all_output.append(('stderr', line))
-                    except Empty:
-                        pass
-                    break
-                
-                # Small delay to prevent busy waiting
-                time.sleep(0.01)
-            
-            # Wait for process to complete
-            final_return_code = process.wait()
-            
-            # Wait for threads to finish
-            stdout_thread.join(timeout=2)
-            stderr_thread.join(timeout=2)
-            
-            # Call completion callback
-            if on_complete:
-                success = final_return_code == 0
-                on_complete(success, final_return_code)
-            
-            return final_return_code, all_output
+            return True
             
         except Exception as e:
-            if log_callback:
-                log_callback(f"❌ Process execution error: {e}", "error")
-            if on_complete:
-                on_complete(False, -1)
-            return -1, [('error', str(e))]
-    def run_command_streaming(self, command, log_callback=None, on_complete=None, timeout=300):
-        """Execute command with real-time output streaming"""
-        if not self.current_venv:
-            if log_callback:
-                log_callback("No virtual environment active", "warning")
-            if on_complete:
-                on_complete(False, -1)
+            self.logger.error(f"Error verifying environment packages: {e}")
             return False
-        
-        env = self.get_clean_environment()
-        
-        def run_in_thread():
-            return_code, output = self.run_with_streaming_output(
-                command,
-                log_callback=log_callback,
-                timeout=timeout,
-                env=env
-            )
-            
-            if on_complete:
-                on_complete(return_code == 0, return_code)
-        
-        # Run in background thread
-        thread = threading.Thread(target=run_in_thread, daemon=True)
-        thread.start()
-        return True
-    def run_command_streaming(self, command, log_callback=None, on_complete=None, timeout=300):
-        """Execute command with real-time output streaming"""
-        if not self.current_venv:
-            if log_callback:
-                log_callback("No virtual environment active")
-            if on_complete:
-                on_complete(False, -1)
-            return False
-        
-        env = self.get_clean_environment()
-        
-        def run_in_thread():
-            return_code, output = self.run_with_streaming_output(
-                command,
-                log_callback=log_callback,
-                timeout=timeout,
-                env=env
-            )
-            
-            if on_complete:
-                on_complete(return_code == 0, return_code)
-        
-        # Run in background thread to prevent UI blocking
-        thread = threading.Thread(target=run_in_thread, daemon=True)
-        thread.start()
-        return True
 class CallbackHandler(logging.Handler):
     """Custom logging handler that calls a callback function"""
     
