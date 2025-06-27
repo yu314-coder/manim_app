@@ -123,8 +123,11 @@ def build_executable(args):
             "--force-dll-dependency-cache-update",
             "--onefile-tempdir-spec=manim_studio_temp",
             # Prevent DLL loading issues
+          
             "--windows-onefile-tempdir-spec=manim_studio_%PID%_temp",
+            "--windows-icon-from-ico=assets/logo.ico",
         ])
+        
     
     # CRITICAL: Exclude packages that cause 3221225477 DLL conflicts
     problematic_modules = [
