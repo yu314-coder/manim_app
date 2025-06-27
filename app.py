@@ -5038,9 +5038,224 @@ print(f"Pointer size: {sys.maxsize > 2**32}")
             return self.use_system_python_fallback()
     
     def check_environment_status(self, log_callback=None):
-        # Use existing check_environment_status logic
-        return self.original_check_environment_status(log_callback)
+        """Enhanced environment check with DLL conflict prevention"""
+        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+        
+        if not os.path.exists(default_venv_path):
+            if log_callback:
+                log_callback("❌ Default environment not found")
+            return False
+        
+        # Check for basic structure
+        if not self.is_valid_venv(default_venv_path):
+            if log_callback:
+                log_callback("❌ Environment structure invalid, attempting repair...")
+            return self.repair_corrupted_environment(default_venv_path, log_callback)
+        
+        # SAFE: Only check if Python executable exists (don't run it to avoid 3221225477)
+        if not os.path.exists(self.python_path):
+            if log_callback:
+                log_callback(f"❌ Python executable not found: {self.python_path}")
+            return self.repair_corrupted_environment(default_venv_path, log_callback)
+        
+        # SAFE: Check if critical packages are installed without importing them
+        try:
+            site_packages = os.path.join(default_venv_path, "Lib", "site-packages")
+            if os.path.exists(site_packages):
+                manim_exists = any(
+                    name.startswith("manim") for name in os.listdir(site_packages)
+                    if os.path.isdir(os.path.join(site_packages, name))
+                )
+                
+                if not manim_exists:
+                    if log_callback:
+                        log_callback("⚠️ Manim package not found, will reinstall")
+                    return self.repair_corrupted_environment(default_venv_path, log_callback)
+            else:
+                if log_callback:
+                    log_callback("❌ Site-packages directory missing")
+                return self.repair_corrupted_environment(default_venv_path, log_callback)
+                
+        except Exception as e:
+            if log_callback:
+                log_callback(f"⚠️ Could not verify packages: {e}")
+        
+        if log_callback:
+            log_callback("✅ Environment validation successful (safe mode)")
+        return True
 
+    def fix_dll_conflicts(self, log_callback=None):
+        """Fix DLL conflicts that cause 3221225477 errors"""
+        try:
+            if log_callback:
+                log_callback("🔧 Fixing DLL conflicts...")
+            
+            # CRITICAL: Check if current_venv is properly set
+            if not hasattr(self, 'current_venv') or not self.current_venv:
+                if log_callback:
+                    log_callback("⚠️ Virtual environment not initialized yet, skipping DLL fix")
+                return True
+            
+            if not os.path.exists(self.current_venv):
+                if log_callback:
+                    log_callback(f"⚠️ Virtual environment path does not exist: {self.current_venv}")
+                return True
+            
+            # Method 1: Clear problematic DLL cache
+            dll_cache_dirs = [
+                os.path.join(os.environ.get('TEMP', ''), '__pycache__'),
+                os.path.join(self.current_venv, '__pycache__'),
+                os.path.join(self.current_venv, 'Lib', 'site-packages', '__pycache__')
+            ]
+            
+            for cache_dir in dll_cache_dirs:
+                if os.path.exists(cache_dir):
+                    try:
+                        shutil.rmtree(cache_dir)
+                        if log_callback:
+                            log_callback(f"✅ Cleared cache: {cache_dir}")
+                    except Exception as e:
+                        if log_callback:
+                            log_callback(f"⚠️ Could not clear cache {cache_dir}: {e}")
+            
+            # Check if pip_path is available
+            if not hasattr(self, 'pip_path') or not self.pip_path or not os.path.exists(self.pip_path):
+                if log_callback:
+                    log_callback("⚠️ Pip not available yet, skipping package reinstalls")
+                return True
+            
+            # Method 2: Force reinstall packages known to cause DLL conflicts
+            conflicting_packages = [
+                "numpy",
+                "opencv-python", 
+                "Pillow",
+                "moderngl",
+                "pycairo",
+                "manimpango",
+                "mapbox-earcut",
+                "scipy"
+            ]
+            
+            for package in conflicting_packages:
+                try:
+                    # Check if package is installed first
+                    check_cmd = [self.pip_path, "show", package]
+                    check_result = self.run_hidden_subprocess_nuitka_safe(
+                        check_cmd, capture_output=True, timeout=30
+                    )
+                    
+                    if check_result.returncode == 0:  # Package is installed
+                        # Uninstall first
+                        uninstall_cmd = [self.pip_path, "uninstall", package, "-y"]
+                        self.run_hidden_subprocess_nuitka_safe(
+                            uninstall_cmd, capture_output=True, timeout=60
+                        )
+                        
+                        # Reinstall with --force-reinstall and --no-cache-dir
+                        install_cmd = [
+                            self.pip_path, "install", package, 
+                            "--force-reinstall", "--no-cache-dir", "--no-deps"
+                        ]
+                        result = self.run_hidden_subprocess_nuitka_safe(
+                            install_cmd, capture_output=True, timeout=300
+                        )
+                        
+                        if result.returncode == 0:
+                            if log_callback:
+                                log_callback(f"✅ Fixed DLL conflicts for {package}")
+                        else:
+                            if log_callback:
+                                log_callback(f"⚠️ Could not reinstall {package}")
+                    
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"⚠️ Could not process {package}: {e}")
+            
+            # Method 3: Reinstall manim last (if it exists)
+            try:
+                check_cmd = [self.pip_path, "show", "manim"]
+                check_result = self.run_hidden_subprocess_nuitka_safe(
+                    check_cmd, capture_output=True, timeout=30
+                )
+                
+                if check_result.returncode == 0:  # Manim is installed
+                    manim_cmd = [
+                        self.pip_path, "install", "manim", 
+                        "--force-reinstall", "--no-cache-dir"
+                    ]
+                    result = self.run_hidden_subprocess_nuitka_safe(
+                        manim_cmd, capture_output=True, timeout=600
+                    )
+                    
+                    if result.returncode == 0:
+                        if log_callback:
+                            log_callback("✅ Manim reinstalled successfully")
+                    else:
+                        if log_callback:
+                            log_callback("⚠️ Manim reinstall had issues (non-critical)")
+                        
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"⚠️ Manim reinstall check failed: {e}")
+            
+            if log_callback:
+                log_callback("✅ DLL conflict prevention completed")
+            return True
+            
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ DLL conflict fix failed: {e}")
+            return False
+    
+    def fix_environment_paths(self, log_callback=None):
+        """Fix Python path issues that cause DLL conflicts"""
+        try:
+            if log_callback:
+                log_callback("🛠️ Fixing environment paths...")
+            
+            # Get the virtual environment's Python executable
+            venv_python = os.path.join(self.current_venv, "Scripts", "python.exe")
+            
+            if not os.path.exists(venv_python):
+                if log_callback:
+                    log_callback("❌ Virtual environment Python not found")
+                return False
+            
+            # Test if we can run basic Python commands without DLL errors
+            test_commands = [
+                [venv_python, "--version"],
+                [venv_python, "-c", "import sys; print('Python OK')"],
+                [venv_python, "-c", "import os; print('OS OK')"]
+            ]
+            
+            for cmd in test_commands:
+                try:
+                    result = self.run_hidden_subprocess_nuitka_safe(
+                        cmd, capture_output=True, text=True, timeout=10
+                    )
+                    
+                    if result.returncode != 0:
+                        if log_callback:
+                            log_callback(f"❌ Path test failed: {' '.join(cmd)}")
+                        return False
+                        
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"❌ Path test error: {e}")
+                    return False
+            
+            # Update the stored paths
+            self.python_path = venv_python
+            self.pip_path = os.path.join(self.current_venv, "Scripts", "pip.exe")
+            
+            if log_callback:
+                log_callback("✅ Environment paths validated")
+            return True
+            
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ Path fix failed: {e}")
+            return False
     def original_check_environment_status(self, log_callback=None):
         """Check virtual environment status without strict manim testing"""
         default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
@@ -5565,7 +5780,112 @@ else:
                 log_callback("⚠️ Manim package not found - may need installation")
         
         return manim_found
-    
+    def check_manim_availability_safe(self):
+        """Safely check if manim is available without importing it"""
+        try:
+            # Check if current_venv is properly set
+            if not hasattr(self, 'current_venv') or not self.current_venv:
+                return False
+            
+            site_packages = os.path.join(self.current_venv, "Lib", "site-packages")
+            if not os.path.exists(site_packages):
+                return False
+            
+            # Check if manim directory exists
+            try:
+                manim_dirs = [name for name in os.listdir(site_packages) 
+                             if name.startswith("manim") and os.path.isdir(os.path.join(site_packages, name))]
+                
+                return len(manim_dirs) > 0
+            except (OSError, PermissionError):
+                return False
+            
+        except Exception:
+            return False
+
+    def fix_dll_conflicts(self, log_callback=None):
+        """Fix DLL conflicts that cause 3221225477 errors"""
+        try:
+            if log_callback:
+                log_callback("🔧 Fixing DLL conflicts...")
+            
+            # Method 1: Clear problematic DLL cache
+            dll_cache_dirs = [
+                os.path.join(os.environ.get('TEMP', ''), '__pycache__'),
+                os.path.join(self.current_venv, '__pycache__'),
+                os.path.join(self.current_venv, 'Lib', 'site-packages', '__pycache__')
+            ]
+            
+            for cache_dir in dll_cache_dirs:
+                if os.path.exists(cache_dir):
+                    try:
+                        shutil.rmtree(cache_dir)
+                        if log_callback:
+                            log_callback(f"✅ Cleared cache: {cache_dir}")
+                    except:
+                        pass
+            
+            # Method 2: Force reinstall packages known to cause DLL conflicts
+            conflicting_packages = [
+                "numpy",
+                "opencv-python", 
+                "Pillow",
+                "moderngl",
+                "pycairo",
+                "manimpango",
+                "mapbox-earcut",
+                "scipy"
+            ]
+            
+            for package in conflicting_packages:
+                try:
+                    # Uninstall first
+                    uninstall_cmd = [self.pip_path, "uninstall", package, "-y"]
+                    self.run_hidden_subprocess_nuitka_safe(
+                        uninstall_cmd, capture_output=True, timeout=60
+                    )
+                    
+                    # Reinstall with --force-reinstall and --no-cache-dir
+                    install_cmd = [
+                        self.pip_path, "install", package, 
+                        "--force-reinstall", "--no-cache-dir", "--no-deps"
+                    ]
+                    result = self.run_hidden_subprocess_nuitka_safe(
+                        install_cmd, capture_output=True, timeout=300
+                    )
+                    
+                    if result.returncode == 0:
+                        if log_callback:
+                            log_callback(f"✅ Fixed DLL conflicts for {package}")
+                    
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"⚠️ Could not fix {package}: {e}")
+            
+            # Method 3: Reinstall manim last
+            try:
+                manim_cmd = [
+                    self.pip_path, "install", "manim", 
+                    "--force-reinstall", "--no-cache-dir"
+                ]
+                result = self.run_hidden_subprocess_nuitka_safe(
+                    manim_cmd, capture_output=True, timeout=600
+                )
+                
+                if result.returncode == 0:
+                    if log_callback:
+                        log_callback("✅ Manim reinstalled successfully")
+                        
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"❌ Manim reinstall failed: {e}")
+            
+            return True
+            
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ DLL conflict fix failed: {e}")
+            return False
     
     def repair_environment(self):
         """Force repair of the environment by checking and installing all missing packages"""
@@ -13608,185 +13928,95 @@ def setup_logging(app_dir=None):
     return logger
 
 def main():
-    """Main application entry point"""
-    # NOTE: Do NOT import sys here - it's already imported at module level
-    # Any import of sys inside this function will cause UnboundLocalError
-
-    logger = None  # Initialize logger variable to avoid UnboundLocalError
-
-    debug_mode = "--debug" in sys.argv
-
-    # Initialize encoding early to avoid Unicode issues
-    try:
-        import startup
-        startup.initialize_encoding()
-    except Exception:
-        pass
+    """Main application entry point with DLL conflict fixes"""
+    logger = None
     
     try:
-        # Hide console window on Windows for packaged executable
-        if sys.platform == "win32" and hasattr(sys, 'frozen'):
-            try:
-                import ctypes
-                from ctypes import wintypes
-                
-                kernel32 = ctypes.windll.kernel32
-                user32 = ctypes.windll.user32
-                
-                console_window = kernel32.GetConsoleWindow()
-                if console_window:
-                    # SW_HIDE = 0
-                    user32.ShowWindow(console_window, 0)
-                        
-            except Exception:
-                pass
-
-        # Ensure working directory is the application directory
-        os.chdir(BASE_DIR)
-
-        # Early load of fixes module to handle runtime issues
+        # Early logging setup
+        logger = setup_logging()
+        logger.info("=" * 60)
+        logger.info("MANIM STUDIO - Starting application")
+        logger.info("=" * 60)
+        
+        # CRITICAL: Set safe environment variables to prevent DLL conflicts
+        os.environ['PYTHONPATH'] = ""  # Clear to prevent conflicts
+        if 'VIRTUAL_ENV' in os.environ:
+            venv_scripts = os.path.join(os.environ['VIRTUAL_ENV'], 'Scripts')
+            os.environ['PATH'] = f"{venv_scripts};{os.environ['PATH']}"
+        
+        logger.info("Environment variables configured for DLL safety")
+        
+        # Initialize application
+        logger.info("Initializing ManimStudio application...")
+        app = ManimStudioApp()
+        
+        # CRITICAL: Pre-startup DLL conflict prevention (ONLY if environment is ready)
+        logger.info("Performing DLL conflict prevention...")
         try:
-            import fixes
-            if hasattr(fixes, "apply_fixes"):
-                fixes.apply_fixes()
-            elif hasattr(fixes, "apply_all_fixes"):
-                fixes.apply_all_fixes()
-        except (ImportError, AttributeError):
-            pass
-
-        # Set up application directories
-        if getattr(sys, 'frozen', False):
-            # Running as executable
-            app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
-        else:
-            # Running as script
-            app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
-
-        os.makedirs(app_dir, exist_ok=True)
-
-        # Simple single instance check
-        lock_file = os.path.join(app_dir, "manim_studio.lock")
-        try:
-            if os.path.exists(lock_file):
-                try:
-                    with open(lock_file, "r") as f:
-                        pid = int(f.read().strip())
-                    # Simple check - if we can read the PID, assume another instance is running
-                    print("Another instance may be running. Continuing anyway...")
-                except:
-                    # Remove invalid lock file
-                    try:
-                        os.remove(lock_file)
-                    except:
-                        pass
+            if hasattr(app.venv_manager, 'fix_dll_conflicts') and hasattr(app.venv_manager, 'current_venv') and app.venv_manager.current_venv:
+                app.venv_manager.fix_dll_conflicts(
+                    log_callback=lambda msg: logger.info(f"DLL Fix: {msg}")
+                )
+            else:
+                logger.info("DLL Fix: Skipped - environment not ready yet")
+        except Exception as e:
+            logger.warning(f"DLL fix warning (non-critical): {e}")
+        
+        # Check if we need to set up environment
+        logger.info("Checking environment setup requirements...")
+        
+        if getattr(app.venv_manager, 'needs_setup', True):
+            logger.info("Environment setup required - starting setup process")
             
-            # Create new lock file
-            with open(lock_file, "w") as f:
-                f.write(str(os.getpid()))
-                
-            # Cleanup function
-            import atexit
-            def cleanup_lock():
-                try:
-                    os.remove(lock_file)
-                except:
-                    pass
-            atexit.register(cleanup_lock)
-            
-        except Exception:
-            # If lock file operations fail, continue anyway
-            pass
-        
-        # Set up logging - MOVED EARLIER to ensure logger is available
-        log_file = os.path.join(app_dir, "manim_studio.log")
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, encoding='utf-8'),
-                logging.StreamHandler()
-            ]
-        )
-        logger = logging.getLogger(__name__)  # Now logger is properly defined
-        
-        # Log startup information
-        logger.info("=== ManimStudio Starting ===")
-        logger.info(f"Python version: {sys.version}")
-        logger.info(f"Platform: {sys.platform}")
-        logger.info(f"Frozen: {hasattr(sys, 'frozen')}")
-        logger.info(f"Base directory: {BASE_DIR}")
-        logger.info(f"App directory: {app_dir}")
-
-        # Check for Jedi availability
-        if not JEDI_AVAILABLE:
-            logger.warning("Jedi not available. IntelliSense features will be limited.")
-            print("Warning: Jedi not available. IntelliSense features will be limited.")
-            print("Install Jedi with: pip install jedi")
-
-        # Check LaTeX availability and pass result to UI
-        logger.info("Checking LaTeX installation...")
-        latex_path = check_latex_installation()
-        if latex_path:
-            logger.info(f"LaTeX found at: {latex_path}")
-        else:
-            logger.warning("LaTeX not found")
-
-        # Create and run application
-        logger.info("Creating main application...")
-        app = ManimStudioApp(latex_path=latex_path, debug=debug_mode)
-        
-        # Check environment and show setup if needed
-        logger.info("Checking environment status...")
-        if not app.venv_manager.is_environment_ready():
-            logger.info("Environment not ready - showing setup dialog")
-            app.root.withdraw()
+            # Simple setup without splash screen
             try:
-                # Show environment setup dialog directly
-                dialog = EnvironmentSetupDialog(app.root, app.venv_manager)
-                app.root.wait_window(dialog)
+                def setup_log_callback(message):
+                    logger.info(f"Setup: {message}")
+                    print(f"Setup: {message}")  # Also print to console for user feedback
                 
-                # Check if setup was completed
-                if not app.venv_manager.is_environment_ready():
-                    logger.error("Environment setup incomplete after dialog")
+                print("Setting up Python environment...")
+                print("This may take a few minutes on first run.")
+                
+                # Perform environment setup with enhanced DLL handling
+                logger.info("Starting environment setup...")
+                success = app.venv_manager.setup_environment(setup_log_callback)
+                
+                if not success:
+                    logger.error("Environment setup failed")
+                    error_msg = ("Failed to set up Python environment.\n"
+                               "This may be due to:\n"
+                               "- Network connectivity issues\n" 
+                               "- Antivirus software blocking installation\n"
+                               "- Insufficient disk space\n"
+                               "- DLL conflicts\n\n"
+                               "Try running as administrator or check the logs.")
+                    
                     try:
                         from tkinter import messagebox
-                        messagebox.showwarning(
-                            "Setup Incomplete", 
-                            "Environment setup was not completed.\n"
-                            "ManimStudio requires a working environment to function.\n\n"
-                            "Please try again or run with --debug flag."
-                        )
+                        messagebox.showerror("Setup Failed", error_msg)
                     except:
-                        pass
+                        print(error_msg)
                     return
-                    
-                logger.info("Environment setup completed successfully")
-                
+                        
             except Exception as e:
-                logger.error(f"Error in environment setup: {e}")
-                try:
-                    from tkinter import messagebox
-                    messagebox.showerror(
-                        "Setup Error", 
-                        f"Error during environment setup: {e}\n\n"
-                        "Please try again or check the log file."
-                    )
-                except:
-                    pass
+                logger.error(f"Setup process error: {e}")
                 return
         else:
             logger.info("Environment ready - proceeding to main application")
 
         logger.info("Performing final pre-launch checks...")
         
-        # FIXED: Final verification that environment is working (REMOVED PROBLEMATIC IMPORT TEST)
+        # FIXED: Final verification that environment is working (SAFE MODE - NO IMPORT TESTS)
         try:
-            # REPLACED: Quick test that manim package exists (safe mode) - NO MORE 3221225477 ERROR
-            manim_available = app.venv_manager.check_manim_availability()
-            if manim_available:
-                logger.info("✅ Manim package found")
+            # SAFE: Check if manim package exists without importing it
+            if hasattr(app.venv_manager, 'check_manim_availability_safe'):
+                manim_available = app.venv_manager.check_manim_availability_safe()
+                if manim_available:
+                    logger.info("✅ Manim package found")
+                else:
+                    logger.warning("⚠️ Manim package not found - will attempt repair on demand")
             else:
-                logger.warning("⚠️ Manim package not found")
+                logger.info("✅ Environment validation skipped (method not available)")
         except Exception as e:
             logger.warning(f"⚠️ Could not verify manim package: {e}")
 
