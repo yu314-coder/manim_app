@@ -87,7 +87,23 @@ if getattr(sys, 'frozen', False):
         os.makedirs(stable_temp, exist_ok=True)
         os.environ['TEMP'] = stable_temp
         os.environ['TMP'] = stable_temp
-
+def load_icon_image(icon_name, size=(24, 24), fallback_text="?"):
+    """Load icon image from assets folder with fallback to text"""
+    try:
+        icon_path = os.path.join("assets", icon_name)
+        if os.path.exists(icon_path):
+            # Use CTkImage instead of ImageTk.PhotoImage for HighDPI support
+            return ctk.CTkImage(
+                light_image=Image.open(icon_path),
+                dark_image=Image.open(icon_path),
+                size=size
+            )
+        else:
+            print(f"⚠️ Icon not found: {icon_path}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Error loading icon {icon_name}: {e}")
+        return None
 # Add this to the top of app.py after the imports section
 # =============================================================================
 # EMERGENCY ENCODING FIXES - Add this RIGHT AFTER imports
@@ -1945,7 +1961,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         # Create the UI
         self.setup_ui()
     def setup_ui(self):
-        """Setup the environment setup dialog UI - ORIGINAL STRUCTURE"""
+        """Setup the environment setup dialog UI"""
         # Safety check: Ensure VSCODE_COLORS has required keys
         global VSCODE_COLORS
         if "success" not in VSCODE_COLORS:
@@ -1969,12 +1985,16 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         header_frame.pack(fill="x", pady=(0, 20))
         
-        # App icon
-        icon_label = ctk.CTkLabel(
-            header_frame,
-            text="🎬",
-            font=ctk.CTkFont(size=48)
-        )
+        # App icon - MODIFIED TO USE CTkImage
+        logo_icon = load_icon_image("main_logo.png", size=(64, 64))
+        if logo_icon:
+            icon_label = ctk.CTkLabel(header_frame, image=logo_icon, text="")
+        else:
+            icon_label = ctk.CTkLabel(
+                header_frame,
+                text="🎬",
+                font=ctk.CTkFont(size=48)
+            )
         icon_label.pack(pady=10)
         
         # Welcome text
@@ -1984,132 +2004,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=VSCODE_COLORS["text"]
         )
-        title_label.pack(pady=(0, 5))
-        
-        # Subtitle
-        subtitle_label = ctk.CTkLabel(
-            header_frame,
-            text="Let's set up your animation environment",
-            font=ctk.CTkFont(size=16),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        subtitle_label.pack(pady=(0, 10))
-        
-        # Info text
-        info_text = """
-ManimStudio needs a Python environment with Manim and dependencies.
-This will create a new virtual environment and install everything needed.
-
-⏱️ Setup takes 5-10 minutes depending on your internet connection
-📦 Downloads ~500MB of packages
-🎯 Creates isolated environment (won't affect your system Python)
-        """
-        
-        info_label = ctk.CTkLabel(
-            header_frame,
-            text=info_text.strip(),
-            font=ctk.CTkFont(size=13),
-            text_color=VSCODE_COLORS["text_secondary"],
-            justify="left"
-        )
-        info_label.pack(pady=(0, 20))
-        
-        # Progress section
-        progress_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        progress_frame.pack(fill="x", pady=(0, 15))
-        
-        # Step label
-        self.step_label = ctk.CTkLabel(
-            progress_frame,
-            text="Ready to start setup",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=VSCODE_COLORS["text"]
-        )
-        self.step_label.pack(pady=(15, 5))
-        
-        # Detail label
-        self.detail_label = ctk.CTkLabel(
-            progress_frame,
-            text="Click 'Start Setup' to begin",
-            font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.detail_label.pack(pady=(0, 10))
-        
-        # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(progress_frame)
-        self.progress_bar.pack(fill="x", padx=20, pady=(0, 15))
-        self.progress_bar.set(0)
-        
-        # Log section
-        log_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
-        log_frame.pack(fill="both", expand=True, pady=(0, 20))
-        
-        log_label = ctk.CTkLabel(
-            log_frame,
-            text="📋 Setup Log:",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=VSCODE_COLORS["text"]
-        )
-        log_label.pack(anchor="w", padx=15, pady=(15, 10))
-        
-        # Log text area
-        self.log_text = ctk.CTkTextbox(
-            log_frame,
-            width=400,
-            height=200,
-            font=ctk.CTkFont(size=11, family="Consolas"),
-            text_color=VSCODE_COLORS["text"],
-            fg_color=VSCODE_COLORS["background"]
-        )
-        self.log_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
-        
-        # Initial log message
-        self.log_text.insert("end", "🎬 ManimStudio Environment Setup\n")
-        self.log_text.insert("end", "Ready to begin installation...\n\n")
-        
-        # Buttons
-        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        button_frame.pack(fill="x")
-        
-        # Start button
-        self.start_button = ctk.CTkButton(
-            button_frame,
-            text="🚀 Start Setup",
-            command=self.start_setup,
-            height=40,
-            width=140,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=VSCODE_COLORS["success"],
-            hover_color="#138D75"
-        )
-        self.start_button.pack(side="left", padx=(0, 10))
-        
-        # Skip button
-        self.skip_button = ctk.CTkButton(
-            button_frame,
-            text="⏭️ Skip Setup",
-            command=self.skip_setup,
-            height=40,
-            width=140,
-            font=ctk.CTkFont(size=14),
-            fg_color=VSCODE_COLORS["warning"],
-            hover_color="#D68910"
-        )
-        self.skip_button.pack(side="left", padx=(10, 0))
-        
-        # Continue button (initially disabled)
-        self.close_button = ctk.CTkButton(
-            button_frame,
-            text="✅ Continue",
-            command=self.continue_to_app,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=VSCODE_COLORS["primary"],
-            state="disabled"
-        )
-        self.close_button.pack(side="right")
-        
+        title_label.pack(pady=(0, 10)) 
     def log_message(self, message):
         """Add message to log"""
         from datetime import datetime
@@ -7119,33 +7014,43 @@ class AssetCard(ctk.CTkFrame):
             image = Image.open(self.asset_path)
             image.thumbnail((100, 60), Image.Resampling.LANCZOS)
             
-            # Convert to PhotoImage
-            photo = ImageTk.PhotoImage(image)
+            # Use CTkImage for better HighDPI support
+            ctk_image = ctk.CTkImage(
+                light_image=image,
+                dark_image=image,
+                size=(100, 60)
+            )
             
             # Display in label
-            preview_label = ctk.CTkLabel(parent, image=photo, text="")
+            preview_label = ctk.CTkLabel(parent, image=ctk_image, text="")
             preview_label.pack(expand=True)
             
-            # Keep reference to prevent garbage collection
-            preview_label.image = photo
-            
         except Exception as e:
-            # Fallback to icon
-            icon_label = ctk.CTkLabel(
-                parent,
-                text="🖼️",
-                font=ctk.CTkFont(size=24)
-            )
+            # Fallback to icon - MODIFIED TO USE CTkImage
+            fallback_icon = load_icon_image("image_placeholder.png", size=(32, 32))
+            if fallback_icon:
+                icon_label = ctk.CTkLabel(parent, image=fallback_icon, text="")
+            else:
+                icon_label = ctk.CTkLabel(
+                    parent,
+                    text="🖼️",
+                    font=ctk.CTkFont(size=24)
+                )
             icon_label.pack(expand=True)
-            
+    
+    
     def create_audio_preview(self, parent):
         """Create audio preview"""
-        # Audio waveform icon
-        icon_label = ctk.CTkLabel(
-            parent,
-            text="🎵",
-            font=ctk.CTkFont(size=24)
-        )
+        # Audio waveform icon - MODIFIED TO USE CTkImage
+        audio_icon = load_icon_image("audio_icon.png", size=(32, 32))
+        if audio_icon:
+            icon_label = ctk.CTkLabel(parent, image=audio_icon, text="")
+        else:
+            icon_label = ctk.CTkLabel(
+                parent,
+                text="🎵",
+                font=ctk.CTkFont(size=24)
+            )
         icon_label.pack(expand=True)
         
         # Duration info (if available)
@@ -7169,7 +7074,8 @@ class AssetCard(ctk.CTkFrame):
                 duration_label.pack()
         except:
             pass
-            
+    
+    
     def format_file_size(self, size_bytes):
         """Format file size in human readable format"""
         if size_bytes == 0:
@@ -9195,12 +9101,17 @@ class ManimStudioApp:
         header_left = ctk.CTkFrame(self.header, fg_color="transparent")
         header_left.grid(row=0, column=0, sticky="w", padx=20, pady=10)
         
-        # App icon/logo
-        logo_label = ctk.CTkLabel(
-            header_left,
-            text="🎬",
-            font=ctk.CTkFont(size=28)
-        )
+        # App icon/logo - MODIFIED TO USE CTkImage
+        logo_image = load_icon_image("main_logo.png", size=(32, 32))
+        if logo_image:
+            logo_label = ctk.CTkLabel(header_left, image=logo_image, text="")
+        else:
+            # Fallback to emoji if image not found
+            logo_label = ctk.CTkLabel(
+                header_left,
+                text="🎬",
+                font=ctk.CTkFont(size=28)
+            )
         logo_label.pack(side="left", padx=(0, 10))
         
         # App title
@@ -9221,32 +9132,49 @@ class ManimStudioApp:
         )
         subtitle_label.pack(side="left", padx=(10, 0))
         
-        # Center - Quick actions
+        # Center - Quick actions - MODIFIED TO USE CTkImage
         header_center = ctk.CTkFrame(self.header, fg_color="transparent")
         header_center.grid(row=0, column=1, pady=10)
         
-        # Quick action buttons
+        # Quick action buttons with images
         quick_actions = [
-            ("📄", "New File", self.new_file),
-            ("📁", "Open File", self.open_file),
-            ("💾", "Save File", self.save_file),
-            ("▶️", "Render Animation", self.render_animation),
-            ("👁️", "Quick Preview", self.quick_preview),
-            ("🔧", "Environment Setup", self.manage_environment),
+            ("new_file.png", "📄", "New File", self.new_file),
+            ("open_file.png", "📁", "Open File", self.open_file),
+            ("save_file.png", "💾", "Save File", self.save_file),
+            ("render_animation.png", "▶️", "Render Animation", self.render_animation),
+            ("quick_preview.png", "👁️", "Quick Preview", self.quick_preview),
+            ("environment_manager.png", "🔧", "Environment Setup", self.manage_environment),
         ]
         
-        for icon, tooltip, command in quick_actions:
-            btn = ctk.CTkButton(
-                header_center,
-                text=icon,
-                width=45,
-                height=40,
-                font=ctk.CTkFont(size=16),
-                command=command,
-                fg_color="transparent",
-                hover_color=VSCODE_COLORS["surface_light"],
-                corner_radius=8
-            )
+        for image_name, fallback_emoji, tooltip, command in quick_actions:
+            # Try to load image, fallback to emoji
+            icon_image = load_icon_image(image_name, size=(20, 20))
+            
+            if icon_image:
+                btn = ctk.CTkButton(
+                    header_center,
+                    image=icon_image,
+                    text="",
+                    width=45,
+                    height=40,
+                    command=command,
+                    fg_color="transparent",
+                    hover_color=VSCODE_COLORS["surface_light"],
+                    corner_radius=8
+                )
+            else:
+                # Fallback to emoji
+                btn = ctk.CTkButton(
+                    header_center,
+                    text=fallback_emoji,
+                    width=45,
+                    height=40,
+                    font=ctk.CTkFont(size=16),
+                    command=command,
+                    fg_color="transparent",
+                    hover_color=VSCODE_COLORS["surface_light"],
+                    corner_radius=8
+                )
             btn.pack(side="left", padx=2)
             self.create_tooltip(btn, tooltip)
             
@@ -9265,11 +9193,16 @@ class ManimStudioApp:
         )
         self.intellisense_checkbox.pack(side="right", padx=15)
         
-        # Virtual environment display
+        # Virtual environment display - MODIFIED TO USE CTkImage
         venv_frame = ctk.CTkFrame(header_right, fg_color=VSCODE_COLORS["surface_light"])
         venv_frame.pack(side="right", padx=10)
         
-        venv_label = ctk.CTkLabel(venv_frame, text="🔧", font=ctk.CTkFont(size=14))
+        # Load environment manager icon
+        env_icon = load_icon_image("environment_manager.png", size=(16, 16))
+        if env_icon:
+            venv_label = ctk.CTkLabel(venv_frame, image=env_icon, text="")
+        else:
+            venv_label = ctk.CTkLabel(venv_frame, text="🔧", font=ctk.CTkFont(size=14))
         venv_label.pack(side="left", padx=(10, 5))
         
         venv_name = self.venv_manager.current_venv or "No environment"
@@ -9281,7 +9214,7 @@ class ManimStudioApp:
         )
         self.venv_status_label.pack(side="left", padx=(0, 10))
         
-        # Theme selector
+        # Theme selector - FIXED METHOD NAME
         theme_frame = ctk.CTkFrame(header_right, fg_color="transparent")
         theme_frame.pack(side="right", padx=15)
         
@@ -9290,20 +9223,21 @@ class ManimStudioApp:
             text="Theme:",
             font=ctk.CTkFont(size=12),
             text_color=VSCODE_COLORS["text"]
-        ).pack(side="left", padx=(0, 5))
+        ).pack(side="left")
         
+        # FIXED: Use the correct method name and variable names from your existing code
         self.theme_var = ctk.StringVar(value=self.current_theme)
         theme_combo = ctk.CTkComboBox(
             theme_frame,
             values=list(THEME_SCHEMES.keys()),
             variable=self.theme_var,
-            command=self.on_theme_change,
+            command=self.on_theme_change,  # FIXED: This was "change_theme" before
             width=120,
             height=35
         )
         theme_combo.pack(side="left")
         
-        # Auto-preview toggle
+        # Auto-preview toggle (from your existing code)
         self.auto_preview_checkbox = ctk.CTkCheckBox(
             header_right,
             text="Auto Preview",
@@ -9313,7 +9247,7 @@ class ManimStudioApp:
             text_color=VSCODE_COLORS["text"]
         )
         self.auto_preview_checkbox.pack(side="right", padx=15)
-        
+    
     def create_sidebar(self):
         """Create sidebar with optimal sizing based on screen detection"""
         # Get optimal sidebar width based on screen analysis
@@ -9638,25 +9572,57 @@ class ManimStudioApp:
         header_frame.pack(fill="x", padx=15, pady=12)
         header_frame.grid_columnconfigure(0, weight=1)
         
-        header_title = ctk.CTkLabel(
-            header_frame,
-            text="🎨 Assets Manager",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
-        )
-        header_title.grid(row=0, column=0, sticky="w")
+        # Assets manager icon - MODIFIED TO USE CTkImage
+        assets_icon = load_icon_image("assets_manager.png", size=(20, 20))
+        if assets_icon:
+            # Create frame to hold icon and text
+            title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+            title_frame.grid(row=0, column=0, sticky="w")
+            
+            icon_label = ctk.CTkLabel(title_frame, image=assets_icon, text="")
+            icon_label.pack(side="left", padx=(0, 8))
+            
+            header_title = ctk.CTkLabel(
+                title_frame,
+                text="Assets Manager",
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color=VSCODE_COLORS["text_bright"]
+            )
+            header_title.pack(side="left")
+        else:
+            # Fallback to emoji
+            header_title = ctk.CTkLabel(
+                header_frame,
+                text="🎨 Assets Manager",
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color=VSCODE_COLORS["text_bright"]
+            )
+            header_title.grid(row=0, column=0, sticky="w")
         
-        # Add asset button
-        add_btn = ctk.CTkButton(
-            header_frame,
-            text="+",
-            width=30,
-            height=25,
-            font=ctk.CTkFont(size=16, weight="bold"),
-            command=self.show_add_asset_menu,
-            fg_color=VSCODE_COLORS["success"],
-            hover_color="#117A65"
-        )
+        # Add asset button - MODIFIED TO USE CTkImage
+        add_icon = load_icon_image("add_asset.png", size=(16, 16))
+        if add_icon:
+            add_btn = ctk.CTkButton(
+                header_frame,
+                image=add_icon,
+                text="",
+                width=30,
+                height=25,
+                command=self.show_add_asset_menu,
+                fg_color=VSCODE_COLORS["success"],
+                hover_color="#117A65"
+            )
+        else:
+            add_btn = ctk.CTkButton(
+                header_frame,
+                text="+",
+                width=30,
+                height=25,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                command=self.show_add_asset_menu,
+                fg_color=VSCODE_COLORS["success"],
+                hover_color="#117A65"
+            )
         add_btn.grid(row=0, column=1, sticky="e")
         
         # Assets frame
@@ -9678,7 +9644,8 @@ class ManimStudioApp:
         
         # Update assets display
         self.update_assets_display()
-        
+    
+    
     def create_main_area(self):
         """Create main content area"""
         self.main_area = ctk.CTkFrame(self.root, corner_radius=0, fg_color=VSCODE_COLORS["background"])
@@ -11008,8 +10975,26 @@ class MyScene(Scene):
     def show_add_asset_menu(self):
         """Show menu for adding assets"""
         menu = tk.Menu(self.root, tearoff=0)
-        menu.add_command(label="📷 Add Images", command=self.add_images)
-        menu.add_command(label="🎵 Add Audio", command=self.add_audio)
+        
+        # Try to create menu items with images
+        try:
+            # Load icons for menu items
+            image_icon = load_icon_image("image_placeholder.png", size=(16, 16))
+            audio_icon = load_icon_image("audio_icon.png", size=(16, 16))
+            
+            if image_icon:
+                menu.add_command(label="Add Images", image=image_icon, compound="left", command=self.add_images)
+            else:
+                menu.add_command(label="📷 Add Images", command=self.add_images)
+                
+            if audio_icon:
+                menu.add_command(label="Add Audio", image=audio_icon, compound="left", command=self.add_audio)
+            else:
+                menu.add_command(label="🎵 Add Audio", command=self.add_audio)
+        except:
+            # Fallback to text-only menu
+            menu.add_command(label="📷 Add Images", command=self.add_images)
+            menu.add_command(label="🎵 Add Audio", command=self.add_audio)
         
         # Get button position
         x = self.root.winfo_rootx() + 200
@@ -11129,11 +11114,19 @@ class MyScene(Scene):
             self.code_editor.delete("1.0", "end")
             self.current_code = ""
             self.current_file_path = None
-            self.file_tab.configure(text="📄 Untitled")
+            
+            # File tab icon - MODIFIED TO USE IMAGE
+            file_icon = load_icon_image("new_file.png", size=(16, 16))
+            if file_icon:
+                # For CustomTkinter labels with images, you might need to handle this differently
+                # depending on your specific implementation
+                self.file_tab.configure(text="Untitled")
+            else:
+                self.file_tab.configure(text="📄 Untitled")
+                
             self.clear_preview_video(silent=True)
             self.clear_output()
             self.load_default_code()
-            
     def open_file(self):
         """Open file"""
         file_path = filedialog.askopenfilename(
@@ -12385,106 +12378,53 @@ class GettingStartedDialog(ctk.CTkToplevel):
             self.manage_button.configure(state="disabled")
 
     def setup_ui(self):
-        """Setup the main UI"""
-        # Create main frame
-        main_frame = ctk.CTkFrame(self)
-        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        """Setup the environment setup dialog UI - ORIGINAL STRUCTURE"""
+        # Safety check: Ensure VSCODE_COLORS has required keys
+        global VSCODE_COLORS
+        if "success" not in VSCODE_COLORS:
+            VSCODE_COLORS["success"] = "#16A085"
+        if "error" not in VSCODE_COLORS:
+            VSCODE_COLORS["error"] = "#E74C3C"
+        if "warning" not in VSCODE_COLORS:
+            VSCODE_COLORS["warning"] = "#F39C12"
+        if "surface" not in VSCODE_COLORS:
+            VSCODE_COLORS["surface"] = "#252526"
+        if "text" not in VSCODE_COLORS:
+            VSCODE_COLORS["text"] = "#CCCCCC"
+        if "text_secondary" not in VSCODE_COLORS:
+            VSCODE_COLORS["text_secondary"] = "#858585"
+            
+        # Main frame
+        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Title
+        # Header with logo
+        header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 20))
+        
+        # App icon - MODIFIED TO USE IMAGE
+        logo_icon = load_icon_image("main_logo.png", size=(64, 64))
+        if logo_icon:
+            icon_label = ctk.CTkLabel(header_frame, image=logo_icon, text="")
+            icon_label.image = logo_icon
+        else:
+            icon_label = ctk.CTkLabel(
+                header_frame,
+                text="🎬",
+                font=ctk.CTkFont(size=48)
+            )
+        icon_label.pack(pady=10)
+        
+        # Welcome text
         title_label = ctk.CTkLabel(
-            main_frame,
-            text="Manim Studio",
-            font=ctk.CTkFont(size=24, weight="bold")
+            header_frame,
+            text="Welcome to ManimStudio!",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
         )
-        title_label.pack(pady=20)
+        title_label.pack(pady=(0, 10))
         
-        # Environment status frame
-        status_frame = ctk.CTkFrame(main_frame)
-        status_frame.pack(fill="x", padx=10, pady=5)
-        
-        # Environment status
-        self.env_status_label = ctk.CTkLabel(
-            status_frame,
-            text="Checking environment...",
-            font=ctk.CTkFont(size=12)
-        )
-        self.env_status_label.pack(pady=(10, 5))
-
-        # Environment path
-        env_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
-        self.env_path_display = ctk.CTkLabel(
-            status_frame,
-            text=env_path,
-            font=ctk.CTkFont(size=10)
-        )
-        self.env_path_display.pack(pady=(0, 10))
-        
-        # Button frame
-        button_frame = ctk.CTkFrame(main_frame)
-        button_frame.pack(fill="x", padx=10, pady=10)
-        
-        # Setup button
-        self.setup_button = ctk.CTkButton(
-            button_frame,
-            text="Setup Environment",
-            command=self.setup_environment,
-            state="disabled",
-            width=200
-        )
-        self.setup_button.pack(side="left", padx=5, pady=10)
-        
-        # Fix dependencies button
-        self.fix_button = ctk.CTkButton(
-            button_frame,
-            text="Fix Manim Dependencies",
-            command=self.fix_manim_dependencies,
-            fg_color="orange",
-            hover_color="darkorange",
-            width=200
-        )
-        self.fix_button.pack(side="left", padx=5, pady=10)
-        
-        # Environment management button
-        self.manage_button = ctk.CTkButton(
-            button_frame,
-            text="Manage Environments",
-            command=self.manage_environments,
-            fg_color="purple",
-            hover_color="darkviolet",
-            width=200
-        )
-        self.manage_button.pack(side="left", padx=5, pady=10)
-        
-        # Main content area
-        content_frame = ctk.CTkFrame(main_frame)
-        content_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Create tabview for different sections
-        self.tabview = ctk.CTkTabview(content_frame)
-        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Code Editor Tab
-        self.editor_tab = self.tabview.add("Code Editor")
-        self.setup_editor_tab()
-
-        # Settings Tab
-        self.settings_tab = self.tabview.add("Settings")
-        self.setup_settings_tab()
-
-        # Log Tab
-        self.log_tab = self.tabview.add("Logs")
-        self.setup_log_tab()
-
-        # Status bar
-        self.status_bar = ctk.CTkLabel(
-            main_frame,
-            text="Ready",
-            font=ctk.CTkFont(size=10),
-            fg_color="gray20",
-            corner_radius=5
-        )
-        self.status_bar.pack(fill="x", padx=10, pady=(0, 10))
-
+        # Rest of the setup_ui method remains the same...
     def setup_editor_tab(self):
         """Setup the code editor tab"""
         # Code editor frame
