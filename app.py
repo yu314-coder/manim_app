@@ -42,6 +42,7 @@ import importlib
 import venv
 import hashlib
 import traceback
+import argparse
 try:
     from fixes import ensure_ascii_path
 except Exception:
@@ -1890,7 +1891,7 @@ class SystemTerminalManager:
       
 
 class EnvironmentSetupDialog(ctk.CTkToplevel):
-    """Original Environment setup dialog with size control and fixed threading"""
+    """Complete Environment setup dialog with all features and fixes"""
     
     def __init__(self, parent, venv_manager):
         super().__init__(parent)
@@ -1907,7 +1908,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         
         self.title("ManimStudio - Environment Setup")
         
-        # RESPONSIVE SIZE FIX: Instead of hardcoded "750x780"
+        # RESPONSIVE SIZE FIX: Calculate optimal size for different screens
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
         
@@ -1924,11 +1925,11 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         except:
             dpi_scale = 1.0
         
-        # Base size (original was 750x780)
+        # Base size (responsive design)
         base_width = 750
-        base_height = 780
+        base_height = 700
         
-        # Calculate maximum usable screen space (leave room for taskbar)
+        # Calculate maximum usable screen space
         max_width = int(screen_w * 0.85)
         max_height = int(screen_h * 0.80)
         
@@ -1960,36 +1961,64 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         
         # Create the UI
         self.setup_ui()
+    
+    def _start_log_processor(self):
+        """Start background log and result processing"""
+        self._process_log_queue()
+        self._process_result_queue()
+    
+    def _process_log_queue(self):
+        """Process log messages from background threads"""
+        try:
+            while True:
+                message = self._log_queue.get_nowait()
+                self.log_text.insert("end", f"{message}\n")
+                self.log_text.see("end")
+        except:
+            pass
+        finally:
+            # Schedule next check
+            self.after(100, self._process_log_queue)
+    
     def setup_ui(self):
-        """Setup the environment setup dialog UI"""
+        """Setup the environment setup dialog UI - COMPLETE AND FIXED"""
         # Safety check: Ensure VSCODE_COLORS has required keys
         global VSCODE_COLORS
-        if "success" not in VSCODE_COLORS:
-            VSCODE_COLORS["success"] = "#16A085"
-        if "error" not in VSCODE_COLORS:
-            VSCODE_COLORS["error"] = "#E74C3C"
-        if "warning" not in VSCODE_COLORS:
-            VSCODE_COLORS["warning"] = "#F39C12"
-        if "surface" not in VSCODE_COLORS:
-            VSCODE_COLORS["surface"] = "#252526"
-        if "text" not in VSCODE_COLORS:
-            VSCODE_COLORS["text"] = "#CCCCCC"
-        if "text_secondary" not in VSCODE_COLORS:
-            VSCODE_COLORS["text_secondary"] = "#858585"
+        required_colors = {
+            "success": "#16A085",
+            "error": "#E74C3C",
+            "warning": "#F39C12",
+            "surface": "#252526",
+            "text": "#CCCCCC",
+            "text_secondary": "#858585",
+            "primary": "#007ACC",
+            "background": "#1E1E1E"
+        }
+        
+        for key, default_value in required_colors.items():
+            if key not in VSCODE_COLORS:
+                VSCODE_COLORS[key] = default_value
             
-        # Main frame
-        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Configure the main window
+        self.configure(fg_color=VSCODE_COLORS["surface"])
+        
+        # Main container
+        main_container = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Header with logo
-        header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        header_frame = ctk.CTkFrame(main_container, fg_color="transparent")
         header_frame.pack(fill="x", pady=(0, 20))
         
-        # App icon - MODIFIED TO USE CTkImage
-        logo_icon = load_icon_image("main_logo.png", size=(64, 64))
-        if logo_icon:
-            icon_label = ctk.CTkLabel(header_frame, image=logo_icon, text="")
-        else:
+        # App icon - Use image if available, fallback to emoji
+        try:
+            logo_image = load_icon_image("main_logo.png", size=(64, 64))
+            if logo_image:
+                icon_label = ctk.CTkLabel(header_frame, image=logo_image, text="")
+                icon_label.image = logo_image
+            else:
+                raise Exception("No image found")
+        except:
             icon_label = ctk.CTkLabel(
                 header_frame,
                 text="🎬",
@@ -2004,200 +2033,275 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=VSCODE_COLORS["text"]
         )
-        title_label.pack(pady=(0, 10)) 
-    def log_message(self, message):
-        """Add message to log"""
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text.insert("end", f"[{timestamp}] {message}\n")
-        self.log_text.see("end")
-        self.update_idletasks()
+        title_label.pack(pady=(0, 10))
         
-    def log_message_threadsafe(self, message):
-        """Thread-safe log message method using queue"""
-        if hasattr(self, '_log_queue'):
-            self._log_queue.put(message)
+        # Description
+        desc_label = ctk.CTkLabel(
+            header_frame,
+            text="Set up your Python environment for creating mathematical animations",
+            font=ctk.CTkFont(size=14),
+            text_color=VSCODE_COLORS["text_secondary"],
+            wraplength=500
+        )
+        desc_label.pack(pady=(0, 20))
+        
+        # Content area with progress
+        content_frame = ctk.CTkFrame(main_container, fg_color=VSCODE_COLORS["surface"])
+        content_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Progress section
+        progress_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        progress_frame.pack(fill="x", padx=20, pady=20)
+        
+        # Step label
+        self.step_label = ctk.CTkLabel(
+            progress_frame,
+            text="Ready to begin setup",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        )
+        self.step_label.pack(pady=(0, 10))
+        
+        # Detail label
+        self.detail_label = ctk.CTkLabel(
+            progress_frame,
+            text="Click 'Start Setup' to begin installation",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"],
+            wraplength=400
+        )
+        self.detail_label.pack(pady=(0, 15))
+        
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(progress_frame, width=400)
+        self.progress_bar.pack(pady=(0, 20))
+        self.progress_bar.set(0)
+        
+        # Log area
+        log_frame = ctk.CTkFrame(content_frame, fg_color=VSCODE_COLORS["surface"])
+        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        
+        log_label = ctk.CTkLabel(
+            log_frame,
+            text="Setup Log:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        )
+        log_label.pack(anchor="w", padx=15, pady=(15, 5))
+        
+        # Log text area
+        self.log_text = ctk.CTkTextbox(
+            log_frame,
+            height=120,
+            font=ctk.CTkFont(size=11, family="Consolas"),
+            text_color=VSCODE_COLORS["text"],
+            fg_color=VSCODE_COLORS["background"]
+        )
+        self.log_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        
+        # Initial log message
+        self.log_text.insert("end", "🎬 ManimStudio Environment Setup\n")
+        self.log_text.insert("end", "Ready to begin installation...\n\n")
+        
+        # FIXED: Bottom buttons frame with proper layout
+        bottom_frame = ctk.CTkFrame(main_container, fg_color="transparent", height=80)
+        bottom_frame.pack(fill="x", pady=(0, 10))
+        bottom_frame.pack_propagate(False)  # Maintain fixed height
+        
+        # Button container with centered layout
+        button_container = ctk.CTkFrame(bottom_frame, fg_color="transparent")
+        button_container.pack(expand=True, fill="both", padx=20, pady=20)
+        
+        # Left buttons
+        left_buttons = ctk.CTkFrame(button_container, fg_color="transparent")
+        left_buttons.pack(side="left", fill="y")
+        
+        # Start button
+        self.start_button = ctk.CTkButton(
+            left_buttons,
+            text="🚀 Start Setup",
+            command=self.start_setup,
+            height=45,
+            width=150,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["success"],
+            hover_color="#138D75"
+        )
+        self.start_button.pack(side="left", padx=(0, 15))
+        
+        # Skip button
+        self.skip_button = ctk.CTkButton(
+            left_buttons,
+            text="⏭️ Skip Setup",
+            command=self.skip_setup,
+            height=45,
+            width=130,
+            font=ctk.CTkFont(size=14),
+            fg_color=VSCODE_COLORS["warning"],
+            hover_color="#D68910"
+        )
+        self.skip_button.pack(side="left")
+        
+        # Right buttons
+        right_buttons = ctk.CTkFrame(button_container, fg_color="transparent")
+        right_buttons.pack(side="right", fill="y")
+        
+        # Continue button (initially disabled)
+        self.close_button = ctk.CTkButton(
+            right_buttons,
+            text="✅ Continue to App",
+            command=self.continue_to_app,
+            height=45,
+            width=160,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color="#005A9E",
+            state="disabled"
+        )
+        self.close_button.pack(side="right")
+        
+        # Force layout update
+        self.update_idletasks()
     
-    def _start_log_processor(self):
-        """Start the log processor that runs on main thread"""
-        def process_logs():
-            if not hasattr(self, '_log_queue'):
-                return
-                
-            try:
-                while True:
-                    message = self._log_queue.get_nowait()
-                    self.log_message(message)
-            except:
-                pass  # Queue empty
-            
-            # Schedule next check
-            try:
-                self.after(100, process_logs)
-            except:
-                pass  # Widget destroyed
-        
-        self.after(100, process_logs)
-        
-    def update_progress(self, value, step_text="", detail_text=""):
-        """Update progress bar and status"""
-        self.progress_bar.set(value)
-        if step_text:
-            self.step_label.configure(text=step_text)
-        if detail_text:
-            self.detail_label.configure(text=detail_text)
-        self.update_idletasks()
-        
     def start_setup(self):
         """Start the environment setup process"""
-        self.start_button.configure(state="disabled")
-        self.skip_button.configure(state="disabled")
-        
-        self.log_message("Starting ManimStudio environment setup...")
-        self.update_progress(0.05, "Preparing...", "Initializing environment creation")
-        
-        # Use the VirtualEnvironmentManager's essential packages instead of UI selection
-        selected_packages = self.venv_manager.essential_packages.copy()
-        
-        self.log_message(f"Installing {len(selected_packages)} essential packages...")
-        self.log_message(f"Packages: {', '.join(selected_packages[:5])}{'...' if len(selected_packages) > 5 else ''}")
-        
-        # Start the setup process on main thread with after() calls
-        self.after(100, lambda: self.run_setup_step_by_step(selected_packages, 0))
-
-    def run_setup_step_by_step(self, packages, step):
-        """Run setup process step by step on main thread"""
         try:
-            if step == 0:
-                # Step 1: Create virtual environment
-                self.update_progress(0.1, "Creating virtual environment...", "Setting up isolated Python environment")
-                self.log_message("Creating virtual environment...")
+            # Disable start and skip buttons
+            self.start_button.configure(state="disabled")
+            self.skip_button.configure(state="disabled")
+            
+            # Update UI
+            self.step_label.configure(text="Setting up environment...")
+            self.detail_label.configure(text="Creating virtual environment and installing packages")
+            self.progress_bar.set(0.1)
+            
+            # Log start
+            self.log_message("🚀 Starting environment setup...")
+            self.log_message("This may take 5-10 minutes depending on your internet connection...")
+            
+            # Run setup in background thread to prevent UI freezing
+            import threading
+            setup_thread = threading.Thread(target=self.run_setup_background, daemon=True)
+            setup_thread.start()
+            
+        except Exception as e:
+            self.log_message(f"❌ Error starting setup: {e}")
+            self.show_error("Failed to start setup")
+    
+    def run_setup_background(self):
+        """Run setup in background thread - THREAD-SAFE VERSION"""
+        try:
+            # Create thread-safe log callback using queue only
+            def safe_log(message):
+                try:
+                    self._log_queue.put(message)
+                except:
+                    print(f"Log: {message}")
+            
+            # Thread-safe progress update using queue
+            def update_progress(progress, message=""):
+                try:
+                    self._result_queue.put(('progress', {'progress': progress, 'message': message}))
+                except:
+                    print(f"Progress: {progress} - {message}")
+            
+            # Step 1: Check existing environment
+            update_progress(0.1, "Checking existing environment...")
+            safe_log("🔍 Checking for existing environment...")
+            
+            # Step 2: Create/update environment
+            update_progress(0.2, "Creating virtual environment...")
+            safe_log("📦 Creating virtual environment...")
+            
+            # Step 3: Run the actual setup
+            update_progress(0.3, "Installing Python packages...")
+            safe_log("⬇️ Installing required packages...")
+            
+            # Run the venv manager setup
+            success = self.venv_manager.setup_environment(safe_log)
+            
+            if success:
+                update_progress(0.9, "Verifying installation...")
+                safe_log("✅ Verifying installation...")
                 
-                # Run environment creation in background and schedule next step
-                def create_env():
-                    success = self.venv_manager.create_virtual_environment()
-                    # Use queue to communicate result back to main thread
-                    self._result_queue.put(('env_created', success))
-                
-                threading.Thread(target=create_env, daemon=True).start()
-                # Schedule checking for result
-                self.after(500, lambda: self.check_for_results(packages, 1))
-                
-            elif step == 1:
-                # Step 2: Activate environment
-                self.update_progress(0.2, "Activating environment...", "Configuring environment")
-                self.log_message("Activating environment...")
-                self.after(500, lambda: self.run_setup_step_by_step(packages, 2))
-                
-            elif step == 2:
-                # Step 3: Upgrade pip
-                self.update_progress(0.25, "Upgrading pip...", "Ensuring latest package manager")
-                self.log_message("Upgrading pip...")
-                
-                def upgrade_pip():
-                    success = self.venv_manager.upgrade_pip_in_existing_env(self.log_message_threadsafe)
-                    if not success:
-                        self.log_message_threadsafe("WARNING: Could not upgrade pip")
-                    # Use queue to communicate result back to main thread
-                    self._result_queue.put(('pip_upgraded', True))
-                
-                threading.Thread(target=upgrade_pip, daemon=True).start()
-                # Schedule checking for result
-                self.after(500, lambda: self.check_for_results(packages, 3))
-                
-            elif step == 3:
-                # Step 4: Install packages using VirtualEnvironmentManager's method
-                self.update_progress(0.3, "Installing packages...", "Installing essential packages")
-                self.log_message("Installing essential packages...")
-                
-                def install_packages():
-                    # Use the VirtualEnvironmentManager's install_all_packages method
-                    success = self.venv_manager.install_all_packages(self.log_message_threadsafe)
-                    # Use queue to communicate result back to main thread
-                    self._result_queue.put(('packages_installed', success))
-                
-                threading.Thread(target=install_packages, daemon=True).start()
-                # Schedule checking for result
-                self.after(500, lambda: self.check_for_results(packages, 4))
-                    
-            elif step == 5:
-                # Step 5: Verify installation
-                self.update_progress(0.95, "Verifying installation...", "Testing all components")
-                self.log_message("Verifying installation...")
-                
-                def verify():
-                    success = self.venv_manager.verify_complete_installation(self.log_message_threadsafe)
-                    # Use queue to communicate result back to main thread
-                    self._result_queue.put(('verification_done', success))
-                
-                threading.Thread(target=verify, daemon=True).start()
-                # Schedule checking for result
-                self.after(500, lambda: self.check_for_results(packages, 5))
-                
-            elif step == 6:
-                # Success
-                self.update_progress(1.0, "Setup complete!", "All components ready")
-                self.log_message("✅ Environment setup completed successfully!")
-                self.setup_complete_ui()
-                
-            elif step == 7:
-                # Verification failed but continue
-                self.log_message("WARNING: Installation verification failed")
-                self.show_warning("Setup completed with warnings")
-                
-            elif step == -1:
-                # Error occurred
-                self.log_message("ERROR: Failed to create virtual environment")
-                self.show_error("Failed to create virtual environment")
+                # Final verification
+                if self.venv_manager.verify_complete_installation(safe_log):
+                    update_progress(1.0, "Setup completed successfully!")
+                    safe_log("✅ Environment setup completed successfully!")
+                    self._result_queue.put(('complete', True))
+                else:
+                    safe_log("⚠️ Setup completed with warnings")
+                    self._result_queue.put(('complete_warnings', True))
+            else:
+                safe_log("❌ Setup failed")
+                self._result_queue.put(('error', "Setup failed - check log for details"))
                 
         except Exception as e:
-            error_msg = f"Setup failed with error: {str(e)}"
-            self.log_message(f"ERROR: {error_msg}")
-            self.show_error(error_msg)
-
-    
-    def check_for_results(self, packages, next_step):
-        """Check for results from background threads"""
+            error_msg = f"Setup failed: {str(e)}"
+            try:
+                self._log_queue.put(f"❌ {error_msg}")
+                self._result_queue.put(('error', error_msg))
+            except:
+                print(f"Setup error: {error_msg}")
+    def _process_result_queue(self):
+        """Process results from background threads - THREAD-SAFE"""
         try:
-            action, result = self._result_queue.get_nowait()
-            
-            if action == 'env_created':
-                self.run_setup_step_by_step(packages, next_step if result else -1)
-            elif action == 'pip_upgraded':
-                self.run_setup_step_by_step(packages, next_step)
-            elif action == 'packages_installed':
-                self.run_setup_step_by_step(packages, 5 if result else 7)  # Go to verification
-            elif action == 'verification_done':
-                self.run_setup_step_by_step(packages, 6 if result else 7)
+            while True:
+                action, data = self._result_queue.get_nowait()
                 
+                if action == 'progress':
+                    self.progress_bar.set(data['progress'])
+                    if data['message']:
+                        self.detail_label.configure(text=data['message'])
+                        
+                elif action == 'complete':
+                    self.setup_complete_ui()
+                    
+                elif action == 'complete_warnings':
+                    self.setup_complete_with_warnings()
+                    
+                elif action == 'error':
+                    self.show_error(data)
+                    
         except:
-            # No result yet, check again later
-            self.after(500, lambda: self.check_for_results(packages, next_step))
-        
+            pass
+        finally:
+            # Schedule next check
+            self.after(100, self._process_result_queue)
     def setup_complete_ui(self):
         """Update UI when setup is complete"""
         self.setup_complete = True
         self.progress_bar.set(1.0)
         self.step_label.configure(text="✅ Setup Complete!")
-        self.detail_label.configure(text="Environment ready for animations")
+        self.detail_label.configure(text="Environment ready for creating animations")
         
         # Enable continue button
         self.close_button.configure(state="normal")
-        
-    def show_warning(self, message):
-        """Show warning state"""
+        self.log_message("🎉 You can now create mathematical animations!")
+    
+    def setup_complete_with_warnings(self):
+        """Update UI when setup completes with warnings"""
         self.setup_complete = True
-        self.step_label.configure(text="⚠️ Setup Completed with Warnings")
-        self.detail_label.configure(text=message)
-        self.close_button.configure(state="normal")
+        self.progress_bar.set(0.8)
+        self.step_label.configure(text="⚠️ Setup Complete (with warnings)")
+        self.detail_label.configure(text="Some packages may need manual installation")
         
+        # Enable continue button
+        self.close_button.configure(state="normal")
+        self.log_message("⚠️ Setup completed but some issues were encountered")
+    
     def show_error(self, message):
         """Show error state"""
         self.step_label.configure(text="❌ Setup Failed")
         self.detail_label.configure(text=message)
+        self.progress_bar.set(0)
+        
+        # Re-enable start button to allow retry
         self.start_button.configure(state="normal")
         self.skip_button.configure(state="normal")
         
+        self.log_message("💡 You can try again or skip setup and install manually later")
+    
     def skip_setup(self):
         """Skip the setup process"""
         result = messagebox.askyesno(
@@ -2239,7 +2343,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             
             # Use after() to ensure dialog closes first
             main_window.after(50, show_main_window)
-        
+    
     def on_closing(self):
         """Handle window close event"""
         if not self.setup_complete:
@@ -2249,10 +2353,80 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
                 parent=self
             )
             if result:
+                self.setup_complete = True
                 self.destroy()
         else:
             self.destroy()
-
+    
+    def log_message(self, message):
+        """Add message to log with timestamp (thread-safe)"""
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            full_message = f"[{timestamp}] {message}"
+            
+            # Use queue for thread safety
+            self._log_queue.put(full_message)
+        except Exception as e:
+            print(f"Logging error: {e}")
+    
+    def update_progress_safe(self, progress, step_text="", detail_text=""):
+        """Thread-safe progress update"""
+        def update():
+            try:
+                self.progress_bar.set(progress)
+                if step_text:
+                    self.step_label.configure(text=step_text)
+                if detail_text:
+                    self.detail_label.configure(text=detail_text)
+            except Exception as e:
+                print(f"Progress update error: {e}")
+        
+        self.after(0, update)
+    
+    def show_success_message(self, title, message):
+        """Show success message dialog"""
+        try:
+            messagebox.showinfo(title, message, parent=self)
+        except Exception as e:
+            print(f"Success message error: {e}")
+    
+    def show_error_message(self, title, message):
+        """Show error message dialog"""
+        try:
+            messagebox.showerror(title, message, parent=self)
+        except Exception as e:
+            print(f"Error message error: {e}")
+    
+    def get_setup_status(self):
+        """Get current setup status"""
+        return {
+            "complete": self.setup_complete,
+            "progress": self.progress_bar.get() if hasattr(self, 'progress_bar') else 0,
+            "step": self.step_label.cget("text") if hasattr(self, 'step_label') else "",
+            "detail": self.detail_label.cget("text") if hasattr(self, 'detail_label') else ""
+        }
+    
+    def reset_setup(self):
+        """Reset the setup dialog to initial state"""
+        try:
+            self.setup_complete = False
+            self.progress_bar.set(0)
+            self.step_label.configure(text="Ready to begin setup")
+            self.detail_label.configure(text="Click 'Start Setup' to begin installation")
+            
+            # Re-enable buttons
+            self.start_button.configure(state="normal")
+            self.skip_button.configure(state="normal")
+            self.close_button.configure(state="disabled")
+            
+            # Clear log
+            self.log_text.delete("1.0", "end")
+            self.log_text.insert("end", "🎬 ManimStudio Environment Setup\n")
+            self.log_text.insert("end", "Ready to begin installation...\n\n")
+            
+        except Exception as e:
+            print(f"Reset error: {e}")
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
     """Enhanced dialog for manual virtual environment management"""
     
@@ -5069,21 +5243,17 @@ class VirtualEnvironmentManager:
     def manage_environment(self):
         """Open environment management dialog"""
         try:
-            # Check if environment needs setup first
-            if self.needs_setup:
-                self.setup_environment(print)
+            # ALWAYS show the management dialog, don't block on setup
+            if self.parent_app and hasattr(self.parent_app, 'root'):
+                dialog = self.create_simple_environment_dialog(self.parent_app.root)
+                self.parent_app.root.wait_window(dialog)
+                
+                # Update venv status after dialog closes
+                if hasattr(self.parent_app, 'venv_status_label') and self.current_venv:
+                    self.parent_app.venv_status_label.configure(text=self.current_venv)
             else:
-                # Create and show simple built-in dialog
-                if self.parent_app and hasattr(self.parent_app, 'root'):
-                    dialog = self.create_simple_environment_dialog(self.parent_app.root)
-                    self.parent_app.root.wait_window(dialog)
-                    
-                    # Update venv status after dialog closes
-                    if hasattr(self.parent_app, 'venv_status_label') and self.current_venv:
-                        self.parent_app.venv_status_label.configure(text=self.current_venv)
-                else:
-                    # Minimal console output
-                    env_info = self.get_venv_info(print)
+                # Minimal console output
+                env_info = self.get_venv_info(print)
                     
         except Exception as e:
             # Minimal error handling
@@ -5096,7 +5266,6 @@ class VirtualEnvironmentManager:
                     )
             except:
                 pass
-    
     def show_setup_dialog(self):
         """Show the environment setup dialog - FIXED WITH NO IMPORT ERRORS"""
         if self.parent_app and hasattr(self.parent_app, 'root'):
@@ -8784,6 +8953,9 @@ class ManimStudioApp:
         y = (self.responsive.screen_height - height) // 2
         self.root.geometry(f"{width}x{height}+{x}+{y}")
         
+        # HIDE WINDOW INITIALLY - only show after environment check
+        self.root.withdraw()
+        
         # Apply DPI awareness for Windows
         try:
             if hasattr(self.root, 'tk') and hasattr(self.root.tk, 'call'):
@@ -8826,18 +8998,224 @@ class ManimStudioApp:
         
         self.initialize_variables()
         
-        # Setup UI (minimal logging)
+        # Setup UI (minimal logging) but keep hidden
         try:
             self.create_ui()
             self.apply_vscode_theme()
+            
+            # Check environment IMMEDIATELY - don't show main UI until ready
+            self._environment_check_scheduled = False
+            self.root.after(100, self.check_environment_before_showing_ui)
+            
         except Exception as e:
             self.logger.error(f"UI creation failed: {e}")
             raise
+    def check_environment_before_showing_ui(self):
+        """Check environment before showing main UI - BETTER UX"""
+        try:
+            # Prevent multiple checks
+            if self._environment_check_scheduled:
+                return
+            
+            self._environment_check_scheduled = True
+            
+            # Check if environment needs setup
+            if self.venv_manager.needs_setup:
+                self.logger.info("Environment setup needed - showing setup dialog first")
+                
+                # Show setup dialog WITHOUT showing main window first
+                try:
+                    # Create a temporary root if needed for the dialog
+                    setup_dialog = EnvironmentSetupDialog(self.root, self.venv_manager)
+                    self.root.wait_window(setup_dialog)
+                    
+                    # After setup dialog closes, check if environment is now ready
+                    if self.venv_manager.needs_setup:
+                        # User skipped setup or setup failed
+                        self.logger.info("Setup skipped or failed - showing main UI anyway")
+                    else:
+                        self.logger.info("Setup completed - environment ready")
+                    
+                except Exception as e:
+                    self.logger.error(f"Setup dialog error: {e}")
+                
+                # Update status
+                self.update_environment_status()
+            else:
+                self.logger.info("Environment is ready")
+                self.update_environment_status()
+            
+            # NOW show the main window for the first time
+            self.show_main_window()
+                
+        except Exception as e:
+            self.logger.error(f"Environment check error: {e}")
+            # Show main window even if check failed
+            self.show_main_window()
     
-    def check_environment_setup(self):
-        """Check if environment setup is needed"""
-        if self.venv_manager.needs_setup:
-            self.venv_manager.show_setup_dialog()
+    def show_main_window(self):
+        """Show the main application window for the first time"""
+        try:
+            # Show and focus the main window
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+            self.root.state('normal')
+            
+            # Force update to ensure proper display
+            self.root.update()
+            
+            self.logger.info("Main application window shown")
+            
+        except Exception as e:
+            self.logger.error(f"Error showing main window: {e}")
+    
+    def verify_environment_health(self):
+        """Verify that the environment is actually working"""
+        try:
+            # Check if we have valid paths
+            if not self.venv_manager.python_path or not self.venv_manager.pip_path:
+                return False
+                
+            # Check if python executable exists and works
+            if not os.path.exists(self.venv_manager.python_path):
+                return False
+                
+            # Quick test - try to run python --version
+            import subprocess
+            result = subprocess.run(
+                [self.venv_manager.python_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                return False
+                
+            # Check if manim is importable (quick test)
+            result = subprocess.run(
+                [self.venv_manager.python_path, "-c", "import manim"],
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
+            
+            return result.returncode == 0
+            
+        except Exception as e:
+            self.logger.error(f"Environment health check failed: {e}")
+            return False
+    
+    
+    
+    def setup_environment_simple(self):
+        """Simple environment setup without complex dialog"""
+        try:
+            import tkinter.messagebox as messagebox
+            
+            result = messagebox.askyesno(
+                "Environment Setup Required", 
+                "The Python environment needs to be set up for Manim.\n\n"
+                "This will:\n"
+                "• Create a virtual environment\n"
+                "• Install Manim and required packages\n"
+                "• Set up the development environment\n\n"
+                "This may take 5-10 minutes. Continue?",
+                parent=self.root
+            )
+            
+            if result:
+                # Show a simple progress dialog
+                progress_window = ctk.CTkToplevel(self.root)
+                progress_window.title("Setting up Environment")
+                progress_window.geometry("450x250")
+                progress_window.transient(self.root)
+                progress_window.grab_set()
+                
+                # Center the window
+                progress_window.geometry("+%d+%d" % (
+                    self.root.winfo_rootx() + 200,
+                    self.root.winfo_rooty() + 200
+                ))
+                
+                # Progress label
+                progress_label = ctk.CTkLabel(
+                    progress_window,
+                    text="Setting up Python environment...\nThis may take several minutes.",
+                    font=ctk.CTkFont(size=14)
+                )
+                progress_label.pack(pady=30)
+                
+                # Progress bar
+                progress_bar = ctk.CTkProgressBar(progress_window)
+                progress_bar.pack(pady=20, padx=40, fill="x")
+                progress_bar.set(0.1)
+                
+                # Status text
+                status_text = ctk.CTkTextbox(progress_window, height=80)
+                status_text.pack(pady=10, padx=20, fill="x")
+                
+                # Update progress function
+                def update_progress(step, total_steps, message=""):
+                    progress_bar.set(step / total_steps)
+                    if message:
+                        status_text.insert("end", f"{message}\n")
+                        status_text.see("end")
+                    progress_window.update()
+                
+                # Run setup in a separate thread to prevent UI freezing
+                import threading
+                
+                def run_setup():
+                    try:
+                        update_progress(1, 6, "Starting environment setup...")
+                        
+                        # Create log callback that updates UI
+                        def log_callback(message):
+                            self.root.after(0, lambda: update_progress(None, None, message))
+                        
+                        update_progress(2, 6, "Creating virtual environment...")
+                        
+                        # Setup environment
+                        success = self.venv_manager.setup_environment(log_callback)
+                        
+                        update_progress(6, 6, "Setup completed!")
+                        
+                        if success:
+                            self.root.after(0, lambda: progress_label.configure(text="Environment setup completed successfully!"))
+                            self.root.after(3000, progress_window.destroy)
+                        else:
+                            self.root.after(0, lambda: progress_label.configure(text="Setup completed with some issues.\nCheck the log above for details."))
+                            self.root.after(5000, progress_window.destroy)
+                            
+                    except Exception as e:
+                        error_msg = f"Setup error: {str(e)}"
+                        print(error_msg)
+                        self.root.after(0, lambda: progress_label.configure(text=error_msg))
+                        self.root.after(0, lambda: update_progress(None, None, error_msg))
+                        self.root.after(5000, progress_window.destroy)
+                
+                setup_thread = threading.Thread(target=run_setup, daemon=True)
+                setup_thread.start()
+            else:
+                print("Environment setup skipped by user")
+                
+        except Exception as e:
+            print(f"Simple setup failed: {e}")
+    
+    def update_environment_status(self):
+        """Update environment status in UI"""
+        try:
+            if hasattr(self, 'venv_status_label'):
+                if self.venv_manager.current_venv:
+                    self.venv_status_label.configure(text=self.venv_manager.current_venv)
+                else:
+                    self.venv_status_label.configure(text="No environment")
+                    
+        except Exception as e:
+            print(f"Error updating environment status: {e}")
+    
             
     def load_settings(self):
         """Load settings from file"""
@@ -10796,7 +11174,7 @@ class MyScene(Scene):
     def manage_environment(self):
         """Open enhanced environment management dialog - ALWAYS SHOW UI"""
         try:
-            # FORCE SHOW THE ENVIRONMENT UI - Skip setup check
+            # ALWAYS show the environment UI - don't get stuck on setup check
             dialog = EnhancedVenvManagerDialog(self.root, self.venv_manager)
             self.root.wait_window(dialog)
         
@@ -10806,16 +11184,10 @@ class MyScene(Scene):
                 
         except Exception as e:
             print(f"Error in manage_environment: {e}")
-            # Show error message if there's a problem
-            try:
-                messagebox.showerror(
-                    "Environment Error", 
-                    f"Error opening environment dialog:\n{str(e)}\n\n"
-                    "Please try restarting the application.",
-                    parent=self.root
-                )
-            except:
-                print(f"Failed to show error dialog: {e}")      
+            # Fallback - try to create a simple environment setup
+            self.setup_environment_simple()
+    
+    
     # Settings callbacks
     def on_quality_change(self, value):
         """Handle quality change with responsive UI updates"""
@@ -12184,7 +12556,7 @@ Licensed under MIT License"""
                 f"An error occurred while fixing dependencies: {e}"
             )
     def auto_activate_default_environment(self):
-        """Automatically activate manim_studio_default environment if it exists - NO MANIM CHECK"""
+        """Automatically activate manim_studio_default environment if it exists - NO DIALOGS"""
         try:
             default_venv_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
             
@@ -12213,17 +12585,20 @@ Licensed under MIT License"""
                         # SKIP MANIM CHECK - Just assume it's working
                         self.logger.info("✅ Auto-activated manim_studio_default environment")
                         self.venv_manager.needs_setup = False
-                        self.root.after(1000, self.update_environment_status)
+                        # REMOVED: Don't schedule status update here
                     else:
                         self.logger.warning("manim_studio_default environment has missing executables")
+                        self.venv_manager.needs_setup = True
                 else:
                     self.logger.warning("manim_studio_default environment structure is invalid")
+                    self.venv_manager.needs_setup = True
             else:
                 self.logger.info("No manim_studio_default environment found")
+                self.venv_manager.needs_setup = True
                 
         except Exception as e:
-            self.logger.error(f"Error during auto-activation: {e}")
-    
+            self.logger.error(f"Error in auto-activation: {e}")
+            self.venv_manager.needs_setup = True
     
     def force_environment_revalidation(self, env_name=None):
         """Force re-validation of environment (clear cache)"""
@@ -12892,88 +13267,132 @@ def setup_logging(app_dir=None):
     return logger
 
 def main():
-    """Main application entry point"""
-    # Parse command line arguments
-    debug_mode = "--debug" in sys.argv
-    
-    # Setup logging
-    logger = setup_logging()
-    logger.info(f"Starting {APP_NAME} v{APP_VERSION}")
-    
+    """Main entry point - Fixed to prevent double dialogs and proper startup flow"""
     try:
-        # Check Jedi availability for IntelliSense (fast check)
-        try:
-            import jedi
-            logger.info("Jedi IntelliSense available")
-        except ImportError:
-            logger.warning("Jedi not available - IntelliSense features will be limited.")
+        # Check if running from source or frozen
+        if getattr(sys, 'frozen', False):
+            logger.info("Running from executable")
+        else:
+            logger.info("Running from source")
+        
+        # Parse command line arguments
+        parser = argparse.ArgumentParser(description="Manim Animation Studio")
+        parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+        args = parser.parse_args()
+        
+        debug_mode = args.debug
+        
+        if debug_mode:
+            logger.info("Debug mode enabled")
+            print("🐛 Debug mode activated")
+        
+        # Check Jedi availability for IntelliSense
+        if not JEDI_AVAILABLE:
             print("Warning: Jedi not available. IntelliSense features will be limited.")
             print("Install Jedi with: pip install jedi")
 
-        # Check LaTeX availability and pass result to UI (fast check)
+        # Check LaTeX availability (fast check)
         logger.info("Checking LaTeX installation...")
         latex_path = check_latex_installation()
         if latex_path:
             logger.info(f"LaTeX found at: {latex_path}")
         else:
-            logger.warning("LaTeX not found")
+            logger.warning("LaTeX not found - some features may be limited")
 
-        # Create and run application
+        # Create main application instance
         logger.info("Creating main application...")
         app = ManimStudioApp(latex_path=latex_path, debug=debug_mode)
         
-        # Check environment and show setup if needed (but with minimal logging)
-        if not app.venv_manager.is_environment_ready():
-            app.root.withdraw()
-            try:
-                # Show environment setup dialog directly
-                dialog = EnvironmentSetupDialog(app.root, app.venv_manager)
-                app.root.wait_window(dialog)
-                
-                # Check if setup was completed (no warning message)
-                if not app.venv_manager.is_environment_ready():
-                    # Just return without warnings
-                    return
-                    
-            except Exception as e:
-                logger.error(f"Error in environment setup: {e}")
-                return
-
+        # REMOVED: Environment check from here - let the app handle it internally
+        # The app will:
+        # 1. Keep window hidden initially
+        # 2. Check environment first
+        # 3. Show setup dialog if needed (without main UI visible)
+        # 4. Show main UI only after environment is ready
+        
         logger.info("Starting application main loop...")
         
-        # Show window and start main loop
+        # Start the main loop - app will handle showing window when ready
         try:
-            if app.root and app.root.winfo_exists():
-                app.root.deiconify()
-                app.root.update()
-                app.root.lift()
-                app.root.focus_force()
-            
-            # Start the main loop
+            # DON'T show window here - app handles it after environment check
             app.run()
+            
+        except KeyboardInterrupt:
+            logger.info("Application interrupted by user")
             
         except Exception as e:
             error_msg = str(e)
-            if "application has been destroyed" not in error_msg and "invalid command name" not in error_msg:
-                logger.error(f"UI error: {e}")
+            # Filter out common shutdown messages that aren't real errors
+            if not any(msg in error_msg.lower() for msg in [
+                "application has been destroyed",
+                "invalid command name",
+                "bad window path",
+                "can't invoke",
+                "destroyed while"
+            ]):
+                logger.error(f"UI error during main loop: {e}")
+                # Try to show error dialog if possible
+                try:
+                    if app.root and app.root.winfo_exists():
+                        import tkinter.messagebox as messagebox
+                        messagebox.showerror(
+                            "Application Error", 
+                            f"An error occurred:\n{error_msg}",
+                            parent=app.root
+                        )
+                except:
+                    # If we can't show dialog, just print
+                    print(f"Application error: {error_msg}")
         
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
+    except ImportError as e:
+        error_msg = f"Missing required dependency: {e}"
+        logger.error(error_msg)
         try:
-            from tkinter import messagebox
-            messagebox.showerror("Startup Error", f"Failed to start application: {e}")
+            # Try to show error without tkinter dependencies
+            import tkinter
+            import tkinter.messagebox as messagebox
+            root = tkinter.Tk()
+            root.withdraw()
+            messagebox.showerror("Missing Dependency", error_msg)
+            root.destroy()
         except:
-            print(f"Failed to start application: {e}")
+            print(error_msg)
+            print("Please install missing dependencies and try again.")
+    
+    except Exception as e:
+        error_msg = f"Startup error: {e}"
+        logger.error(error_msg)
+        try:
+            # Try to show startup error dialog
+            import tkinter
+            import tkinter.messagebox as messagebox
+            root = tkinter.Tk()
+            root.withdraw()
+            messagebox.showerror("Startup Error", f"Failed to start application:\n\n{error_msg}")
+            root.destroy()
+        except:
+            print(f"Failed to start application: {error_msg}")
+            print("Please check the log file for more details.")
     
     finally:
         # Cleanup logging handlers
-        if logger:
+        if 'logger' in locals() and logger:
             try:
                 for handler in logger.handlers[:]:
-                    handler.close()
-                    logger.removeHandler(handler)
+                    try:
+                        handler.close()
+                        logger.removeHandler(handler)
+                    except:
+                        pass
             except:
                 pass
+        
+        # Final cleanup message
+        try:
+            logger.info("Application shutdown complete")
+        except:
+            print("Application shutdown complete")
+
 
 if __name__ == "__main__":
     main()
