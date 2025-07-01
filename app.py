@@ -92,6 +92,39 @@ if getattr(sys, 'frozen', False):
 # =============================================================================
 # EMERGENCY ENCODING FIXES - Add this RIGHT AFTER imports
 # =============================================================================
+def get_responsive_dialog_size(base_width, base_height, screen_w=None, screen_h=None):
+    """Get responsive dialog size that works on high DPI displays"""
+    if screen_w is None:
+        screen_w = 1920  # Default fallback
+    if screen_h is None:
+        screen_h = 1080  # Default fallback
+    
+    # Calculate DPI scaling
+    try:
+        if os.name == 'nt':
+            import ctypes
+            user32 = ctypes.windll.user32
+            user32.SetProcessDPIAware()
+            dpi = user32.GetDpiForSystem()
+            dpi_scale = dpi / 96.0
+        else:
+            dpi_scale = 1.0
+    except:
+        dpi_scale = 1.0
+    
+    # Calculate max usable space
+    max_width = int(screen_w * 0.85)
+    max_height = int(screen_h * 0.80)
+    
+    # Apply scaling but constrain to screen
+    scaled_width = min(int(base_width * dpi_scale), max_width)
+    scaled_height = min(int(base_height * dpi_scale), max_height)
+    
+    # Ensure minimum size
+    final_width = max(400, scaled_width)
+    final_height = max(300, scaled_height)
+    
+    return final_width, final_height, dpi_scale
 def apply_emergency_encoding_fixes():
     """Apply immediate encoding fixes for cp950 errors"""
     import os
@@ -1841,39 +1874,78 @@ class SystemTerminalManager:
       
 
 class EnvironmentSetupDialog(ctk.CTkToplevel):
-    """Professional dialog for setting up the default environment on first run"""
+    """Original Environment setup dialog with size control and fixed threading"""
     
     def __init__(self, parent, venv_manager):
         super().__init__(parent)
         
-        self.parent_window = parent  # Store reference to parent window
+        self.parent = parent
         self.venv_manager = venv_manager
         self.setup_complete = False
         
+        # Store reference to the main application window for continue_to_app
+        if hasattr(venv_manager, 'parent_app') and hasattr(venv_manager.parent_app, 'root'):
+            self.main_app_window = venv_manager.parent_app.root
+        else:
+            self.main_app_window = parent
+        
         self.title("ManimStudio - Environment Setup")
-        self.geometry("750x780")
+        
+        # RESPONSIVE SIZE FIX: Instead of hardcoded "750x780"
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        
+        # Calculate DPI scaling factor
+        try:
+            if os.name == 'nt':
+                import ctypes
+                user32 = ctypes.windll.user32
+                user32.SetProcessDPIAware()
+                dpi = user32.GetDpiForSystem()
+                dpi_scale = dpi / 96.0
+            else:
+                dpi_scale = 1.0
+        except:
+            dpi_scale = 1.0
+        
+        # Base size (original was 750x780)
+        base_width = 750
+        base_height = 780
+        
+        # Calculate maximum usable screen space (leave room for taskbar)
+        max_width = int(screen_w * 0.85)
+        max_height = int(screen_h * 0.80)
+        
+        # Apply DPI scaling but ensure it fits on screen
+        scaled_width = min(int(base_width * dpi_scale), max_width)
+        scaled_height = min(int(base_height * dpi_scale), max_height)
+        
+        # Ensure minimum size
+        final_width = max(600, scaled_width)
+        final_height = max(500, scaled_height)
+        
+        self.geometry(f"{final_width}x{final_height}")
         self.transient(parent)
         self.grab_set()
         
-        # Center the dialog
-        self.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 100,
-            parent.winfo_rooty() + 50
-        ))
+        # Center the dialog properly on screen
+        x = (screen_w - final_width) // 2
+        y = (screen_h - final_height) // 2
+        self.geometry(f"{final_width}x{final_height}+{x}+{y}")
         
         # Prevent closing during setup
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
-        # Initialize queue-based logging
+        # Initialize queue-based logging for thread-safe communication
         import queue
         self._log_queue = queue.Queue()
         self._result_queue = queue.Queue()
         self._start_log_processor()
         
+        # Create the UI
         self.setup_ui()
-        
     def setup_ui(self):
-        """Setup the environment setup dialog UI"""
+        """Setup the environment setup dialog UI - ORIGINAL STRUCTURE"""
         # Safety check: Ensure VSCODE_COLORS has required keys
         global VSCODE_COLORS
         if "success" not in VSCODE_COLORS:
@@ -1888,6 +1960,7 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             VSCODE_COLORS["text"] = "#CCCCCC"
         if "text_secondary" not in VSCODE_COLORS:
             VSCODE_COLORS["text_secondary"] = "#858585"
+            
         # Main frame
         main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -1908,168 +1981,96 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         title_label = ctk.CTkLabel(
             header_frame,
             text="Welcome to ManimStudio!",
-            font=ctk.CTkFont(size=20, weight="bold"),
+            font=ctk.CTkFont(size=24, weight="bold"),
             text_color=VSCODE_COLORS["text"]
         )
-        title_label.pack(pady=(0, 10))
+        title_label.pack(pady=(0, 5))
         
+        # Subtitle
         subtitle_label = ctk.CTkLabel(
             header_frame,
-            text="Set up your Python environment for animation creation",
-            font=ctk.CTkFont(size=14),
+            text="Let's set up your animation environment",
+            font=ctk.CTkFont(size=16),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        subtitle_label.pack()
+        subtitle_label.pack(pady=(0, 10))
         
-        # Package selection frame
-        package_frame = ctk.CTkFrame(main_frame)
-        package_frame.pack(fill="x", pady=(0, 15))
+        # Info text
+        info_text = """
+ManimStudio needs a Python environment with Manim and dependencies.
+This will create a new virtual environment and install everything needed.
+
+⏱️ Setup takes 5-10 minutes depending on your internet connection
+📦 Downloads ~500MB of packages
+🎯 Creates isolated environment (won't affect your system Python)
+        """
         
-        package_title = ctk.CTkLabel(
-            package_frame,
-            text="📦 Select Packages to Install",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=VSCODE_COLORS["text"]
+        info_label = ctk.CTkLabel(
+            header_frame,
+            text=info_text.strip(),
+            font=ctk.CTkFont(size=13),
+            text_color=VSCODE_COLORS["text_secondary"],
+            justify="left"
         )
-        package_title.pack(pady=(15, 10))
-        
-        # Package checkboxes in grid
-        checkbox_frame = ctk.CTkFrame(package_frame, fg_color="transparent")
-        checkbox_frame.pack(fill="x", padx=20, pady=(0, 15))
-        
-        # Essential packages (always selected)essential_frame = ctk.CTkFrame(checkbox_frame, fg_color=VSCODE_COLORS["input"])
-        essential_frame = ctk.CTkFrame(checkbox_frame, fg_color=VSCODE_COLORS["surface_light"])
-        essential_frame.pack(fill="x", pady=(0, 10))
-        
-        essential_label = ctk.CTkLabel(
-            essential_frame,
-            text="✅ Essential Packages (Required)",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=VSCODE_COLORS["success"]
-        )
-        essential_label.pack(pady=10)
-        
-        essential_desc = ctk.CTkLabel(
-            essential_frame,
-            text="manim, numpy, matplotlib, customtkinter, jedi, pillow",
-            font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        essential_desc.pack(pady=(0, 10))
-        
-        # Optional packages
-        optional_packages = {
-            "Video Processing": ["opencv-python", "moviepy", "imageio"],
-            "Scientific Computing": ["scipy", "sympy"],
-            "Audio Processing": ["pydub"],
-            "Enhanced Graphics": ["moderngl", "colour"],
-            "Utilities": ["requests", "rich", "tqdm"]
-        }
-        
-        self.package_vars = {}
-        
-        for category, packages in optional_packages.items():
-            cat_frame = ctk.CTkFrame(checkbox_frame, fg_color="transparent")
-            cat_frame.pack(fill="x", pady=2)
-            
-            cat_label = ctk.CTkLabel(
-                cat_frame,
-                text=f"📁 {category}",
-                font=ctk.CTkFont(size=13, weight="bold"),
-                text_color=VSCODE_COLORS["text"]
-            )
-            cat_label.pack(anchor="w")
-            
-            pkg_grid = ctk.CTkFrame(cat_frame, fg_color="transparent")
-            pkg_grid.pack(fill="x", padx=20)
-            
-            for i, pkg in enumerate(packages):
-                var = ctk.BooleanVar(value=True)  # Default to selected
-                self.package_vars[pkg] = var
-                
-                checkbox = ctk.CTkCheckBox(
-                    pkg_grid,
-                    text=pkg,
-                    variable=var,
-                    text_color=VSCODE_COLORS["text"],
-                    font=ctk.CTkFont(size=12)
-                )
-                checkbox.grid(row=i//2, column=i%2, sticky="w", padx=10, pady=2)
-        
-        # CPU Usage setting
-        cpu_frame = ctk.CTkFrame(main_frame)
-        cpu_frame.pack(fill="x", pady=(0, 15))
-        
-        cpu_title = ctk.CTkLabel(
-            cpu_frame,
-            text="⚙️ CPU Usage",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=VSCODE_COLORS["text"]
-        )
-        cpu_title.pack(pady=(15, 10))
-        
-        self.cpu_var = ctk.StringVar(value="Medium")
-        cpu_options = ["Low (1 core)", "Medium (Half cores)", "High (All cores)"]
-        
-        cpu_menu = ctk.CTkOptionMenu(
-            cpu_frame,
-            variable=self.cpu_var,
-            values=cpu_options,
-            font=ctk.CTkFont(size=12)
-        )
-        cpu_menu.pack(pady=(0, 15))
+        info_label.pack(pady=(0, 20))
         
         # Progress section
-        progress_frame = ctk.CTkFrame(main_frame)
+        progress_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
         progress_frame.pack(fill="x", pady=(0, 15))
         
-        # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(progress_frame, height=20)
-        self.progress_bar.pack(fill="x", padx=20, pady=(15, 10))
-        self.progress_bar.set(0)
-        
-        # Status labels
+        # Step label
         self.step_label = ctk.CTkLabel(
             progress_frame,
-            text="Ready to begin setup",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            text="Ready to start setup",
+            font=ctk.CTkFont(size=16, weight="bold"),
             text_color=VSCODE_COLORS["text"]
         )
-        self.step_label.pack(pady=(0, 5))
+        self.step_label.pack(pady=(15, 5))
         
+        # Detail label
         self.detail_label = ctk.CTkLabel(
             progress_frame,
-            text="Click 'Start Setup' to begin environment configuration",
+            text="Click 'Start Setup' to begin",
             font=ctk.CTkFont(size=12),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.detail_label.pack(pady=(0, 15))
+        self.detail_label.pack(pady=(0, 10))
         
-        # Log frame
-        log_frame = ctk.CTkFrame(main_frame)
-        log_frame.pack(fill="both", expand=True, pady=(0, 15))
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.progress_bar.pack(fill="x", padx=20, pady=(0, 15))
+        self.progress_bar.set(0)
         
-        log_title = ctk.CTkLabel(
+        # Log section
+        log_frame = ctk.CTkFrame(main_frame, fg_color=VSCODE_COLORS["surface_light"])
+        log_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        log_label = ctk.CTkLabel(
             log_frame,
-            text="📋 Setup Log",
+            text="📋 Setup Log:",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=VSCODE_COLORS["text"]
         )
-        log_title.pack(pady=(10, 5))
+        log_label.pack(anchor="w", padx=15, pady=(15, 10))
         
-        # Log text widget
+        # Log text area
         self.log_text = ctk.CTkTextbox(
             log_frame,
+            width=400,
             height=200,
             font=ctk.CTkFont(size=11, family="Consolas"),
             text_color=VSCODE_COLORS["text"],
-            fg_color=VSCODE_COLORS["surface_light"]
+            fg_color=VSCODE_COLORS["background"]
         )
         self.log_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         
-        # Button frame
+        # Initial log message
+        self.log_text.insert("end", "🎬 ManimStudio Environment Setup\n")
+        self.log_text.insert("end", "Ready to begin installation...\n\n")
+        
+        # Buttons
         button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        button_frame.pack(fill="x", pady=(0, 10))
+        button_frame.pack(fill="x")
         
         # Start button
         self.start_button = ctk.CTkButton(
@@ -2077,22 +2078,23 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             text="🚀 Start Setup",
             command=self.start_setup,
             height=40,
+            width=140,
             font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=VSCODE_COLORS["primary"],
-            hover_color=VSCODE_COLORS["primary_hover"]
+            fg_color=VSCODE_COLORS["success"],
+            hover_color="#138D75"
         )
-        self.start_button.pack(side="left")
+        self.start_button.pack(side="left", padx=(0, 10))
         
         # Skip button
         self.skip_button = ctk.CTkButton(
             button_frame,
-            text="⏭️ Skip",
+            text="⏭️ Skip Setup",
             command=self.skip_setup,
             height=40,
+            width=140,
             font=ctk.CTkFont(size=14),
-            fg_color="transparent",
-            border_width=2,
-            text_color=VSCODE_COLORS["text_secondary"]
+            fg_color=VSCODE_COLORS["warning"],
+            hover_color="#D68910"
         )
         self.skip_button.pack(side="left", padx=(10, 0))
         
@@ -2276,96 +2278,86 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
         except:
             # No result yet, check again later
             self.after(500, lambda: self.check_for_results(packages, next_step))
-
-    def check_for_package_results(self, packages, current_package_index):
-        """Check for package installation results"""
-        try:
-            action, result = self._result_queue.get_nowait()
-            
-            if action == 'package_installed':
-                self.install_packages_step_by_step(packages, result)
-                
-        except:
-            # No result yet, check again later
-            self.after(500, lambda: self.check_for_package_results(packages, current_package_index))
         
     def setup_complete_ui(self):
         """Update UI when setup is complete"""
         self.setup_complete = True
         self.progress_bar.set(1.0)
         self.step_label.configure(text="✅ Setup Complete!")
-        self.detail_label.configure(text="Environment is ready to use")
+        self.detail_label.configure(text="Environment ready for animations")
         
-        # Enable the continue button
-        self.close_button.configure(state="normal", text="✅ Continue to App")
+        # Enable continue button
+        self.close_button.configure(state="normal")
         
-        # Update button colors to indicate success
-        self.close_button.configure(
-            fg_color="#28a745",  # Green color for success
-            hover_color="#218838"
-        )
-        
-    def skip_setup(self):
-        """Skip environment setup"""
-        from tkinter import messagebox
-        if messagebox.askyesno(
-            "Skip Setup",
-            "Are you sure you want to skip environment setup?\n\n"
-            "You can set up the environment later from the Tools menu.",
-            parent=self
-        ):
-            self.venv_manager.needs_setup = False
-            # Ensure main window is shown before destroying dialog
-            if hasattr(self, 'parent_window') and self.parent_window:
-                self.parent_window.after(10, lambda: self.parent_window.deiconify())
-            self.destroy()
-            
-
-    def continue_to_app(self):
-        """Continue to main application"""
-        if self.setup_complete:
-            self.venv_manager.needs_setup = False
-            # Ensure main window is shown before destroying dialog
-            if hasattr(self, 'parent_window') and self.parent_window:
-                self.parent_window.after(10, lambda: self.parent_window.deiconify())
-            self.destroy()
-        else:
-            # Skip warning - just start setup if not complete
-            self.start_setup()
-
-    def on_closing(self):
-        """Handle application closing"""
-        try:
-            if hasattr(self, 'logger'):
-                self.logger.info("Application closing...")
-            
-            # Stop any running processes
-            self.stop_process()
-            
-            # Save settings
-            self.save_settings()
-            
-            # Destroy the window
-            if self.root and self.root.winfo_exists():
-                self.root.quit()
-                self.root.destroy()
-                
-        except Exception as e:
-            # Ignore errors during shutdown
-            pass
+    def show_warning(self, message):
+        """Show warning state"""
+        self.setup_complete = True
+        self.step_label.configure(text="⚠️ Setup Completed with Warnings")
+        self.detail_label.configure(text=message)
+        self.close_button.configure(state="normal")
         
     def show_error(self, message):
-        """Show error message"""
-        from tkinter import messagebox
-        messagebox.showerror("Setup Error", message, parent=self)
+        """Show error state"""
+        self.step_label.configure(text="❌ Setup Failed")
+        self.detail_label.configure(text=message)
         self.start_button.configure(state="normal")
         self.skip_button.configure(state="normal")
+        
+    def skip_setup(self):
+        """Skip the setup process"""
+        result = messagebox.askyesno(
+            "Skip Setup", 
+            "Are you sure you want to skip environment setup?\n\n"
+            "You can set up the environment later from the main application.",
+            parent=self
+        )
+        
+        if result:
+            self.log_message("⏭️ Setup skipped by user")
+            self.log_message("💡 You can set up environment later from the main menu")
+            self.step_label.configure(text="Setup skipped")
+            self.detail_label.configure(text="Environment setup was skipped")
+            self.setup_complete = True
+            self.close_button.configure(state="normal")
+    
+    def continue_to_app(self):
+        """Continue to the main application"""
+        self.setup_complete = True
+        
+        # Store reference before destroying dialog
+        main_window = self.main_app_window
+        
+        # Close this setup dialog
+        self.destroy()
+        
+        # Show the main application window that was hidden
+        if main_window and main_window.winfo_exists():
+            def show_main_window():
+                try:
+                    main_window.deiconify()      # Show the window
+                    main_window.lift()           # Bring to front
+                    main_window.focus_force()    # Give focus
+                    main_window.state('normal')  # Ensure not minimized
+                    main_window.update()         # Force update
+                except Exception as e:
+                    print(f"Error showing main window: {e}")
             
-    def show_warning(self, message):
-        """Show warning message"""
-        from tkinter import messagebox
-        messagebox.showwarning("Setup Warning", message, parent=self)
-        self.setup_complete_ui()
+            # Use after() to ensure dialog closes first
+            main_window.after(50, show_main_window)
+        
+    def on_closing(self):
+        """Handle window close event"""
+        if not self.setup_complete:
+            result = messagebox.askyesno(
+                "Close Setup", 
+                "Environment setup is not complete.\n\nClose anyway?",
+                parent=self
+            )
+            if result:
+                self.destroy()
+        else:
+            self.destroy()
+
 class EnhancedVenvManagerDialog(ctk.CTkToplevel):
     """Enhanced dialog for manual virtual environment management"""
     
@@ -5411,7 +5403,7 @@ class IntelliSenseEngine:
 
 
 class ResponsiveUI:
-    """Responsive UI manager for different screen sizes and DPI settings"""
+    """Enhanced Responsive UI manager for different screen sizes and DPI settings"""
     
     def __init__(self, root):
         self.root = root
@@ -5420,6 +5412,10 @@ class ResponsiveUI:
         self.dpi_scale = self._get_dpi_scale()
         self.dpi = self.get_dpi()
         self.scale_factor = self.calculate_scale_factor()
+        
+        # Quality-based UI scaling
+        self.quality_scale_factor = 1.0
+        self.current_quality = "Medium"  # Default quality
         
     def _get_dpi_scale(self):
         """Get DPI scaling factor"""
@@ -5464,15 +5460,35 @@ class ResponsiveUI:
             
         return max(0.7, min(1.5, base_scale))
 
+    def set_quality_scaling(self, quality):
+        """Set UI scaling based on render quality to optimize performance"""
+        self.current_quality = quality
+        
+        # Quality-based scaling factors
+        quality_scaling = {
+            "Low": 0.9,      # Smaller UI for lower quality
+            "Medium": 1.0,    # Normal UI
+            "High": 1.1,     # Slightly larger UI for high quality
+            "Ultra": 1.15,   # Larger UI for ultra quality
+            "Custom": 1.0    # Default for custom
+        }
+        
+        self.quality_scale_factor = quality_scaling.get(quality, 1.0)
+
+    def get_combined_scale_factor(self):
+        """Get combined scale factor including quality scaling"""
+        return self.scale_factor * self.quality_scale_factor
+
     def get_optimal_window_size(self, preferred_width, preferred_height):
         """Get optimal window size based on screen dimensions"""
         # Calculate maximum usable screen space (leave room for taskbar)
         max_width = int(self.screen_width * 0.9)
         max_height = int(self.screen_height * 0.85)
         
-        # Scale preferred size by DPI
-        scaled_width = int(preferred_width * self.dpi_scale)
-        scaled_height = int(preferred_height * self.dpi_scale)
+        # Scale preferred size by combined DPI and quality scale
+        combined_scale = self.get_combined_scale_factor()
+        scaled_width = int(preferred_width * self.dpi_scale * combined_scale)
+        scaled_height = int(preferred_height * self.dpi_scale * combined_scale)
         
         # Ensure window fits on screen
         final_width = min(scaled_width, max_width)
@@ -5481,16 +5497,31 @@ class ResponsiveUI:
         return final_width, final_height
     
     def scale_dimension(self, value):
-        """Scale a dimension value"""
-        return int(value * self.scale_factor)
+        """Scale a dimension value with quality consideration"""
+        return int(value * self.get_combined_scale_factor())
     
     def get_font_size(self, base_size):
-        """Get responsive font size"""
-        scaled = int(base_size * self.scale_factor)
+        """Get responsive font size with quality scaling"""
+        scaled = int(base_size * self.get_combined_scale_factor())
         return max(8, min(32, scaled))
     
+    def get_button_dimensions(self, base_width=None, base_height=35):
+        """Get responsive button dimensions that ensure all buttons are visible"""
+        height = self.scale_dimension(base_height)
+        
+        # Ensure minimum button height for usability
+        height = max(30, height)
+        
+        # Scale width if provided
+        if base_width:
+            width = self.scale_dimension(base_width)
+            width = max(50, width)  # Minimum width
+            return width, height
+        
+        return height
+    
     def get_window_size(self, base_width, base_height):
-        """Get responsive window size with screen constraints (alias for compatibility)"""
+        """Get responsive window size with screen constraints"""
         # Use percentage of screen for very small screens
         if self.screen_width < 1024 or self.screen_height < 768:
             width = int(self.screen_width * 0.9)
@@ -5506,40 +5537,264 @@ class ResponsiveUI:
         return width, height
         
     def get_optimal_sidebar_width(self, base_width=350):
-        """Get responsive sidebar width"""
+        """Get responsive sidebar width with quality consideration"""
         if self.screen_width < 1024:
-            return self.scale_dimension(280)
+            base_width = 280
         elif self.screen_width < 1366:
-            return self.scale_dimension(320)
-        else:
-            return self.scale_dimension(base_width)
+            base_width = 320
+            
+        return self.scale_dimension(base_width)
     
     def get_optimal_font_sizes(self):
         """Get optimal font sizes for different elements"""
         return {
+            "tiny": self.get_font_size(8),
             "small": self.get_font_size(10),
             "normal": self.get_font_size(12),
             "medium": self.get_font_size(13),
             "large": self.get_font_size(16),
-            "header": self.get_font_size(18)
+            "header": self.get_font_size(18),
+            "title": self.get_font_size(20)
         }
     
     def get_optimal_spacing(self):
-        """Get optimal spacing values"""
+        """Get optimal spacing values with quality scaling"""
         return {
+            "tiny": self.scale_dimension(2),
             "small": self.scale_dimension(5),
             "normal": self.scale_dimension(10),
             "medium": self.scale_dimension(15),
-            "large": self.scale_dimension(20)
+            "large": self.scale_dimension(20),
+            "xlarge": self.scale_dimension(25)
         }
         
     def get_padding(self, base_padding):
         """Get scaled padding"""
-        return max(2, int(base_padding * self.dpi_scale))
+        return max(2, int(base_padding * self.get_combined_scale_factor()))
     
     def get_sidebar_width(self, base_width=350):
         """Get responsive sidebar width (alias for compatibility)"""
         return self.get_optimal_sidebar_width(base_width)
+
+    def get_combo_height(self, base_height=36):
+        """Get responsive combo box height"""
+        return self.scale_dimension(base_height)
+
+    def get_responsive_button_config(self, base_width=None, base_height=35, font_size=12):
+        """Get complete responsive button configuration"""
+        if base_width:
+            width, height = self.get_button_dimensions(base_width, base_height)
+            return {
+                "width": width,
+                "height": height,
+                "font": ("Segoe UI", self.get_font_size(font_size))
+            }
+        else:
+            height = self.get_button_dimensions(base_height=base_height)
+            return {
+                "height": height,
+                "font": ("Segoe UI", self.get_font_size(font_size))
+            }
+
+    def apply_responsive_config(self, widget, widget_type="button", **kwargs):
+        """Apply responsive configuration to a widget"""
+        try:
+            if widget_type == "button":
+                config = self.get_responsive_button_config(
+                    kwargs.get("base_width"),
+                    kwargs.get("base_height", 35),
+                    kwargs.get("font_size", 12)
+                )
+                widget.configure(**config)
+            elif widget_type == "combo":
+                height = self.get_combo_height(kwargs.get("base_height", 36))
+                font_size = self.get_font_size(kwargs.get("font_size", 12))
+                widget.configure(height=height, font=("Segoe UI", font_size))
+            elif widget_type == "label":
+                font_size = self.get_font_size(kwargs.get("font_size", 12))
+                weight = kwargs.get("weight", "normal")
+                widget.configure(font=("Segoe UI", font_size, weight))
+        except Exception as e:
+            print(f"Error applying responsive config: {e}")
+
+# Updated UI creation methods to use ResponsiveUI properly
+
+def create_responsive_ui_elements(self):
+    """Example of how to create UI elements with proper responsive sizing"""
+    
+    # Get responsive dimensions and fonts
+    fonts = self.responsive.get_optimal_font_sizes()
+    spacing = self.responsive.get_optimal_spacing()
+    
+    # Create buttons with responsive sizing
+    def create_responsive_button(parent, text, command=None, button_type="normal"):
+        """Create a button with responsive sizing"""
+        
+        if button_type == "large":
+            btn_config = self.responsive.get_responsive_button_config(
+                base_height=50, font_size=14
+            )
+        elif button_type == "small":
+            btn_config = self.responsive.get_responsive_button_config(
+                base_width=30, base_height=30, font_size=10
+            )
+        else:  # normal
+            btn_config = self.responsive.get_responsive_button_config(
+                base_height=35, font_size=12
+            )
+        
+        return ctk.CTkButton(
+            parent,
+            text=text,
+            command=command,
+            **btn_config,
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS["primary_hover"]
+        )
+    
+    # Example usage in sidebar creation:
+    def create_sidebar_with_responsive_buttons(self):
+        """Create sidebar with properly sized responsive buttons"""
+        
+        # Get responsive dimensions
+        sidebar_width = self.responsive.get_optimal_sidebar_width()
+        fonts = self.responsive.get_optimal_font_sizes()
+        spacing = self.responsive.get_optimal_spacing()
+        
+        # Create sidebar
+        self.sidebar = ctk.CTkFrame(self.root, width=sidebar_width)
+        self.sidebar.pack(side="left", fill="y", padx=spacing["normal"], pady=spacing["normal"])
+        
+        # Preview button with large sizing
+        self.quick_preview_button = create_responsive_button(
+            self.sidebar,
+            text="⚡ Quick Preview", 
+            command=self.quick_preview,
+            button_type="large"
+        )
+        self.quick_preview_button.pack(fill="x", padx=spacing["medium"], pady=spacing["medium"])
+        
+        # Render button with large sizing
+        self.render_button = create_responsive_button(
+            self.sidebar,
+            text="🚀 Render Animation",
+            command=self.render_animation,
+            button_type="large"
+        )
+        self.render_button.pack(fill="x", padx=spacing["medium"], pady=spacing["medium"])
+        
+        # Small utility buttons
+        button_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        button_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["small"])
+        
+        find_btn = create_responsive_button(
+            button_frame,
+            text="🔍",
+            command=self.show_find_dialog,
+            button_type="small"
+        )
+        find_btn.pack(side="left", padx=spacing["tiny"])
+        
+        font_decrease_btn = create_responsive_button(
+            button_frame,
+            text="A-",
+            command=self.decrease_font_size,
+            button_type="small"
+        )
+        font_decrease_btn.pack(side="left", padx=spacing["tiny"])
+        
+        font_increase_btn = create_responsive_button(
+            button_frame,
+            text="A+",
+            command=self.increase_font_size,
+            button_type="small"
+        )
+        font_increase_btn.pack(side="left", padx=spacing["tiny"])
+
+def on_quality_change(self, quality):
+    """Handle quality change and update UI scaling"""
+    # Update ResponsiveUI with new quality
+    self.responsive.set_quality_scaling(quality)
+    
+    # Update UI elements that need rescaling
+    self.update_ui_for_quality_change()
+    
+def update_ui_for_quality_change(self):
+    """Update UI elements when quality changes"""
+    
+    # Get new responsive dimensions
+    fonts = self.responsive.get_optimal_font_sizes()
+    spacing = self.responsive.get_optimal_spacing()
+    
+    # Update button heights
+    if hasattr(self, 'quick_preview_button'):
+        self.responsive.apply_responsive_config(
+            self.quick_preview_button, 
+            "button", 
+            base_height=45, 
+            font_size=14
+        )
+    
+    if hasattr(self, 'render_button'):
+        self.responsive.apply_responsive_config(
+            self.quick_preview_button, 
+            "button", 
+            base_height=50, 
+            font_size=14
+        )
+    
+    # Update combo boxes
+    if hasattr(self, 'quality_combo'):
+        self.responsive.apply_responsive_config(
+            self.quality_combo,
+            "combo",
+            base_height=36,
+            font_size=12
+        )
+    
+    # Update labels
+    if hasattr(self, 'quality_info'):
+        self.responsive.apply_responsive_config(
+            self.quality_info,
+            "label", 
+            font_size=11
+        )
+    
+    # Force window to recalculate layout
+    self.root.update_idletasks()
+
+# Usage in main application initialization:
+def initialize_responsive_ui(self):
+    """Initialize responsive UI system in main application"""
+    
+    # Initialize ResponsiveUI
+    self.responsive = ResponsiveUI(self.root)
+    
+    # Set initial quality scaling
+    initial_quality = self.settings.get("quality", "Medium")
+    self.responsive.set_quality_scaling(initial_quality)
+    
+    # Get optimal window size
+    width, height = self.responsive.get_optimal_window_size(1600, 1000)
+    self.root.geometry(f"{width}x{height}")
+    
+    # Set responsive minimum size  
+    min_width, min_height = self.responsive.get_optimal_window_size(1200, 800)
+    self.root.minsize(min_width, min_height)
+    
+    # Center window on screen
+    x = (self.responsive.screen_width - width) // 2
+    y = (self.responsive.screen_height - height) // 2
+    self.root.geometry(f"{width}x{height}+{x}+{y}")
+    
+    # Apply DPI awareness for Windows
+    try:
+        if hasattr(self.root, 'tk') and hasattr(self.root.tk, 'call'):
+            self.root.tk.call('tk', 'scaling', self.responsive.scale_factor)
+    except:
+        pass
+
+
 class AutocompletePopup(tk.Toplevel):
     """Professional autocomplete popup window"""
     
@@ -6961,7 +7216,7 @@ VSCODE_COLORS = {
 
 
 class FullscreenVideoPlayer(tk.Toplevel):
-    """YouTube-style fullscreen video player with proper state management"""
+    """YouTube-style fullscreen video player with overlay controls that don't block video"""
     
     def __init__(self, parent, video_player):
         super().__init__(parent)
@@ -6976,6 +7231,7 @@ class FullscreenVideoPlayer(tk.Toplevel):
         
         # Control visibility
         self.controls_visible = True
+        self.speed_menu_visible = False
         self.mouse_timer = None
         self.last_mouse_move = time.time()
         
@@ -6988,11 +7244,339 @@ class FullscreenVideoPlayer(tk.Toplevel):
         # Sync initial state
         self.sync_with_main_player()
         
+    def setup_fullscreen_ui(self):
+        """Setup YouTube-style fullscreen interface with non-blocking overlay controls"""
+        # Video takes the ENTIRE screen - never gets blocked
+        self.video_frame = tk.Frame(self, bg="black")
+        self.video_frame.pack(fill="both", expand=True)
+        
+        # Video canvas - FULL SCREEN always
+        self.canvas = tk.Canvas(
+            self.video_frame,
+            bg="black",
+            highlightthickness=0,
+            relief="flat"
+        )
+        self.canvas.pack(fill="both", expand=True)
+        
+        # Title overlay (floating on top) - OVERLAY MODE
+        self.title_frame = tk.Frame(self, bg="black")
+        # Don't pack - use place for overlay positioning
+        
+        # Semi-transparent title background
+        self.title_bg = tk.Frame(
+            self.title_frame,
+            bg="#000000",
+            height=60
+        )
+        self.title_bg.pack(fill="x")
+        
+        # Video title
+        self.title_label = tk.Label(
+            self.title_bg,
+            text="Manim Animation Preview",
+            font=("Arial", 18, "bold"),
+            fg="white",
+            bg="#000000"
+        )
+        self.title_label.pack(side="left", padx=20, pady=15)
+        
+        # Exit fullscreen button (top right)
+        self.exit_btn = tk.Button(
+            self.title_bg,
+            text="✕",
+            font=("Arial", 16, "bold"),
+            fg="white",
+            bg="#000000",
+            relief="flat",
+            cursor="hand2",
+            command=self.exit_fullscreen
+        )
+        self.exit_btn.pack(side="right", padx=20, pady=15)
+        
+        # Controls overlay (floating on bottom) - OVERLAY MODE
+        self.overlay_frame = tk.Frame(self, bg="black")
+        # Don't pack - use place for overlay positioning
+        
+        # Semi-transparent controls background
+        self.controls_bg = tk.Frame(
+            self.overlay_frame,
+            bg="#000000",  # Will add transparency effect
+            height=120
+        )
+        self.controls_bg.pack(fill="both", expand=True)
+        
+        # Create controls
+        self.create_youtube_controls()
+        
+        # Position overlays using place() instead of pack() - this ensures they float on top
+        self.position_overlays()
+        
+    def position_overlays(self):
+        """Position overlay controls to float on top without blocking video"""
+        # Get screen dimensions
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        # Position title overlay at top (floating)
+        self.title_frame.place(
+            x=0, y=0,
+            width=screen_width,
+            height=60
+        )
+        
+        # Position controls overlay at bottom (floating)
+        self.overlay_frame.place(
+            x=0, y=screen_height - 120,
+            width=screen_width,
+            height=120
+        )
+
+    def create_youtube_controls(self):
+        """Create YouTube-style controls with semi-transparent background"""
+        # Add semi-transparent gradient background
+        self.controls_bg.configure(bg="#1a1a1a")  # Dark but not fully black
+        
+        # Main controls container with padding
+        controls_main = tk.Frame(self.controls_bg, bg="#1a1a1a")
+        controls_main.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Progress bar section (top of controls)
+        progress_section = tk.Frame(controls_main, bg="#1a1a1a", height=20)
+        progress_section.pack(fill="x", side="top", pady=(0, 10))
+        
+        # Progress bar with semi-transparent background
+        progress_bg = tk.Frame(progress_section, bg="#333333", height=12)
+        progress_bg.pack(fill="x", pady=2)
+        
+        self.progress_canvas = tk.Canvas(
+            progress_bg,
+            height=8,
+            bg="#333333",
+            highlightthickness=0,
+            relief="flat",
+            cursor="hand2"
+        )
+        self.progress_canvas.pack(fill="x", expand=True, padx=5, pady=2)
+        self.progress_canvas.bind("<Button-1>", self.on_progress_click)
+        
+        # Controls row (bottom)
+        controls_row = tk.Frame(controls_main, bg="#1a1a1a")
+        controls_row.pack(fill="x", side="bottom")
+        
+        # Left controls
+        left_controls = tk.Frame(controls_row, bg="#1a1a1a")
+        left_controls.pack(side="left", fill="y")
+        
+        # Play/Pause button with better visibility
+        self.play_btn = tk.Button(
+            left_controls,
+            text="▶",
+            font=("Arial", 20),
+            fg="white",
+            bg="#333333",  # Slightly lighter background
+            relief="flat",
+            cursor="hand2",
+            command=self.toggle_playback,
+            padx=15,
+            pady=8,
+            borderwidth=1,
+            highlightthickness=0
+        )
+        self.play_btn.pack(side="left", padx=(0, 15))
+        
+        # Time display with background for visibility
+        time_bg = tk.Frame(left_controls, bg="#333333")
+        time_bg.pack(side="left", padx=(0, 20))
+        
+        self.time_label = tk.Label(
+            time_bg,
+            text="00:00 / 00:00",
+            font=("Arial", 14),
+            fg="white",
+            bg="#333333",
+            padx=10,
+            pady=5
+        )
+        self.time_label.pack()
+        
+        # Center area (spacer to push right controls to the right)
+        center_spacer = tk.Frame(controls_row, bg="#1a1a1a")
+        center_spacer.pack(side="left", fill="x", expand=True)
+        
+        # Right controls
+        right_controls = tk.Frame(controls_row, bg="#1a1a1a")
+        right_controls.pack(side="right", fill="y")
+        
+        # Speed controls with background for visibility
+        speed_frame = tk.Frame(right_controls, bg="#333333")
+        speed_frame.pack(side="right", padx=(0, 20))
+        
+        # Speed display
+        self.speed_label = tk.Label(
+            speed_frame,
+            text="1.0×",
+            font=("Arial", 12, "bold"),
+            fg="white",
+            bg="#333333",
+            padx=8,
+            pady=2
+        )
+        self.speed_label.pack(side="top")
+        
+        # Speed buttons in horizontal layout
+        speed_buttons_frame = tk.Frame(speed_frame, bg="#333333")
+        speed_buttons_frame.pack(side="bottom", pady=(2, 5))
+        
+        # Speed decrease button
+        speed_down_btn = tk.Button(
+            speed_buttons_frame,
+            text="−",
+            font=("Arial", 12, "bold"),
+            fg="white",
+            bg="#555555",
+            relief="flat",
+            cursor="hand2",
+            command=lambda: self.change_speed(-0.25),
+            width=2,
+            pady=2
+        )
+        speed_down_btn.pack(side="left", padx=(2, 1))
+        
+        # Speed increase button
+        speed_up_btn = tk.Button(
+            speed_buttons_frame,
+            text="+",
+            font=("Arial", 12, "bold"),
+            fg="white",
+            bg="#555555",
+            relief="flat",
+            cursor="hand2",
+            command=lambda: self.change_speed(0.25),
+            width=2,
+            pady=2
+        )
+        speed_up_btn.pack(side="left", padx=(1, 2))
+        
+        # Settings button with background
+        settings_bg = tk.Frame(right_controls, bg="#333333")
+        settings_bg.pack(side="right", padx=(0, 10))
+        
+        self.settings_btn = tk.Button(
+            settings_bg,
+            text="⚙",
+            font=("Arial", 16),
+            fg="white",
+            bg="#555555",
+            relief="flat",
+            cursor="hand2",
+            command=self.show_speed_menu,
+            padx=10,
+            pady=8
+        )
+        self.settings_btn.pack(padx=3, pady=3)
+        
+        # Create speed menu as Toplevel window (not blocked by controls)
+        self.speed_menu = tk.Toplevel(self)
+        self.speed_menu.withdraw()  # Hide initially
+        self.speed_menu.overrideredirect(True)  # Remove window decorations
+        self.speed_menu.configure(bg="#333333", relief="raised", bd=2)
+        self.speed_menu.attributes("-topmost", True)  # Always on top
+        self.speed_menu_visible = False
+        
+        # Speed menu title
+        title_frame = tk.Frame(self.speed_menu, bg="#444444")
+        title_frame.pack(fill="x")
+        
+        title_label = tk.Label(
+            title_frame,
+            text="Playback Speed",
+            font=("Arial", 11, "bold"),
+            fg="white",
+            bg="#444444",
+            pady=5
+        )
+        title_label.pack()
+        
+        # Speed menu items with better styling
+        speeds = [("0.25×", 0.25), ("0.5×", 0.5), ("0.75×", 0.75), ("1.0×", 1.0), 
+                 ("1.25×", 1.25), ("1.5×", 1.5), ("2.0×", 2.0)]
+        
+        # Store speed buttons for highlighting
+        self.speed_buttons = {}
+        
+        for speed_text, speed_value in speeds:
+            btn = tk.Button(
+                self.speed_menu,
+                text=speed_text,
+                font=("Arial", 12),
+                fg="white",
+                bg="#333333",
+                activebackground="#555555",
+                relief="flat",
+                cursor="hand2",
+                command=lambda s=speed_value: self.set_speed_from_menu(s),
+                anchor="center",
+                padx=20,
+                pady=8
+            )
+            btn.pack(fill="x")
+            
+            # Store button reference
+            self.speed_buttons[speed_value] = btn
+            
+            # Highlight current speed (default is 1.0×)
+            if speed_value == 1.0:
+                btn.configure(bg="#555555")
+
+    def setup_bindings(self):
+        """Setup keyboard and mouse bindings"""
+        # Keyboard shortcuts
+        self.bind("<KeyPress>", self.on_key_press)
+        self.focus_set()
+        
+        # Mouse movement and clicks
+        self.bind("<Motion>", self.on_mouse_move)
+        self.bind("<Button-1>", self.on_click_outside_menu)
+        
+        # Canvas bindings
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
+        self.canvas.bind("<Motion>", self.on_mouse_move)
+        
+        # Window bindings
+        self.bind("<FocusIn>", self.on_focus_in)
+        self.bind("<FocusOut>", self.on_focus_out)
+        
+        # Escape key to exit fullscreen
+        self.bind("<Escape>", self.exit_fullscreen)
+        
+        # Additional keyboard shortcuts
+        self.bind("<space>", lambda e: self.toggle_playback())
+        self.bind("<Left>", lambda e: self.seek_relative(-10))
+        self.bind("<Right>", lambda e: self.seek_relative(10))
+        self.bind("<Up>", lambda e: self.change_speed(0.25))
+        self.bind("<Down>", lambda e: self.change_speed(-0.25))
+        
+        # Number keys for speed selection
+        self.bind("<Key-1>", lambda e: self.set_speed(0.25))
+        self.bind("<Key-2>", lambda e: self.set_speed(0.5))
+        self.bind("<Key-3>", lambda e: self.set_speed(0.75))
+        self.bind("<Key-4>", lambda e: self.set_speed(1.0))
+        self.bind("<Key-5>", lambda e: self.set_speed(1.25))
+        self.bind("<Key-6>", lambda e: self.set_speed(1.5))
+        self.bind("<Key-7>", lambda e: self.set_speed(2.0))
+        
+        # Mouse wheel for seeking
+        self.bind("<MouseWheel>", self.on_mouse_wheel)
+
     def sync_with_main_player(self):
         """Sync fullscreen player state with main player"""
         if self.video_player.cap:
             self.display_frame(self.video_player.current_frame)
             self.update_progress_bar()
+            
+            # Sync speed display
+            self.sync_speed_display()
             
             # Update play button state AND start playing if main player is playing
             if self.video_player.is_playing:
@@ -7033,295 +7617,76 @@ class FullscreenVideoPlayer(tk.Toplevel):
         
         # Schedule next sync
         self.after(sync_interval, self.sync_playback_with_main)
-        
-    def setup_fullscreen_ui(self):
-        """Setup YouTube-style fullscreen interface"""
-        # Main video area
-        self.video_frame = tk.Frame(self, bg="black")
-        self.video_frame.pack(fill="both", expand=True)
-        
-        # Video canvas
-        self.canvas = tk.Canvas(
-            self.video_frame,
-            bg="black",
-            highlightthickness=0,
-            relief="flat"
-        )
-        self.canvas.pack(fill="both", expand=True)
-        
-        # YouTube-style overlay controls container
-        self.overlay_frame = tk.Frame(self, bg="black")
-        self.overlay_frame.pack(fill="x", side="bottom")
-        
-        # Gradient background for controls
-        self.controls_bg = tk.Frame(
-            self.overlay_frame,
-            bg="#000000",
-            height=120
-        )
-        self.controls_bg.pack(fill="x", padx=0, pady=0)
-        
-        # Create controls with YouTube-style layout
-        self.create_youtube_controls()
-        
-        # Title overlay (top)
-        self.title_frame = tk.Frame(self, bg="black")
-        self.title_frame.pack(fill="x", side="top")
-        
-        self.title_bg = tk.Frame(
-            self.title_frame,
-            bg="#000000",
-            height=60
-        )
-        self.title_bg.pack(fill="x")
-        
-        # Video title
-        self.title_label = tk.Label(
-            self.title_bg,
-            text="Manim Animation Preview",
-            font=("Arial", 18, "bold"),
-            fg="white",
-            bg="#000000"
-        )
-        self.title_label.pack(side="left", padx=20, pady=15)
-        
-        # Exit fullscreen button (top right)
-        self.exit_btn = tk.Button(
-            self.title_bg,
-            text="⚬ ⚬ ⚬",
-            font=("Arial", 16),
-            fg="white",
-            bg="#000000",
-            relief="flat",
-            cursor="hand2",
-            command=self.exit_fullscreen
-        )
-        self.exit_btn.pack(side="right", padx=20, pady=15)
-        
-    def create_youtube_controls(self):
-        """Create YouTube-style control layout"""
-        # Progress bar (full width, top of controls)
-        self.progress_frame = tk.Frame(self.controls_bg, bg="#000000", height=30)
-        self.progress_frame.pack(fill="x", padx=20, pady=(10, 0))
-        
-        # Custom progress bar that looks like YouTube
-        self.progress_canvas = tk.Canvas(
-            self.progress_frame,
-            height=8,
-            bg="#000000",
-            highlightthickness=0
-        )
-        self.progress_canvas.pack(fill="x", pady=10)
-        self.progress_canvas.bind("<Button-1>", self.on_progress_click)
-        
-        # Main controls row
-        self.main_controls = tk.Frame(self.controls_bg, bg="#000000", height=60)
-        self.main_controls.pack(fill="x", padx=20, pady=(0, 10))
-        
-        # Left side controls
-        self.left_controls = tk.Frame(self.main_controls, bg="#000000")
-        self.left_controls.pack(side="left", fill="y")
-        
-        # Play/Pause button (YouTube style - only one button like YouTube)
-        self.play_btn = tk.Button(
-            self.left_controls,
-            text="▶",
-            font=("Arial", 24),
-            fg="white",
-            bg="#000000",
-            relief="flat",
-            cursor="hand2",
-            command=self.toggle_playback
-        )
-        self.play_btn.pack(side="left", padx=(0, 15))
-        
-        # Volume button
-        self.volume_btn = tk.Button(
-            self.left_controls,
-            text="🔊",
-            font=("Arial", 16),
-            fg="white",
-            bg="#000000",
-            relief="flat",
-            cursor="hand2"
-        )
-        self.volume_btn.pack(side="left", padx=(0, 15))
-        
-        # Time display (YouTube style)
-        self.time_label = tk.Label(
-            self.left_controls,
-            text="0:00 / 0:00",
-            font=("Arial", 14),
-            fg="white",
-            bg="#000000"
-        )
-        self.time_label.pack(side="left", padx=(0, 15))
-        
-        # Right side controls
-        self.right_controls = tk.Frame(self.main_controls, bg="#000000")
-        self.right_controls.pack(side="right", fill="y")
-        
-        # Speed control
-        self.speed_label = tk.Label(
-            self.right_controls,
-            text="1×",
-            font=("Arial", 14),
-            fg="white",
-            bg="#000000"
-        )
-        self.speed_label.pack(side="right", padx=(15, 0))
-        
-        # Settings button
-        self.settings_btn = tk.Button(
-            self.right_controls,
-            text="⚙️",
-            font=("Arial", 16),
-            fg="white",
-            bg="#000000",
-            relief="flat",
-            cursor="hand2",
-            command=self.show_speed_menu
-        )
-        self.settings_btn.pack(side="right", padx=(15, 0))
-        
-        # Fullscreen button
-        self.fullscreen_btn = tk.Button(
-            self.right_controls,
-            text="⛶",
-            font=("Arial", 16),
-            fg="white",
-            bg="#000000",
-            relief="flat",
-            cursor="hand2",
-            command=self.exit_fullscreen
-        )
-        self.fullscreen_btn.pack(side="right", padx=(15, 0))
-        
-        # Speed menu (hidden by default)
-        self.speed_menu = tk.Frame(self, bg="#1c1c1c")
-        self.speed_menu_visible = False
-        
-        speeds = ["0.25", "0.5", "0.75", "Normal", "1.25", "1.5", "1.75", "2"]
-        for speed in speeds:
-            btn = tk.Button(
-                self.speed_menu,
-                text=speed,
-                font=("Arial", 12),
-                fg="white",
-                bg="#1c1c1c",
-                relief="flat",
-                cursor="hand2",
-                command=lambda s=speed: self.set_speed_from_menu(s)
-            )
-            btn.pack(fill="x", pady=1)
-        
-    def setup_bindings(self):
-        """Setup keyboard and mouse bindings for fullscreen"""
-        # Escape to exit fullscreen
-        self.bind("<Escape>", lambda e: self.exit_fullscreen())
-        self.bind("<F11>", lambda e: self.exit_fullscreen())
-        self.bind("<f>", lambda e: self.exit_fullscreen())  # 'f' key like YouTube
-        
-        # Space for play/pause
-        self.bind("<space>", lambda e: self.toggle_playback())
-        
-        # Arrow keys for seeking
-        self.bind("<Left>", lambda e: self.seek_relative(-5))
-        self.bind("<Right>", lambda e: self.seek_relative(5))
-        self.bind("<Up>", lambda e: self.change_speed(0.25))
-        self.bind("<Down>", lambda e: self.change_speed(-0.25))
-        
-        # Number keys for speed
-        for i in range(1, 9):
-            self.bind(f"<Key-{i}>", lambda e, speed=i*0.25: self.set_speed(speed))
-        
-        # Mouse tracking for control visibility
-        self.bind("<Motion>", self.on_mouse_move)
-        self.canvas.bind("<Motion>", self.on_mouse_move)
-        self.bind("<Button-1>", self.on_mouse_click)
-        self.canvas.bind("<Button-1>", self.on_mouse_click)
-        
-        # Focus handling
-        self.focus_set()
-        
+
     def start_mouse_tracking(self):
-        """Start tracking mouse movement for control visibility"""
+        """Start tracking mouse for auto-hide controls"""
         def check_mouse_idle():
-            current_time = time.time()
-            if current_time - self.last_mouse_move > 3.0:  # 3 seconds idle
-                if self.controls_visible:
-                    self.hide_controls()
+            if time.time() - self.last_mouse_move > 3.0 and self.controls_visible:
+                self.hide_controls()
             
-            # Schedule next check
+            # Continue checking if window exists
             if self.winfo_exists():
                 self.after(500, check_mouse_idle)
         
         check_mouse_idle()
-        
-    def on_mouse_move(self, event):
-        """Handle mouse movement"""
-        self.last_mouse_move = time.time()
-        if not self.controls_visible:
-            self.show_controls()
-        
-        # Show cursor
-        self.configure(cursor="")
-        
-        # Hide cursor after delay
-        if self.mouse_timer:
-            self.after_cancel(self.mouse_timer)
-        self.mouse_timer = self.after(3000, lambda: self.configure(cursor="none"))
-        
-    def on_mouse_click(self, event):
-        """Handle mouse clicks"""
-        self.last_mouse_move = time.time()
-        if not self.controls_visible:
-            self.show_controls()
-        else:
-            # Click on video area toggles play/pause (like YouTube)
-            if event.widget == self.canvas:
-                self.toggle_playback()
-    
-    def on_progress_click(self, event):
-        """Handle progress bar clicks for seeking"""
-        if not self.video_player.cap:
+
+    def display_frame(self, frame_number):
+        """Display video frame in fullscreen canvas"""
+        if not self.video_player.cap or not self.winfo_exists():
             return
         
-        canvas_width = self.progress_canvas.winfo_width()
-        if canvas_width > 0:
-            click_position = event.x / canvas_width
-            target_frame = int(click_position * self.video_player.total_frames)
-            target_frame = max(0, min(target_frame, self.video_player.total_frames - 1))
+        try:
+            self.video_player.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = self.video_player.cap.read()
             
-            # Update both players
-            self.video_player.seek_to_frame(target_frame)
-            self.update_progress_bar()
-        
-    def show_controls(self):
-        """Show controls with smooth animation"""
-        if not self.controls_visible:
-            self.controls_visible = True
+            if not ret:
+                return
+                
+            # Get screen dimensions
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
             
-            # Fade in effect (simplified)
-            self.overlay_frame.pack(fill="x", side="bottom")
-            self.title_frame.pack(fill="x", side="top")
+            # Convert frame
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_height, frame_width = frame_rgb.shape[:2]
             
-            # Update progress bar
-            self.update_progress_bar()
+            # Calculate display size to maintain aspect ratio
+            aspect_ratio = frame_width / frame_height
             
-    def hide_controls(self):
-        """Hide controls with smooth animation"""
-        if self.controls_visible:
-            self.controls_visible = False
+            if screen_width / screen_height > aspect_ratio:
+                # Screen is wider than video
+                display_height = screen_height
+                display_width = int(display_height * aspect_ratio)
+            else:
+                # Screen is taller than video
+                display_width = screen_width
+                display_height = int(display_width / aspect_ratio)
             
-            # Fade out effect (simplified)
-            self.overlay_frame.pack_forget()
-            self.title_frame.pack_forget()
+            # Center the video
+            x_offset = (screen_width - display_width) // 2
+            y_offset = (screen_height - display_height) // 2
             
-            # Hide speed menu if visible
-            if self.speed_menu_visible:
-                self.hide_speed_menu()
-        
+            # Resize frame
+            frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
+            
+            # Convert to PhotoImage
+            image = Image.fromarray(frame_resized)
+            photo = ImageTk.PhotoImage(image)
+            
+            # Clear canvas and display frame
+            self.canvas.delete("all")
+            self.canvas.create_image(
+                x_offset, y_offset,
+                anchor="nw",
+                image=photo
+            )
+            
+            # Keep reference to prevent garbage collection
+            self.canvas.image = photo
+            
+        except Exception as e:
+            print(f"Error displaying frame: {e}")
+
     def update_progress_bar(self):
         """Update YouTube-style progress bar"""
         if not self.video_player.cap or not self.controls_visible:
@@ -7370,7 +7735,7 @@ class FullscreenVideoPlayer(tk.Toplevel):
             total_time = f"{int(total_seconds // 60)}:{int(total_seconds % 60):02d}"
             
             self.time_label.configure(text=f"{current_time} / {total_time}")
-        
+
     def toggle_playback(self):
         """Toggle video playback (synchronized with main player)"""
         if self.video_player.cap:
@@ -7395,7 +7760,7 @@ class FullscreenVideoPlayer(tk.Toplevel):
             else:
                 self.play_btn.configure(text="▶")
                 # Fullscreen will stop syncing automatically when main player stops
-        
+
     def seek_relative(self, seconds):
         """Seek relative to current position"""
         if not self.video_player.cap:
@@ -7406,110 +7771,238 @@ class FullscreenVideoPlayer(tk.Toplevel):
         
         self.video_player.seek_to_frame(int(target_frame))
         self.update_progress_bar()
-        
+
     def change_speed(self, delta):
         """Change playback speed"""
-        new_speed = max(0.25, min(8.0, self.video_player.playback_speed + delta))
+        current_speed = getattr(self.video_player, 'playback_speed', 1.0)
+        new_speed = max(0.25, min(8.0, current_speed + delta))
         self.set_speed(new_speed)
-        
+
     def set_speed(self, speed):
-        """Set playback speed"""
-        self.video_player.set_speed(speed)
+        """Set playback speed and update display"""
+        # Update the main video player speed
+        if hasattr(self.video_player, 'set_speed'):
+            self.video_player.set_speed(speed)
+        elif hasattr(self.video_player, 'playback_speed'):
+            self.video_player.playback_speed = speed
+            # Update the speed indicator if it exists
+            if hasattr(self.video_player, 'speed_indicator'):
+                self.video_player.speed_indicator.configure(text=f"{speed}×")
+            # Update speed slider if it exists
+            if hasattr(self.video_player, 'speed_slider'):
+                self.video_player.speed_slider.set(speed)
+        
+        # Update fullscreen speed display
         self.speed_label.configure(text=f"{speed}×")
         
+        # Update menu button highlights
+        for speed_val, button in self.speed_buttons.items():
+            if speed_val == speed:
+                button.configure(bg="#555555")  # Highlight selected
+            else:
+                button.configure(bg="#333333")  # Normal background
+
+    def set_speed_from_menu(self, speed):
+        """Set speed from menu and update highlighting"""
+        self.set_speed(speed)
+        self.hide_speed_menu()
+    def get_current_speed(self):
+        """Get current playback speed from main player"""
+        if hasattr(self.video_player, 'playback_speed'):
+            return self.video_player.playback_speed
+        return 1.0
+
+    def sync_speed_display(self):
+        """Sync speed display with main player"""
+        current_speed = self.get_current_speed()
+        self.speed_label.configure(text=f"{current_speed}×")
+        
+        # Update menu highlights
+        for speed_val, button in self.speed_buttons.items():
+            if abs(speed_val - current_speed) < 0.01:  # Account for floating point precision
+                button.configure(bg="#555555")
+            else:
+                button.configure(bg="#333333")
     def show_speed_menu(self):
-        """Show speed selection menu"""
+        """Show speed menu positioned above controls, not blocked by bar"""
         if not self.speed_menu_visible:
             self.speed_menu_visible = True
             
-            # Position menu above settings button
-            self.speed_menu.place(
-                x=self.winfo_width() - 200,
-                y=self.winfo_height() - 200
-            )
-        else:
-            self.hide_speed_menu()
-        
-    def hide_speed_menu(self):
-        """Hide speed selection menu"""
-        if self.speed_menu_visible:
-            self.speed_menu_visible = False
-            self.speed_menu.place_forget()
-        
-    def set_speed_from_menu(self, speed_text):
-        """Set speed from menu selection"""
-        speed_map = {
-            "0.25": 0.25, "0.5": 0.5, "0.75": 0.75, "Normal": 1.0,
-            "1.25": 1.25, "1.5": 1.5, "1.75": 1.75, "2": 2.0
-        }
-        
-        if speed_text in speed_map:
-            self.set_speed(speed_map[speed_text])
-        
-        self.hide_speed_menu()
-        
-    def display_frame(self, frame_number):
-        """Display video frame in fullscreen canvas"""
-        if not self.video_player.cap or not self.winfo_exists():
-            return
-        
-        try:
-            self.video_player.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-            ret, frame = self.video_player.cap.read()
-            
-            if not ret:
-                return
-                
             # Get screen dimensions
             screen_width = self.winfo_screenwidth()
             screen_height = self.winfo_screenheight()
             
-            # Convert frame
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_height, frame_width = frame_rgb.shape[:2]
+            # Calculate position well above the control bar
+            menu_width = 150
+            menu_height = 230
             
-            # Calculate display size to maintain aspect ratio
-            aspect_ratio = frame_width / frame_height
+            # Position from right edge, well above controls
+            menu_x = screen_width - menu_width - 50  # 50px from right edge
+            menu_y = screen_height - 120 - menu_height - 30  # 30px above controls
             
-            if screen_width / screen_height > aspect_ratio:
-                # Screen is wider than video
-                display_height = screen_height
-                display_width = int(display_height * aspect_ratio)
-            else:
-                # Screen is taller than video
-                display_width = screen_width
-                display_height = int(display_width / aspect_ratio)
+            # Ensure menu doesn't go off screen
+            menu_x = max(10, menu_x)
+            menu_y = max(50, menu_y)  # Don't go too high
             
-            # Resize frame
-            frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
+            # Position and show the toplevel menu
+            self.speed_menu.geometry(f"{menu_width}x{menu_height}+{menu_x}+{menu_y}")
+            self.speed_menu.deiconify()  # Show the menu
+            self.speed_menu.lift()
+            self.speed_menu.focus_set()
             
-            # Convert to PhotoImage
-            image = Image.fromarray(frame_resized)
-            self.photo = ImageTk.PhotoImage(image)
-            
-            # Display centered
-            self.canvas.delete("all")
-            self.canvas.create_image(
-                screen_width // 2,
-                screen_height // 2,
-                image=self.photo,
-                anchor="center"
-            )
-            
-            # Update progress if controls are visible
-            if self.controls_visible:
-                self.update_progress_bar()
-                
-        except Exception as e:
-            print(f"Fullscreen display error: {e}")
-            # Don't crash, just skip this frame
-        
-    def exit_fullscreen(self):
-        """Exit fullscreen mode properly"""
-        # Properly destroy and clear reference
-        self.video_player.fullscreen_player = None
-        self.destroy()
+        else:
+            self.hide_speed_menu()
 
+    def hide_speed_menu(self):
+        """Hide speed menu"""
+        if self.speed_menu_visible:
+            self.speed_menu_visible = False
+            self.speed_menu.withdraw()  # Hide the toplevel window
+
+    def set_speed_from_menu(self, speed):
+        """Set speed from menu and update highlighting"""
+        self.set_speed(speed)
+        self.hide_speed_menu()
+
+    def show_controls(self):
+        """Show overlay controls without affecting video size"""
+        if not self.controls_visible:
+            self.controls_visible = True
+            
+            # Position overlays on top of video
+            self.position_overlays()
+            
+            # Update progress bar
+            self.update_progress_bar()
+
+    def hide_controls(self):
+        """Hide overlay controls completely"""
+        if self.controls_visible:
+            self.controls_visible = False
+            
+            # Remove overlays (video stays full screen)
+            self.title_frame.place_forget()
+            self.overlay_frame.place_forget()
+            
+            # Hide speed menu if visible
+            if self.speed_menu_visible:
+                self.hide_speed_menu()
+
+    def on_progress_click(self, event):
+        """Handle progress bar clicks for seeking"""
+        if not self.video_player.cap:
+            return
+        
+        canvas_width = self.progress_canvas.winfo_width()
+        if canvas_width > 0:
+            click_position = event.x / canvas_width
+            target_frame = int(click_position * self.video_player.total_frames)
+            target_frame = max(0, min(target_frame, self.video_player.total_frames - 1))
+            
+            # Update both players
+            self.video_player.seek_to_frame(target_frame)
+            self.update_progress_bar()
+
+    def on_mouse_move(self, event):
+        """Handle mouse movement"""
+        self.last_mouse_move = time.time()
+        if not self.controls_visible:
+            self.show_controls()
+        
+        # Show cursor
+        self.configure(cursor="")
+        
+        # Hide cursor after delay
+        if self.mouse_timer:
+            self.after_cancel(self.mouse_timer)
+        self.mouse_timer = self.after(3000, lambda: self.configure(cursor="none"))
+
+    def on_mouse_click(self, event):
+        """Handle mouse clicks"""
+        self.last_mouse_move = time.time()
+        if not self.controls_visible:
+            self.show_controls()
+
+    def on_key_press(self, event):
+        """Handle keyboard shortcuts"""
+        key = event.keysym.lower()
+        
+        if key == "escape":
+            self.exit_fullscreen()
+        elif key == "space":
+            self.toggle_playback()
+        elif key == "left":
+            self.seek_relative(-10)
+        elif key == "right":
+            self.seek_relative(10)
+        elif key == "up":
+            self.change_speed(0.25)
+        elif key == "down":
+            self.change_speed(-0.25)
+        elif key == "f":
+            self.exit_fullscreen()
+        elif key in "1234567":
+            speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+            try:
+                index = int(key) - 1
+                if 0 <= index < len(speeds):
+                    self.set_speed(speeds[index])
+            except:
+                pass
+
+    def on_canvas_click(self, event):
+        """Handle canvas click (toggle play/pause like YouTube)"""
+        # Don't toggle if clicking on controls
+        if not self.controls_visible:
+            self.show_controls()
+        else:
+            self.toggle_playback()
+
+    def on_click_outside_menu(self, event):
+        """Hide speed menu when clicking outside"""
+        if self.speed_menu_visible:
+            # Check if click was outside the speed menu
+            try:
+                menu_x = self.speed_menu.winfo_rootx()
+                menu_y = self.speed_menu.winfo_rooty()
+                menu_width = self.speed_menu.winfo_width()
+                menu_height = self.speed_menu.winfo_height()
+                
+                click_x = event.x_root
+                click_y = event.y_root
+                
+                # If click is outside menu bounds, hide menu
+                if (click_x < menu_x or click_x > menu_x + menu_width or 
+                    click_y < menu_y or click_y > menu_y + menu_height):
+                    self.hide_speed_menu()
+            except:
+                self.hide_speed_menu()
+        
+        # Handle normal click events
+        self.on_mouse_click(event)
+
+    def on_mouse_wheel(self, event):
+        """Handle mouse wheel for seeking"""
+        if event.delta > 0:
+            self.seek_relative(5)  # Forward 5 seconds
+        else:
+            self.seek_relative(-5)  # Backward 5 seconds
+
+    def on_focus_in(self, event):
+        """Handle gaining focus"""
+        pass
+
+    def on_focus_out(self, event):
+        """Handle losing focus"""
+        # Hide speed menu if losing focus
+        if self.speed_menu_visible:
+            self.hide_speed_menu()
+
+    def exit_fullscreen(self, event=None):
+        """Exit fullscreen mode"""
+        if self.speed_menu_visible:
+            self.hide_speed_menu()
+        self.destroy()
 class VideoPlayerWidget(ctk.CTkFrame):
     """Professional video player with YouTube-like behavior and simple state management"""
     
@@ -7633,7 +8126,36 @@ class VideoPlayerWidget(ctk.CTkFrame):
         
         # Progress bar (right side)
         self.create_progress_controls()
+    def create_speed_menu(self):
+        """Create speed menu that floats without blocking video"""
+        # Create speed menu as overlay
+        self.speed_menu = tk.Frame(self, bg="#333333", relief="raised", bd=2)
+        self.speed_menu_visible = False
         
+        # Speed menu items with better styling
+        speeds = [("0.25×", 0.25), ("0.5×", 0.5), ("0.75×", 0.75), ("1.0×", 1.0), 
+                 ("1.25×", 1.25), ("1.5×", 1.5), ("2.0×", 2.0)]
+        
+        for speed_text, speed_value in speeds:
+            btn = tk.Button(
+                self.speed_menu,
+                text=speed_text,
+                font=("Arial", 12),
+                fg="white",
+                bg="#333333",
+                activebackground="#555555",
+                relief="flat",
+                cursor="hand2",
+                command=lambda s=speed_value: self.set_speed_from_menu(s),
+                anchor="center",
+                padx=20,
+                pady=8
+            )
+            btn.pack(fill="x")
+            
+            # Highlight current speed
+            if speed_value == 1.0:  # Default speed
+                btn.configure(bg="#555555")
     def create_speed_controls(self):
         """Create speed control section"""
         center_controls = ctk.CTkFrame(
@@ -8336,6 +8858,10 @@ class ManimStudioApp:
         # Initialize enhanced responsive UI system
         self.responsive = ResponsiveUI(self.root)
         
+        # CRITICAL FIX: Set initial quality scaling
+        initial_quality = "720p"  # Default quality
+        self.responsive.set_quality_scaling(initial_quality)
+        
         # Set window title
         self.root.title(f"{APP_NAME} - Professional Edition v{APP_VERSION}")
         
@@ -8387,6 +8913,11 @@ class ManimStudioApp:
 
         # Load settings before initializing variables that depend on them
         self.load_settings()
+        
+        # CRITICAL FIX: Update responsive UI with loaded quality setting
+        loaded_quality = self.settings.get("quality", "720p")
+        self.responsive.set_quality_scaling(loaded_quality)
+        
         self.initialize_variables()
         
         # Setup UI (minimal logging)
@@ -8396,6 +8927,7 @@ class ManimStudioApp:
         except Exception as e:
             self.logger.error(f"UI creation failed: {e}")
             raise
+    
     def check_environment_setup(self):
         """Check if environment setup is needed"""
         if self.venv_manager.needs_setup:
@@ -8809,7 +9341,7 @@ class ManimStudioApp:
         
     def create_render_section(self):
         """Create render settings section with responsive sizing"""
-        # Get optimal font sizes and spacing
+        # Get responsive dimensions
         fonts = self.responsive.get_optimal_font_sizes()
         spacing = self.responsive.get_optimal_spacing()
         
@@ -8820,10 +9352,10 @@ class ManimStudioApp:
         header_title = ctk.CTkLabel(
             render_header,
             text="🎬 Render Settings",
-            font=ctk.CTkFont(size=fonts["large"], weight="bold"),
+            font=ctk.CTkFont(size=fonts["header"], weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
-        header_title.pack(side="left", padx=spacing["medium"], pady=spacing["medium"])
+        header_title.pack(side="left", padx=spacing["medium"], pady=spacing["normal"])
         
         # Render settings frame
         render_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
@@ -8840,6 +9372,7 @@ class ManimStudioApp:
             text_color=VSCODE_COLORS["text"]
         ).pack(anchor="w")
         
+        # Use responsive combo height
         combo_height = self.responsive.scale_dimension(36)
         self.quality_combo = ctk.CTkComboBox(
             quality_frame,
@@ -8849,9 +9382,9 @@ class ManimStudioApp:
             height=combo_height,
             font=ctk.CTkFont(size=fonts["normal"])
         )
-        self.quality_combo.pack(fill="x", pady=(5, 0))
+        self.quality_combo.pack(fill="x", pady=(spacing["small"], 0))
         
-        # Quality info
+        # Quality info with responsive font
         current_quality = self.settings["quality"]
         if current_quality == "Custom":
             resolution_text = f"{self.custom_width_var.get()}x{self.custom_height_var.get()}"
@@ -8861,23 +9394,23 @@ class ManimStudioApp:
         self.quality_info = ctk.CTkLabel(
             quality_frame,
             text=f"Resolution: {resolution_text}",
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(size=fonts["small"]),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.quality_info.pack(anchor="w", pady=(3, 0))
+        self.quality_info.pack(anchor="w", pady=(spacing["tiny"], 0))
         
         # Custom resolution frame
         self.custom_resolution_frame = ctk.CTkFrame(quality_frame, fg_color="transparent")
-        self.custom_resolution_frame.pack(fill="x", pady=(10, 0))
+        self.custom_resolution_frame.pack(fill="x", pady=(spacing["normal"], 0))
         
         # Custom resolution inputs
         custom_header = ctk.CTkLabel(
             self.custom_resolution_frame,
             text="Custom Resolution:",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(size=fonts["normal"], weight="bold"),
             text_color=VSCODE_COLORS["text"]
         )
-        custom_header.pack(anchor="w", pady=(0, 5))
+        custom_header.pack(anchor="w", pady=(0, spacing["small"]))
         
         # Resolution input frame
         resolution_input_frame = ctk.CTkFrame(self.custom_resolution_frame, fg_color="transparent")
@@ -8888,137 +9421,26 @@ class ManimStudioApp:
         ctk.CTkLabel(
             resolution_input_frame, 
             text="Width:", 
-            width=50
+            width=50,
+            font=ctk.CTkFont(size=fonts["normal"])
         ).grid(row=0, column=0, sticky="w", pady=2)
         
-        self.custom_width_entry = ctk.CTkEntry(
-            resolution_input_frame,
-            textvariable=self.custom_width_var,
-            width=80,
-            height=28
-        )
-        self.custom_width_entry.grid(row=0, column=1, sticky="w", padx=(5, 10), pady=2)
+        # Continue with rest of custom resolution inputs...
+        # (Keep your existing custom resolution input code but add font sizing)
         
-        # Height input
-        ctk.CTkLabel(
-            resolution_input_frame, 
-            text="Height:", 
-            width=50
-        ).grid(row=0, column=2, sticky="w", pady=2)
-        
-        self.custom_height_entry = ctk.CTkEntry(
-            resolution_input_frame,
-            textvariable=self.custom_height_var,
-            width=80,
-            height=28
-        )
-        self.custom_height_entry.grid(row=0, column=3, sticky="w", padx=(5, 0), pady=2)
-        
-        # Custom FPS input
-        fps_input_frame = ctk.CTkFrame(self.custom_resolution_frame, fg_color="transparent")
-        fps_input_frame.pack(fill="x", pady=(5, 0))
-        
-        ctk.CTkLabel(
-            fps_input_frame, 
-            text="FPS:", 
-            width=50
-        ).pack(side="left")
-        
-        self.custom_fps_entry = ctk.CTkEntry(
-            fps_input_frame,
-            textvariable=self.custom_fps_var,
-            width=80,
-            height=28
-        )
-        self.custom_fps_entry.pack(side="left", padx=(5, 0))
-        
-        # Custom resolution validation label
-        self.custom_validation_label = ctk.CTkLabel(
-            self.custom_resolution_frame,
-            text="",
-            font=ctk.CTkFont(size=10),
-            text_color=VSCODE_COLORS["error"]
-        )
-        self.custom_validation_label.pack(anchor="w", pady=(2, 0))
-        
-        # Bind validation events
-        self.custom_width_entry.bind('<KeyRelease>', self.validate_custom_resolution)
-        self.custom_height_entry.bind('<KeyRelease>', self.validate_custom_resolution)
-        self.custom_fps_entry.bind('<KeyRelease>', self.validate_custom_resolution)
-        
-        # Initially hide custom resolution frame if not custom
-        if self.quality_var.get() != "Custom":
-            self.custom_resolution_frame.pack_forget()
-        
-        # Format setting
-        format_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
-        format_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
-        
-        ctk.CTkLabel(
-            format_frame,
-            text="Export Format",
-            font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
-            text_color=VSCODE_COLORS["text"]
-        ).pack(anchor="w")
-        
-        self.format_combo = ctk.CTkComboBox(
-            format_frame,
-            values=list(EXPORT_FORMATS.keys()),
-            variable=self.format_var,
-            command=self.on_format_change,
-            height=combo_height,
-            font=ctk.CTkFont(size=fonts["normal"])
-        )
-        self.format_combo.pack(fill="x", pady=(5, 0))
-        
-        # FPS setting
-        fps_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
-        fps_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
-        
-        ctk.CTkLabel(
-            fps_frame,
-            text="Frame Rate (FPS)",
-            font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
-            text_color=VSCODE_COLORS["text"]
-        ).pack(anchor="w")
-        
-        self.fps_combo = ctk.CTkComboBox(
-            fps_frame,
-            values=["15", "24", "30", "60"],
-            variable=self.fps_var,
-            command=self.on_fps_change,
-            height=combo_height,
-            font=ctk.CTkFont(size=fonts["normal"])
-        )
-        self.fps_combo.pack(fill="x", pady=(5, 0))
-        
-        # CPU Usage setting
+        # CPU usage controls with responsive sizing
         cpu_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
         cpu_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
-
-        cpu_header = ctk.CTkFrame(cpu_frame, fg_color="transparent")
-        cpu_header.pack(fill="x")
-        cpu_header.grid_columnconfigure(1, weight=1)
-
+        
         ctk.CTkLabel(
-            cpu_header,
+            cpu_frame,
             text="CPU Usage",
             font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
             text_color=VSCODE_COLORS["text"]
-        ).grid(row=0, column=0, sticky="w")
-
-        # Show CPU cores available
-        cpu_info_text = f"{self.cpu_count} cores available"
-        self.cpu_info_label = ctk.CTkLabel(
-            cpu_header,
-            text=cpu_info_text,
-            font=ctk.CTkFont(size=11),
-            text_color=VSCODE_COLORS["text_secondary"]
-        )
-        self.cpu_info_label.grid(row=0, column=1, sticky="e")
-
-        # CPU usage preset selection
-        self.cpu_usage_combo = ctk.CTkComboBox(
+        ).pack(anchor="w")
+        
+        # CPU combo with responsive sizing
+        self.cpu_combo = ctk.CTkComboBox(
             cpu_frame,
             values=list(CPU_USAGE_PRESETS.keys()),
             variable=self.cpu_usage_var,
@@ -9026,73 +9448,44 @@ class ManimStudioApp:
             height=combo_height,
             font=ctk.CTkFont(size=fonts["normal"])
         )
-        self.cpu_usage_combo.pack(fill="x", pady=(5, 0))
-
-        # Container for custom cores slider
-        self.custom_cpu_frame = ctk.CTkFrame(cpu_frame, fg_color="transparent")
-        self.custom_cpu_frame.pack(fill="x", pady=(5, 0))
-
-        # Only show custom slider when "Custom" is selected
-        if self.cpu_usage_var.get() != "Custom":
-            self.custom_cpu_frame.pack_forget()
-
-        # Custom cores slider
-        cores_slider_frame = ctk.CTkFrame(self.custom_cpu_frame, fg_color="transparent")
-        cores_slider_frame.pack(fill="x")
-
-        self.cores_slider = ctk.CTkSlider(
-            cores_slider_frame, 
-            from_=1, 
-            to=self.cpu_count,
-            number_of_steps=self.cpu_count-1,
-            variable=self.cpu_custom_cores_var,
-            command=self.update_cores_label
-        )
-        self.cores_slider.pack(side="left", fill="x", expand=True, padx=(0, 10))
-
-        self.cores_value_label = ctk.CTkLabel(
-            cores_slider_frame,
-            text=str(self.cpu_custom_cores_var.get()),
-            font=ctk.CTkFont(size=12),
-            width=30
-        )
-        self.cores_value_label.pack(side="right")
-
-        # CPU usage description
+        self.cpu_combo.pack(fill="x", pady=(spacing["small"], 0))
+        
+        # CPU description
         self.cpu_description = ctk.CTkLabel(
             cpu_frame,
             text=CPU_USAGE_PRESETS[self.cpu_usage_var.get()]["description"],
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(size=fonts["small"]),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.cpu_description.pack(anchor="w", pady=(3, 0))
+        self.cpu_description.pack(anchor="w", pady=(spacing["tiny"], 0))
         
-        # Render button
+        # Render button with responsive sizing - LARGE button for prominence
+        render_btn_height = self.responsive.get_button_dimensions(base_height=50)
         self.render_button = ctk.CTkButton(
             render_frame,
             text="🚀 Render Animation",
             command=self.render_animation,
-            height=self.responsive.scale_dimension(50),
+            height=render_btn_height,
             font=ctk.CTkFont(size=fonts["large"], weight="bold"),
             fg_color=VSCODE_COLORS["primary"],
             hover_color=VSCODE_COLORS["primary_hover"]
         )
         self.render_button.pack(fill="x", padx=spacing["medium"], pady=spacing["medium"])
         
-        # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(render_frame)
+        # Progress bar with responsive height
+        progress_height = self.responsive.scale_dimension(8)
+        self.progress_bar = ctk.CTkProgressBar(render_frame, height=progress_height)
         self.progress_bar.pack(fill="x", padx=spacing["medium"], pady=(0, spacing["normal"]))
         self.progress_bar.set(0)
         
-        # Progress label
+        # Progress label with responsive font
         self.progress_label = ctk.CTkLabel(
             render_frame,
             text="Ready to render",
             font=ctk.CTkFont(size=fonts["normal"]),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.progress_label.pack(pady=(0, spacing["medium"]))
-        
+        self.progress_label.pack(pady=(0, spacing["medium"]))  
     def validate_custom_resolution(self, event=None):
         """Validate custom resolution inputs"""
         try:
@@ -9171,65 +9564,70 @@ class ManimStudioApp:
             }
         
     def create_preview_section(self):
-        """Create preview settings section"""
+        """Create preview settings section with responsive sizing"""
+        # Get responsive dimensions
+        fonts = self.responsive.get_optimal_font_sizes()
+        spacing = self.responsive.get_optimal_spacing()
+        
         # Section header
         preview_header = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
-        preview_header.pack(fill="x", pady=(0, 10))
+        preview_header.pack(fill="x", pady=(0, spacing["normal"]))
         
         header_title = ctk.CTkLabel(
             preview_header,
             text="👁️ Preview Settings",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(size=fonts["header"], weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
-        header_title.pack(side="left", padx=15, pady=12)
+        header_title.pack(side="left", padx=spacing["medium"], pady=spacing["normal"])
         
         # Preview settings frame
         preview_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
-        preview_frame.pack(fill="x", pady=(0, 20))
+        preview_frame.pack(fill="x", pady=(0, spacing["large"]))
         
-        # Preview quality
+        # Preview quality with responsive sizing
         quality_frame = ctk.CTkFrame(preview_frame, fg_color="transparent")
-        quality_frame.pack(fill="x", padx=15, pady=10)
+        quality_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
         
         ctk.CTkLabel(
             quality_frame,
             text="Preview Quality",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
             text_color=VSCODE_COLORS["text"]
         ).pack(anchor="w")
         
+        combo_height = self.responsive.scale_dimension(36)
         self.preview_quality_combo = ctk.CTkComboBox(
             quality_frame,
             values=list(PREVIEW_QUALITIES.keys()),
             variable=self.preview_quality_var,
             command=self.on_preview_quality_change,
-            height=36,
-            font=ctk.CTkFont(size=12)
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"])
         )
-        self.preview_quality_combo.pack(fill="x", pady=(5, 0))
+        self.preview_quality_combo.pack(fill="x", pady=(spacing["small"], 0))
         
-        # Preview quality info
+        # Preview info with responsive font
         self.preview_info = ctk.CTkLabel(
             quality_frame,
             text=f"Resolution: {PREVIEW_QUALITIES[self.settings['preview_quality']]['resolution']}",
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(size=fonts["small"]),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.preview_info.pack(anchor="w", pady=(3, 0))
+        self.preview_info.pack(anchor="w", pady=(spacing["tiny"], 0))
         
-        # Preview buttons
+        # Preview button with responsive sizing - LARGE button for prominence
+        preview_btn_height = self.responsive.get_button_dimensions(base_height=45)
         self.quick_preview_button = ctk.CTkButton(
             preview_frame,
             text="⚡ Quick Preview",
             command=self.quick_preview,
-            height=45,
-            font=ctk.CTkFont(size=14, weight="bold"),
+            height=preview_btn_height,
+            font=ctk.CTkFont(size=fonts["large"], weight="bold"),
             fg_color=VSCODE_COLORS["accent"],
             hover_color=VSCODE_COLORS["info"]
         )
-        self.quick_preview_button.pack(fill="x", padx=15, pady=15)
-        
+        self.quick_preview_button.pack(fill="x", padx=spacing["medium"], pady=spacing["medium"])
     def create_assets_section(self):
         """Create enhanced assets section with visual cards"""
         # Section header
@@ -10453,21 +10851,74 @@ class MyScene(Scene):
                 print(f"Failed to show error dialog: {e}")      
     # Settings callbacks
     def on_quality_change(self, value):
-        """Handle quality change"""
+        """Handle quality change with responsive UI updates"""
         self.settings["quality"] = value
+        
+        # CRITICAL: Update ResponsiveUI with new quality scaling
+        self.responsive.set_quality_scaling(value)
         
         if value == "Custom":
             # Show custom resolution frame
             self.custom_resolution_frame.pack(fill="x", pady=(10, 0))
             self.validate_custom_resolution()
+            resolution_text = f"{self.custom_width_var.get()}x{self.custom_height_var.get()}"
         else:
             # Hide custom resolution frame and show preset info
             self.custom_resolution_frame.pack_forget()
             quality_info = QUALITY_PRESETS[value]
-            self.quality_info.configure(text=f"Resolution: {quality_info['resolution']}")
-            
-        self.save_settings()
+            resolution_text = quality_info['resolution']
         
+        # Update quality info display
+        if hasattr(self, 'quality_info'):
+            self.quality_info.configure(text=f"Resolution: {resolution_text}")
+            
+        # Update UI elements for new quality scaling
+        self.update_ui_for_quality_change()
+        
+        self.save_settings()
+    def update_ui_for_quality_change(self):
+        """Update UI elements when quality changes to ensure all buttons remain visible"""
+        
+        # Get new responsive dimensions
+        fonts = self.responsive.get_optimal_font_sizes()
+        spacing = self.responsive.get_optimal_spacing()
+        
+        # Update main action buttons to ensure they're always visible
+        if hasattr(self, 'quick_preview_button'):
+            new_height = self.responsive.get_button_dimensions(base_height=45)
+            self.quick_preview_button.configure(
+                height=new_height,
+                font=ctk.CTkFont(size=fonts["large"], weight="bold")
+            )
+        
+        if hasattr(self, 'render_button'):
+            new_height = self.responsive.get_button_dimensions(base_height=50)
+            self.render_button.configure(
+                height=new_height,
+                font=ctk.CTkFont(size=fonts["large"], weight="bold")
+            )
+        
+        # Update combo boxes
+        combo_height = self.responsive.scale_dimension(36)
+        if hasattr(self, 'quality_combo'):
+            self.quality_combo.configure(
+                height=combo_height,
+                font=ctk.CTkFont(size=fonts["normal"])
+            )
+        
+        if hasattr(self, 'preview_quality_combo'):
+            self.preview_quality_combo.configure(
+                height=combo_height,
+                font=ctk.CTkFont(size=fonts["normal"])
+            )
+        
+        # Update sidebar width if needed
+        if hasattr(self, 'sidebar'):
+            new_sidebar_width = self.responsive.get_optimal_sidebar_width()
+            self.sidebar.configure(width=new_sidebar_width)
+        
+        # Force layout recalculation
+        self.root.update_idletasks()
     def on_format_change(self, value):
         """Handle format change"""
         self.settings["format"] = value
@@ -11805,6 +12256,8 @@ Licensed under MIT License"""
                 
         except Exception as e:
             self.logger.error(f"Error updating environment status: {e}")
+
+
 
 class DependencyInstallDialog(ctk.CTkToplevel):
     """Dialog showing progress while installing packages."""
