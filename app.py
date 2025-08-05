@@ -13,7 +13,7 @@ import platform
 import shlex
 try:
     from process_utils import popen_original, run_original
-except Exception:
+except ImportError:
     popen_original = subprocess.Popen
     run_original = subprocess.run
 import sys
@@ -30,7 +30,7 @@ import cv2
 import math
 import requests
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union, Dict, Any, Callable
 import psutil
 import signal
 import glob
@@ -43,6 +43,7 @@ import venv
 import hashlib
 import traceback
 import argparse
+import tkinterdnd2
 try:
     from fixes import ensure_ascii_path
 except Exception:
@@ -88,28 +89,13 @@ if getattr(sys, 'frozen', False):
         os.makedirs(stable_temp, exist_ok=True)
         os.environ['TEMP'] = stable_temp
         os.environ['TMP'] = stable_temp
-def load_icon_image(icon_name, size=(24, 24), fallback_text="?"):
-    """Load icon image from assets folder with fallback to text"""
-    try:
-        icon_path = os.path.join("assets", icon_name)
-        if os.path.exists(icon_path):
-            # Use CTkImage instead of ImageTk.PhotoImage for HighDPI support
-            return ctk.CTkImage(
-                light_image=Image.open(icon_path),
-                dark_image=Image.open(icon_path),
-                size=size
-            )
-        else:
-            print(f"⚠️ Icon not found: {icon_path}")
-            return None
-    except Exception as e:
-        print(f"⚠️ Error loading icon {icon_name}: {e}")
-        return None
+def load_icon_image(icon_name: str, size: tuple[int, int] = (24, 24), fallback_text: str = "?") -> bool:
+    return False
 # Add this to the top of app.py after the imports section
 # =============================================================================
 # EMERGENCY ENCODING FIXES - Add this RIGHT AFTER imports
 # =============================================================================
-def get_responsive_dialog_size(base_width, base_height, screen_w=None, screen_h=None):
+def get_responsive_dialog_size(base_width: int, base_height: int, screen_w: int | None = None, screen_h: int | None = None) -> tuple[int, int]:
     """Get responsive dialog size that works on high DPI displays"""
     if screen_w is None:
         screen_w = 1920  # Default fallback
@@ -190,7 +176,7 @@ def get_executable_directory():
         return os.path.dirname(os.path.abspath(__file__))
 # Add this near the top of your app.py, after BASE_DIR is defined
 
-def setup_portable_logging():
+def setup_portable_logging() -> str:
     """Set up logging to go next to the app.exe for portability"""
     
     # Determine where to put logs - next to executable for portability
@@ -231,7 +217,7 @@ def setup_portable_logging():
 
 # Call this early in your app initialization
 LOGS_DIR = setup_portable_logging()
-def run_subprocess_safe(command, **kwargs):
+def run_subprocess_safe(command: list[str] | str, **kwargs) -> subprocess.CompletedProcess:
     """Enhanced subprocess runner for onefile executables with DLL isolation"""
     if getattr(sys, 'frozen', False):
         # Running as onefile executable - need special handling
@@ -282,7 +268,7 @@ def run_subprocess_safe(command, **kwargs):
         print(f"Command: {command}")
         raise
 
-def run_subprocess_async_safe(command, callback, **kwargs):
+def run_subprocess_async_safe(command: list[str] | str, callback: Callable, **kwargs) -> None:
     """Safe async subprocess runner for onefile executables"""
     def run_in_thread():
         try:
@@ -297,6 +283,98 @@ def run_subprocess_async_safe(command, callback, **kwargs):
     thread = threading.Thread(target=run_in_thread, daemon=True)
     thread.start()
     return thread
+class SplashScreen:
+    """Splash screen that stays visible until main UI is ready"""
+    
+    def __init__(self, debug_mode=False):
+        import tkinter as tk
+        
+        self.debug_mode = debug_mode
+        self.is_closed = False
+        self.checks_complete = True
+        
+        # ESSENTIAL ATTRIBUTES that main() expects
+        self.app_data_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        self.latex_path = None
+        self.environment_ready = True
+        
+        # Ensure app_data_dir exists
+        os.makedirs(self.app_data_dir, exist_ok=True)
+        
+        # Create splash window
+        self.root = tk.Tk()
+        self.root.title("Manim Studio")
+        self.root.geometry("350x150")
+        self.root.resizable(False, False)
+        self.root.overrideredirect(True)
+        self.root.configure(bg='#1e1e1e')
+        
+        # Center window
+        self.root.eval('tk::PlaceWindow . center')
+        
+        # Create simple UI
+        main_frame = tk.Frame(self.root, bg='#1e1e1e', padx=30, pady=30)
+        main_frame.pack(fill='both', expand=True)
+        
+        tk.Label(
+            main_frame,
+            text="Manim Animation Studio",
+            font=('Arial', 16, 'bold'),
+            fg='white',
+            bg='#1e1e1e'
+        ).pack(pady=(0, 10))
+        
+        self.status_label = tk.Label(
+            main_frame,
+            text="Loading...",
+            font=('Arial', 11),
+            fg='#cccccc',
+            bg='#1e1e1e'
+        )
+        self.status_label.pack()
+        
+        # Show splash
+        self.root.deiconify()
+        self.root.lift()
+        self.root.update_idletasks()
+    
+    def update_status(self, message, progress=None):
+        """Update status message"""
+        if self.is_closed:
+            return
+        try:
+            self.status_label.config(text=message)
+            self.root.update_idletasks()
+        except:
+            pass
+    
+    def wait_for_checks_completion(self):
+        """ESSENTIAL METHOD"""
+        pass
+    
+    def wait_for_close(self):
+        """ESSENTIAL METHOD - actually wait for close"""
+        import time
+        start_time = time.time()
+        while not self.is_closed and (time.time() - start_time) < 5:
+            try:
+                self.root.update_idletasks()
+                time.sleep(0.01)
+            except:
+                break
+    
+    def close_splash(self):
+        """ESSENTIAL METHOD - close splash"""
+        if self.is_closed:
+            return
+        
+        self.is_closed = True
+        try:
+            self.root.withdraw()
+            self.root.quit()
+            self.root.destroy()
+        except:
+            pass
 
 # ---------------------------------------------------------------------------
 # Logging utilities
@@ -702,55 +780,122 @@ SYNTAX_COLORS = {
     "parameter": "#9CDCFE",       # Light blue - Function parameters
 }
 # Runtime check for LaTeX availability
-def check_latex_installation() -> Optional[str]:
-    """Return the path to a working LaTeX executable, or ``None`` if not found.
-
-    The detected LaTeX directory is prepended to ``PATH`` so bundled
-    environments can access the system installation."""
-
-    latex_path = shutil.which("latex") or shutil.which("pdflatex")
-    if not latex_path:
-        warning_lines = [
-            "LaTeX was not found on this system.",
-            "Please install a LaTeX distribution and ensure the 'latex'",
-            "or 'pdflatex' command is available in your PATH.",
-            "",
-            "Windows: install MiKTeX from https://miktex.org/",
-            "macOS: install MacTeX from https://www.tug.org/mactex/",
-            "Linux: install TeX Live using your package manager, e.g.",
-            "  sudo apt install texlive-full",
-            "After installation restart the application."
-        ]
-        warning = "\n".join(warning_lines)
-        logging.warning(warning)
-        try:
-            from tkinter import messagebox
-            messagebox.showwarning("LaTeX not found", warning)
-        except Exception:
-            print(warning)
-        return None
-
+def check_latex_installation(self):
+    """Check LaTeX installation - ROBUST FIX with debugging"""
     try:
-        subprocess.run(
-            [latex_path, "--version"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-    except Exception as exc:
-        logging.warning("LaTeX check failed: %s", exc)
-        print(f"LaTeX found at {latex_path} but running it failed: {exc}")
-        return None
+        print("🔍 Starting LaTeX detection...")
+        
+        # Test LaTeX commands
+        latex_commands = ['latex', 'pdflatex', 'xelatex', 'lualatex']
+        latex_found = []
+        
+        for cmd in latex_commands:
+            try:
+                result = subprocess.run([cmd, '--version'], 
+                                      capture_output=True, 
+                                      text=True, 
+                                      timeout=10)
+                if result.returncode == 0:
+                    latex_found.append(cmd)
+                    print(f"✅ Found {cmd}")
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+                continue
+        
+        # Update status based on findings
+        if latex_found:
+            self.latex_available = True
+            self.latex_commands = latex_found
+            status_text = f"✅ LaTeX: Available ({len(latex_found)} commands)"
+            status_color = "green"
+            print(f"✅ LaTeX detected: {latex_found}")
+        else:
+            self.latex_available = False
+            self.latex_commands = []
+            status_text = "❌ LaTeX: Not found"
+            status_color = "red"
+            print("❌ LaTeX not detected")
+        
+        # ROBUST FIX: Try multiple UI update methods
+        print(f"🔄 Updating UI with: {status_text}")
+        
+        # Method 1: Try the main label
+        updated = False
+        try:
+            if hasattr(self, 'latex_status_label') and self.latex_status_label:
+                self.latex_status_label.configure(text=status_text, text_color=status_color)
+                print("✅ Updated latex_status_label")
+                updated = True
+        except Exception as e:
+            print(f"❌ Failed to update latex_status_label: {e}")
+        
+        # Method 2: Try alternative label names
+        alternative_labels = ['env_status_label', 'status_label', 'latex_label']
+        for label_name in alternative_labels:
+            try:
+                if hasattr(self, label_name):
+                    label = getattr(self, label_name)
+                    if label:
+                        label.configure(text=status_text, text_color=status_color)
+                        print(f"✅ Updated {label_name}")
+                        updated = True
+                        break
+            except Exception as e:
+                print(f"❌ Failed to update {label_name}: {e}")
+                continue
+        
+        # Method 3: Force multiple UI refresh types
+        try:
+            self.update_idletasks()
+            self.update()
+            print("✅ Forced UI refresh")
+        except:
+            pass
+        
+        # Method 4: Schedule delayed update
+        try:
+            self.after(100, lambda: self.force_latex_status_update(status_text, status_color))
+            print("✅ Scheduled delayed update")
+        except:
+            pass
+        
+        if not updated:
+            print("⚠️ No UI labels found to update - check label names")
+            # Debug: Print all attributes that contain 'label'
+            label_attrs = [attr for attr in dir(self) if 'label' in attr.lower()]
+            print(f"📋 Available label attributes: {label_attrs}")
+        
+        return self.latex_available
+        
+    except Exception as e:
+        print(f"❌ Error checking LaTeX: {e}")
+        return False
 
-    latex_dir = os.path.dirname(latex_path)
-    current_path = os.environ.get("PATH", "")
-    if latex_dir not in current_path.split(os.pathsep):
-        os.environ["PATH"] = latex_dir + os.pathsep + current_path
-
-    logging.info("LaTeX found: %s", latex_path)
-    print(f"LaTeX found: {latex_path}")
-    return latex_path
-
+def force_latex_status_update(self, status_text, status_color):
+    """Force LaTeX status update - helper method"""
+    try:
+        # Try all possible label references
+        possible_labels = [
+            getattr(self, 'latex_status_label', None),
+            getattr(self, 'env_status_label', None), 
+            getattr(self, 'status_label', None),
+            getattr(self, 'latex_label', None)
+        ]
+        
+        for label in possible_labels:
+            if label:
+                try:
+                    label.configure(text=status_text, text_color=status_color)
+                    print(f"✅ Force updated label with: {status_text}")
+                    break
+                except:
+                    continue
+        
+        # Force UI refresh again
+        self.update_idletasks()
+        self.update()
+        
+    except Exception as e:
+        print(f"❌ Error in force update: {e}")
 @dataclass
 class PackageInfo:
     """Data class for package information"""
@@ -924,7 +1069,2295 @@ class PackageInstallationProgressDialog(ctk.CTkToplevel):
         except Exception as e:
             self.log_message(f"Exception during {package} installation: {e}")
             return False
+
+
+
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import customtkinter as ctk
+import os
+import sys
+import shutil
+import time
+from datetime import datetime
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = None
+    ImageTk = None
+import threading
+
+# Modern color scheme
+MODERN_COLORS = {
+    "bg_primary": "#1a1a1a",
+    "bg_secondary": "#2d2d2d", 
+    "bg_tertiary": "#3d3d3d",
+    "accent": "#007acc",
+    "accent_hover": "#0066b3",
+    "success": "#4caf50",
+    "warning": "#ff9800",
+    "error": "#f44336",
+    "text_primary": "#ffffff",
+    "text_secondary": "#b0b0b0",
+    "border": "#404040"
+}
+
+class AssetsManager(ctk.CTkToplevel):
+    """Enhanced Assets Manager - Modern UI with working drag & drop and upload"""
+    
+    def __init__(self, parent, main_app):
+        super().__init__(parent)
+        
+        self.parent = parent
+        self.main_app = main_app
+        self.title("🎨 Assets Manager - Enhanced Edition")
+        
+        # Initialize state variables
+        self.drag_drop_available = False
+        self.drop_zone_active = False
+        self.preview_image = None
+        self.processing_drop = False  # Prevent loops
+        
+        # DISABLE auto-delete for persistent assets
+        self.auto_delete_enabled = False
+        self.auto_delete_hours = 24
+        self.file_timers = {}
+        
+        # FIXED: Get the correct assets folder path
+        self.assets_folder = self.get_assets_folder()
+        
+        # Verify the path is not in temp
+        if 'temp' in self.assets_folder.lower() or 'tmp' in self.assets_folder.lower():
+            print("⚠️ WARNING: Assets folder is in temp directory!")
+            # Force to use current working directory instead
+            self.assets_folder = os.path.join(os.getcwd(), "assets")
+            os.makedirs(self.assets_folder, exist_ok=True)
+            print(f"🔧 Forced assets folder to: {self.assets_folder}")
+        
+        # Initialize drag and drop
+        self.setup_drag_drop_availability()
+        
+        # UI setup with modern styling
+        self.setup_window()
+        self.setup_drag_drop()
+        self.create_modern_ui()
+        self.refresh_assets()
+        # Don't setup file timers for persistent assets
+        self.setup_existing_file_timers()
+        
+        print("✅ AssetsManager initialized successfully")
+        # Start timer display updates if auto-delete is enabled - NEW
+        if self.auto_delete_enabled:
+            self.after(1000, self.start_timer_display_updates)  # Start after 1 second
+
+    def get_file_timer_info(self, filename):
+        """Get timer information for a file"""
+        if not self.auto_delete_enabled or filename not in self.file_timers:
+            return None
+            
+        if not hasattr(self, 'timer_start_times') or filename not in self.timer_start_times:
+            return None
+            
+        timer_info = self.timer_start_times[filename]
+        current_time = time.time()
+        elapsed_time = current_time - timer_info['start_time']
+        remaining_time = timer_info['duration'] - elapsed_time
+        
+        if remaining_time <= 0:
+            return "Deleting soon..."
+            
+        # Format remaining time
+        remaining_hours = remaining_time / 3600
+        if remaining_hours >= 1:
+            return f"⏰ {remaining_hours:.1f}h left"
+        else:
+            remaining_minutes = remaining_time / 60
+            return f"⏰ {remaining_minutes:.0f}m left"
+    
+    def start_timer_display_updates(self):
+        """Start periodic updates of timer displays"""
+        if self.auto_delete_enabled:
+            self.update_timer_displays()
+            # Update every 30 seconds
+            self.after(30000, self.start_timer_display_updates)
+    
+    def update_timer_displays(self):
+        """Update all timer displays in the UI"""
+        try:
+            if hasattr(self, 'file_cards'):
+                for filename, card_info in self.file_cards.items():
+                    timer_text = self.get_file_timer_info(filename)
+                    if timer_text and 'timer_label' in card_info:
+                        card_info['timer_label'].configure(text=timer_text)
+        except Exception as e:
+            print(f"Error updating timer displays: {e}")
+    def setup_existing_file_timers(self):
+        """Setup timers for existing files - FIXED to add timers, not delete"""
+        try:
+            if not self.auto_delete_enabled:
+                print("🔧 Auto-delete disabled - skipping timers")
+                return
+                
+            asset_files = self.get_asset_files()
+            current_time = time.time()
+            
+            for file_info in asset_files:
+                filename = file_info['name']
+                file_age_seconds = current_time - file_info['modified']
+                total_timer_duration = self.auto_delete_hours * 3600
+                remaining_time_seconds = total_timer_duration - file_age_seconds
+                
+                # Always add timer, even if file is "expired"
+                # If expired, give it a grace period (e.g., 1 hour)
+                if remaining_time_seconds <= 0:
+                    remaining_time_seconds = 3600  # 1 hour grace period
+                    print(f"⏰ File {filename} was expired, giving 1 hour grace period")
+                
+                self.schedule_file_deletion(filename, remaining_time_seconds)
+                
+                # Store timer start time for UI display
+                if not hasattr(self, 'timer_start_times'):
+                    self.timer_start_times = {}
+                self.timer_start_times[filename] = {
+                    'start_time': current_time,
+                    'duration': remaining_time_seconds
+                }
+                
+                hours_remaining = remaining_time_seconds / 3600
+                print(f"⏰ Timer set for {filename}: {hours_remaining:.1f} hours remaining")
+                    
+        except Exception as e:
+            print(f"❌ Error setting up file timers: {e}")
+    def setup_drag_drop_availability(self):
+        """Check if drag and drop is available"""
+        try:
+            import tkinterdnd2
+            from tkinterdnd2 import DND_FILES, TkinterDnD
+            
+            # Store the imports for later use
+            self.tkinterdnd2 = tkinterdnd2
+            self.DND_FILES = DND_FILES
+            self.TkinterDnD = TkinterDnD
+            
+            self.drag_drop_available = True
+            print("✅ tkinterdnd2 available - drag & drop enabled")
+        except ImportError:
+            self.drag_drop_available = False
+            self.tkinterdnd2 = None
+            self.DND_FILES = None
+            self.TkinterDnD = None
+            print("⚠️ tkinterdnd2 not available - drag & drop disabled")
+    
+    def get_app_directory(self):
+        """Get the directory where the .py or .exe file is located - SAME AS MAIN APP"""
+        if getattr(sys, 'frozen', False):
+            # Running as .exe - assets next to executable
+            app_dir = os.path.dirname(os.path.abspath(sys.executable))
+            self.main_app.append_terminal_output("📁 Running as executable - assets next to .exe\n")
+        else:
+            # Running as .py - assets next to script
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+            self.main_app.append_terminal_output("📁 Running as script - assets next to .py\n")
+        
+        self.main_app.append_terminal_output(f"📂 Assets directory: {app_dir}\n")
+        return app_dir
+    
+    def setup_window(self):
+        """Setup modern window styling"""
+        # Window configuration
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(1500, screen_w - 100)
+        height = min(900, screen_h - 100)
+        
+        # Center window
+        x = (screen_w - width) // 2
+        y = (screen_h - height) // 2
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        
+        self.minsize(1200, 800)
+        self.resizable(True, True)
+        self.transient(self.parent)
+        self.grab_set()
+        
+        # Modern styling
+        self.configure(fg_color=MODERN_COLORS["bg_primary"])
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+    
+    
+    def create_modern_ui(self):
+        """Create the modern UI layout"""
+        # Configure main grid
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        
+        # Create header
+        self.create_header()
+        
+        # Create main content area
+        self.create_main_content()
+        
+        # Create footer/controls
+        self.create_footer()
+    
+    def create_header(self):
+        """Create modern header"""
+        header_frame = ctk.CTkFrame(
+            self,
+            height=80,
+            fg_color=MODERN_COLORS["bg_secondary"],
+            corner_radius=10
+        )
+        header_frame.grid(row=0, column=0, sticky="ew", padx=15, pady=(15, 10))
+        header_frame.grid_columnconfigure(1, weight=1)
+        header_frame.grid_propagate(False)
+        
+        # Header icon and title
+        title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        title_frame.grid(row=0, column=0, sticky="w", padx=20, pady=15)
+        
+        # Large icon
+        icon_label = ctk.CTkLabel(
+            title_frame,
+            text="🎨",
+            font=ctk.CTkFont(size=32)
+        )
+        icon_label.pack(side="left", padx=(0, 10))
+        
+        # Title and subtitle
+        text_frame = ctk.CTkFrame(title_frame, fg_color="transparent")
+        text_frame.pack(side="left")
+        
+        title_label = ctk.CTkLabel(
+            text_frame,
+            text="Assets Manager",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"]
+        )
+        title_label.pack(anchor="w")
+        
+        subtitle_label = ctk.CTkLabel(
+            text_frame,
+            text=f"Managing: {os.path.basename(self.assets_folder)}",
+            font=ctk.CTkFont(size=12),
+            text_color=MODERN_COLORS["text_secondary"]
+        )
+        subtitle_label.pack(anchor="w")
+        
+        # Header stats
+        self.stats_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        self.stats_frame.grid(row=0, column=1, sticky="e", padx=20, pady=15)
+        
+        self.create_stats_display()
+        
+        # Header buttons - FIXED CALLBACKS
+        buttons_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        buttons_frame.grid(row=0, column=2, sticky="e", padx=20, pady=15)
+        
+        # Quick action buttons
+        self.create_header_buttons(buttons_frame)
+    def process_dropped_files(self, file_paths):
+        """Wrapper method for backward compatibility - calls the immediate version"""
+        try:
+            print(f"📁 Processing {len(file_paths)} files via wrapper...")
+            self.process_dropped_files_immediate(file_paths)
+        except Exception as e:
+            print(f"❌ Error in process_dropped_files wrapper: {e}")
+            self.show_error_notification(f"Processing error: {e}")
+    def create_stats_display(self):
+        """Create animated stats display"""
+        asset_files = self.get_asset_files()
+        total_files = len(asset_files)
+        total_size = sum(f['size'] for f in asset_files)
+        
+        # Clear existing stats
+        for widget in self.stats_frame.winfo_children():
+            widget.destroy()
+        
+        # Stats container
+        stats_container = ctk.CTkFrame(self.stats_frame, fg_color=MODERN_COLORS["bg_tertiary"], corner_radius=8)
+        stats_container.pack()
+        
+        # Files count
+        files_frame = ctk.CTkFrame(stats_container, fg_color="transparent")
+        files_frame.pack(side="left", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            files_frame,
+            text=str(total_files),
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=MODERN_COLORS["accent"]
+        ).pack()
+        
+        ctk.CTkLabel(
+            files_frame,
+            text="Files",
+            font=ctk.CTkFont(size=10),
+            text_color=MODERN_COLORS["text_secondary"]
+        ).pack()
+        
+        # Separator
+        separator = ctk.CTkFrame(stats_container, width=1, fg_color=MODERN_COLORS["border"])
+        separator.pack(side="left", fill="y", padx=10)
+        
+        # Total size
+        size_frame = ctk.CTkFrame(stats_container, fg_color="transparent")
+        size_frame.pack(side="left", padx=15, pady=10)
+        
+        size_mb = total_size / (1024 * 1024) if total_size > 0 else 0
+        size_text = f"{size_mb:.1f} MB" if size_mb > 0 else "0 MB"
+        
+        ctk.CTkLabel(
+            size_frame,
+            text=size_text,
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=MODERN_COLORS["success"]
+        ).pack()
+        
+        ctk.CTkLabel(
+            size_frame,
+            text="Total Size",
+            font=ctk.CTkFont(size=10),
+            text_color=MODERN_COLORS["text_secondary"]
+        ).pack()
+    
+    def create_header_buttons(self, parent):
+        """Create header action buttons - FIXED CALLBACKS"""
+        # Add files button with icon
+        add_btn = ctk.CTkButton(
+            parent,
+            text="➕ Add Files",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            width=100,
+            height=35,
+            fg_color=MODERN_COLORS["accent"],
+            hover_color=MODERN_COLORS["accent_hover"]
+        )
+        add_btn.configure(command=self.add_files_dialog)  # Fixed callback
+        add_btn.pack(side="left", padx=5)
+        
+        # Open folder button - WORKING VERSION
+        folder_btn = ctk.CTkButton(
+            parent,
+            text="📂 Open",
+            font=ctk.CTkFont(size=12),
+            width=80,
+            height=35,
+            fg_color=MODERN_COLORS["bg_tertiary"],
+            hover_color=MODERN_COLORS["border"]
+        )
+        folder_btn.configure(command=self.open_app_folder)  # Fixed callback
+        folder_btn.pack(side="left", padx=5)
+        
+        # Refresh button
+        refresh_btn = ctk.CTkButton(
+            parent,
+            text="🔄",
+            font=ctk.CTkFont(size=14),
+            width=35,
+            height=35,
+            fg_color=MODERN_COLORS["bg_tertiary"],
+            hover_color=MODERN_COLORS["border"]
+        )
+        refresh_btn.configure(command=self.refresh_assets)  # Fixed callback
+        refresh_btn.pack(side="left", padx=5)
+    
+    def create_main_content(self):
+        """Create main content area with drag & drop zones"""
+        main_frame = ctk.CTkFrame(
+            self,
+            fg_color=MODERN_COLORS["bg_secondary"],
+            corner_radius=10
+        )
+        main_frame.grid(row=1, column=0, sticky="nsew", padx=15, pady=10)
+        main_frame.grid_columnconfigure(1, weight=1)
+        main_frame.grid_rowconfigure(0, weight=1)
+        
+        # Left panel - Drop zones and quick actions
+        self.create_left_panel(main_frame)
+        
+        # Main content - Assets grid
+        self.create_assets_grid(main_frame)
+        
+        # Right panel - Preview and details
+        self.create_right_panel(main_frame)
+    
+    def create_left_panel(self, parent):
+        """Create left panel with drop zones"""
+        left_panel = ctk.CTkFrame(
+            parent,
+            width=250,
+            fg_color=MODERN_COLORS["bg_tertiary"],
+            corner_radius=8
+        )
+        left_panel.grid(row=0, column=0, sticky="ns", padx=10, pady=10)
+        left_panel.grid_propagate(False)
+        
+        # Panel title
+        title_label = ctk.CTkLabel(
+            left_panel,
+            text="📥 Quick Add",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"]
+        )
+        title_label.pack(pady=(20, 15))
+        
+        # Drag & drop status
+        if self.drag_drop_available:
+            status_text = "✅ Drag & Drop Ready"
+            status_color = MODERN_COLORS["success"]
+        else:
+            status_text = "⚠️ Click to Add Files"
+            status_color = MODERN_COLORS["warning"]
+        
+        status_label = ctk.CTkLabel(
+            left_panel,
+            text=status_text,
+            font=ctk.CTkFont(size=10),
+            text_color=status_color
+        )
+        status_label.pack(pady=(0, 10))
+        
+        # Image drop zone - FIXED CALLBACKS
+        self.create_drop_zone(
+            left_panel,
+            "🖼️ Add Images",
+            "PNG, JPG, GIF, etc.",
+            MODERN_COLORS["accent"],
+            self.handle_image_add
+        )
+        
+        # Audio drop zone - FIXED CALLBACKS
+        self.create_drop_zone(
+            left_panel,
+            "🎵 Add Audio",
+            "MP3, WAV, OGG, etc.",
+            MODERN_COLORS["success"],
+            self.handle_audio_add
+        )
+        
+        # Video drop zone - FIXED CALLBACKS
+        self.create_drop_zone(
+            left_panel,
+            "🎬 Add Videos",
+            "MP4, AVI, MOV, etc.",
+            MODERN_COLORS["warning"],
+            self.handle_video_add
+        )
+        
+        # Quick actions
+        self.create_quick_actions(left_panel)
+    
+    def create_drop_zone(self, parent, title, subtitle, color, callback):
+        """Create a modern drop zone - FIXED CALLBACKS"""
+        zone_frame = ctk.CTkFrame(
+            parent,
+            height=80,
+            fg_color=MODERN_COLORS["bg_primary"],
+            border_color=color,
+            border_width=2,
+            corner_radius=8
+        )
+        zone_frame.pack(fill="x", padx=15, pady=10)
+        zone_frame.grid_propagate(False)
+        
+        # Zone content
+        content_frame = ctk.CTkFrame(zone_frame, fg_color="transparent")
+        content_frame.pack(expand=True, fill="both", padx=10, pady=10)
+        
+        title_label = ctk.CTkLabel(
+            content_frame,
+            text=title,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=color
+        )
+        title_label.pack()
+        
+        subtitle_label = ctk.CTkLabel(
+            content_frame,
+            text=subtitle,
+            font=ctk.CTkFont(size=10),
+            text_color=MODERN_COLORS["text_secondary"]
+        )
+        subtitle_label.pack()
+        
+        # FIXED: Proper button for each zone
+        zone_button = ctk.CTkButton(
+            content_frame,
+            text="Click to Add",
+            font=ctk.CTkFont(size=10),
+            width=80,
+            height=20,
+            fg_color=color,
+            hover_color=color
+        )
+        zone_button.configure(command=callback)  # Fixed callback
+        zone_button.pack(pady=(5, 0))
+        
+        # Hover effects
+        def on_enter(e):
+            zone_frame.configure(fg_color=MODERN_COLORS["bg_secondary"])
+        
+        def on_leave(e):
+            zone_frame.configure(fg_color=MODERN_COLORS["bg_primary"])
+        
+        zone_frame.bind("<Enter>", on_enter)
+        zone_frame.bind("<Leave>", on_leave)
+        content_frame.bind("<Enter>", on_enter)
+        content_frame.bind("<Leave>", on_leave)
+        
+        return zone_frame
+    
+    def create_quick_actions(self, parent):
+        """Create quick action buttons"""
+        actions_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        actions_frame.pack(fill="x", padx=15, pady=20)
+        
+        # Section title
+        ctk.CTkLabel(
+            actions_frame,
+            text="⚡ Quick Actions",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"]
+        ).pack(pady=(0, 10))
+        
+        # Clear all button
+        clear_btn = ctk.CTkButton(
+            actions_frame,
+            text="🗑️ Clear All Assets",
+            font=ctk.CTkFont(size=11),
+            height=30,
+            fg_color=MODERN_COLORS["error"],
+            hover_color="#d32f2f"
+        )
+        clear_btn.configure(command=self.clear_all_assets)  # Fixed callback
+        clear_btn.pack(fill="x", pady=2)
+        
+        # Info button
+        info_btn = ctk.CTkButton(
+            actions_frame,
+            text="📊 Asset Info",
+            font=ctk.CTkFont(size=11),
+            height=30,
+            fg_color=MODERN_COLORS["bg_primary"],
+            hover_color=MODERN_COLORS["border"]
+        )
+        info_btn.configure(command=self.show_asset_info)  # Fixed callback
+        info_btn.pack(fill="x", pady=2)
+        
+        # Manual refresh button
+        refresh_btn = ctk.CTkButton(
+            actions_frame,
+            text="🔄 Refresh List",
+            font=ctk.CTkFont(size=11),
+            height=30,
+            fg_color=MODERN_COLORS["bg_primary"],
+            hover_color=MODERN_COLORS["border"]
+        )
+        refresh_btn.configure(command=self.refresh_assets)  # Fixed callback
+        refresh_btn.pack(fill="x", pady=2)
+    
+    def create_assets_grid(self, parent):
+        """Create main assets grid with modern cards"""
+        grid_frame = ctk.CTkFrame(
+            parent,
+            fg_color="transparent"
+        )
+        grid_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        grid_frame.grid_columnconfigure(0, weight=1)
+        grid_frame.grid_rowconfigure(1, weight=1)
+        
+        # Grid header
+        header = ctk.CTkFrame(grid_frame, height=50, fg_color=MODERN_COLORS["bg_tertiary"])
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        header.grid_columnconfigure(1, weight=1)
+        header.grid_propagate(False)
+        
+        # Filter/sort controls
+        filter_frame = ctk.CTkFrame(header, fg_color="transparent")
+        filter_frame.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        
+        ctk.CTkLabel(
+            filter_frame,
+            text="Filter:",
+            font=ctk.CTkFont(size=12),
+            text_color=MODERN_COLORS["text_secondary"]
+        ).pack(side="left", padx=(0, 5))
+        
+        self.filter_var = ctk.StringVar(value="All")
+        filter_combo = ctk.CTkComboBox(
+            filter_frame,
+            values=["All", "Images", "Audio", "Videos"],
+            variable=self.filter_var,
+            width=100,
+            command=self.apply_filter
+        )
+        filter_combo.pack(side="left")
+        
+        # View mode toggle
+        view_frame = ctk.CTkFrame(header, fg_color="transparent")
+        view_frame.grid(row=0, column=1, sticky="e", padx=15, pady=10)
+        
+        self.view_mode = ctk.StringVar(value="grid")
+        
+        grid_btn = ctk.CTkButton(
+            view_frame,
+            text="⊞",
+            font=ctk.CTkFont(size=14),
+            width=30,
+            height=30,
+            fg_color=MODERN_COLORS["accent"],
+            command=lambda: self.change_view_mode("grid")
+        )
+        grid_btn.pack(side="left", padx=2)
+        
+        list_btn = ctk.CTkButton(
+            view_frame,
+            text="☰",
+            font=ctk.CTkFont(size=14),
+            width=30,
+            height=30,
+            fg_color=MODERN_COLORS["bg_primary"],
+            command=lambda: self.change_view_mode("list")
+        )
+        list_btn.pack(side="left", padx=2)
+        
+        # Scrollable assets area
+        self.assets_scroll = ctk.CTkScrollableFrame(
+            grid_frame,
+            fg_color=MODERN_COLORS["bg_primary"],
+            corner_radius=8
+        )
+        self.assets_scroll.grid(row=1, column=0, sticky="nsew")
+        self.assets_scroll.grid_columnconfigure(0, weight=1)
+    
+    def create_right_panel(self, parent):
+        """Create right panel for preview and details"""
+        self.right_panel = ctk.CTkFrame(
+            parent,
+            width=300,
+            fg_color=MODERN_COLORS["bg_tertiary"],
+            corner_radius=8
+        )
+        self.right_panel.grid(row=0, column=2, sticky="ns", padx=10, pady=10)
+        self.right_panel.grid_propagate(False)
+        
+        # Preview area
+        preview_label = ctk.CTkLabel(
+            self.right_panel,
+            text="👁️ Preview",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"]
+        )
+        preview_label.pack(pady=(20, 10))
+        
+        # Preview frame
+        self.preview_frame = ctk.CTkFrame(
+            self.right_panel,
+            height=200,
+            fg_color=MODERN_COLORS["bg_primary"]
+        )
+        self.preview_frame.pack(fill="x", padx=15, pady=10)
+        self.preview_frame.grid_propagate(False)
+        
+        # Default preview message
+        self.preview_label = ctk.CTkLabel(
+            self.preview_frame,
+            text="Select an asset to preview",
+            font=ctk.CTkFont(size=12),
+            text_color=MODERN_COLORS["text_secondary"]
+        )
+        self.preview_label.pack(expand=True)
+        
+        # Details area
+        details_label = ctk.CTkLabel(
+            self.right_panel,
+            text="📋 Details",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"]
+        )
+        details_label.pack(pady=(20, 10))
+        
+        self.details_frame = ctk.CTkFrame(
+            self.right_panel,
+            fg_color=MODERN_COLORS["bg_primary"]
+        )
+        self.details_frame.pack(fill="x", padx=15, pady=10)
+        
+        # Default details
+        self.show_default_details()
+    
+    def create_footer(self):
+        """Create simplified footer without auto-delete settings"""
+        footer_frame = ctk.CTkFrame(
+            self,
+            height=60,  # Reduced height since no auto-delete settings
+            fg_color=MODERN_COLORS["bg_secondary"],
+            corner_radius=10
+        )
+        footer_frame.grid(row=2, column=0, sticky="ew", padx=15, pady=(10, 15))
+        footer_frame.grid_columnconfigure(1, weight=1)
+        footer_frame.grid_propagate(False)
+        
+        # Simple status display
+        status_frame = ctk.CTkFrame(footer_frame, fg_color="transparent")
+        status_frame.grid(row=0, column=0, sticky="w", padx=20, pady=15)
+        
+        # Status label
+        self.status_label = ctk.CTkLabel(
+            status_frame,
+            text="Ready",
+            font=ctk.CTkFont(size=12),
+            text_color=MODERN_COLORS["text_primary"]
+        )
+        self.status_label.pack(side="left")
+        
+        # Drag & Drop status
+        dnd_status = "✅ Drag & Drop Available" if self.drag_drop_available else "⚠️ Drag & Drop Unavailable"
+        dnd_label = ctk.CTkLabel(
+            footer_frame,
+            text=dnd_status,
+            font=ctk.CTkFont(size=10),
+            text_color=MODERN_COLORS["success"] if self.drag_drop_available else MODERN_COLORS["warning"]
+        )
+        dnd_label.grid(row=0, column=1, sticky="e", padx=20, pady=15)
+    def validate_hours_input(self, event=None):
+        """Validate hours input in real-time"""
+        try:
+            value = self.hours_var.get()
+            if value:  # Only validate if not empty
+                hours = float(value)
+                if hours <= 0:
+                    self.hours_var.set("1")  # Minimum 1 hour
+                elif hours > 8760:  # Maximum 1 year
+                    self.hours_var.set("8760")
+        except ValueError:
+            # Remove invalid characters
+            valid_chars = ''.join(c for c in self.hours_var.get() if c.isdigit() or c == '.')
+            self.hours_var.set(valid_chars)
+    
+    def apply_hours_setting(self, event=None):
+        """Apply the hours setting when focus is lost"""
+        try:
+            hours = float(self.hours_var.get())
+            if hours > 0:
+                self.auto_delete_hours = hours
+                if self.auto_delete_enabled:
+                    self.setup_existing_file_timers()
+                    self.show_success_notification(f"Auto-delete time set to {hours} hours")
+        except ValueError:
+            self.hours_var.set(str(self.auto_delete_hours))  # Reset to previous valid value
+    
+    def set_preset_hours(self, hours):
+        """Set preset hours value"""
+        self.hours_var.set(str(hours))
+        self.auto_delete_hours = hours
+        if self.auto_delete_enabled:
+            self.setup_existing_file_timers()
+            self.show_success_notification(f"Auto-delete set to {hours} hours")
+    def get_assets_folder(self):
+        """Get the assets folder path - FIXED to always use exe/script directory"""
+        # Force detection of the actual executable/script location
+        if getattr(sys, 'frozen', False):
+            # Running as executable - get the REAL exe directory, not temp
+            exe_path = sys.executable
+            if 'temp' in exe_path.lower() or 'tmp' in exe_path.lower():
+                # This might be a onefile temp path, try to find the real exe
+                # Look for the original exe in common locations
+                possible_locations = [
+                    os.path.join(os.path.expanduser("~"), "Desktop"),
+                    os.path.join(os.path.expanduser("~"), "Downloads"),
+                    os.getcwd(),
+                ]
+                
+                for location in possible_locations:
+                    potential_exe = os.path.join(location, "app.exe")
+                    if os.path.exists(potential_exe):
+                        exe_path = potential_exe
+                        break
+                else:
+                    # Fallback: use current working directory
+                    exe_path = os.path.join(os.getcwd(), "app.exe")
+            
+            base_dir = os.path.dirname(os.path.abspath(exe_path))
+        else:
+            # Running as script
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Create assets folder next to the exe/script
+        assets_path = os.path.join(base_dir, "assets")
+        os.makedirs(assets_path, exist_ok=True)
+        
+        print(f"📁 Assets folder determined: {assets_path}")
+        self.main_app.append_terminal_output(f"📁 Assets folder: {assets_path}\n")
+        return assets_path
+    def get_asset_files(self):
+        """Get list of asset files directly in the app directory"""
+        asset_extensions = {
+            '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp',  # Images
+            '.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma',    # Audio
+            '.mp4', '.avi', '.mov', '.mkv', '.webm'                      # Video
+        }
+        
+        try:
+            all_files = os.listdir(self.assets_folder)
+            asset_files = []
+            
+            for filename in all_files:
+                # Skip the main application files
+                if filename.lower() in ['app.py', 'app.exe', 'main.py', 'main.exe']:
+                    continue
+                    
+                # Skip system files and folders
+                if filename.startswith('.') or os.path.isdir(os.path.join(self.assets_folder, filename)):
+                    continue
+                
+                # Check if file has asset extension
+                file_ext = os.path.splitext(filename)[1].lower()
+                if file_ext in asset_extensions:
+                    file_path = os.path.join(self.assets_folder, filename)
+                    file_size = os.path.getsize(file_path)
+                    file_modified = os.path.getmtime(file_path)
+                    
+                    asset_files.append({
+                        'name': filename,
+                        'path': file_path,
+                        'size': file_size,
+                        'modified': file_modified,
+                        'extension': file_ext,
+                        'type': self.get_file_type(file_ext)
+                    })
+            
+            # Sort by modification time (newest first)
+            asset_files.sort(key=lambda x: x['modified'], reverse=True)
+            return asset_files
+            
+        except Exception as e:
+            print(f"Error getting asset files: {e}")
+            return []
+    
+    def get_file_type(self, extension):
+        """Get file type from extension"""
+        image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'}
+        audio_exts = {'.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma'}
+        video_exts = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
+        
+        if extension in image_exts:
+            return 'image'
+        elif extension in audio_exts:
+            return 'audio'
+        elif extension in video_exts:
+            return 'video'
+        else:
+            return 'other'
+    
+    def refresh_assets(self):
+        """Refresh the assets display with modern cards"""
+        try:
+            # Clear existing content
+            for widget in self.assets_scroll.winfo_children():
+                widget.destroy()
+            
+            # Update stats
+            self.create_stats_display()
+            
+            asset_files = self.get_asset_files()
+            filtered_files = self.apply_current_filter(asset_files)
+            
+            if not filtered_files:
+                self.show_empty_state()
+                return
+            
+            if self.view_mode.get() == "grid":
+                self.create_grid_view(filtered_files)
+            else:
+                self.create_list_view(filtered_files)
+                
+            self.update_status(f"Loaded {len(filtered_files)} assets")
+        except Exception as e:
+            print(f"Error refreshing assets: {e}")
+            self.show_error_state(str(e))
+    
+    def apply_current_filter(self, files):
+        """Apply current filter to file list"""
+        filter_value = self.filter_var.get()
+        
+        if filter_value == "All":
+            return files
+        elif filter_value == "Images":
+            return [f for f in files if f['type'] == 'image']
+        elif filter_value == "Audio":
+            return [f for f in files if f['type'] == 'audio']
+        elif filter_value == "Videos":
+            return [f for f in files if f['type'] == 'video']
+        
+        return files
+    
+    def create_grid_view(self, files):
+        """Create modern grid view of assets"""
+        cols = 3  # 3 columns for grid view
+        
+        for i, file_info in enumerate(files):
+            row = i // cols
+            col = i % cols
+            
+            self.assets_scroll.grid_columnconfigure(col, weight=1, uniform="col")
+            
+            card = self.create_modern_asset_card(file_info, is_grid=True)
+            card.grid(row=row, column=col, sticky="ew", padx=5, pady=5)
+    
+    def create_list_view(self, files):
+        """Create modern list view of assets"""
+        self.assets_scroll.grid_columnconfigure(0, weight=1)
+        
+        for i, file_info in enumerate(files):
+            card = self.create_modern_asset_card(file_info, is_grid=False)
+            card.grid(row=i, column=0, sticky="ew", padx=5, pady=2)
+    
+    def create_modern_asset_card(self, file_info, is_grid=True):
+        """Create a modern asset card with timer display and clear action buttons"""
+        from datetime import datetime
+        
+        # Card frame with modern styling
+        card = ctk.CTkFrame(
+            self.assets_scroll,
+            fg_color=MODERN_COLORS["bg_secondary"],
+            border_color=MODERN_COLORS["border"],
+            border_width=1,
+            corner_radius=12,
+            height=160 if is_grid else 120  # Increased height for timer display
+        )
+        
+        if is_grid:
+            card.grid_propagate(False)
+        
+        # Configure card layout
+        card.grid_columnconfigure(1, weight=1)
+        
+        # File type icon with modern styling
+        type_icons = {
+            'image': '🖼️',
+            'audio': '🎵',
+            'video': '🎬',
+            'other': '📄'
+        }
+        
+        # Icon frame
+        icon_frame = ctk.CTkFrame(
+            card,
+            width=60 if is_grid else 50,
+            fg_color=MODERN_COLORS["bg_tertiary"],
+            corner_radius=8
+        )
+        icon_frame.grid(row=0, column=0, rowspan=4 if is_grid else 3, 
+                       padx=10, pady=10, sticky="ns")
+        icon_frame.grid_propagate(False)
+        
+        icon_label = ctk.CTkLabel(
+            icon_frame,
+            text=type_icons[file_info['type']],
+            font=ctk.CTkFont(size=24 if is_grid else 20)
+        )
+        icon_label.pack(expand=True)
+        
+        # Content frame
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.grid(row=0, column=1, sticky="ew", padx=10, pady=10)
+        content_frame.grid_columnconfigure(0, weight=1)
+        
+        # File name with truncation
+        name_display = file_info['name']
+        if len(name_display) > 25 and is_grid:
+            name_display = name_display[:22] + "..."
+        elif len(name_display) > 40 and not is_grid:
+            name_display = name_display[:37] + "..."
+        
+        name_label = ctk.CTkLabel(
+            content_frame,
+            text=name_display,
+            font=ctk.CTkFont(size=14 if is_grid else 12, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"],
+            anchor="w"
+        )
+        name_label.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        
+        # File details
+        size_mb = file_info['size'] / (1024 * 1024)
+        size_text = f"{size_mb:.1f} MB" if size_mb >= 0.1 else f"{file_info['size']} B"
+        modified_date = datetime.fromtimestamp(file_info['modified']).strftime("%m/%d %H:%M")
+        
+        details_text = f"{size_text} • {modified_date}"
+        if not is_grid:
+            details_text += f" • {file_info['type'].title()}"
+        
+        details_label = ctk.CTkLabel(
+            content_frame,
+            text=details_text,
+            font=ctk.CTkFont(size=10 if is_grid else 9),
+            text_color=MODERN_COLORS["text_secondary"],
+            anchor="w"
+        )
+        details_label.grid(row=1, column=0, sticky="ew")
+        
+        # Timer display - NEW ENHANCED FEATURE
+        timer_text = self.get_file_timer_info(file_info['name']) if self.auto_delete_enabled else None
+        timer_label = None
+        if timer_text:
+            # Color-code timer based on remaining time
+            if "m left" in timer_text and not "h" in timer_text:
+                # Less than 1 hour - orange/warning color
+                timer_color = MODERN_COLORS["warning"]
+            elif "Deleting soon" in timer_text:
+                # About to delete - red/error color
+                timer_color = MODERN_COLORS["error"]
+            else:
+                # More than 1 hour - blue/accent color
+                timer_color = MODERN_COLORS["accent"]
+            
+            timer_label = ctk.CTkLabel(
+                content_frame,
+                text=timer_text,
+                font=ctk.CTkFont(size=9, weight="bold"),
+                text_color=timer_color,
+                anchor="w"
+            )
+            timer_label.grid(row=2, column=0, sticky="ew", pady=(2, 0))
+            
+            # Store reference for updates
+            if not hasattr(self, 'file_cards'):
+                self.file_cards = {}
+            self.file_cards[file_info['name']] = {'timer_label': timer_label}
+        
+        # Action buttons frame - IMPROVED VISIBILITY
+        actions_frame = ctk.CTkFrame(card, fg_color="transparent")
+        actions_frame.grid(row=0, column=2, rowspan=4 if is_grid else 3, 
+                          padx=10, pady=10, sticky="ns")
+        
+        # Preview button - ENHANCED
+        preview_btn = ctk.CTkButton(
+            actions_frame,
+            text="👁️ View",
+            width=75,  # Wider for better visibility
+            height=30,  # Taller for better click target
+            font=ctk.CTkFont(size=10, weight="bold"),
+            fg_color=MODERN_COLORS["accent"],
+            hover_color=MODERN_COLORS["accent_hover"],
+            text_color="white",
+            corner_radius=6,
+            command=lambda: self.preview_asset(file_info)
+        )
+        preview_btn.pack(pady=3)
+        
+        # Copy path button - ENHANCED
+        copy_btn = ctk.CTkButton(
+            actions_frame,
+            text="📋 Copy",
+            width=75,
+            height=30,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            fg_color=MODERN_COLORS["success"],
+            hover_color="#3d8b40",
+            text_color="white",
+            corner_radius=6,
+            command=lambda: self.copy_file_path(file_info)
+        )
+        copy_btn.pack(pady=3)
+        
+        # Delete button - ENHANCED
+        delete_btn = ctk.CTkButton(
+            actions_frame,
+            text="🗑️ Delete",
+            width=75,
+            height=30,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            fg_color=MODERN_COLORS["error"],
+            hover_color="#d32f2f",
+            text_color="white",
+            corner_radius=6,
+            command=lambda: self.delete_file_confirm(file_info)
+        )
+        delete_btn.pack(pady=3)
+        
+        # Timer control button (if auto-delete is enabled) - NEW
+        if self.auto_delete_enabled and file_info['name'] in self.file_timers:
+            timer_btn = ctk.CTkButton(
+                actions_frame,
+                text="⏰ Reset",
+                width=75,
+                height=25,
+                font=ctk.CTkFont(size=9, weight="bold"),
+                fg_color=MODERN_COLORS["warning"],
+                hover_color="#e67e22",
+                text_color="white",
+                corner_radius=6,
+                command=lambda: self.reset_file_timer(file_info['name'])
+            )
+            timer_btn.pack(pady=2)
+        
+        # Hover effects for the entire card - ENHANCED
+        def on_enter(event):
+            card.configure(border_color=MODERN_COLORS["accent"], border_width=2)
+        
+        def on_leave(event):
+            card.configure(border_color=MODERN_COLORS["border"], border_width=1)
+        
+        card.bind("<Enter>", on_enter)
+        card.bind("<Leave>", on_leave)
+        
+        # Make the card clickable for preview - ENHANCED
+        def on_card_click(event):
+            self.preview_asset(file_info)
+        
+        card.bind("<Button-1>", on_card_click)
+        icon_frame.bind("<Button-1>", on_card_click)
+        content_frame.bind("<Button-1>", on_card_click)
+        
+        return card
+    def reset_file_timer(self, filename):
+        """Reset timer for a specific file"""
+        try:
+            if filename in self.file_timers:
+                # Cancel existing timer
+                self.after_cancel(self.file_timers[filename])
+                
+                # Set new timer with full duration
+                delay_seconds = self.auto_delete_hours * 3600
+                self.schedule_file_deletion(filename, delay_seconds)
+                
+                # Update timer start time
+                if hasattr(self, 'timer_start_times'):
+                    self.timer_start_times[filename] = {
+                        'start_time': time.time(),
+                        'duration': delay_seconds
+                    }
+                
+                self.show_success_notification(f"Timer reset for {filename}")
+                print(f"⏰ Timer reset for {filename} - {self.auto_delete_hours} hours")
+                
+                # Refresh to update timer display
+                self.refresh_assets()
+                
+        except Exception as e:
+            print(f"❌ Error resetting timer for {filename}: {e}")
+            self.show_error_notification(f"Timer reset failed: {e}")
+    def show_empty_state(self):
+        """Show modern empty state"""
+        empty_frame = ctk.CTkFrame(
+            self.assets_scroll,
+            fg_color="transparent"
+        )
+        empty_frame.pack(expand=True, fill="both", padx=20, pady=50)
+        
+        # Large icon
+        icon_label = ctk.CTkLabel(
+            empty_frame,
+            text="📁",
+            font=ctk.CTkFont(size=64)
+        )
+        icon_label.pack(pady=(0, 20))
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            empty_frame,
+            text="No Assets Found",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"]
+        )
+        title_label.pack(pady=(0, 10))
+        
+        # Subtitle with drag & drop status
+        if self.drag_drop_available:
+            subtitle_text = "Drag & drop files here or use the buttons above to add assets"
+        else:
+            subtitle_text = "Use the buttons above to add assets (drag & drop not available)"
+        
+        subtitle_label = ctk.CTkLabel(
+            empty_frame,
+            text=subtitle_text,
+            font=ctk.CTkFont(size=14),
+            text_color=MODERN_COLORS["text_secondary"]
+        )
+        subtitle_label.pack()
+    
+    def show_error_state(self, error):
+        """Show error state"""
+        error_frame = ctk.CTkFrame(
+            self.assets_scroll,
+            fg_color="transparent"
+        )
+        error_frame.pack(expand=True, fill="both", padx=20, pady=50)
+        
+        # Error icon
+        icon_label = ctk.CTkLabel(
+            error_frame,
+            text="⚠️",
+            font=ctk.CTkFont(size=48),
+            text_color=MODERN_COLORS["error"]
+        )
+        icon_label.pack(pady=(0, 15))
+        
+        # Error message
+        error_label = ctk.CTkLabel(
+            error_frame,
+            text=f"Error loading assets:\n{error}",
+            font=ctk.CTkFont(size=14),
+            text_color=MODERN_COLORS["error"]
+        )
+        error_label.pack()
+    
+    def preview_asset(self, file_info):
+        """Preview asset in right panel"""
+        try:
+            # Clear current preview
+            for widget in self.preview_frame.winfo_children():
+                widget.destroy()
+            
+            if file_info['type'] == 'image':
+                self.preview_image_asset(file_info)
+            elif file_info['type'] == 'audio':
+                self.preview_audio_asset(file_info)
+            elif file_info['type'] == 'video':
+                self.preview_video_asset(file_info)
+            
+            # Update details
+            self.show_asset_details(file_info)
+        except Exception as e:
+            print(f"Error previewing asset: {e}")
+    
+    def preview_image_asset(self, file_info):
+        """Preview image asset"""
+        try:
+            if Image and ImageTk:
+                # Load and resize image
+                img = Image.open(file_info['path'])
+                
+                # Calculate size to fit preview area
+                preview_size = (280, 180)
+                img.thumbnail(preview_size, Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(img)
+                
+                # Display image
+                img_label = tk.Label(
+                    self.preview_frame,
+                    image=photo,
+                    bg=MODERN_COLORS["bg_primary"]
+                )
+                img_label.image = photo  # Keep reference
+                img_label.pack(expand=True)
+            else:
+                self.show_preview_error("PIL not available for image preview")
+            
+        except Exception as e:
+            self.show_preview_error(f"Cannot preview image: {e}")
+    
+    def preview_audio_asset(self, file_info):
+        """Preview audio asset"""
+        # Audio preview with waveform simulation
+        audio_frame = ctk.CTkFrame(self.preview_frame, fg_color="transparent")
+        audio_frame.pack(expand=True, fill="both", padx=20, pady=20)
+        
+        # Audio icon
+        ctk.CTkLabel(
+            audio_frame,
+            text="🎵",
+            font=ctk.CTkFont(size=48),
+            text_color=MODERN_COLORS["success"]
+        ).pack(pady=(20, 10))
+        
+        # Audio info
+        ctk.CTkLabel(
+            audio_frame,
+            text=file_info['name'],
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"]
+        ).pack()
+        
+        # Simulated waveform
+        waveform_frame = ctk.CTkFrame(audio_frame, height=40, fg_color=MODERN_COLORS["bg_tertiary"])
+        waveform_frame.pack(fill="x", padx=20, pady=10)
+        
+        ctk.CTkLabel(
+            waveform_frame,
+            text="~ ~ ~ ~ ~ ~ ~ ~ ~ ~",
+            font=ctk.CTkFont(size=12),
+            text_color=MODERN_COLORS["accent"]
+        ).pack(expand=True)
+    
+    def preview_video_asset(self, file_info):
+        """Preview video asset"""
+        video_frame = ctk.CTkFrame(self.preview_frame, fg_color="transparent")
+        video_frame.pack(expand=True, fill="both", padx=20, pady=20)
+        
+        # Video icon
+        ctk.CTkLabel(
+            video_frame,
+            text="🎬",
+            font=ctk.CTkFont(size=48),
+            text_color=MODERN_COLORS["warning"]
+        ).pack(pady=(20, 10))
+        
+        # Video info
+        ctk.CTkLabel(
+            video_frame,
+            text=file_info['name'],
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=MODERN_COLORS["text_primary"]
+        ).pack()
+        
+        # Play button placeholder
+        play_btn = ctk.CTkButton(
+            video_frame,
+            text="▶️ Open in Player",
+            font=ctk.CTkFont(size=12),
+            width=120,
+            height=30,
+            fg_color=MODERN_COLORS["warning"],
+            command=lambda: self.open_file(file_info['path'])
+        )
+        play_btn.pack(pady=10)
+    
+    def show_preview_error(self, error):
+        """Show preview error"""
+        error_label = ctk.CTkLabel(
+            self.preview_frame,
+            text=f"Preview Error:\n{error}",
+            font=ctk.CTkFont(size=12),
+            text_color=MODERN_COLORS["error"]
+        )
+        error_label.pack(expand=True)
+    
+    def show_asset_details(self, file_info):
+        """Show detailed asset information"""
+        # Clear current details
+        for widget in self.details_frame.winfo_children():
+            widget.destroy()
+        
+        details = [
+            ("📁 Name", file_info['name']),
+            ("📏 Size", f"{file_info['size'] / (1024*1024):.2f} MB"),
+            ("📅 Modified", datetime.fromtimestamp(file_info['modified']).strftime("%Y-%m-%d %H:%M:%S")),
+            ("🏷️ Type", file_info['type'].title()),
+            ("📎 Extension", file_info['extension']),
+            ("📍 Path", file_info['name'])  # Relative path
+        ]
+        
+        for label, value in details:
+            detail_frame = ctk.CTkFrame(self.details_frame, fg_color="transparent")
+            detail_frame.pack(fill="x", padx=10, pady=2)
+            detail_frame.grid_columnconfigure(1, weight=1)
+            
+            ctk.CTkLabel(
+                detail_frame,
+                text=label,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=MODERN_COLORS["text_secondary"],
+                width=80,
+                anchor="w"
+            ).grid(row=0, column=0, sticky="w")
+            
+            # Truncate long values
+            display_value = value
+            if len(str(value)) > 20:
+                display_value = str(value)[:17] + "..."
+            
+            ctk.CTkLabel(
+                detail_frame,
+                text=display_value,
+                font=ctk.CTkFont(size=11),
+                text_color=MODERN_COLORS["text_primary"],
+                anchor="w"
+            ).grid(row=0, column=1, sticky="w", padx=(10, 0))
+    
+    def show_default_details(self):
+        """Show default details when no asset is selected"""
+        default_label = ctk.CTkLabel(
+            self.details_frame,
+            text="Select an asset to view details",
+            font=ctk.CTkFont(size=12),
+            text_color=MODERN_COLORS["text_secondary"]
+        )
+        default_label.pack(expand=True, pady=20)
+    
+    # CORRECT Drag and Drop Implementation - USING PROPER tkinterdnd2 API
+    
+    
+    
+    def reset_drop_processing(self):
+        """Reset drop processing flag"""
+        self.processing_drop = False
+        self.update_status("Ready")
+        print("🎯 Drop processing reset")
+    
+    # Working File Upload Implementation
+    def add_files_dialog(self):
+        """General add files dialog - WORKING IMPLEMENTATION"""
+        print("🔄 Opening file dialog...")
+        try:
+            filetypes = [
+                ("All Asset Files", "*.png *.jpg *.jpeg *.gif *.bmp *.mp3 *.wav *.ogg *.mp4 *.avi *.mov"),
+                ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp"),
+                ("Audio files", "*.mp3 *.wav *.ogg *.m4a *.flac *.aac *.wma"),
+                ("Video files", "*.mp4 *.avi *.mov *.mkv *.webm"),
+                ("All files", "*.*")
+            ]
+            
+            file_paths = filedialog.askopenfilenames(
+                title="Select Asset Files",
+                filetypes=filetypes,
+                parent=self
+            )
+            
+            if file_paths:
+                print(f"📁 Selected {len(file_paths)} files")
+                self.process_dropped_files(file_paths)
+            else:
+                print("❌ No files selected")
+        except Exception as e:
+            print(f"❌ Error in file dialog: {e}")
+            self.show_error_notification(f"File dialog error: {str(e)}")
+    
+    def handle_image_add(self):
+        """Handle image add - WORKING IMPLEMENTATION"""
+        print("🖼️ Adding images...")
+        try:
+            filetypes = [
+                ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp"),
+                ("All files", "*.*")
+            ]
+            
+            file_paths = filedialog.askopenfilenames(
+                title="Select Images",
+                filetypes=filetypes,
+                parent=self
+            )
+            
+            if file_paths:
+                self.process_dropped_files(file_paths)
+        except Exception as e:
+            print(f"❌ Error adding images: {e}")
+            self.show_error_notification(f"Image add error: {str(e)}")
+    
+    def handle_audio_add(self):
+        """Handle audio add - WORKING IMPLEMENTATION"""
+        print("🎵 Adding audio...")
+        try:
+            filetypes = [
+                ("Audio files", "*.mp3 *.wav *.ogg *.m4a *.flac *.aac *.wma"),
+                ("All files", "*.*")
+            ]
+            
+            file_paths = filedialog.askopenfilenames(
+                title="Select Audio Files",
+                filetypes=filetypes,
+                parent=self
+            )
+            
+            if file_paths:
+                self.process_dropped_files(file_paths)
+        except Exception as e:
+            print(f"❌ Error adding audio: {e}")
+            self.show_error_notification(f"Audio add error: {str(e)}")
+    
+    def handle_video_add(self):
+        """Handle video add - WORKING IMPLEMENTATION"""
+        print("🎬 Adding videos...")
+        try:
+            filetypes = [
+                ("Video files", "*.mp4 *.avi *.mov *.mkv *.webm"),
+                ("All files", "*.*")
+            ]
+            
+            file_paths = filedialog.askopenfilenames(
+                title="Select Video Files",
+                filetypes=filetypes,
+                parent=self
+            )
+            
+            if file_paths:
+                self.process_dropped_files(file_paths)
+        except Exception as e:
+            print(f"❌ Error adding videos: {e}")
+            self.show_error_notification(f"Video add error: {str(e)}")
+    
+    # Utility Methods - WORKING IMPLEMENTATIONS
+    def copy_file_path(self, file_info):
+        """Copy file path to clipboard - WORKING IMPLEMENTATION"""
+        try:
+            relative_path = file_info['name']
+            
+            self.clipboard_clear()
+            self.clipboard_append(relative_path)
+            
+            self.show_success_notification(f"Copied: {relative_path}")
+            self.main_app.append_terminal_output(f"📋 Copied to clipboard: {relative_path}\n")
+            
+        except Exception as e:
+            self.show_error_notification(f"Copy error: {str(e)}")
+    
+    def delete_file_confirm(self, file_info):
+        """Confirm and delete file - WORKING IMPLEMENTATION"""
+        if messagebox.askyesno(
+            "Delete Asset",
+            f"Are you sure you want to delete:\n{file_info['name']}?",
+            parent=self
+        ):
+            try:
+                os.remove(file_info['path'])
+                
+                # Cancel timer if exists
+                if file_info['name'] in self.file_timers:
+                    self.after_cancel(self.file_timers[file_info['name']])
+                    del self.file_timers[file_info['name']]
+                
+                self.refresh_assets()
+                self.show_success_notification(f"Deleted: {file_info['name']}")
+                self.main_app.append_terminal_output(f"🗑️ Deleted asset: {file_info['name']}\n")
+                
+            except Exception as e:
+                self.show_error_notification(f"Delete failed: {str(e)}")
+    
+    def open_app_folder(self):
+        """Open the app directory in file explorer - SAFE VERSION"""
+        print("📂 Opening app folder...")
+        try:
+            import subprocess
+            import platform
+            
+            system = platform.system()
+            
+            if system == "Windows":
+                # Use startfile for Windows - more reliable
+                os.startfile(self.assets_folder)
+            elif system == "Darwin":  # macOS
+                subprocess.run(["open", self.assets_folder], check=True)
+            else:  # Linux and others
+                subprocess.run(["xdg-open", self.assets_folder], check=True)
+                
+            self.show_success_notification("Opened assets folder")
+            self.main_app.append_terminal_output(f"📂 Opened app directory: {self.assets_folder}\n")
+            
+        except Exception as e:
+            print(f"❌ Error opening folder: {e}")
+            # Show folder path to user instead
+            messagebox.showinfo(
+                "Folder Location", 
+                f"Cannot open folder automatically.\n\nAssets folder location:\n{self.assets_folder}",
+                parent=self
+            )
+    
+    def open_file(self, file_path):
+        """Open file with default application"""
+        try:
+            import subprocess
+            import platform
+            
+            system = platform.system()
+            
+            if system == "Windows":
+                os.startfile(file_path)
+            elif system == "Darwin":  # macOS
+                subprocess.run(["open", file_path], check=True)
+            else:  # Linux
+                subprocess.run(["xdg-open", file_path], check=True)
+                
+        except Exception as e:
+            self.show_error_notification(f"Cannot open file: {str(e)}")
+    
+    # Filter and View Methods
+    def apply_filter(self, *args):
+        """Apply filter to assets"""
+        self.refresh_assets()
+    
+    def change_view_mode(self, mode):
+        """Change view mode between grid and list"""
+        self.view_mode.set(mode)
+        self.refresh_assets()
+    
+    # Quick Actions
+    def clear_all_assets(self):
+        """Clear all assets with confirmation"""
+        if messagebox.askyesno(
+            "Clear All Assets",
+            "Are you sure you want to delete ALL assets?\nThis cannot be undone!",
+            parent=self
+        ):
+            try:
+                asset_files = self.get_asset_files()
+                deleted_count = 0
+                
+                for file_info in asset_files:
+                    os.remove(file_info['path'])
+                    if file_info['name'] in self.file_timers:
+                        self.after_cancel(self.file_timers[file_info['name']])
+                        del self.file_timers[file_info['name']]
+                    deleted_count += 1
+                
+                self.refresh_assets()
+                self.show_success_notification(f"Deleted {deleted_count} assets")
+                self.main_app.append_terminal_output(f"🗑️ Cleared all assets ({deleted_count} files)\n")
+                
+            except Exception as e:
+                self.show_error_notification(f"Clear failed: {str(e)}")
+    
+    def show_asset_info(self):
+        """Show asset information"""
+        asset_files = self.get_asset_files()
+        total_files = len(asset_files)
+        total_size = sum(f['size'] for f in asset_files) / (1024 * 1024)
+        
+        # Count by type
+        type_counts = {'image': 0, 'audio': 0, 'video': 0, 'other': 0}
+        for file_info in asset_files:
+            type_counts[file_info['type']] += 1
+        
+        info_text = f"""Asset Summary:
+        
+📊 Total Files: {total_files}
+📏 Total Size: {total_size:.1f} MB
+📁 Directory: {self.assets_folder}
+
+📊 By Type:
+🖼️ Images: {type_counts['image']}
+🎵 Audio: {type_counts['audio']}
+🎬 Videos: {type_counts['video']}
+📄 Other: {type_counts['other']}
+
+⚙️ Auto-delete: {'Enabled' if self.auto_delete_enabled else 'Disabled'}
+🔧 Drag & Drop: {'Available' if self.drag_drop_available else 'Not Available'}"""
+        
+        messagebox.showinfo("Asset Information", info_text, parent=self)
+    
+    # Auto-delete Methods
+    def setup_existing_file_timers(self):
+        """Setup timers for existing files"""
+        try:
+            if not self.auto_delete_enabled:
+                return
+                
+            asset_files = self.get_asset_files()
+            current_time = time.time()
+            
+            for file_info in asset_files:
+                file_age_seconds = current_time - file_info['modified']
+                delete_delay_seconds = (self.auto_delete_hours * 3600) - file_age_seconds
+                
+                if delete_delay_seconds > 0:
+                    self.schedule_file_deletion(file_info['name'], delete_delay_seconds)
+                else:
+                    self.delete_expired_file(file_info['name'])
+                    
+        except Exception as e:
+            print(f"Error setting up file timers: {e}")
+    
+    def schedule_file_deletion(self, filename, delay_seconds):
+        """Schedule a file for automatic deletion - ENHANCED"""
+        try:
+            # Cancel existing timer if any
+            if filename in self.file_timers:
+                self.after_cancel(self.file_timers[filename])
+            
+            # Don't schedule if delay is too short (less than 1 minute)
+            if delay_seconds < 60:
+                delay_seconds = 60  # Minimum 1 minute
+            
+            # Schedule new timer
+            timer_id = self.after(int(delay_seconds * 1000), lambda: self.delete_expired_file(filename))
+            self.file_timers[filename] = timer_id
+            
+            print(f"⏰ Scheduled deletion for {filename} in {delay_seconds/3600:.1f} hours")
+            
+        except Exception as e:
+            print(f"❌ Error scheduling deletion for {filename}: {e}")
+    
+    def delete_expired_file(self, filename):
+        """Delete an expired file automatically"""
+        try:
+            file_path = os.path.join(self.assets_folder, filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                
+                if filename in self.file_timers:
+                    del self.file_timers[filename]
+                
+                if self.winfo_exists():
+                    self.refresh_assets()
+                    self.show_info_notification(f"Auto-deleted: {filename}")
+                    self.main_app.append_terminal_output(f"🗑️ Auto-deleted expired asset: {filename}\n")
+                    
+        except Exception as e:
+            print(f"Error auto-deleting file {filename}: {e}")
+    
+    def toggle_auto_delete(self):
+        """Toggle auto-delete functionality - ENHANCED"""
+        self.auto_delete_enabled = self.auto_delete_var.get()
+        
+        if not self.auto_delete_enabled:
+            # Cancel all existing timers
+            for filename, timer_id in self.file_timers.items():
+                self.after_cancel(timer_id)
+                print(f"⏹️ Cancelled timer for {filename}")
+            self.file_timers.clear()
+            
+            # Clear timer start times
+            if hasattr(self, 'timer_start_times'):
+                self.timer_start_times.clear()
+                
+            self.show_info_notification("Auto-delete disabled")
+            print("🔧 Auto-delete disabled - all timers cancelled")
+            
+            # Refresh UI to remove timer displays
+            self.refresh_assets()
+        else:
+            # Setup timers for ALL existing files (don't delete any)
+            try:
+                if hasattr(self, 'hours_var'):
+                    self.auto_delete_hours = float(self.hours_var.get())
+                
+                self.setup_existing_file_timers()
+                self.show_success_notification(f"Auto-delete enabled ({self.auto_delete_hours}h)")
+                print(f"✅ Auto-delete enabled - files will be deleted after {self.auto_delete_hours} hours")
+                
+                # Start timer display updates
+                self.start_timer_display_updates()
+                
+                # Refresh UI to show timer displays
+                self.refresh_assets()
+                
+            except ValueError:
+                self.auto_delete_var.set(False)
+                self.auto_delete_enabled = False
+                self.show_error_notification("Invalid hours value")
+    # Notification Methods
+    def setup_drag_drop(self):
+        """Setup drag and drop functionality - FIXED VERSION"""
+        if self.drag_drop_available and self.tkinterdnd2:
+            try:
+                # Correct way to initialize tkinterdnd2 for CustomTkinter
+                self.TkdndVersion = self.TkinterDnD._require(self)
+                
+                # Register for file drops
+                self.drop_target_register(self.DND_FILES)
+                
+                # Bind events
+                self.dnd_bind('<<DropEnter>>', self.on_drop_enter)
+                self.dnd_bind('<<DropPosition>>', self.on_drop_position) 
+                self.dnd_bind('<<DropLeave>>', self.on_drop_leave)
+                self.dnd_bind('<<Drop>>', self.on_drop)
+                
+                print("✅ Drag & Drop setup completed successfully")
+                
+            except Exception as e:
+                print(f"⚠️ Drag & Drop setup failed: {e}")
+                self.drag_drop_available = False
+        else:
+            print("⚠️ Drag & Drop not available")
+
+    def on_drop_enter(self, event):
+        """Handle drag enter - FIXED TO PREVENT LOOPS"""
+        if not self.drag_drop_available or self.processing_drop:
+            return event.action
+        
+        print("🎯 Drag detected - files entering drop zone")
+        self.drop_zone_active = True
+        
+        # Visual feedback
+        try:
+            self.configure(border_color=MODERN_COLORS["accent"], border_width=3)
+            self.update_status("Drop files to add to assets")
+        except:
+            pass  # Ignore visual update errors
+        
+        return event.action
+
+    def on_drop_position(self, event):
+        """Handle drag position - FIXED TO PREVENT LOOPS"""
+        if not self.drag_drop_available or self.processing_drop:
+            return event.action
+        return event.action
+
+    def on_drop_leave(self, event):
+        """Handle drag leave - FIXED TO PREVENT LOOPS"""
+        if not self.drag_drop_available or self.processing_drop:
+            return
+        
+        print("🎯 Drag left drop zone")
+        self.drop_zone_active = False
+        
+        # Reset visual feedback
+        try:
+            self.configure(border_color=MODERN_COLORS["border"], border_width=0)
+            self.update_status("Ready")
+        except:
+            pass  # Ignore visual update errors
+    def parse_multiple_file_paths(self, data):
+        """Enhanced parser for multiple file paths from drag & drop"""
+        import re
+        
+        file_paths = []
+        
+        # Remove any surrounding whitespace
+        data = data.strip()
+        
+        if not data:
+            return file_paths
+        
+        # Method 1: Try splitting by newlines first (common on Unix systems)
+        if '\n' in data:
+            potential_paths = [line.strip() for line in data.split('\n') if line.strip()]
+            print(f"🔍 Found newline-separated paths: {len(potential_paths)}")
+            
+            for path in potential_paths:
+                # Remove braces if present
+                clean_path = path.strip('{}').strip('"').strip("'").strip()
+                if clean_path and (os.path.isfile(clean_path) or os.path.isabs(clean_path)):
+                    file_paths.append(clean_path)
+            
+            if file_paths:
+                return file_paths
+        
+        # Method 2: Handle braced paths (Windows style: {path1} {path2})
+        brace_pattern = r'\{([^}]+)\}'
+        braced_matches = re.findall(brace_pattern, data)
+        
+        if braced_matches:
+            print(f"🔍 Found braced paths: {len(braced_matches)}")
+            for match in braced_matches:
+                clean_path = match.strip()
+                if clean_path and (os.path.isfile(clean_path) or os.path.isabs(clean_path)):
+                    file_paths.append(clean_path)
+            
+            if file_paths:
+                return file_paths
+        
+        # Method 3: Handle quoted paths ("path1" "path2" or 'path1' 'path2')
+        quote_patterns = [
+            r'"([^"]+)"',  # Double quotes
+            r"'([^']+)'"   # Single quotes
+        ]
+        
+        for pattern in quote_patterns:
+            quoted_matches = re.findall(pattern, data)
+            if quoted_matches:
+                print(f"🔍 Found quoted paths: {len(quoted_matches)}")
+                for match in quoted_matches:
+                    clean_path = match.strip()
+                    if clean_path and (os.path.isfile(clean_path) or os.path.isabs(clean_path)):
+                        file_paths.append(clean_path)
+                
+                if file_paths:
+                    return file_paths
+        
+        # Method 4: Smart space splitting (handle paths with spaces)
+        # This is tricky because paths can contain spaces
+        if ' ' in data:
+            # Try to split intelligently
+            potential_paths = []
+            
+            # First, try splitting by drive letters (Windows: C:\ D:\ etc.)
+            if ':' in data and ('\\' in data or '/' in data):
+                # Windows paths - split on drive pattern
+                drive_pattern = r'([A-Za-z]:\\[^A-Za-z]*?)(?=[A-Za-z]:\\|$)'
+                drive_matches = re.findall(drive_pattern, data)
+                
+                if drive_matches:
+                    potential_paths = [match.strip() for match in drive_matches]
+                else:
+                    # Fallback: split by space and try to reconstruct paths
+                    parts = data.split()
+                    current_path = ""
+                    
+                    for part in parts:
+                        if current_path:
+                            current_path += " " + part
+                        else:
+                            current_path = part
+                        
+                        # Check if current_path looks like a complete file path
+                        if os.path.isfile(current_path):
+                            potential_paths.append(current_path)
+                            current_path = ""
+                        elif part.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.mp3', '.wav', '.mp4', '.avi')):
+                            # Likely end of a file path
+                            potential_paths.append(current_path)
+                            current_path = ""
+            else:
+                # Unix paths or simple splitting
+                potential_paths = [p.strip() for p in data.split() if p.strip()]
+            
+            print(f"🔍 Found space-separated paths: {len(potential_paths)}")
+            
+            for path in potential_paths:
+                clean_path = path.strip('{}').strip('"').strip("'").strip()
+                if clean_path and (os.path.isfile(clean_path) or os.path.isabs(clean_path)):
+                    file_paths.append(clean_path)
+            
+            if file_paths:
+                return file_paths
+        
+        # Method 5: Single file (fallback)
+        clean_data = data.strip('{}').strip('"').strip("'").strip()
+        if clean_data and (os.path.isfile(clean_data) or os.path.isabs(clean_data)):
+            file_paths.append(clean_data)
+            print(f"🔍 Single file detected: {clean_data}")
+        
+        return file_paths
+    def on_drop(self, event):
+        """Handle file drop - ENHANCED for multiple files"""
+        if not self.drag_drop_available:
+            return event.action
+        
+        # FIXED: Prevent multiple simultaneous processing
+        if self.processing_drop:
+            print("⚠️ Already processing files, skipping...")
+            return event.action
+        
+        print("🎯 Files dropped!")
+        
+        # Set processing flag
+        self.processing_drop = True
+        
+        try:
+            self.drop_zone_active = False
+            
+            # Reset visual feedback
+            try:
+                self.configure(border_color=MODERN_COLORS["border"], border_width=0)
+            except:
+                pass
+            
+            # ENHANCED multi-file parsing for tkinterdnd2
+            file_paths = []
+            try:
+                data = event.data
+                print(f"🎯 Raw drop data: {repr(data)}")
+                
+                if isinstance(data, str):
+                    file_paths = self.parse_multiple_file_paths(data)
+                elif isinstance(data, (list, tuple)):
+                    # Sometimes tkinterdnd2 provides a list
+                    file_paths = [str(path).strip() for path in data]
+                else:
+                    file_paths = [str(data).strip()]
+                
+                print(f"🎯 Parsed {len(file_paths)} file paths: {file_paths}")
+                
+            except Exception as e:
+                print(f"❌ Error parsing drop data: {e}")
+                return event.action
+            
+            # Filter valid files
+            valid_files = []
+            for path in file_paths:
+                path = path.strip()
+                if path and os.path.isfile(path):
+                    valid_files.append(path)
+                    print(f"✅ Valid file: {os.path.basename(path)}")
+                else:
+                    if path:  # Only log if path is not empty
+                        print(f"❌ Invalid file: {path}")
+            
+            if valid_files:
+                print(f"🎯 Processing {len(valid_files)} valid files")
+                # Process files immediately
+                self.process_dropped_files_immediate(valid_files)
+            else:
+                self.show_error_notification("No valid files to add")
+                
+        except Exception as e:
+            print(f"❌ Error in drop processing: {e}")
+            self.show_error_notification(f"Drop error: {e}")
+        finally:
+            # CRITICAL: Always reset processing flag
+            self.processing_drop = False
+            print("🎯 Drop processing reset")
+        
+        return event.action
+    def process_dropped_files_immediate(self, file_paths):
+        """Process dropped files immediately - ENHANCED for multiple files"""
+        try:
+            successful_copies = 0
+            failed_copies = 0
+            total_files = len(file_paths)
+            
+            print(f"📁 Processing {total_files} dropped files...")
+            self.update_status(f"Processing {total_files} files...")
+            
+            # Process each file
+            for i, file_path in enumerate(file_paths):
+                try:
+                    # Update progress
+                    progress = f"({i+1}/{total_files})"
+                    
+                    # Get file info
+                    filename = os.path.basename(file_path)
+                    file_size = os.path.getsize(file_path)
+                    
+                    print(f"📄 {progress} Processing: {filename} ({file_size} bytes)")
+                    self.update_status(f"Processing {filename} {progress}...")
+                    
+                    # Determine destination
+                    dest_path = os.path.join(self.assets_folder, filename)
+                    
+                    # Handle filename conflicts with enhanced naming
+                    if os.path.exists(dest_path):
+                        base_name, ext = os.path.splitext(filename)
+                        counter = 1
+                        while os.path.exists(dest_path):
+                            new_filename = f"{base_name}_{counter:02d}{ext}"
+                            dest_path = os.path.join(self.assets_folder, new_filename)
+                            counter += 1
+                        
+                        print(f"📝 Renamed to avoid conflict: {os.path.basename(dest_path)}")
+                    
+                    # Copy file
+                    shutil.copy2(file_path, dest_path)
+                    successful_copies += 1
+                    
+                    print(f"✅ {progress} Copied: {filename} -> {os.path.basename(dest_path)}")
+                    
+                except Exception as e:
+                    failed_copies += 1
+                    print(f"❌ {progress} Failed to copy {filename}: {e}")
+                    continue
+            
+            # Update UI and show results
+            if successful_copies > 0:
+                self.refresh_assets()
+                
+                # Enhanced success message
+                if failed_copies > 0:
+                    message = f"Added {successful_copies} files ({failed_copies} failed)"
+                    self.show_error_notification(message)
+                else:
+                    message = f"Added {successful_copies} file(s) successfully!"
+                    self.show_success_notification(message)
+                
+                print(f"✅ Successfully added {successful_copies}/{total_files} files")
+                self.main_app.append_terminal_output(f"📁 Added {successful_copies} assets to collection\n")
+            else:
+                self.show_error_notification("Failed to add any files")
+                print(f"❌ Failed to add any files (0/{total_files})")
+                
+        except Exception as e:
+            print(f"❌ Error processing dropped files: {e}")
+            self.show_error_notification(f"Processing error: {e}")
+    def schedule_file_deletion(self, filename, delay_seconds):
+        """Schedule a file for automatic deletion"""
+        try:
+            # Cancel existing timer if any
+            if filename in self.file_timers:
+                self.after_cancel(self.file_timers[filename])
+            
+            # Schedule new timer
+            timer_id = self.after(int(delay_seconds * 1000), lambda: self.delete_expired_file(filename))
+            self.file_timers[filename] = timer_id
+            
+            print(f"⏰ Scheduled deletion for {filename} in {delay_seconds/3600:.1f} hours")
+            
+        except Exception as e:
+            print(f"❌ Error scheduling deletion for {filename}: {e}")
+    
+    def delete_expired_file(self, filename):
+        """Delete an expired file automatically"""
+        try:
+            file_path = os.path.join(self.assets_folder, filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"🗑️ Auto-deleted expired file: {filename}")
+                
+                # Remove from timers
+                if filename in self.file_timers:
+                    del self.file_timers[filename]
+                
+                # Update UI if window still exists
+                if self.winfo_exists():
+                    self.refresh_assets()
+                    self.show_info_notification(f"Auto-deleted: {filename}")
+                    self.main_app.append_terminal_output(f"🗑️ Auto-deleted expired asset: {filename}\n")
+            else:
+                print(f"⚠️ File {filename} not found for auto-deletion")
+                
+        except Exception as e:
+            print(f"❌ Error auto-deleting file {filename}: {e}")
+    def show_success_notification(self, message):
+        """Show success notification"""
+        try:
+            # Update status
+            self.update_status(message)
+            
+            # You can add more UI feedback here if needed
+            print(f"✅ {message}")
+            
+        except Exception as e:
+            print(f"Error showing success notification: {e}")
+
+    def show_error_notification(self, message):
+        """Show error notification"""
+        try:
+            # Update status
+            self.update_status(f"Error: {message}")
+            
+            # You can add more UI feedback here if needed
+            print(f"❌ {message}")
+            
+        except Exception as e:
+            print(f"Error showing error notification: {e}")
+
+    def update_status(self, message):
+        """Update status message"""
+        try:
+            # If you have a status label, update it here
+            if hasattr(self, 'status_label'):
+                self.status_label.configure(text=message)
+            
+            # Also print to console
+            print(f"📊 Status: {message}")
+            
+        except Exception as e:
+            print(f"Error updating status: {e}")
+    def show_error_notification(self, message):
+        """Show error notification"""
+        self.update_status(f"❌ {message}")
+        self.after(5000, lambda: self.update_status("Ready"))
+    
+    def show_info_notification(self, message):
+        """Show info notification"""
+        self.update_status(f"ℹ️ {message}")
+        self.after(3000, lambda: self.update_status("Ready"))
+    
+    
+    
+    def on_close(self):
+        """Handle window close"""
+        print("🔄 Closing Assets Manager...")
+        # Cancel all timers
+        for timer_id in self.file_timers.values():
+            self.after_cancel(timer_id)
+        self.file_timers.clear()
+        
+        self.destroy()
+
+class AssetFileCard(ctk.CTkFrame):
+    """Individual asset file card for the grid"""
+    
+    def __init__(self, parent, filename, file_path, category, on_select_callback, on_delete_callback, **kwargs):
+        super().__init__(parent, **kwargs)
+        
+        self.filename = filename
+        self.file_path = file_path
+        self.category = category
+        self.on_select = on_select_callback
+        self.on_delete = on_delete_callback
+        
+        self.create_ui()
+        
+    def create_ui(self):
+        """Create the card UI"""
+        self.grid_columnconfigure(0, weight=1)
+        
+        # Card container
+        card_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface_light"], corner_radius=10)
+        card_frame.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
+        card_frame.grid_columnconfigure(0, weight=1)
+        
+        # File icon/preview
+        icon_frame = ctk.CTkFrame(card_frame, height=70, fg_color="transparent")
+        icon_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
+        icon_frame.grid_propagate(False)
+        
+        # Category icon
+        icons = {
+            "image": "🖼️",
+            "audio": "🎵",
+            "video": "🎬",
+            "other": "📄"
+        }
+        
+        icon_label = ctk.CTkLabel(
+            icon_frame,
+            text=icons.get(self.category, "📄"),
+            font=ctk.CTkFont(size=32)
+        )
+        icon_label.pack(expand=True)
+        
+        # File name
+        name_text = self.filename
+        if len(name_text) > 15:
+            name_text = name_text[:12] + "..."
+        
+        name_label = ctk.CTkLabel(
+            card_frame,
+            text=name_text,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            wraplength=140
+        )
+        name_label.grid(row=1, column=0, padx=10, pady=(0, 5))
+        
+        # File size
+        try:
+            size = os.path.getsize(self.file_path)
+            size_str = self.format_file_size(size)
+        except:
+            size_str = "Unknown"
+        
+        size_label = ctk.CTkLabel(
+            card_frame,
+            text=size_str,
+            font=ctk.CTkFont(size=9),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        size_label.grid(row=2, column=0, padx=10)
+        
+        # Action buttons
+        button_frame = ctk.CTkFrame(card_frame, fg_color="transparent")
+        button_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(5, 10))
+        button_frame.grid_columnconfigure((0, 1), weight=1)
+        
+        ctk.CTkButton(
+            button_frame,
+            text="View",
+            width=50,
+            height=25,
+            command=self.on_view_click,
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS.get("primary_hover", VSCODE_COLORS["primary"]),
+            font=ctk.CTkFont(size=10)
+        ).grid(row=0, column=0, padx=(0, 5))
+        
+        ctk.CTkButton(
+            button_frame,
+            text="Delete",
+            width=50,
+            height=25,
+            command=self.on_delete_click,
+            fg_color=VSCODE_COLORS.get("error", "#E74C3C"),
+            hover_color="#C0392B",
+            font=ctk.CTkFont(size=10)
+        ).grid(row=0, column=1)
+        
+    def format_file_size(self, size_bytes):
+        """Format file size"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024
+        return f"{size_bytes:.1f} TB"
+    
+    def on_view_click(self):
+        """Handle view button click"""
+        self.on_select(self.filename, self.file_path, self.category)
+        
+    def on_delete_click(self):
+        """Handle delete button click"""
+        self.on_delete(self.filename)
+
 # Terminal emulation in Tkinter
+
+
+
+
 class TkTerminal(tk.Text):
     """A Tkinter-based terminal emulator widget with realistic appearance"""
 
@@ -1370,85 +3803,57 @@ Keyboard Shortcuts:
         self.show_terminal_banner()
         self.show_prompt()
         
-    def run_command_redirected(self, command, on_complete=None, env=None):
-        """Run command with improved file handling"""
-        if isinstance(command, list):
-            cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in command)
-        else:
-            cmd_str = command
-
-        # Show command being executed
-        self.insert("end", f"\n$ {cmd_str}\n", "command")
-
-        def execute_with_retry():
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    if isinstance(command, list) and len(command) > 2:
-                        potential_file = command[2]
-                        if potential_file.endswith('.py') and not os.path.exists(potential_file):
-                            if attempt < max_retries - 1:
-                                self.insert("end", f"⚠️ File not found, retrying in 0.2s... (attempt {attempt + 1})\n", "warning")
-                                time.sleep(0.2)
-                                continue
-                            else:
-                                raise FileNotFoundError(f"Scene file not found after {max_retries} attempts: {potential_file}")
-
-                    env_vars = self.env.copy()
-                    if env:
-                        env_vars.update(env)
-
-                    process = popen_original(
-                        command,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        universal_newlines=True,
-                        env=env_vars,
-                        cwd=self.cwd,
-                        bufsize=1
-                    )
-
-                    self.process = process
-                    self.command_running = True
-
-                    for line in process.stdout:
-                        if line:
-                            line_lower = line.lower()
-                            if any(word in line_lower for word in ["error", "failed", "exception", "traceback"]):
-                                tag = "error"
-                            elif any(word in line_lower for word in ["warning", "warn"]):
-                                tag = "warning"
-                            elif any(word in line_lower for word in ["success", "complete", "done"]):
-                                tag = "success"
-                            else:
-                                tag = "output"
-                            self.insert("end", line, tag)
-                            self.see("end")
-
-                    return_code = process.wait()
-                    if on_complete:
-                        on_complete(return_code == 0, return_code)
-                    return return_code == 0
-
-                except FileNotFoundError as e:
-                    if attempt == max_retries - 1:
-                        self.insert("end", f"\n❌ File not found: {str(e)}\n", "error")
-                        if on_complete:
-                            on_complete(False, -1)
-                        return False
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        self.insert("end", f"\n❌ Command failed: {str(e)}\n", "error")
-                        if on_complete:
-                            on_complete(False, -1)
-                        return False
-                finally:
-                    self.process = None
-                    self.command_running = False
-                    self.show_prompt()
-
-        threading.Thread(target=execute_with_retry, daemon=True).start()
+    def run_command_redirected(self, command, callback, env=None, cwd=None):
+        """Run command in background thread with output redirection"""
+        def run_in_thread():
+            try:
+                self.command_running = True
+                
+                # Merge environment variables
+                full_env = os.environ.copy()
+                if env:
+                    full_env.update(env)
+                
+                # Start the process with specified working directory
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding='utf-8',
+                    env=full_env,
+                    cwd=cwd  # Set working directory
+                )
+                
+                self.process = process
+                
+                # Read output line by line
+                while True:
+                    output = process.stdout.readline()
+                    if output == '' and process.poll() is not None:
+                        break
+                    if output:
+                        # Schedule GUI update in main thread
+                        self.after_idle(lambda line=output: self.insert("end", line))
+                        self.after_idle(self.see, "end")
+                
+                # Wait for process to complete
+                return_code = process.wait()
+                
+                # Call callback with result
+                success = return_code == 0
+                self.after_idle(lambda: callback(success, return_code))
+                
+            except Exception as e:
+                self.after_idle(lambda: self.insert("end", f"Error running command: {e}\n"))
+                self.after_idle(lambda: callback(False, -1))
+            finally:
+                self.command_running = False
+                self.process = None
+        
+        # Start the thread
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
 
 @dataclass
 class PackageCategory:
@@ -1789,6 +4194,8 @@ class SystemTerminalManager:
                             stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT,
                             text=True,
+                            encoding='utf-8',  # FIXED: Add explicit UTF-8 encoding
+                            errors='replace',  # FIXED: Replace problematic characters
                             cwd=self.cwd,
                             env=self.env,
                             universal_newlines=True
@@ -1828,7 +4235,6 @@ class SystemTerminalManager:
         except Exception as e:
             print(f"Error executing command: {e}")
             return False
-    
     def execute_in_new_terminal(self, command):
         """Execute command in a new terminal window"""
         try:
@@ -1870,11 +4276,16 @@ class SystemTerminalManager:
         except Exception as e:
             print(f"Error opening new terminal: {e}")
     
-    def run_command_redirected(self, command, on_complete=None, env=None):
+    def run_command_redirected(self, command, on_complete=None, env=None, cwd=None):
         """Run command with output redirection (compatibility method)"""
         if env:
             old_env = self.env.copy()
             self.env.update(env)
+        
+        # Set working directory if provided
+        old_cwd = self.cwd
+        if cwd:
+            self.cwd = cwd
         
         # Convert command list to string if needed
         if isinstance(command, list):
@@ -1884,11 +4295,13 @@ class SystemTerminalManager:
             
         result = self.execute_command(command_str, capture_output=True, on_complete=on_complete)
         
+        # Restore original environment and directory
         if env:
             self.env = old_env
+        if cwd:
+            self.cwd = old_cwd
             
         return result
-      
 
 class EnvironmentSetupDialog(ctk.CTkToplevel):
     """Complete Environment setup dialog with all features and fixes"""
@@ -3621,65 +6034,74 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
             
             # Create virtual environment
             self.log("Creating virtual environment...")
-            import venv
-            venv.create(env_path, with_pip=True)
+            
+            # CRITICAL FIX for executable builds
+            if getattr(sys, 'frozen', False):
+                # For frozen executable - find system Python (not the frozen executable)
+                system_python = shutil.which("python") or shutil.which("python3")
+                if not system_python:
+                    # Try common Windows locations
+                    common_paths = [
+                        r"C:\Python39\python.exe",
+                        r"C:\Python310\python.exe", 
+                        r"C:\Python311\python.exe",
+                        r"C:\Python312\python.exe",
+                        r"C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python39\python.exe",
+                        r"C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python310\python.exe",
+                        r"C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python311\python.exe",
+                        r"C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python312\python.exe"
+                    ]
+                    for path in common_paths:
+                        expanded_path = os.path.expandvars(path)
+                        if os.path.exists(expanded_path):
+                            system_python = expanded_path
+                            break
+                    
+                    if not system_python:
+                        raise Exception("Python executable not found. Please ensure Python is installed and in PATH.")
+                
+                self.log(f"Using system Python: {system_python}")
+                
+                # Use subprocess to create venv with system Python
+                cmd = [system_python, "-m", "venv", env_path]
+                result = self.run_command(cmd)
+                if result.returncode != 0:
+                    raise Exception(f"Failed to create virtual environment: {result.stderr}")
+                self.log("Virtual environment created with system Python")
+            else:
+                # Normal development mode - use venv module
+                import venv
+                venv.create(env_path, with_pip=True)
+                self.log("Virtual environment created with venv module")
             
             # Get Python and pip paths
             if sys.platform == "win32":
-                python_path = get_long_path(ensure_ascii_path(os.path.join(env_path, "Scripts", "python.exe")))
-                pip_path = get_long_path(ensure_ascii_path(os.path.join(env_path, "Scripts", "pip.exe")))
+                python_path = os.path.join(env_path, "Scripts", "python.exe")
+                pip_path = os.path.join(env_path, "Scripts", "pip.exe")
             else:
-                python_path = get_long_path(ensure_ascii_path(os.path.join(env_path, "bin", "python")))
-                pip_path = get_long_path(ensure_ascii_path(os.path.join(env_path, "bin", "pip")))
+                python_path = os.path.join(env_path, "bin", "python")
+                pip_path = os.path.join(env_path, "bin", "pip")
                 
             # Verify paths
             if not os.path.exists(python_path) or not os.path.exists(pip_path):
                 self.log(f"ERROR: Python or pip executable not found in created environment")
                 self.log(f"Python path: {python_path}, exists: {os.path.exists(python_path)}")
                 self.log(f"Pip path: {pip_path}, exists: {os.path.exists(pip_path)}")
-                self.update_status("Creation failed!", 0)
-                self.finish(success=False)
-                return
-                
-            # Upgrade pip
-            self.update_status("Upgrading pip...", 0.15)
-            self.log("Upgrading pip...")
+                self.update_status("Creation failed!")
+                return False
             
-            result = self.run_command([pip_path, "install", "--upgrade", "pip"])
-            if result.returncode != 0:
-                self.log(f"WARNING: Failed to upgrade pip: {result.stderr}")
-            else:
-                self.log("Pip upgraded successfully")
-                
-            # Install packages
-            if self.packages:
-                self.update_status("Installing packages...", 0.2)
-                self.log("\nInstalling packages...")
-                
-                for i, package in enumerate(self.packages):
-                    progress = 0.2 + (i / len(self.packages) * 0.7)
-                    self.update_status(f"Installing {package}...", progress)
-                    
-                    self.log(f"Installing {package}...")
-                    result = self.run_command([pip_path, "install", package])
-                    
-                    if result.returncode == 0:
-                        self.log(f"✓ Successfully installed {package}")
-                    else:
-                        self.log(f"✗ Failed to install {package}: {result.stderr}")
-                        
-            # Finish
-            self.update_status("Environment created successfully!", 1.0)
-            self.log("\n✅ Environment created successfully!")
-            self.finish(success=True)
+            # Set paths for the manager
+            self.python_exe = python_path
+            self.pip_exe = pip_path
+            
+            self.log("✅ Virtual environment created successfully")
+            return True
             
         except Exception as e:
-            self.log(f"ERROR: {str(e)}")
-            import traceback
-            self.log(traceback.format_exc())
-            self.update_status("Creation failed!", 0)
-            self.finish(success=False)
-            
+            self.log(f"❌ Error creating environment: {e}")
+            self.update_status("Creation failed!")
+            return False
+    
     def run_command(self, command):
         """Run command with hidden console"""
         startupinfo = None
@@ -3743,25 +6165,6 @@ class EnvCreationProgressDialog(ctk.CTkToplevel):
         pass
 
 
-# Essential packages for ManimStudio
-
-import os
-import sys
-import subprocess
-import logging
-import threading
-import queue
-import time
-import shutil
-import json
-import locale
-import platform
-from pathlib import Path
-from dataclasses import dataclass
-from typing import Optional, List, Dict, Tuple, Any
-import tkinter as tk
-from tkinter import messagebox
-import customtkinter as ctk
 
 @dataclass
 class PackageInfo:
@@ -3797,22 +6200,8 @@ class VirtualEnvironmentManager:
         self.parent_app = parent_app
         self.logger = logging.getLogger(__name__)
         
-        # Normal initialization for all environments
-        print("🐍 Using standard environment setup")
-        
-        # FIXED: Better path detection for frozen executables
-        self.is_frozen = self._detect_if_frozen()
-        self.base_dir = self._get_base_directory()
-        self.app_dir = self._get_app_directory()
-        self.venv_dir = os.path.join(self.app_dir, "venvs")
-        
-        # Create necessary directories
-        os.makedirs(self.venv_dir, exist_ok=True)
-        os.makedirs(self.app_dir, exist_ok=True)
-        
-        print(f"📁 Base directory: {self.base_dir}")
-        print(f"📁 App directory: {self.app_dir}")
-        print(f"📁 Venv directory: {self.venv_dir}")
+        # Run complete initialization
+        self._initialize_environment()
         
         # Current environment state
         self.current_venv = None
@@ -3821,59 +6210,151 @@ class VirtualEnvironmentManager:
         self.needs_setup = True
         self.using_fallback = False
         
-        # Essential packages for ManimStudio - COMPLETE LIST
+        # Essential packages for ManimStudio
         self.essential_packages = [
-            # Core animation
-            "manim>=0.17.0",
-            "numpy>=1.22.0",
-            "matplotlib>=3.5.0",
-            "scipy>=1.8.0",
-            
-            # Critical dependencies
-            "pycairo>=1.20.0",
-            "ManimPango>=0.4.0",
-            
-            # Image/Video processing
-            "opencv-python>=4.6.0",
-            "imageio>=2.19.0",
-            "moviepy>=1.0.3",
-            "imageio-ffmpeg",
-            "Pillow>=9.0.0",
-            
-            # UI and development tools
-            "customtkinter>=5.0.0",
-            "jedi>=0.18.0",  # IntelliSense
-            
-            # System utilities
-            "psutil>=5.8.0",
-            "requests>=2.25.0",
-            "rich>=10.0.0",
-            "tqdm>=4.60.0",
-            "colour>=0.1.5",
-            "moderngl>=5.6.0",
-            "moderngl-window>=2.3.0"
+            "manim",
+            "pillow",
+            "opencv-python",
+            "numpy",
+            "scipy",
+            "matplotlib",
+            "requests",
+            "tqdm",
+            "pydub",
+            "ffmpeg-python",
+            "moderngl",
+            "manimpango",
+            "mapbox-earcut"
         ]
         
-        # Initialize validation cache
-        self._validation_cache = {}
+        # Auto-activate default environment if available
+        self.auto_activate_default_environment()
         
-        # Apply emergency encoding fixes on startup
-        self.fix_encoding_environment()
+        # Perform complete environment validation
+        self.validate_environment()
+    def _initialize_environment(self):
+        """Initialize environment settings and paths"""
+        print("🔧 Initializing environment settings...")
         
-        # Auto-repair if issues detected (but don't block startup)
+        # Apply encoding fixes
+        self._apply_encoding_fixes()
+        
+        # Setup paths
+        self._setup_paths()
+        
+        # Initialize locale
+        self._setup_locale()
+        
+        print("✅ Environment initialization complete")
+    def _apply_encoding_fixes(self):
+        """Apply encoding fixes to environment"""
+        # Skip if already applied
+        if os.environ.get('ENCODING_FIXES_APPLIED') == '1':
+            return
+        
+        print("🔧 Applying encoding fixes...")
+        
+        # Set encoding environment variables
+        encoding_vars = {
+            'PYTHONIOENCODING': 'utf-8',
+            'PYTHONLEGACYWINDOWSFSENCODING': '0', 
+            'PYTHONUTF8': '1',
+            'LC_ALL': 'en_US.UTF-8',
+            'LANG': 'en_US.UTF-8',
+            'PYTHONDONTWRITEBYTECODE': '1',
+            'PYTHONUNBUFFERED': '1'
+        }
+        
+        for key, value in encoding_vars.items():
+            os.environ[key] = value
+            print(f"✅ Set {key}={value}")
+        
+        # Set system locale
         try:
-            if self.detect_encoding_issues() or self.detect_corrupted_manim():
-                print("🔧 Issues detected, scheduling auto-repair...")
-                # Schedule repair for later to not block startup
-                if self.parent_app and hasattr(self.parent_app, 'root'):
-                    self.parent_app.root.after(2000, lambda: self.auto_repair_if_needed(print))
+            locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+            print("✅ Set system locale to UTF-8")
+        except locale.Error:
+            try:
+                locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+                print("✅ Set system locale to C.UTF-8")
+            except locale.Error:
+                print("⚠️ Could not set UTF-8 locale")
+        
+        # Mark as applied
+        os.environ['ENCODING_FIXES_APPLIED'] = '1'
+        print("✅ Encoding fixes applied")
+    def _setup_paths(self):
+        """Setup application paths - EXE COMPATIBLE"""
+        print("📁 Setting up application paths...")
+        
+        # Detect if frozen (compiled exe)
+        self.is_frozen = getattr(sys, 'frozen', False)
+        
+        # Set base directory
+        if self.is_frozen:
+            # For exe builds, use the directory containing the exe
+            self.base_dir = os.path.dirname(sys.executable)
+            print(f"🔧 Exe build detected - base dir: {self.base_dir}")
+        else:
+            # For script builds, use the script directory
+            self.base_dir = os.path.dirname(os.path.abspath(__file__))
+            print(f"🐍 Script build detected - base dir: {self.base_dir}")
+        
+        # Set app directory - always use user directory for data
+        self.app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        self.venv_dir = os.path.join(self.app_dir, "venvs")
+        
+        # Create directories with proper error handling
+        try:
+            os.makedirs(self.venv_dir, exist_ok=True)
+            os.makedirs(self.app_dir, exist_ok=True)
+            print(f"✅ Created directories successfully")
+        except PermissionError:
+            print(f"❌ Permission denied creating directories")
+            # Fallback to temp directory
+            import tempfile
+            self.app_dir = tempfile.mkdtemp(prefix="manim_studio_")
+            self.venv_dir = os.path.join(self.app_dir, "venvs")
+            os.makedirs(self.venv_dir, exist_ok=True)
+            print(f"📁 Using temp directory: {self.app_dir}")
         except Exception as e:
-            print(f"⚠️ Auto-repair check failed: {e}")
-
+            print(f"❌ Error creating directories: {e}")
+            raise
+        
+        print(f"📁 Base directory: {self.base_dir}")
+        print(f"📁 App directory: {self.app_dir}")
+        print(f"📁 Venv directory: {self.venv_dir}")
+    
+    def _setup_locale(self):
+        """Setup locale for proper encoding"""
+        try:
+            # Try to set UTF-8 locale
+            if sys.platform == "win32":
+                import ctypes
+                ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+                ctypes.windll.kernel32.SetConsoleCP(65001)
+            
+            # Set locale
+            locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+            
+        except Exception as e:
+            print(f"⚠️ Locale setup warning: {e}")
     def _detect_if_frozen(self):
-        """Detect if running as a frozen executable"""
-        return getattr(sys, 'frozen', False)
-
+        """Detect if running as a frozen executable - ENHANCED FOR EXE"""
+        # Multiple ways to detect if we're running as an exe
+        is_frozen = (
+            getattr(sys, 'frozen', False) or  # Standard frozen detection
+            sys.executable.endswith('.exe') or  # Check if executable ends with .exe
+            'dist' in sys.executable or  # Check if we're in a dist folder
+            'app.exe' in sys.executable.lower() or  # Check if we're app.exe
+            os.path.basename(sys.executable).lower() == 'app.exe'  # Direct exe name check
+        )
+        
+        print(f"🔧 Frozen detection result: {is_frozen}")
+        print(f"🔧 sys.frozen: {getattr(sys, 'frozen', False)}")
+        print(f"🔧 sys.executable: {sys.executable}")
+        
+        return is_frozen
     def _get_base_directory(self):
         """Get the base directory of the application"""
         if self.is_frozen:
@@ -4082,7 +6563,7 @@ class VirtualEnvironmentManager:
             raise
 
     def create_virtual_environment(self, log_callback=None):
-        """Create virtual environment with encoding fixes applied"""
+        """Create virtual environment with encoding fixes applied - ENHANCED WITH LOGGING"""
         env_path = os.path.join(self.venv_dir, "manim_studio_default")
         
         self.safe_log_callback(log_callback, "Creating virtual environment with encoding fixes...")
@@ -4090,6 +6571,15 @@ class VirtualEnvironmentManager:
         
         # Apply encoding fixes to the environment
         self.fix_encoding_environment()
+        
+        # ENHANCED: Log system information
+        print("="*60)
+        print("🔧 DETAILED ENVIRONMENT CREATION LOG")
+        print("="*60)
+        print(f"📋 Target environment path: {env_path}")
+        print(f"📋 Is frozen: {self.is_frozen}")
+        print(f"📋 System: {platform.platform()}")
+        print(f"📋 Current Python: {sys.executable}")
         
         # Find Python executable
         python_exe = self.find_python_executable()
@@ -4105,6 +6595,7 @@ class VirtualEnvironmentManager:
         try:
             # Create environment with proper Windows subprocess handling and encoding
             create_cmd = [python_exe, "-m", "venv", env_path, "--clear"]
+            print(f"📋 Command: {' '.join(create_cmd)}")
             
             # Enhanced environment for creation
             env = os.environ.copy()
@@ -4113,6 +6604,7 @@ class VirtualEnvironmentManager:
                 'PYTHONLEGACYWINDOWSFSENCODING': '0',
                 'PYTHONUTF8': '1'
             })
+            print(f"📋 Environment variables updated")
             
             # Windows subprocess setup
             startupinfo = None
@@ -4122,8 +6614,9 @@ class VirtualEnvironmentManager:
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 startupinfo.wShowWindow = subprocess.SW_HIDE
                 creationflags = subprocess.CREATE_NO_WINDOW
+                print(f"📋 Windows subprocess configuration applied")
             
-            print(f"🔧 Running command: {' '.join(create_cmd)}")
+            print(f"🚀 Executing: {' '.join(create_cmd)}")
             result = subprocess.run(
                 create_cmd,
                 capture_output=True,
@@ -4135,6 +6628,12 @@ class VirtualEnvironmentManager:
                 encoding='utf-8',
                 errors='replace'
             )
+            
+            print(f"📋 Command completed with return code: {result.returncode}")
+            if result.stdout:
+                print(f"📋 stdout: {result.stdout[:300]}")
+            if result.stderr:
+                print(f"📋 stderr: {result.stderr[:300]}")
             
             if result.returncode != 0:
                 error_msg = f"❌ Failed to create virtual environment: {result.stderr}"
@@ -4149,6 +6648,8 @@ class VirtualEnvironmentManager:
                 print(error_msg)
                 return False
             
+            print(f"✅ Environment directory created: {env_path}")
+            
             # Set up paths
             if os.name == 'nt':
                 python_exe = os.path.join(env_path, "Scripts", "python.exe")
@@ -4157,19 +6658,41 @@ class VirtualEnvironmentManager:
                 python_exe = os.path.join(env_path, "bin", "python")
                 pip_exe = os.path.join(env_path, "bin", "pip")
             
+            print(f"📋 Expected Python: {python_exe}")
+            print(f"📋 Expected Pip: {pip_exe}")
+            
             # Verify executables exist
             if not os.path.exists(python_exe):
                 error_msg = f"❌ Python executable not found: {python_exe}"
                 self.safe_log_callback(log_callback, error_msg)
                 print(error_msg)
+                
+                # List what WAS created
+                try:
+                    if os.path.exists(env_path):
+                        contents = os.listdir(env_path)
+                        print(f"📋 Environment contents: {contents}")
+                        
+                        scripts_dir = os.path.join(env_path, "Scripts")
+                        if os.path.exists(scripts_dir):
+                            scripts_contents = os.listdir(scripts_dir)
+                            print(f"📋 Scripts directory contents: {scripts_contents}")
+                        else:
+                            print(f"❌ Scripts directory not found: {scripts_dir}")
+                except Exception as e:
+                    print(f"❌ Error listing contents: {e}")
+                
                 return False
+            
+            print(f"✅ Python executable found: {python_exe}")
             
             # Install pip if needed
             if not os.path.exists(pip_exe):
                 self.safe_log_callback(log_callback, "Installing pip in new environment...")
+                print("🔧 Installing pip in new environment...")
                 
                 try:
-                    result = subprocess.run(
+                    pip_install_result = subprocess.run(
                         [python_exe, "-m", "ensurepip", "--upgrade"],
                         capture_output=True,
                         text=True,
@@ -4178,13 +6701,22 @@ class VirtualEnvironmentManager:
                         errors='replace',
                         timeout=60
                     )
-                    if result.returncode != 0:
-                        print(f"❌ Failed to install pip with ensurepip: {result.stderr}")
+                    
+                    print(f"📋 Pip install return code: {pip_install_result.returncode}")
+                    if pip_install_result.stdout:
+                        print(f"📋 Pip install stdout: {pip_install_result.stdout[:200]}")
+                    if pip_install_result.stderr:
+                        print(f"📋 Pip install stderr: {pip_install_result.stderr[:200]}")
+                    
+                    if pip_install_result.returncode != 0:
+                        print(f"❌ Failed to install pip with ensurepip: {pip_install_result.stderr}")
                         return False
                     print("✅ Pip installed successfully")
                 except Exception as e:
                     print(f"❌ Error installing pip: {e}")
                     return False
+            else:
+                print(f"✅ Pip executable found: {pip_exe}")
             
             # Activate it for further operations
             self.python_path = python_exe
@@ -4193,6 +6725,7 @@ class VirtualEnvironmentManager:
             
             self.safe_log_callback(log_callback, "✅ Virtual environment created successfully")
             print("✅ Virtual environment created successfully")
+            print("="*60)
             
             return True
             
@@ -4200,8 +6733,9 @@ class VirtualEnvironmentManager:
             error_msg = f"❌ Error creating virtual environment: {e}"
             self.safe_log_callback(log_callback, error_msg)
             print(error_msg)
+            import traceback
+            traceback.print_exc()
             return False
-
     def install_package_with_encoding_fix(self, package_name, log_callback=None):
         """
         Install a single package with enhanced encoding handling
@@ -4234,8 +6768,7 @@ class VirtualEnvironmentManager:
             result = self.run_hidden_subprocess_with_encoding(
                 pip_cmd,
                 capture_output=True,
-                text=True,
-                timeout=300
+                text=True
             )
             
             if result.returncode == 0:
@@ -4255,7 +6788,6 @@ class VirtualEnvironmentManager:
             self.safe_log_callback(log_callback, error_msg)
             print(error_msg)
             return False
-
     def install_all_packages(self, log_callback=None):
         """Install all essential packages with comprehensive encoding fixes"""
         if not self.python_path or not os.path.exists(self.python_path):
@@ -4360,109 +6892,293 @@ class VirtualEnvironmentManager:
         else:
             self.safe_log_callback(log_callback, "✅ Environment appears healthy")
             return False
-
-    def setup_environment(self, log_callback=None):
-        """Main setup method - create and configure manim_studio_default environment"""
-        
-        # ENCODING FIXES - Apply these FIRST before any other operations
-        print("🔧 Applying encoding fixes before setup...")
-        self.fix_encoding_environment()
-        
-        self.safe_log_callback(log_callback, "🔧 Applied encoding fixes")
-        
-        # Check for corruption and repair if needed
+    def check_environment_exists_only(self):
+        """NEW METHOD: Only check if environment exists - no setup UI"""
         try:
-            if self.detect_encoding_issues() or self.detect_corrupted_manim():
-                self.safe_log_callback(log_callback, "🔍 Detected issues, applying repairs...")
-                print("🔍 Detected issues, applying repairs...")
-                self.repair_environment_encoding(log_callback)
-        except Exception as e:
-            self.safe_log_callback(log_callback, f"⚠️ Auto-repair check failed: {e}")
-            print(f"⚠️ Auto-repair check failed: {e}")
-        
-        print("🚀 Starting environment setup...")
-        self.safe_log_callback(log_callback, "🚀 Starting environment setup...")
-        
-        default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
-        
-        # Step 1: Check for existing environment
-        if os.path.exists(default_venv_path) and self.is_valid_venv(default_venv_path):
-            print("✅ Found existing environment, checking what's missing...")
-            self.safe_log_callback(log_callback, "✅ Found existing environment, checking what's missing...")
+            default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
             
-            # Set up paths for existing environment
+            if not os.path.exists(default_venv_path):
+                return False
+            
+            # Check if it's a valid environment structure
             if os.name == 'nt':
-                self.python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
-                self.pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+                python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+                pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
             else:
-                self.python_path = os.path.join(default_venv_path, "bin", "python")
-                self.pip_path = os.path.join(default_venv_path, "bin", "pip")
+                python_path = os.path.join(default_venv_path, "bin", "python")
+                pip_path = os.path.join(default_venv_path, "bin", "pip")
             
-            # Validate Python installation
-            if not self.validate_python_installation(self.python_path):
-                print("⚠️ Invalid Python installation in existing environment")
-                self.safe_log_callback(log_callback, "⚠️ Invalid Python installation in existing environment")
-                # Fall through to recreate
-            else:
-                # Check what packages are missing
-                missing_packages = self.check_missing_packages()
+            # Both executables must exist
+            if os.path.exists(python_path) and os.path.exists(pip_path):
+                # Auto-set the paths without triggering setup
+                self.python_path = python_path
+                self.pip_path = pip_path
+                self.current_venv = "manim_studio_default"
+                self.needs_setup = False
+                return True
+            
+            return False
+            
+        except Exception:
+            return False
+    def get_environment_info(self):
+        """Get current environment information"""
+        if not self.current_venv:
+            return "No environment active"
+        
+        return f"Active: {self.current_venv} | Python: {self.python_path}"
+    def auto_activate_default_environment(self):
+        """Auto-activate manim_studio_default environment if it exists - EXE COMPATIBLE"""
+        try:
+            print("🔍 Checking for existing environments...")
+            
+            # Ensure we have the necessary attributes
+            if not hasattr(self, 'app_dir'):
+                self.is_frozen = getattr(sys, 'frozen', False)
                 
-                if not missing_packages:
-                    print("✅ All packages already installed!")
-                    self.safe_log_callback(log_callback, "✅ All packages already installed!")
-                    self.activate_default_environment()
-                    self.needs_setup = False
-                    return True
+                if self.is_frozen:
+                    self.base_dir = os.path.dirname(sys.executable)
                 else:
-                    print(f"⚠️ Missing packages: {len(missing_packages)}")
-                    self.safe_log_callback(log_callback, f"⚠️ Missing {len(missing_packages)} packages")
+                    self.base_dir = os.path.dirname(os.path.abspath(__file__))
+                
+                self.app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+                self.venv_dir = os.path.join(self.app_dir, "venvs")
+                
+                # Create directories
+                os.makedirs(self.venv_dir, exist_ok=True)
+                os.makedirs(self.app_dir, exist_ok=True)
+                
+                print(f"📁 App directory: {self.app_dir}")
+                print(f"📁 Venv directory: {self.venv_dir}")
+            
+            # For exe builds, use current Python directly
+            if self.is_frozen:
+                print("🔧 Exe build - using current Python interpreter")
+                self.python_path = sys.executable
+                self.pip_path = "pip"
+                self.current_venv = "exe_bundled"
+                self.needs_setup = False
+                
+                print(f"✅ Using exe Python: {self.python_path}")
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"✅ Using exe Python: {self.python_path}")
+                return
+            
+            # Check for default environment (non-exe)
+            default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+            
+            if os.path.exists(default_venv_path):
+                print("🎯 Found manim_studio_default environment")
+                
+                # Get Python and pip paths
+                if sys.platform == "win32":
+                    python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+                    pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+                else:
+                    python_path = os.path.join(default_venv_path, "bin", "python")
+                    pip_path = os.path.join(default_venv_path, "bin", "pip")
+                
+                # Verify executables exist
+                if os.path.exists(python_path) and os.path.exists(pip_path):
+                    self.python_path = python_path
+                    self.pip_path = pip_path
+                    self.current_venv = "manim_studio_default"
+                    self.needs_setup = False
                     
-                    # Upgrade pip first in existing environment with encoding fixes
-                    self.upgrade_pip_in_existing_env(log_callback)
+                    print(f"✅ Auto-activated manim_studio_default at: {default_venv_path}")
+                    print(f"Python: {python_path}")
+                    print(f"Pip: {pip_path}")
                     
-                    # Try to install missing packages with encoding fixes
-                    if self.install_missing_packages_with_encoding_fix(missing_packages, log_callback):
-                        print("✅ Successfully installed missing packages!")
-                        self.safe_log_callback(log_callback, "✅ Successfully installed missing packages!")
-                        self.activate_default_environment()
-                        self.safe_log_callback(log_callback, "✅ Environment setup completed successfully!")
-                        self.needs_setup = False
-                        return True
+                    if hasattr(self, 'logger'):
+                        self.logger.info(f"✅ Auto-activated manim_studio_default at: {default_venv_path}")
+                        self.logger.info(f"Python: {python_path}")
+                        self.logger.info(f"Pip: {pip_path}")
+                else:
+                    print("⚠️ manim_studio_default environment has missing executables")
+                    self.needs_setup = True
+            else:
+                print("📝 No manim_studio_default environment found")
+                self.needs_setup = True
+                
+        except Exception as e:
+            print(f"❌ Error in auto-activation: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"Error in auto-activation: {e}")
+            self.needs_setup = True
+    def get_environment_status_only(self):
+        """NEW METHOD: Get environment status without triggering any UI"""
+        try:
+            default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
+            
+            if not os.path.exists(default_venv_path):
+                return "not_found"
+            
+            if os.name == 'nt':
+                python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+                pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+            else:
+                python_path = os.path.join(default_venv_path, "bin", "python")
+                pip_path = os.path.join(default_venv_path, "bin", "pip")
+            
+            if os.path.exists(python_path) and os.path.exists(pip_path):
+                return "ready"
+            else:
+                return "incomplete"
+                
+        except Exception:
+            return "error"
+    def setup_environment(self, log_callback=None):
+        """Setup environment with detailed logging - EXE COMPATIBLE"""
+        if not log_callback:
+            log_callback = print
+        
+        # Create a file logger to capture ALL output
+        log_file_path = os.path.join(self.app_dir, "environment_setup.log")
+        
+        def enhanced_log(message):
+            """Enhanced logging that prints AND writes to file"""
+            print(message)  # Print to console
+            if log_callback:
+                try:
+                    log_callback(message)
+                except:
+                    pass
+            # Write to file
+            try:
+                with open(log_file_path, 'a', encoding='utf-8') as f:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"[{timestamp}] {message}\n")
+            except:
+                pass
+        
+        enhanced_log("="*80)
+        enhanced_log("🚀 DETAILED ENVIRONMENT SETUP LOG STARTED")
+        enhanced_log("="*80)
+        enhanced_log(f"📋 Log file: {log_file_path}")
+        enhanced_log(f"📋 Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        enhanced_log(f"📋 System: {platform.platform()}")
+        enhanced_log(f"📋 Python: {sys.version}")
+        enhanced_log(f"📋 Executable: {sys.executable}")
+        enhanced_log(f"📋 Frozen: {getattr(sys, 'frozen', False)}")
+        enhanced_log(f"📋 Current working directory: {os.getcwd()}")
+        enhanced_log(f"📋 App directory: {self.app_dir}")
+        enhanced_log(f"📋 Venv directory: {self.venv_dir}")
+        
+        try:
+            # Step 1: Create environment if needed
+            if self.needs_setup:
+                enhanced_log("\n🔧 Step 1: Creating virtual environment...")
+                success = self.create_environment_with_logging("manim_studio_default")
+                
+                if not success:
+                    enhanced_log("❌ FAILED: Could not create environment")
+                    enhanced_log("="*80)
+                    return False
+                else:
+                    enhanced_log("✅ Step 1 Complete: Environment created successfully")
+            else:
+                enhanced_log("✅ Step 1 Skipped: Environment already exists")
+            
+            # For exe builds, skip package installation as they're bundled
+            if self.is_frozen:
+                enhanced_log("\n🔧 Step 2: Exe build detected - using bundled packages")
+                enhanced_log("✅ Environment setup complete (using bundled dependencies)")
+                enhanced_log("="*80)
+                return True
+            
+            # Step 2: Install essential packages for non-exe builds
+            enhanced_log("\n🔧 Step 2: Installing essential packages...")
+            
+            # Use a more robust pip installation approach
+            pip_cmd = [self.python_path, "-m", "pip"]
+            enhanced_log(f"📋 Using pip command: {' '.join(pip_cmd)}")
+            
+            # Upgrade pip first
+            enhanced_log("📦 Upgrading pip...")
+            cmd = pip_cmd + ["install", "--upgrade", "pip"]
+            enhanced_log(f"📋 Running: {' '.join(cmd)}")
+            
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, encoding='utf-8', errors='replace')
+                enhanced_log(f"📋 Pip upgrade return code: {result.returncode}")
+                if result.stdout:
+                    enhanced_log(f"📋 Pip upgrade stdout: {result.stdout[:500]}")
+                if result.stderr:
+                    enhanced_log(f"📋 Pip upgrade stderr: {result.stderr[:500]}")
+                
+                if result.returncode == 0:
+                    enhanced_log("✅ Pip upgraded successfully")
+                else:
+                    enhanced_log("⚠️ Pip upgrade failed, continuing anyway")
+                    
+            except subprocess.TimeoutExpired:
+                enhanced_log("⚠️ Pip upgrade timed out")
+            except Exception as e:
+                enhanced_log(f"⚠️ Pip upgrade error: {e}")
+            
+            # Install packages one by one with better error handling
+            enhanced_log(f"📦 Installing {len(self.essential_packages)} essential packages...")
+            successful_packages = 0
+            failed_packages = []
+            
+            for i, package in enumerate(self.essential_packages):
+                enhanced_log(f"📦 Installing {package} ({i+1}/{len(self.essential_packages)})...")
+                cmd = pip_cmd + ["install", package, "--no-cache-dir", "--timeout", "60"]
+                enhanced_log(f"📋 Command: {' '.join(cmd)}")
+                
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, encoding='utf-8', errors='replace')
+                    enhanced_log(f"📋 Return code: {result.returncode}")
+                    
+                    if result.stdout:
+                        # Show first and last 200 chars of stdout
+                        stdout_short = result.stdout[:200] + ("..." if len(result.stdout) > 200 else "")
+                        enhanced_log(f"📋 stdout: {stdout_short}")
+                    
+                    if result.stderr:
+                        # Show first and last 200 chars of stderr
+                        stderr_short = result.stderr[:200] + ("..." if len(result.stderr) > 200 else "")
+                        enhanced_log(f"📋 stderr: {stderr_short}")
+                    
+                    if result.returncode == 0:
+                        enhanced_log(f"✅ {package} installed successfully")
+                        successful_packages += 1
                     else:
-                        self.safe_log_callback(log_callback, "⚠️ Installation completed with warnings")
-                        return False
-        
-        # Step 2: Create new environment if needed
-        if not self.create_virtual_environment(log_callback):
-            error_msg = "❌ Failed to create virtual environment"
-            self.safe_log_callback(log_callback, error_msg)
-            print(error_msg)
+                        enhanced_log(f"❌ {package} installation failed")
+                        failed_packages.append(package)
+                        
+                except subprocess.TimeoutExpired:
+                    enhanced_log(f"⏰ {package} installation timed out")
+                    failed_packages.append(package)
+                except Exception as e:
+                    enhanced_log(f"❌ {package} installation error: {e}")
+                    failed_packages.append(package)
+            
+            # Summary
+            success_rate = successful_packages / len(self.essential_packages) if self.essential_packages else 0
+            enhanced_log(f"\n📊 Installation Summary:")
+            enhanced_log(f"✅ Successful: {successful_packages}/{len(self.essential_packages)} ({success_rate*100:.1f}%)")
+            enhanced_log(f"❌ Failed: {len(failed_packages)}")
+            
+            if failed_packages:
+                enhanced_log(f"❌ Failed packages: {', '.join(failed_packages)}")
+            
+            if success_rate >= 0.7:  # 70% success rate
+                enhanced_log("✅ Environment setup complete (sufficient packages installed)")
+                enhanced_log("="*80)
+                return True
+            else:
+                enhanced_log("⚠️ Environment setup completed with warnings (many packages failed)")
+                enhanced_log("="*80)
+                return False
+                
+        except Exception as e:
+            enhanced_log(f"❌ CRITICAL ERROR in environment setup: {e}")
+            import traceback
+            enhanced_log(f"❌ Traceback: {traceback.format_exc()}")
+            enhanced_log("="*80)
             return False
-        
-        # Step 3: Upgrade pip with encoding fixes
-        self.upgrade_pip_in_existing_env(log_callback)
-        
-        # Step 4: Install all packages with encoding fixes
-        if not self.install_all_packages(log_callback):
-            error_msg = "❌ Failed to install all packages"
-            self.safe_log_callback(log_callback, error_msg)
-            print(error_msg)
-            return False
-        
-        # Step 5: Verify installation
-        if not self.verify_complete_installation(log_callback):
-            error_msg = "❌ Verification failed"
-            self.safe_log_callback(log_callback, error_msg)
-            print(error_msg)
-            return False
-        
-        # Step 6: Activate environment
-        self.activate_default_environment()
-        
-        self.safe_log_callback(log_callback, "✅ Environment setup completed successfully!")
-        self.needs_setup = False
-        return True
-
+    
     def install_missing_packages_with_encoding_fix(self, missing_packages, log_callback=None):
         """Install missing packages with enhanced encoding handling"""
         if not missing_packages:
@@ -4660,58 +7376,532 @@ class VirtualEnvironmentManager:
 
     def find_python_executable(self):
         """
-        Find a suitable Python executable for creating virtual environments
+        Find ONLY real Python executables - NEVER use app.exe or any non-Python exe
         """
         try:
-            # Try different Python executables in order of preference
+            print("🔍 Looking for REAL Python executable (never app.exe)...")
+            print(f"📋 Current sys.executable: {sys.executable}")
+            
             python_candidates = []
             
-            # First try the current Python executable
-            if hasattr(sys, 'executable') and sys.executable:
+            # RULE: Never use anything that doesn't have "python" in the name
+            current_exe_name = os.path.basename(sys.executable).lower()
+            if 'python' not in current_exe_name:
+                print(f"❌ BLOCKING sys.executable (not Python): {sys.executable}")
+            else:
+                print(f"✅ sys.executable is valid Python: {sys.executable}")
                 python_candidates.append(sys.executable)
             
-            # Try common Python executable names
-            common_names = ['python', 'python3', 'python.exe', 'python3.exe']
-            
-            for name in common_names:
+            # Method 1: Search PATH for ONLY python executables
+            print("🔍 Searching PATH for python executables...")
+            for python_name in ["python", "python3", "python.exe", "python3.exe"]:
                 try:
-                    # Use shutil.which to find the executable in PATH
-                    python_path = shutil.which(name)
-                    if python_path and python_path not in python_candidates:
-                        python_candidates.append(python_path)
-                except:
-                    pass
+                    python_path = shutil.which(python_name)
+                    if python_path:
+                        exe_name = os.path.basename(python_path).lower()
+                        print(f"📋 Found in PATH: {python_path} (name: {exe_name})")
+                        
+                        # ONLY accept if it has "python" in the name
+                        if 'python' in exe_name:
+                            print(f"✅ Valid Python executable: {python_path}")
+                            python_candidates.append(python_path)
+                        else:
+                            print(f"❌ BLOCKING non-Python exe: {python_path}")
+                except Exception as e:
+                    print(f"⚠️ Error searching for {python_name}: {e}")
             
-            # Test each candidate to find a working one
+            # Method 2: Common Python installation directories
+            print("🔍 Searching common Python installation directories...")
+            if sys.platform == "win32":
+                common_locations = [
+                    r"C:\Python312\python.exe",
+                    r"C:\Python311\python.exe",
+                    r"C:\Python310\python.exe",
+                    r"C:\Python39\python.exe",
+                    r"C:\Python38\python.exe",
+                ]
+                
+                # Add user-specific paths
+                username = os.environ.get('USERNAME', 'User')
+                user_locations = [
+                    f"C:\\Users\\{username}\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+                    f"C:\\Users\\{username}\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+                    f"C:\\Users\\{username}\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+                    f"C:\\Users\\{username}\\AppData\\Local\\Programs\\Python\\Python39\\python.exe",
+                ]
+                
+                all_locations = common_locations + user_locations
+                
+                for location in all_locations:
+                    if os.path.exists(location):
+                        exe_name = os.path.basename(location).lower()
+                        if 'python' in exe_name:
+                            print(f"✅ Found Python installation: {location}")
+                            python_candidates.append(location)
+                        else:
+                            print(f"❌ BLOCKING non-Python exe: {location}")
+            
+            # Method 3: Windows Registry (only for Python)
+            print("🔍 Searching Windows Registry for Python installations...")
+            if sys.platform == "win32":
+                try:
+                    import winreg
+                    
+                    for version in ["3.12", "3.11", "3.10", "3.9", "3.8"]:
+                        for hive in [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]:
+                            try:
+                                key_path = f"SOFTWARE\\Python\\PythonCore\\{version}\\InstallPath"
+                                with winreg.OpenKey(hive, key_path) as key:
+                                    install_path = winreg.QueryValue(key, "")
+                                    python_exe = os.path.join(install_path, "python.exe")
+                                    if os.path.exists(python_exe):
+                                        print(f"✅ Found Python {version} in registry: {python_exe}")
+                                        python_candidates.append(python_exe)
+                            except:
+                                pass
+                except ImportError:
+                    print("⚠️ Registry search not available")
+            
+            # Remove duplicates and filter out any non-Python executables
+            python_candidates = list(set(python_candidates))
+            
+            # FINAL FILTER: Only keep executables with "python" in the name
+            filtered_candidates = []
             for candidate in python_candidates:
-                if self.validate_python_installation(candidate):
-                    print(f"✅ Found working Python executable: {candidate}")
-                    return candidate
+                exe_name = os.path.basename(candidate).lower()
+                if 'python' in exe_name:
+                    filtered_candidates.append(candidate)
+                else:
+                    print(f"❌ FINAL FILTER BLOCKED: {candidate} (name: {exe_name})")
             
-            print("❌ No working Python executable found")
+            python_candidates = filtered_candidates
+            print(f"📋 Total valid Python candidates: {len(python_candidates)}")
+            
+            if not python_candidates:
+                print("❌ NO PYTHON EXECUTABLES FOUND!")
+                print("💡 Please install Python from https://python.org")
+                return None
+            
+            # Test each candidate
+            for i, candidate in enumerate(python_candidates):
+                print(f"🧪 Testing candidate {i+1}/{len(python_candidates)}: {candidate}")
+                if self.validate_python_installation(candidate):
+                    print(f"✅ SUCCESS: Using Python: {candidate}")
+                    return candidate
+                else:
+                    print(f"❌ Validation failed: {candidate}")
+            
+            print("❌ No working Python installation found!")
             return None
             
         except Exception as e:
             print(f"❌ Error finding Python executable: {e}")
+            import traceback
+            traceback.print_exc()
             return None
-
+    def create_environment_alternative(self, env_name="manim_studio_default"):
+        """Alternative environment creation with better error handling"""
+        try:
+            print("🔧 Alternative environment creation...")
+            
+            # Find Python first
+            python_exe = self.find_python_executable_robust()
+            if not python_exe:
+                print("❌ Cannot create environment: No Python found")
+                return False
+            
+            print(f"📍 Using Python: {python_exe}")
+            
+            # Create environment path
+            env_path = os.path.join(self.venv_dir, env_name)
+            
+            # Remove existing environment if it exists
+            if os.path.exists(env_path):
+                print(f"🗑️ Removing existing environment: {env_path}")
+                shutil.rmtree(env_path)
+            
+            print(f"📦 Creating environment at: {env_path}")
+            
+            # Create the command
+            cmd = [python_exe, "-m", "venv", env_path]
+            
+            print(f"🔧 Running: {' '.join(cmd)}")
+            
+            # Run with enhanced error capture
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout
+                encoding='utf-8',
+                errors='replace'
+            )
+            
+            if result.returncode != 0:
+                print(f"❌ Command failed with code {result.returncode}")
+                print(f"❌ Error output: {result.stderr}")
+                print(f"❌ Standard output: {result.stdout}")
+                return False
+            
+            # Verify environment was created
+            if sys.platform == "win32":
+                python_path = os.path.join(env_path, "Scripts", "python.exe")
+                pip_path = os.path.join(env_path, "Scripts", "pip.exe")
+            else:
+                python_path = os.path.join(env_path, "bin", "python")
+                pip_path = os.path.join(env_path, "bin", "pip")
+            
+            if not os.path.exists(python_path):
+                print(f"❌ Python executable not created: {python_path}")
+                return False
+            
+            # Test the created Python
+            test_result = subprocess.run(
+                [python_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if test_result.returncode != 0:
+                print(f"❌ Created Python doesn't work: {test_result.stderr}")
+                return False
+            
+            print(f"✅ Environment created successfully")
+            print(f"✅ Python version: {test_result.stdout.strip()}")
+            
+            # Update manager state
+            self.current_venv = env_name
+            self.python_path = python_path
+            self.pip_path = pip_path
+            self.needs_setup = False
+            
+            return True
+            
+        except subprocess.TimeoutExpired:
+            print("❌ Environment creation timed out")
+            return False
+        except Exception as e:
+            print(f"❌ Error in alternative environment creation: {e}")
+            return False
+    def create_environment_user_fallback(self):
+        """Create environment in user directory as fallback"""
+        try:
+            print("🔄 Trying user directory fallback...")
+            
+            # Use user's temp directory
+            user_temp = os.path.join(os.path.expanduser("~"), "manim_studio_temp")
+            os.makedirs(user_temp, exist_ok=True)
+            
+            # Update venv directory to user temp
+            self.venv_dir = user_temp
+            
+            return self.create_environment_alternative()
+            
+        except Exception as e:
+            print(f"❌ User directory fallback failed: {e}")
+            return False
+    def find_python_executable_with_logging(self):
+        """Find Python executable with comprehensive logging"""
+        try:
+            print("=" * 60)
+            print("🔍 DETAILED PYTHON DETECTION LOG")
+            print("=" * 60)
+            
+            print(f"📋 sys.executable: {sys.executable}")
+            print(f"📋 sys.frozen: {getattr(sys, 'frozen', False)}")
+            print(f"📋 Platform: {sys.platform}")
+            print(f"📋 Current working directory: {os.getcwd()}")
+            print(f"📋 PATH variable: {os.environ.get('PATH', 'NOT_SET')[:200]}...")
+            
+            # Skip if not frozen
+            if not self.is_frozen:
+                print("✅ Not frozen - using sys.executable")
+                return sys.executable
+            
+            python_candidates = []
+            
+            # Method 1: Windows Registry Search
+            print("\n🔍 Method 1: Windows Registry Search")
+            if sys.platform == "win32":
+                try:
+                    import winreg
+                    print("✅ winreg module imported successfully")
+                    
+                    for version in ["3.12", "3.11", "3.10", "3.9", "3.8"]:
+                        print(f"🔍 Checking Python {version} in registry...")
+                        
+                        # HKEY_CURRENT_USER
+                        try:
+                            key_path = f"SOFTWARE\\Python\\PythonCore\\{version}\\InstallPath"
+                            print(f"  📋 Checking HKCU: {key_path}")
+                            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                                install_path = winreg.QueryValue(key, "")
+                                python_exe = os.path.join(install_path, "python.exe")
+                                print(f"  📍 Found registry entry: {python_exe}")
+                                if os.path.exists(python_exe):
+                                    print(f"  ✅ File exists: {python_exe}")
+                                    python_candidates.append(python_exe)
+                                else:
+                                    print(f"  ❌ File not found: {python_exe}")
+                        except Exception as e:
+                            print(f"  ⚠️ HKCU registry check failed: {e}")
+                        
+                        # HKEY_LOCAL_MACHINE
+                        try:
+                            key_path = f"SOFTWARE\\Python\\PythonCore\\{version}\\InstallPath"
+                            print(f"  📋 Checking HKLM: {key_path}")
+                            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
+                                install_path = winreg.QueryValue(key, "")
+                                python_exe = os.path.join(install_path, "python.exe")
+                                print(f"  📍 Found registry entry: {python_exe}")
+                                if os.path.exists(python_exe):
+                                    print(f"  ✅ File exists: {python_exe}")
+                                    python_candidates.append(python_exe)
+                                else:
+                                    print(f"  ❌ File not found: {python_exe}")
+                        except Exception as e:
+                            print(f"  ⚠️ HKLM registry check failed: {e}")
+                            
+                except ImportError as e:
+                    print(f"❌ Cannot import winreg: {e}")
+            else:
+                print("⚠️ Not Windows - skipping registry search")
+            
+            # Method 2: PATH Search
+            print("\n🔍 Method 2: PATH Search")
+            for python_name in ["python", "python3", "python.exe"]:
+                print(f"🔍 Searching for '{python_name}' in PATH...")
+                try:
+                    python_path = shutil.which(python_name)
+                    print(f"  📍 shutil.which result: {python_path}")
+                    
+                    if python_path:
+                        # Check if it's our own exe
+                        exe_name = os.path.basename(python_path).lower()
+                        our_exe = os.path.basename(sys.executable).lower()
+                        print(f"  📋 Found executable: {exe_name}")
+                        print(f"  📋 Our executable: {our_exe}")
+                        
+                        if exe_name != our_exe and exe_name != "app.exe":
+                            print(f"  ✅ Valid candidate: {python_path}")
+                            python_candidates.append(python_path)
+                        else:
+                            print(f"  ❌ Skipping (our own exe): {python_path}")
+                    else:
+                        print(f"  ❌ Not found in PATH: {python_name}")
+                except Exception as e:
+                    print(f"  ❌ Error searching PATH: {e}")
+            
+            # Remove duplicates
+            python_candidates = list(set(python_candidates))
+            print(f"\n📋 Total candidates found: {len(python_candidates)}")
+            for i, candidate in enumerate(python_candidates):
+                print(f"  {i+1}. {candidate}")
+            
+            # Test each candidate
+            print("\n🧪 TESTING CANDIDATES")
+            print("=" * 40)
+            
+            if not python_candidates:
+                print("❌ No Python candidates found!")
+                return None
+            
+            for i, candidate in enumerate(python_candidates):
+                print(f"\n🧪 Testing candidate {i+1}/{len(python_candidates)}: {candidate}")
+                
+                # Test basic execution
+                if self.validate_python_installation_with_logging(candidate):
+                    print(f"✅ SUCCESS: Found working Python: {candidate}")
+                    return candidate
+                else:
+                    print(f"❌ Validation failed for: {candidate}")
+            
+            print("\n❌ No working Python installation found")
+            return None
+            
+        except Exception as e:
+            print(f"❌ Critical error in Python detection: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def validate_python_installation_with_logging(self, python_path):
+        """Validate Python installation with detailed logging"""
+        try:
+            print(f"    🧪 Validating: {python_path}")
+            
+            if not python_path or not os.path.exists(python_path):
+                print(f"    ❌ Path does not exist: {python_path}")
+                return False
+            
+            # Test basic execution
+            test_cmd = [python_path, "--version"]
+            print(f"    🔧 Running: {' '.join(test_cmd)}")
+            
+            try:
+                result = subprocess.run(
+                    test_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    encoding='utf-8',
+                    errors='replace'
+                )
+                
+                print(f"    📋 Return code: {result.returncode}")
+                print(f"    📋 stdout: {result.stdout.strip()}")
+                print(f"    📋 stderr: {result.stderr.strip()}")
+                
+                if result.returncode != 0:
+                    print(f"    ❌ Command failed with code {result.returncode}")
+                    return False
+                
+                # Test venv module
+                venv_test_cmd = [python_path, "-m", "venv", "--help"]
+                print(f"    🔧 Testing venv module: {' '.join(venv_test_cmd[:3])}...")
+                
+                venv_result = subprocess.run(
+                    venv_test_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    encoding='utf-8',
+                    errors='replace'
+                )
+                
+                print(f"    📋 venv test return code: {venv_result.returncode}")
+                if venv_result.returncode != 0:
+                    print(f"    ❌ venv module not available: {venv_result.stderr}")
+                    return False
+                
+                print(f"    ✅ Python validation successful")
+                return True
+                
+            except subprocess.TimeoutExpired:
+                print(f"    ❌ Command timed out")
+                return False
+            except Exception as e:
+                print(f"    ❌ Subprocess error: {e}")
+                return False
+                
+        except Exception as e:
+            print(f"    ❌ Validation error: {e}")
+            return False
+    def create_environment_with_logging(self, env_name="manim_studio_default"):
+        """Create environment with comprehensive logging"""
+        try:
+            print("=" * 60)
+            print("🔧 DETAILED ENVIRONMENT CREATION LOG")
+            print("=" * 60)
+            
+            # Find Python first
+            print("🔍 Step 1: Finding Python executable...")
+            python_exe = self.find_python_executable()
+            
+            if not python_exe:
+                print("❌ FAILED: No Python executable found")
+                return False
+            
+            print(f"✅ Step 1 Complete: Using Python: {python_exe}")
+            
+            # Create environment path
+            print(f"\n🔧 Step 2: Setting up environment paths...")
+            env_path = os.path.join(self.venv_dir, env_name)
+            print(f"📋 Environment path: {env_path}")
+            
+            # Create the command
+            print(f"\n🔧 Step 3: Creating virtual environment...")
+            cmd = [python_exe, "-m", "venv", env_path]  # Removed --with-pip for Python 3.12
+            print(f"📋 Command: {' '.join(cmd)}")
+            
+            # Run the command
+            print(f"🚀 Executing venv creation command...")
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            
+            print(f"📋 Return code: {result.returncode}")
+            if result.stdout:
+                print(f"📋 stdout: {result.stdout}")
+            if result.stderr:
+                print(f"📋 stderr: {result.stderr}")
+            
+            if result.returncode != 0:
+                print(f"❌ FAILED: Command failed with code {result.returncode}")
+                return False
+            
+            # Update manager state
+            if sys.platform == "win32":
+                python_path = os.path.join(env_path, "Scripts", "python.exe")
+                pip_path = os.path.join(env_path, "Scripts", "pip.exe")
+            else:
+                python_path = os.path.join(env_path, "bin", "python")
+                pip_path = os.path.join(env_path, "bin", "pip")
+            
+            self.current_venv = env_name
+            self.python_path = python_path
+            self.pip_path = pip_path
+            self.needs_setup = False
+            
+            print(f"✅ SUCCESS: Environment created successfully!")
+            return True
+            
+        except Exception as e:
+            print(f"❌ CRITICAL ERROR in environment creation: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    def validate_environment(self):
+        """Validate current environment setup"""
+        if not self.current_venv:
+            print("⚠️ No active environment - setup required")
+            return False
+        
+        if not os.path.exists(self.python_path):
+            print(f"❌ Python executable not found: {self.python_path}")
+            self.needs_setup = True
+            return False
+        
+        print(f"✅ Environment validated: {self.current_venv}")
+        return True
+    def is_ready(self):
+        """Check if environment is ready for use"""
+        return (self.current_venv and 
+                os.path.exists(self.python_path) and 
+                not self.needs_setup)
+    def create_default_environment(self):
+        """Create default environment with detailed logging"""
+        if not self.needs_setup:
+            print("✅ Environment already ready")
+            return True
+        
+        return self.create_environment_with_logging("manim_studio_default")
     def validate_python_installation(self, python_path):
         """
         Validate that a Python installation is working correctly
         """
         try:
-            if not python_path or not os.path.exists(python_path):
-                print(f"❌ Python path does not exist: {python_path}")
+            # FIRST: Check if it's even a valid Python executable
+            if not self.is_valid_python_executable(python_path):
                 return False
             
-            # Test basic Python functionality
-            test_cmd = [python_path, "-c", "import sys; print('Python', sys.version)"]
+            print(f"🧪 Validating Python: {python_path}")
             
-            result = self.run_hidden_subprocess_with_encoding(
+            # Test basic Python functionality
+            test_cmd = [python_path, "--version"]
+            
+            result = subprocess.run(
                 test_cmd,
                 capture_output=True,
                 text=True,
-                timeout=15
+                timeout=15,
+                encoding='utf-8',
+                errors='replace'
             )
             
             if result.returncode == 0:
@@ -4726,7 +7916,7 @@ class VirtualEnvironmentManager:
         except Exception as e:
             print(f"❌ Error validating Python installation: {e}")
             return False
-
+    
     def list_venvs(self):
         """List all available virtual environments"""
         venvs = []
@@ -4737,7 +7927,27 @@ class VirtualEnvironmentManager:
                     venvs.append(item)
                     
         return sorted(venvs)
-
+    def is_valid_python_executable(self, path):
+        """
+        Check if an executable is a valid Python interpreter (not app.exe)
+        """
+        if not path or not os.path.exists(path):
+            return False
+        
+        exe_name = os.path.basename(path).lower()
+        
+        # MUST have "python" in the name
+        if 'python' not in exe_name:
+            print(f"❌ REJECTED: {path} (no 'python' in name)")
+            return False
+        
+        # MUST NOT be our app
+        if 'app.exe' in exe_name or exe_name == 'app.exe':
+            print(f"❌ REJECTED: {path} (is app.exe)")
+            return False
+        
+        print(f"✅ ACCEPTED: {path} (valid Python name)")
+        return True
     def is_valid_venv(self, venv_path):
         """Check if a directory is a valid virtual environment"""
         try:
@@ -5144,8 +8354,7 @@ class VirtualEnvironmentManager:
             
             result = self.run_hidden_subprocess_with_encoding(
                 cmd,
-                capture_output=True,
-                timeout=300
+                capture_output=True
             )
             
             if result.returncode == 0:
@@ -5314,7 +8523,6 @@ class VirtualEnvironmentManager:
                 create_cmd,
                 capture_output=True,
                 text=True,
-                timeout=180,
                 env=env,
                 encoding='utf-8',
                 errors='replace'
@@ -7291,7 +10499,7 @@ VSCODE_COLORS = {
 
 
 class FullscreenVideoPlayer(tk.Toplevel):
-    """YouTube-style fullscreen video player with overlay controls that don't block video"""
+    """YouTube-style fullscreen video player with complete professional controls"""
     
     def __init__(self, parent, video_player):
         super().__init__(parent)
@@ -7304,14 +10512,27 @@ class FullscreenVideoPlayer(tk.Toplevel):
         self.attributes("-topmost", True)
         self.configure(bg="black", cursor="none")
         
-        # Control visibility
-        self.controls_visible = True
+        # Control visibility and state
+        self.controls_visible = True  # Show controls by default
         self.speed_menu_visible = False
+        self.volume_menu_visible = False
         self.mouse_timer = None
         self.last_mouse_move = time.time()
         
+        # Drag state for enhanced progress bar
+        self.is_dragging = False
+        self.drag_start_x = 0
+        
+        # Volume control
+        self.volume = 1.0
+        self.is_muted = False
+        self.last_volume = 1.0
+        
         self.setup_fullscreen_ui()
         self.setup_bindings()
+        
+        # Show controls by default and position them
+        self.position_overlays()
         
         # Start mouse tracking
         self.start_mouse_tracking()
@@ -7320,172 +10541,102 @@ class FullscreenVideoPlayer(tk.Toplevel):
         self.sync_with_main_player()
         
     def setup_fullscreen_ui(self):
-        """Setup YouTube-style fullscreen interface with non-blocking overlay controls"""
+        """Setup YouTube-style fullscreen interface with complete professional controls"""
         # Video takes the ENTIRE screen - never gets blocked
         self.video_frame = tk.Frame(self, bg="black")
         self.video_frame.pack(fill="both", expand=True)
         
         # Video canvas - FULL SCREEN always
-        self.canvas = tk.Canvas(
-            self.video_frame,
-            bg="black",
-            highlightthickness=0,
-            relief="flat"
-        )
+        self.canvas = tk.Canvas(self.video_frame, bg="black", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
         
-        # Title overlay (floating on top) - OVERLAY MODE
+        # === OVERLAY CONTROLS (positioned over video) ===
+        
+        # Title overlay (top) - simplified
         self.title_frame = tk.Frame(self, bg="black")
-        # Don't pack - use place for overlay positioning
         
-        # Semi-transparent title background
-        self.title_bg = tk.Frame(
+        # Back button only
+        self.back_btn = tk.Button(
             self.title_frame,
-            bg="#000000",
-            height=60
-        )
-        self.title_bg.pack(fill="x")
-        
-        # Video title
-        self.title_label = tk.Label(
-            self.title_bg,
-            text="Manim Animation Preview",
-            font=("Arial", 18, "bold"),
-            fg="white",
-            bg="#000000"
-        )
-        self.title_label.pack(side="left", padx=20, pady=15)
-        
-        # Exit fullscreen button (top right)
-        self.exit_btn = tk.Button(
-            self.title_bg,
-            text="✕",
-            font=("Arial", 16, "bold"),
-            fg="white",
-            bg="#000000",
-            relief="flat",
-            cursor="hand2",
+            text="← Exit Fullscreen",
+            bg="#333333", fg="white",
+            relief="flat", padx=10, pady=5,
             command=self.exit_fullscreen
         )
-        self.exit_btn.pack(side="right", padx=20, pady=15)
+        self.back_btn.pack(side="left", padx=10, pady=10)
         
-        # Controls overlay (floating on bottom) - OVERLAY MODE
+        # Main controls overlay (bottom)
         self.overlay_frame = tk.Frame(self, bg="black")
-        # Don't pack - use place for overlay positioning
         
-        # Semi-transparent controls background
-        self.controls_bg = tk.Frame(
-            self.overlay_frame,
-            bg="#000000",  # Will add transparency effect
-            height=120
-        )
-        self.controls_bg.pack(fill="both", expand=True)
+        # Progress bar with enhanced drag support
+        self.progress_frame = tk.Frame(self.overlay_frame, bg="black")
+        self.progress_frame.pack(fill="x", padx=20, pady=(10, 5))
         
-        # Create controls
-        self.create_youtube_controls()
-        
-        # Position overlays using place() instead of pack() - this ensures they float on top
-        self.position_overlays()
-        
-    def position_overlays(self):
-        """Position overlay controls to float on top without blocking video"""
-        # Get screen dimensions
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        
-        # Position title overlay at top (floating)
-        self.title_frame.place(
-            x=0, y=0,
-            width=screen_width,
-            height=60
-        )
-        
-        # Position controls overlay at bottom (floating)
-        self.overlay_frame.place(
-            x=0, y=screen_height - 120,
-            width=screen_width,
-            height=120
-        )
-
-    def create_youtube_controls(self):
-        """Create YouTube-style controls with semi-transparent background"""
-        # Add semi-transparent gradient background
-        self.controls_bg.configure(bg="#1a1a1a")  # Dark but not fully black
-        
-        # Main controls container with padding
-        controls_main = tk.Frame(self.controls_bg, bg="#1a1a1a")
-        controls_main.pack(fill="both", expand=True, padx=20, pady=10)
-        
-        # Progress bar section (top of controls)
-        progress_section = tk.Frame(controls_main, bg="#1a1a1a", height=20)
-        progress_section.pack(fill="x", side="top", pady=(0, 10))
-        
-        # Progress bar with semi-transparent background
-        progress_bg = tk.Frame(progress_section, bg="#333333", height=12)
-        progress_bg.pack(fill="x", pady=2)
-        
+        # Create progress canvas with drag support
         self.progress_canvas = tk.Canvas(
-            progress_bg,
-            height=8,
-            bg="#333333",
+            self.progress_frame, 
+            height=12, 
+            bg="#333333", 
             highlightthickness=0,
-            relief="flat",
             cursor="hand2"
         )
-        self.progress_canvas.pack(fill="x", expand=True, padx=5, pady=2)
-        self.progress_canvas.bind("<Button-1>", self.on_progress_click)
+        self.progress_canvas.pack(fill="x")
         
-        # Controls row (bottom)
-        controls_row = tk.Frame(controls_main, bg="#1a1a1a")
-        controls_row.pack(fill="x", side="bottom")
+        # Enhanced progress bar event bindings
+        self.progress_canvas.bind("<Button-1>", self.on_progress_press)
+        self.progress_canvas.bind("<B1-Motion>", self.on_progress_drag)
+        self.progress_canvas.bind("<ButtonRelease-1>", self.on_progress_release)
+        self.progress_canvas.bind("<Enter>", self.on_progress_enter)
+        self.progress_canvas.bind("<Leave>", self.on_progress_leave)
         
-        # Left controls
-        left_controls = tk.Frame(controls_row, bg="#1a1a1a")
-        left_controls.pack(side="left", fill="y")
+        # Control buttons frame
+        self.button_frame = tk.Frame(self.overlay_frame, bg="black")
+        self.button_frame.pack(pady=8)
         
-        # Play/Pause button with better visibility
-        self.play_btn = tk.Button(
-            left_controls,
-            text="▶",
-            font=("Arial", 20),
-            fg="white",
-            bg="#333333",  # Slightly lighter background
-            relief="flat",
-            cursor="hand2",
-            command=self.toggle_playback,
-            padx=15,
-            pady=8,
-            borderwidth=1,
-            highlightthickness=0
-        )
-        self.play_btn.pack(side="left", padx=(0, 15))
+        # Left side controls
+        left_controls = tk.Frame(self.button_frame, bg="black")
+        left_controls.pack(side="left")
         
-        # Time display with background for visibility
-        time_bg = tk.Frame(left_controls, bg="#333333")
-        time_bg.pack(side="left", padx=(0, 20))
+        # Playback controls
+        self.prev_btn = tk.Button(left_controls, text="⏮", bg="#444444", fg="white", 
+                                 relief="flat", padx=8, pady=5, font=("Arial", 12),
+                                 command=lambda: self.seek_relative(-30))
+        self.prev_btn.pack(side="left", padx=2)
         
-        self.time_label = tk.Label(
-            time_bg,
-            text="00:00 / 00:00",
-            font=("Arial", 14),
-            fg="white",
-            bg="#333333",
-            padx=10,
-            pady=5
-        )
+        self.play_btn = tk.Button(left_controls, text="▶", bg="#ff0000", fg="white", 
+                                 relief="flat", padx=15, pady=5, font=("Arial", 16, "bold"),
+                                 command=self.toggle_playback)
+        self.play_btn.pack(side="left", padx=8)
+        
+        self.next_btn = tk.Button(left_controls, text="⏭", bg="#444444", fg="white", 
+                                 relief="flat", padx=8, pady=5, font=("Arial", 12),
+                                 command=lambda: self.seek_relative(30))
+        self.next_btn.pack(side="left", padx=2)
+        
+        # Volume control
+        volume_frame = tk.Frame(left_controls, bg="black")
+        volume_frame.pack(side="left", padx=10)
+        
+        self.volume_btn = tk.Button(volume_frame, text="🔊", bg="#444444", fg="white", 
+                                   relief="flat", padx=8, pady=5, font=("Arial", 12),
+                                   command=self.toggle_volume_menu)
+        self.volume_btn.pack(side="top")
+        
+        # Center controls - Time display
+        center_controls = tk.Frame(self.button_frame, bg="black")
+        center_controls.pack(side="left", padx=30)
+        
+        self.time_label = tk.Label(center_controls, text="0:00 / 0:00", 
+                                  bg="black", fg="white", font=("Arial", 14, "bold"))
         self.time_label.pack()
         
-        # Center area (spacer to push right controls to the right)
-        center_spacer = tk.Frame(controls_row, bg="#1a1a1a")
-        center_spacer.pack(side="left", fill="x", expand=True)
+        # Right side controls
+        right_controls = tk.Frame(self.button_frame, bg="black")
+        right_controls.pack(side="right")
         
-        # Right controls
-        right_controls = tk.Frame(controls_row, bg="#1a1a1a")
-        right_controls.pack(side="right", fill="y")
-        
-        # Speed controls with background for visibility
-        speed_frame = tk.Frame(right_controls, bg="#333333")
-        speed_frame.pack(side="right", padx=(0, 20))
+        # Speed control with display
+        speed_frame = tk.Frame(right_controls, bg="black")
+        speed_frame.pack(side="right", padx=10)
         
         # Speed display
         self.speed_label = tk.Label(
@@ -7533,31 +10684,17 @@ class FullscreenVideoPlayer(tk.Toplevel):
         )
         speed_up_btn.pack(side="left", padx=(1, 2))
         
-        # Settings button with background
-        settings_bg = tk.Frame(right_controls, bg="#333333")
-        settings_bg.pack(side="right", padx=(0, 10))
-        
-        self.settings_btn = tk.Button(
-            settings_bg,
-            text="⚙",
-            font=("Arial", 16),
-            fg="white",
-            bg="#555555",
-            relief="flat",
-            cursor="hand2",
-            command=self.show_speed_menu,
-            padx=10,
-            pady=8
-        )
-        self.settings_btn.pack(padx=3, pady=3)
-        
-        # Create speed menu as Toplevel window (not blocked by controls)
+        # Create simplified menus
+        self.setup_speed_menu()
+        self.setup_volume_menu()
+
+    def setup_speed_menu(self):
+        """Create floating speed selection menu"""
         self.speed_menu = tk.Toplevel(self)
-        self.speed_menu.withdraw()  # Hide initially
-        self.speed_menu.overrideredirect(True)  # Remove window decorations
+        self.speed_menu.withdraw()
         self.speed_menu.configure(bg="#333333", relief="raised", bd=2)
-        self.speed_menu.attributes("-topmost", True)  # Always on top
-        self.speed_menu_visible = False
+        self.speed_menu.overrideredirect(True)
+        self.speed_menu.attributes("-topmost", True)
         
         # Speed menu title
         title_frame = tk.Frame(self.speed_menu, bg="#444444")
@@ -7573,9 +10710,9 @@ class FullscreenVideoPlayer(tk.Toplevel):
         )
         title_label.pack()
         
-        # Speed menu items with better styling
+        # Speed options
         speeds = [("0.25×", 0.25), ("0.5×", 0.5), ("0.75×", 0.75), ("1.0×", 1.0), 
-                 ("1.25×", 1.25), ("1.5×", 1.5), ("2.0×", 2.0)]
+                 ("1.25×", 1.25), ("1.5×", 1.5), ("2.0×", 2.0), ("4.0×", 4.0)]
         
         # Store speed buttons for highlighting
         self.speed_buttons = {}
@@ -7604,6 +10741,63 @@ class FullscreenVideoPlayer(tk.Toplevel):
             if speed_value == 1.0:
                 btn.configure(bg="#555555")
 
+    def setup_volume_menu(self):
+        """Create volume control menu"""
+        self.volume_menu = tk.Toplevel(self)
+        self.volume_menu.withdraw()
+        self.volume_menu.configure(bg="#333333", relief="raised", bd=2)
+        self.volume_menu.overrideredirect(True)
+        self.volume_menu.attributes("-topmost", True)
+        
+        # Volume title
+        title_frame = tk.Frame(self.volume_menu, bg="#444444")
+        title_frame.pack(fill="x")
+        
+        title_label = tk.Label(
+            title_frame,
+            text="🔊 Volume",
+            font=("Arial", 11, "bold"),
+            fg="white",
+            bg="#444444",
+            pady=5
+        )
+        title_label.pack()
+        
+        # Volume controls
+        controls_frame = tk.Frame(self.volume_menu, bg="#333333")
+        controls_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Mute button
+        self.mute_btn = tk.Button(
+            controls_frame,
+            text="🔇 Mute",
+            font=("Arial", 10),
+            fg="white",
+            bg="#555555",
+            relief="flat",
+            command=self.toggle_mute,
+            padx=10,
+            pady=5
+        )
+        self.mute_btn.pack(fill="x", pady=(0, 10))
+        
+        # Volume slider
+        volume_slider_frame = tk.Frame(controls_frame, bg="#333333")
+        volume_slider_frame.pack(fill="x")
+        
+        self.volume_slider = tk.Scale(
+            volume_slider_frame,
+            from_=0,
+            to=100,
+            orient="horizontal",
+            bg="#333333",
+            fg="white",
+            highlightthickness=0,
+            command=self.on_volume_change
+        )
+        self.volume_slider.set(100)
+        self.volume_slider.pack(fill="x")
+
     def setup_bindings(self):
         """Setup keyboard and mouse bindings"""
         # Keyboard shortcuts
@@ -7618,13 +10812,6 @@ class FullscreenVideoPlayer(tk.Toplevel):
         self.canvas.bind("<Button-1>", self.on_canvas_click)
         self.canvas.bind("<Motion>", self.on_mouse_move)
         
-        # Window bindings
-        self.bind("<FocusIn>", self.on_focus_in)
-        self.bind("<FocusOut>", self.on_focus_out)
-        
-        # Escape key to exit fullscreen
-        self.bind("<Escape>", self.exit_fullscreen)
-        
         # Additional keyboard shortcuts
         self.bind("<space>", lambda e: self.toggle_playback())
         self.bind("<Left>", lambda e: self.seek_relative(-10))
@@ -7632,173 +10819,131 @@ class FullscreenVideoPlayer(tk.Toplevel):
         self.bind("<Up>", lambda e: self.change_speed(0.25))
         self.bind("<Down>", lambda e: self.change_speed(-0.25))
         
-        # Number keys for speed selection
-        self.bind("<Key-1>", lambda e: self.set_speed(0.25))
-        self.bind("<Key-2>", lambda e: self.set_speed(0.5))
-        self.bind("<Key-3>", lambda e: self.set_speed(0.75))
-        self.bind("<Key-4>", lambda e: self.set_speed(1.0))
-        self.bind("<Key-5>", lambda e: self.set_speed(1.25))
-        self.bind("<Key-6>", lambda e: self.set_speed(1.5))
-        self.bind("<Key-7>", lambda e: self.set_speed(2.0))
+        # Number keys for percentage seeking
+        for i in range(10):
+            self.bind(f"<Key-{i}>", lambda e, num=i: self.seek_to_percentage(num * 10))
         
-        # Mouse wheel for seeking
+        # Volume keys
+        self.bind("<Key-m>", lambda e: self.toggle_mute())
+        self.bind("<Key-plus>", lambda e: self.adjust_volume(0.1))
+        self.bind("<Key-minus>", lambda e: self.adjust_volume(-0.1))
+        
+        # Mouse wheel for volume
         self.bind("<MouseWheel>", self.on_mouse_wheel)
 
-    def sync_with_main_player(self):
-        """Sync fullscreen player state with main player"""
-        if self.video_player.cap:
-            self.display_frame(self.video_player.current_frame)
-            self.update_progress_bar()
-            
-            # Sync speed display
-            self.sync_speed_display()
-            
-            # Update play button state AND start playing if main player is playing
-            if self.video_player.is_playing:
-                self.play_btn.configure(text="⏸")
-                # Start fullscreen playback loop if main player is playing
-                self.start_fullscreen_playback()
-            else:
-                self.play_btn.configure(text="▶")
+    # === PROGRESS BAR DRAG FUNCTIONALITY ===
     
-    def start_fullscreen_playback(self):
-        """Start fullscreen playback synchronized with main player"""
-        if not self.video_player.is_playing or not self.video_player.cap:
+    def on_progress_press(self, event):
+        """Handle mouse press on progress bar - start potential drag"""
+        if not self.video_player.cap:
             return
         
-        # Schedule regular updates to sync with main player
-        self.sync_playback_with_main()
-    
-    def sync_playback_with_main(self):
-        """Keep fullscreen player synchronized with main player"""
-        if not self.video_player.is_playing or not self.video_player.cap or not self.winfo_exists():
+        self.is_dragging = True
+        self.drag_start_x = event.x
+        
+        # Immediate seek on press (like YouTube)
+        self.seek_to_position_from_event(event)
+        
+        # Change cursor to indicate dragging (use hand2 for Windows compatibility)
+        self.progress_canvas.configure(cursor="hand2")
+
+    def on_progress_drag(self, event):
+        """Handle mouse drag on progress bar - continuous seeking"""
+        if not self.is_dragging or not self.video_player.cap:
             return
         
-        # Update fullscreen display to match main player
-        self.display_frame(self.video_player.current_frame)
+        # Continuous seeking while dragging
+        self.seek_to_position_from_event(event)
+
+    def on_progress_release(self, event):
+        """Handle mouse release on progress bar - end drag"""
+        if not self.is_dragging:
+            return
         
-        # Update controls if visible
-        if self.controls_visible:
+        self.is_dragging = False
+        
+        # Final seek position
+        self.seek_to_position_from_event(event)
+        
+        # Reset cursor
+        self.progress_canvas.configure(cursor="hand2")
+
+    def on_progress_enter(self, event):
+        """Handle mouse entering progress bar"""
+        if not self.is_dragging:
+            self.progress_canvas.configure(cursor="hand2")
+
+    def on_progress_leave(self, event):
+        """Handle mouse leaving progress bar"""
+        if not self.is_dragging:
+            self.progress_canvas.configure(cursor="")
+
+    def seek_to_position_from_event(self, event):
+        """Seek to position based on mouse event coordinates"""
+        if not self.video_player.cap:
+            return
+        
+        canvas_width = self.progress_canvas.winfo_width()
+        if canvas_width > 0:
+            # Clamp x position to canvas bounds
+            x_position = max(0, min(event.x, canvas_width))
+            click_position = x_position / canvas_width
+            
+            target_frame = int(click_position * self.video_player.total_frames)
+            target_frame = max(0, min(target_frame, self.video_player.total_frames - 1))
+            
+            # Update both players
+            self.video_player.seek_to_frame(target_frame)
             self.update_progress_bar()
-        
-        # Calculate sync interval based on playback speed for smoother sync
-        # Higher speeds need more frequent updates
-        if self.video_player.playback_speed >= 4.0:
-            sync_interval = 20  # 20ms for very high speeds
-        elif self.video_player.playback_speed >= 2.0:
-            sync_interval = 30  # 30ms for high speeds  
-        else:
-            sync_interval = 50  # 50ms for normal speeds
-        
-        # Schedule next sync
-        self.after(sync_interval, self.sync_playback_with_main)
-
-    def start_mouse_tracking(self):
-        """Start tracking mouse for auto-hide controls"""
-        def check_mouse_idle():
-            if time.time() - self.last_mouse_move > 3.0 and self.controls_visible:
-                self.hide_controls()
-            
-            # Continue checking if window exists
-            if self.winfo_exists():
-                self.after(500, check_mouse_idle)
-        
-        check_mouse_idle()
-
-    def display_frame(self, frame_number):
-        """Display video frame in fullscreen canvas"""
-        if not self.video_player.cap or not self.winfo_exists():
-            return
-        
-        try:
-            self.video_player.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-            ret, frame = self.video_player.cap.read()
-            
-            if not ret:
-                return
-                
-            # Get screen dimensions
-            screen_width = self.winfo_screenwidth()
-            screen_height = self.winfo_screenheight()
-            
-            # Convert frame
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_height, frame_width = frame_rgb.shape[:2]
-            
-            # Calculate display size to maintain aspect ratio
-            aspect_ratio = frame_width / frame_height
-            
-            if screen_width / screen_height > aspect_ratio:
-                # Screen is wider than video
-                display_height = screen_height
-                display_width = int(display_height * aspect_ratio)
-            else:
-                # Screen is taller than video
-                display_width = screen_width
-                display_height = int(display_width / aspect_ratio)
-            
-            # Center the video
-            x_offset = (screen_width - display_width) // 2
-            y_offset = (screen_height - display_height) // 2
-            
-            # Resize frame
-            frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
-            
-            # Convert to PhotoImage
-            image = Image.fromarray(frame_resized)
-            photo = ImageTk.PhotoImage(image)
-            
-            # Clear canvas and display frame
-            self.canvas.delete("all")
-            self.canvas.create_image(
-                x_offset, y_offset,
-                anchor="nw",
-                image=photo
-            )
-            
-            # Keep reference to prevent garbage collection
-            self.canvas.image = photo
-            
-        except Exception as e:
-            print(f"Error displaying frame: {e}")
 
     def update_progress_bar(self):
-        """Update YouTube-style progress bar"""
+        """Update progress bar with enhanced visual feedback"""
         if not self.video_player.cap or not self.controls_visible:
             return
         
-        # Clear previous progress
         self.progress_canvas.delete("all")
-        
-        # Get canvas dimensions
         canvas_width = self.progress_canvas.winfo_width()
-        if canvas_width <= 1:
+        canvas_height = self.progress_canvas.winfo_height()
+        
+        if canvas_width <= 0:
             return
         
-        # Calculate progress
-        progress = 0
-        if self.video_player.total_frames > 0:
-            progress = self.video_player.current_frame / self.video_player.total_frames
-        
-        # Draw progress bar background
+        # Background track
         self.progress_canvas.create_rectangle(
-            0, 2, canvas_width, 6,
-            fill="#404040", outline=""
+            0, 3, canvas_width, canvas_height-3,
+            fill="#555555", outline=""
         )
         
-        # Draw progress
-        if progress > 0:
-            self.progress_canvas.create_rectangle(
-                0, 2, canvas_width * progress, 6,
-                fill="#ff0000", outline=""  # YouTube red
-            )
+        # Progress fill
+        if self.video_player.total_frames > 0:
+            progress = self.video_player.current_frame / self.video_player.total_frames
+            progress_width = int(progress * canvas_width)
+            
+            if progress_width > 0:
+                self.progress_canvas.create_rectangle(
+                    0, 3, progress_width, canvas_height-3,
+                    fill="#ff0000", outline=""
+                )
         
-        # Draw scrubber circle
-        if progress > 0:
-            x = canvas_width * progress
+        # Enhanced scrubber handle
+        if self.video_player.total_frames > 0:
+            progress = self.video_player.current_frame / self.video_player.total_frames
+            x = int(progress * canvas_width)
+            
+            # Larger, more visible scrubber handle
+            handle_size = 10 if self.is_dragging else 8
+            
+            # Shadow/outline for better visibility
             self.progress_canvas.create_oval(
-                x-6, 0, x+6, 8,
-                fill="#ff0000", outline="white", width=2
+                x-handle_size-1, 0, x+handle_size+1, canvas_height,
+                fill="#000000", outline=""
+            )
+            
+            # Main handle
+            self.progress_canvas.create_oval(
+                x-handle_size, 1, x+handle_size, canvas_height-1,
+                fill="#ffffff" if not self.is_dragging else "#ff4444", 
+                outline="#ff0000", width=2
             )
         
         # Update time display
@@ -7811,6 +10956,70 @@ class FullscreenVideoPlayer(tk.Toplevel):
             
             self.time_label.configure(text=f"{current_time} / {total_time}")
 
+    # === MENU MANAGEMENT ===
+    
+    def toggle_speed_menu(self):
+        """Toggle speed selection menu"""
+        self.hide_all_menus()
+        if not self.speed_menu_visible:
+            self.show_speed_menu()
+
+    def toggle_volume_menu(self):
+        """Toggle volume menu"""
+        self.hide_all_menus()
+        if not self.volume_menu_visible:
+            self.show_volume_menu()
+
+    def show_speed_menu(self):
+        """Show speed menu positioned above controls"""
+        if not self.speed_menu_visible:
+            self.speed_menu_visible = True
+            self.position_menu(self.speed_menu, 150, 230)
+            self.sync_speed_display()
+
+    def show_volume_menu(self):
+        """Show volume menu"""
+        if not self.volume_menu_visible:
+            self.volume_menu_visible = True
+            self.position_menu(self.volume_menu, 150, 180)
+
+    def position_menu(self, menu, width, height):
+        """Position menu above controls"""
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        # Position from right edge, well above controls
+        menu_x = screen_width - width - 50
+        menu_y = screen_height - 120 - height - 30
+        
+        # Ensure menu doesn't go off screen
+        menu_x = max(10, menu_x)
+        menu_y = max(50, menu_y)
+        
+        menu.geometry(f"{width}x{height}+{menu_x}+{menu_y}")
+        menu.deiconify()
+        menu.lift()
+        menu.focus_set()
+
+    def hide_all_menus(self):
+        """Hide all popup menus"""
+        self.hide_speed_menu()
+        self.hide_volume_menu()
+
+    def hide_speed_menu(self):
+        """Hide speed menu"""
+        if self.speed_menu_visible:
+            self.speed_menu_visible = False
+            self.speed_menu.withdraw()
+
+    def hide_volume_menu(self):
+        """Hide volume menu"""
+        if self.volume_menu_visible:
+            self.volume_menu_visible = False
+            self.volume_menu.withdraw()
+
+    # === PLAYBACK CONTROLS ===
+    
     def toggle_playback(self):
         """Toggle video playback (synchronized with main player)"""
         if self.video_player.cap:
@@ -7820,7 +11029,7 @@ class FullscreenVideoPlayer(tk.Toplevel):
                 self.video_player.display_frame(0)
                 self.video_player.update_time_display()
                 self.video_player.update_frame_display()
-                self.display_frame(0)  # Update fullscreen too
+                self.display_frame(0)
                 if self.controls_visible:
                     self.update_progress_bar()
             
@@ -7830,11 +11039,9 @@ class FullscreenVideoPlayer(tk.Toplevel):
             # Update button text and sync playback state
             if self.video_player.is_playing:
                 self.play_btn.configure(text="⏸")
-                # Start syncing fullscreen playback
                 self.start_fullscreen_playback()
             else:
                 self.play_btn.configure(text="▶")
-                # Fullscreen will stop syncing automatically when main player stops
 
     def seek_relative(self, seconds):
         """Seek relative to current position"""
@@ -7847,6 +11054,15 @@ class FullscreenVideoPlayer(tk.Toplevel):
         self.video_player.seek_to_frame(int(target_frame))
         self.update_progress_bar()
 
+    def seek_to_percentage(self, percentage):
+        """Seek to percentage of video"""
+        if not self.video_player.cap:
+            return
+        
+        target_frame = int((percentage / 100) * self.video_player.total_frames)
+        self.video_player.seek_to_frame(target_frame)
+        self.update_progress_bar()
+
     def change_speed(self, delta):
         """Change playback speed"""
         current_speed = getattr(self.video_player, 'playback_speed', 1.0)
@@ -7855,15 +11071,13 @@ class FullscreenVideoPlayer(tk.Toplevel):
 
     def set_speed(self, speed):
         """Set playback speed and update display"""
-        # Update the main video player speed
         if hasattr(self.video_player, 'set_speed'):
             self.video_player.set_speed(speed)
         elif hasattr(self.video_player, 'playback_speed'):
             self.video_player.playback_speed = speed
-            # Update the speed indicator if it exists
+            # Update speed indicator if it exists
             if hasattr(self.video_player, 'speed_indicator'):
                 self.video_player.speed_indicator.configure(text=f"{speed}×")
-            # Update speed slider if it exists
             if hasattr(self.video_player, 'speed_slider'):
                 self.video_player.speed_slider.set(speed)
         
@@ -7881,11 +11095,61 @@ class FullscreenVideoPlayer(tk.Toplevel):
         """Set speed from menu and update highlighting"""
         self.set_speed(speed)
         self.hide_speed_menu()
-    def get_current_speed(self):
-        """Get current playback speed from main player"""
-        if hasattr(self.video_player, 'playback_speed'):
-            return self.video_player.playback_speed
-        return 1.0
+
+    # === VOLUME CONTROLS ===
+    
+    def toggle_mute(self):
+        """Toggle mute state"""
+        self.is_muted = not self.is_muted
+        if self.is_muted:
+            self.last_volume = self.volume
+            self.volume = 0.0
+            self.volume_btn.configure(text="🔇")
+            self.mute_btn.configure(text="🔊 Unmute", bg="#ff4444")
+        else:
+            self.volume = self.last_volume
+            self.volume_btn.configure(text="🔊")
+            self.mute_btn.configure(text="🔇 Mute", bg="#555555")
+        
+        self.volume_slider.set(int(self.volume * 100))
+
+    def on_volume_change(self, value):
+        """Handle volume slider change"""
+        self.volume = float(value) / 100
+        if self.volume > 0 and self.is_muted:
+            self.is_muted = False
+            self.volume_btn.configure(text="🔊")
+            self.mute_btn.configure(text="🔇 Mute", bg="#555555")
+
+    def adjust_volume(self, delta):
+        """Adjust volume by delta"""
+        self.volume = max(0.0, min(1.0, self.volume + delta))
+        self.volume_slider.set(int(self.volume * 100))
+        if self.volume > 0 and self.is_muted:
+            self.is_muted = False
+            self.volume_btn.configure(text="🔊")
+
+    # === DISPLAY AND SYNC ===
+    
+    def sync_with_main_player(self):
+        """Sync fullscreen player state with main player"""
+        if not self.video_player.cap:
+            return
+        
+        # Sync playback state
+        if self.video_player.is_playing:
+            self.play_btn.configure(text="⏸")
+            self.start_fullscreen_playback()
+        else:
+            self.play_btn.configure(text="▶")
+        
+        # Sync speed
+        self.sync_speed_display()
+        
+        # Sync position
+        if hasattr(self.video_player, 'current_frame'):
+            self.display_frame(self.video_player.current_frame)
+            self.update_progress_bar()
 
     def sync_speed_display(self):
         """Sync speed display with main player"""
@@ -7894,90 +11158,139 @@ class FullscreenVideoPlayer(tk.Toplevel):
         
         # Update menu highlights
         for speed_val, button in self.speed_buttons.items():
-            if abs(speed_val - current_speed) < 0.01:  # Account for floating point precision
+            if abs(speed_val - current_speed) < 0.01:
                 button.configure(bg="#555555")
             else:
                 button.configure(bg="#333333")
-    def show_speed_menu(self):
-        """Show speed menu positioned above controls, not blocked by bar"""
-        if not self.speed_menu_visible:
-            self.speed_menu_visible = True
+
+    def get_current_speed(self):
+        """Get current playback speed from main player"""
+        if hasattr(self.video_player, 'playback_speed'):
+            return self.video_player.playback_speed
+        return 1.0
+
+    def start_fullscreen_playback(self):
+        """Start fullscreen playback synchronized with main player"""
+        if not self.video_player.is_playing or not self.video_player.cap:
+            return
+        
+        self.sync_playback_with_main()
+
+    def sync_playback_with_main(self):
+        """Keep fullscreen player synchronized with main player"""
+        if not self.video_player.is_playing or not self.video_player.cap or not self.winfo_exists():
+            return
+        
+        # Update fullscreen display to match main player
+        self.display_frame(self.video_player.current_frame)
+        
+        # Update controls if visible
+        if self.controls_visible:
+            self.update_progress_bar()
+        
+        # Calculate sync interval based on playback speed
+        if self.video_player.playback_speed >= 4.0:
+            sync_interval = 20
+        elif self.video_player.playback_speed >= 2.0:
+            sync_interval = 30
+        else:
+            sync_interval = 50
+        
+        self.after(sync_interval, self.sync_playback_with_main)
+
+    def display_frame(self, frame_number):
+        """Display video frame in fullscreen canvas"""
+        if not self.video_player.cap or not self.winfo_exists():
+            return
+        
+        try:
+            self.video_player.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = self.video_player.cap.read()
             
+            if not ret:
+                return
+                
             # Get screen dimensions
             screen_width = self.winfo_screenwidth()
             screen_height = self.winfo_screenheight()
             
-            # Calculate position well above the control bar
-            menu_width = 150
-            menu_height = 230
+            # Convert frame for display
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_height, frame_width = frame_rgb.shape[:2]
             
-            # Position from right edge, well above controls
-            menu_x = screen_width - menu_width - 50  # 50px from right edge
-            menu_y = screen_height - 120 - menu_height - 30  # 30px above controls
+            # Calculate scaling to fit screen while maintaining aspect ratio
+            scale_w = screen_width / frame_width
+            scale_h = screen_height / frame_height
+            scale = min(scale_w, scale_h)
             
-            # Ensure menu doesn't go off screen
-            menu_x = max(10, menu_x)
-            menu_y = max(50, menu_y)  # Don't go too high
+            new_width = int(frame_width * scale)
+            new_height = int(frame_height * scale)
             
-            # Position and show the toplevel menu
-            self.speed_menu.geometry(f"{menu_width}x{menu_height}+{menu_x}+{menu_y}")
-            self.speed_menu.deiconify()  # Show the menu
-            self.speed_menu.lift()
-            self.speed_menu.focus_set()
+            # Resize frame
+            from PIL import Image, ImageTk
+            img = Image.fromarray(frame_rgb)
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
             
-        else:
-            self.hide_speed_menu()
+            # Convert to PhotoImage
+            self.photo = ImageTk.PhotoImage(img)
+            
+            # Clear canvas and display centered image
+            self.canvas.delete("all")
+            x_offset = (screen_width - new_width) // 2
+            y_offset = (screen_height - new_height) // 2
+            
+            self.canvas.create_image(x_offset, y_offset, anchor="nw", image=self.photo)
+            
+        except Exception as e:
+            print(f"Error displaying fullscreen frame: {e}")
 
-    def hide_speed_menu(self):
-        """Hide speed menu"""
-        if self.speed_menu_visible:
-            self.speed_menu_visible = False
-            self.speed_menu.withdraw()  # Hide the toplevel window
-
-    def set_speed_from_menu(self, speed):
-        """Set speed from menu and update highlighting"""
-        self.set_speed(speed)
-        self.hide_speed_menu()
+    # === CONTROL VISIBILITY ===
+    
+    def position_overlays(self):
+        """Position overlay controls over the video"""
+        self.update_idletasks()
+        
+        window_width = self.winfo_width()
+        window_height = self.winfo_height()
+        
+        # Position title overlay at top
+        self.title_frame.place(x=0, y=0, width=window_width, height=60)
+        
+        # Position control overlay at bottom
+        overlay_height = 140
+        self.overlay_frame.place(
+            x=0, y=window_height-overlay_height, 
+            width=window_width, height=overlay_height
+        )
 
     def show_controls(self):
-        """Show overlay controls without affecting video size"""
+        """Show overlay controls"""
         if not self.controls_visible:
             self.controls_visible = True
-            
-            # Position overlays on top of video
             self.position_overlays()
-            
-            # Update progress bar
             self.update_progress_bar()
 
     def hide_controls(self):
-        """Hide overlay controls completely"""
+        """Hide overlay controls"""
         if self.controls_visible:
             self.controls_visible = False
-            
-            # Remove overlays (video stays full screen)
             self.title_frame.place_forget()
             self.overlay_frame.place_forget()
-            
-            # Hide speed menu if visible
-            if self.speed_menu_visible:
-                self.hide_speed_menu()
+            self.hide_all_menus()
 
-    def on_progress_click(self, event):
-        """Handle progress bar clicks for seeking"""
-        if not self.video_player.cap:
-            return
+    def start_mouse_tracking(self):
+        """Start tracking mouse for auto-hide controls"""
+        def check_mouse_idle():
+            if time.time() - self.last_mouse_move > 3.0 and self.controls_visible:
+                self.hide_controls()
+            
+            if self.winfo_exists():
+                self.after(500, check_mouse_idle)
         
-        canvas_width = self.progress_canvas.winfo_width()
-        if canvas_width > 0:
-            click_position = event.x / canvas_width
-            target_frame = int(click_position * self.video_player.total_frames)
-            target_frame = max(0, min(target_frame, self.video_player.total_frames - 1))
-            
-            # Update both players
-            self.video_player.seek_to_frame(target_frame)
-            self.update_progress_bar()
+        check_mouse_idle()
 
+    # === EVENT HANDLERS ===
+    
     def on_mouse_move(self, event):
         """Handle mouse movement"""
         self.last_mouse_move = time.time()
@@ -7992,11 +11305,20 @@ class FullscreenVideoPlayer(tk.Toplevel):
             self.after_cancel(self.mouse_timer)
         self.mouse_timer = self.after(3000, lambda: self.configure(cursor="none"))
 
-    def on_mouse_click(self, event):
-        """Handle mouse clicks"""
+    def on_canvas_click(self, event):
+        """Handle canvas clicks"""
         self.last_mouse_move = time.time()
         if not self.controls_visible:
             self.show_controls()
+
+    def on_click_outside_menu(self, event):
+        """Hide menus when clicking outside"""
+        self.hide_all_menus()
+
+    def on_mouse_wheel(self, event):
+        """Handle mouse wheel for volume control"""
+        delta = 0.05 if event.delta > 0 else -0.05
+        self.adjust_volume(delta)
 
     def on_key_press(self, event):
         """Handle keyboard shortcuts"""
@@ -8006,78 +11328,29 @@ class FullscreenVideoPlayer(tk.Toplevel):
             self.exit_fullscreen()
         elif key == "space":
             self.toggle_playback()
-        elif key == "left":
-            self.seek_relative(-10)
-        elif key == "right":
-            self.seek_relative(10)
-        elif key == "up":
-            self.change_speed(0.25)
-        elif key == "down":
-            self.change_speed(-0.25)
         elif key == "f":
             self.exit_fullscreen()
-        elif key in "1234567":
-            speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
-            try:
-                index = int(key) - 1
-                if 0 <= index < len(speeds):
-                    self.set_speed(speeds[index])
-            except:
-                pass
+        elif key in ["left", "a"]:
+            self.seek_relative(-10)
+        elif key in ["right", "d"]:
+            self.seek_relative(10)
+        elif key in ["up", "w"]:
+            self.change_speed(0.25)
+        elif key in ["down", "s"]:
+            self.change_speed(-0.25)
+        elif key == "m":
+            self.toggle_mute()
+        elif key == "c":
+            if self.controls_visible:
+                self.hide_controls()
+            else:
+                self.show_controls()
 
-    def on_canvas_click(self, event):
-        """Handle canvas click (toggle play/pause like YouTube)"""
-        # Don't toggle if clicking on controls
-        if not self.controls_visible:
-            self.show_controls()
-        else:
-            self.toggle_playback()
-
-    def on_click_outside_menu(self, event):
-        """Hide speed menu when clicking outside"""
-        if self.speed_menu_visible:
-            # Check if click was outside the speed menu
-            try:
-                menu_x = self.speed_menu.winfo_rootx()
-                menu_y = self.speed_menu.winfo_rooty()
-                menu_width = self.speed_menu.winfo_width()
-                menu_height = self.speed_menu.winfo_height()
-                
-                click_x = event.x_root
-                click_y = event.y_root
-                
-                # If click is outside menu bounds, hide menu
-                if (click_x < menu_x or click_x > menu_x + menu_width or 
-                    click_y < menu_y or click_y > menu_y + menu_height):
-                    self.hide_speed_menu()
-            except:
-                self.hide_speed_menu()
-        
-        # Handle normal click events
-        self.on_mouse_click(event)
-
-    def on_mouse_wheel(self, event):
-        """Handle mouse wheel for seeking"""
-        if event.delta > 0:
-            self.seek_relative(5)  # Forward 5 seconds
-        else:
-            self.seek_relative(-5)  # Backward 5 seconds
-
-    def on_focus_in(self, event):
-        """Handle gaining focus"""
-        pass
-
-    def on_focus_out(self, event):
-        """Handle losing focus"""
-        # Hide speed menu if losing focus
-        if self.speed_menu_visible:
-            self.hide_speed_menu()
-
-    def exit_fullscreen(self, event=None):
+    def exit_fullscreen(self):
         """Exit fullscreen mode"""
-        if self.speed_menu_visible:
-            self.hide_speed_menu()
+        self.hide_all_menus()
         self.destroy()
+
 class VideoPlayerWidget(ctk.CTkFrame):
     """Professional video player with YouTube-like behavior and simple state management"""
     
@@ -8201,6 +11474,9 @@ class VideoPlayerWidget(ctk.CTkFrame):
         
         # Progress bar (right side)
         self.create_progress_controls()
+    
+    
+    
     def create_speed_menu(self):
         """Create speed menu that floats without blocking video"""
         # Create speed menu as overlay
@@ -8924,12 +12200,694 @@ class PyPISearchEngine:
     def get_popular_packages(self) -> List[str]:
         """Get list of popular packages"""
         return POPULAR_PACKAGES
+def initialize_vscode_colors(theme_name="Dark+"):
+    """Initialize VSCODE_COLORS with a complete color scheme"""
+    global VSCODE_COLORS
+    
+    if theme_name in THEME_SCHEMES:
+        VSCODE_COLORS = THEME_SCHEMES[theme_name].copy()
+    else:
+        VSCODE_COLORS = THEME_SCHEMES["Dark+"].copy()
+    
+    # Ensure ALL required colors exist
+    required_colors = {
+        "primary": "#007ACC",
+        "primary_hover": "#005A9E", 
+        "secondary": "#6366f1",
+        "accent": "#0E7490",
+        "success": "#16A085",
+        "warning": "#F39C12",
+        "error": "#E74C3C",
+        "info": "#3498DB",
+        "surface": "#252526",
+        "surface_light": "#2D2D30",
+        "surface_lighter": "#383838",
+        "background": "#1E1E1E",
+        "text": "#CCCCCC",
+        "text_secondary": "#858585",
+        "text_bright": "#FFFFFF",
+        "border": "#464647",
+        "selection": "#264F78",
+        "current_line": "#2A2D2E"
+    }
+    
+    for key, default_value in required_colors.items():
+        if key not in VSCODE_COLORS:
+            VSCODE_COLORS[key] = default_value
+class DetailedUserGuideDialog(ctk.CTkToplevel):
+    """Comprehensive user guide dialog shown after installation"""
+    
+    def __init__(self, app):
+        super().__init__(app.root)
+        self.app = app
+        
+        # Fix missing VSCODE_COLORS keys
+        global VSCODE_COLORS
+        if "accent" not in VSCODE_COLORS:
+            VSCODE_COLORS["accent"] = "#007ACC"
+        if "accent_hover" not in VSCODE_COLORS:
+            VSCODE_COLORS["accent_hover"] = "#005A9E"
+        if "text_bright" not in VSCODE_COLORS:
+            VSCODE_COLORS["text_bright"] = "#FFFFFF"
+        if "surface" not in VSCODE_COLORS:
+            VSCODE_COLORS["surface"] = "#252526"
+        if "text_secondary" not in VSCODE_COLORS:
+            VSCODE_COLORS["text_secondary"] = "#858585"
+        if "surface_light" not in VSCODE_COLORS:
+            VSCODE_COLORS["surface_light"] = "#2D2D30"
+        
+        self.title("ManimStudio - Complete User Guide")
+        
 
+        
+        # Responsive window sizing
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = max(800, min(int(screen_w * 0.7), screen_w - 100, 1200))
+        height = max(600, min(int(screen_h * 0.85), screen_h - 100, 900))
+        self.geometry(f"{width}x{height}")
+        self.minsize(700, 500)
+        self.resizable(True, True)
+        self.transient(app.root)
+        self.grab_set()
+        
+        # Center the dialog
+        self.geometry("+%d+%d" % (
+            app.root.winfo_rootx() + 50,
+            app.root.winfo_rooty() + 30
+        ))
+        
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Setup the comprehensive user guide UI"""
+        # Main container
+        main_frame = ctk.CTkFrame(self, fg_color=VSCODE_COLORS["surface"])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Header
+        header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 20))
+        
+        # App icon and title
+        title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        title_frame.pack(fill="x")
+        
+        ctk.CTkLabel(
+            title_frame,
+            text="🎬",
+            font=ctk.CTkFont(size=48)
+        ).pack(side="left", padx=(0, 15))
+        
+        header_text_frame = ctk.CTkFrame(title_frame, fg_color="transparent")
+        header_text_frame.pack(side="left", fill="x", expand=True)
+        
+        ctk.CTkLabel(
+            header_text_frame,
+            text="ManimStudio - Complete User Guide",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        ).pack(anchor="w")
+        
+        ctk.CTkLabel(
+            header_text_frame,
+            text="Everything you need to know to create amazing mathematical animations",
+            font=ctk.CTkFont(size=14),
+            text_color=VSCODE_COLORS["text_secondary"]
+        ).pack(anchor="w", pady=(5, 0))
+        
+        # Tabbed content
+        self.notebook = ctk.CTkTabview(main_frame)
+        self.notebook.pack(fill="both", expand=True, pady=(0, 15))
+        
+        # Create tabs
+        self.create_quick_start_tab()
+        self.create_interface_guide_tab()
+        self.create_features_tab()
+        self.create_examples_tab()
+        self.create_troubleshooting_tab()
+        self.create_tips_tab()
+        
+        # Bottom buttons
+        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        button_frame.pack(fill="x")
+        
+        ctk.CTkButton(
+            button_frame,
+            text="📖 Open Manim Documentation",
+            command=self.open_manim_docs,
+            height=35
+        ).pack(side="left", padx=(0, 10))
+        
+        ctk.CTkButton(
+            button_frame,
+            text="✅ Got it, Let's Start!",
+            command=self.destroy,
+            height=35,
+            fg_color=VSCODE_COLORS["accent"],
+            hover_color=VSCODE_COLORS["accent_hover"]
+        ).pack(side="right")
+    
+    def create_quick_start_tab(self):
+        """Create quick start guide tab"""
+        tab = self.notebook.add("🚀 Quick Start")
+        
+        content = ctk.CTkScrollableFrame(tab, fg_color=VSCODE_COLORS["surface"])
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        guide_text = """
+🎯 GET STARTED IN 3 MINUTES
+
+1. WRITE YOUR FIRST ANIMATION
+   • Use the code editor (left panel) to write Manim code
+   • Start with a simple scene class that inherits from Scene
+   • Example: Create a circle that appears on screen
+
+2. PREVIEW YOUR WORK
+   • Click "⚡ Quick Preview" (F5) for fast preview
+   • View the result in the preview panel (bottom right)
+   • Adjust your code and preview again
+
+3. RENDER FINAL VIDEO
+   • Click "🎬 Render Animation" (F7) for high-quality output
+   • Choose your desired format (MP4, GIF, WebM, PNG)
+   • Select resolution (720p, 1080p, 4K, 8K available)
+
+🎬 YOUR FIRST ANIMATION CODE:
+
+from manim import *
+
+class MyFirstScene(Scene):
+    def construct(self):
+        # Create a blue circle
+        circle = Circle(color=BLUE)
+        
+        # Add text
+        text = Text("Hello ManimStudio!")
+        
+        # Show animations
+        self.play(Create(circle))
+        self.play(Write(text))
+        self.play(circle.animate.shift(UP))
+        self.wait()
+
+✨ COPY THIS CODE, PASTE IT IN THE EDITOR, AND HIT F5!
+
+🎯 WHAT HAPPENS NEXT:
+   • ManimStudio will render a preview showing:
+     - A blue circle appearing
+     - Text "Hello ManimStudio!" writing itself
+     - Circle moving upward
+   • Total animation time: ~3 seconds
+   • You can then modify colors, text, or add more objects!
+
+💡 PRO TIPS FOR BEGINNERS:
+   • Always start with "from manim import *"
+   • Your scene class must inherit from Scene
+   • Use self.play() to animate objects
+   • Use self.wait() to pause between animations
+   • Press Ctrl+Space for auto-completion suggestions
+        """
+        
+        self.create_guide_content(content, guide_text)
+    
+    def create_interface_guide_tab(self):
+        """Create interface guide tab"""
+        tab = self.notebook.add("🖥️ Interface Guide")
+        
+        content = ctk.CTkScrollableFrame(tab, fg_color=VSCODE_COLORS["surface"])
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        guide_text = """
+🖥️ INTERFACE LAYOUT GUIDE
+
+📝 CODE EDITOR (Left Panel):
+   • Professional VSCode-like editor with syntax highlighting
+   • IntelliSense autocompletion (Ctrl+Space)
+   • Line numbers and bracket matching
+   • Find & Replace (Ctrl+F / Ctrl+H)
+   • Auto-indentation for Python code
+   • Multiple themes available
+
+🎮 CONTROL PANEL (Top):
+   • File operations: New, Open, Save, Save As
+   • Quick Preview (⚡ F5) - Fast preview generation
+   • Render Animation (🎬 F7) - High-quality final render
+   • Environment Setup - Manage Python virtual environments
+
+⚙️ SETTINGS PANEL (Right Side):
+   • Preview Quality: Choose rendering quality for previews
+   • Output Format: MP4, GIF, WebM, PNG sequence
+   • Resolution: 480p to 8K (Professional edition)
+   • Frame Rate: 15fps to 60fps options
+   • Theme Selection: Light, Dark, and custom themes
+
+📺 PREVIEW PANEL (Bottom Right):
+   • Real-time video preview with playback controls
+   • Play, pause, seek through your animation
+   • Full-screen preview mode
+   • Automatic refresh after rendering
+
+📁 ASSET MANAGER (Right Panel):
+   • Add images: Drag & drop PNG, JPG, GIF files
+   • Add audio: Support for MP3, WAV, OGG formats
+   • Asset previews with thumbnail display
+   • One-click code insertion for assets
+
+🖥️ TERMINAL OUTPUT (Bottom):
+   • Real-time rendering progress
+   • Error messages and debugging info
+   • Package installation status
+   • Command execution logs
+
+🎨 THEME CUSTOMIZATION:
+   • Dark themes for night coding
+   • Light themes for day work
+   • High contrast options
+   • Custom color schemes
+
+⌨️ KEYBOARD SHORTCUTS:
+   • Ctrl+N: New file
+   • Ctrl+O: Open file
+   • Ctrl+S: Save file
+   • F5: Quick Preview
+   • F7: Render Animation
+   • Ctrl+F: Find
+   • Ctrl+H: Replace
+   • Ctrl+Space: IntelliSense
+        """
+        
+        self.create_guide_content(content, guide_text)
+    
+    def create_features_tab(self):
+        """Create features overview tab"""
+        tab = self.notebook.add("✨ Features")
+        
+        content = ctk.CTkScrollableFrame(tab, fg_color=VSCODE_COLORS["surface"])
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        guide_text = """
+✨ COMPLETE FEATURE OVERVIEW
+
+🚀 DEVELOPMENT FEATURES:
+   • Professional code editor with Python IntelliSense
+   • Real-time syntax highlighting and error detection
+   • Advanced find & replace with regex support
+   • Auto-completion for Manim functions and classes
+   • Smart indentation and bracket matching
+   • Multiple file support with tabs
+
+🎬 RENDERING CAPABILITIES:
+   • Multiple output formats: MP4, GIF, WebM, PNG sequences
+   • Resolution support: 480p, 720p, 1080p, 4K, 8K
+   • Frame rates: 15fps, 30fps, 60fps options
+   • Quality presets: Draft, Medium, High, Production
+   • Batch rendering for multiple scenes
+   • Custom resolution support
+
+⚡ PREVIEW SYSTEM:
+   • Lightning-fast preview generation (15-30 seconds)
+   • Real-time preview with video controls
+   • Automatic scene detection and rendering
+   • Preview quality optimization for speed
+   • Full-screen preview mode
+   • Timeline scrubbing and playback control
+
+🎨 ASSET MANAGEMENT:
+   • Visual asset manager with thumbnails
+   • Drag & drop support for images and audio
+   • Automatic code generation for asset usage
+   • Support for: PNG, JPG, GIF, BMP, TIFF images
+   • Audio formats: MP3, WAV, OGG, M4A, FLAC
+   • Asset organization and preview
+
+🔧 ENVIRONMENT MANAGEMENT:
+   • Automatic Python virtual environment setup
+   • One-click package installation
+   • Environment health monitoring
+   • Dependency conflict resolution
+   • Python version compatibility checking
+   • Automatic Manim installation and updates
+
+🎯 PROFESSIONAL TOOLS:
+   • Advanced package manager with 1000+ packages
+   • System terminal integration
+   • Multi-threaded rendering engine
+   • Memory optimization for large projects
+   • Export project settings and configurations
+   • Professional logging and error reporting
+
+🌟 USER EXPERIENCE:
+   • Modern, responsive UI design
+   • Multiple theme options (Dark, Light, Custom)
+   • Customizable interface layout
+   • Keyboard shortcuts for all functions
+   • Context-sensitive help and tooltips
+   • Seamless workflow integration
+
+📊 PERFORMANCE FEATURES:
+   • Multi-core rendering utilization
+   • Intelligent caching system
+   • Memory management for large scenes
+   • Background processing for previews
+   • Optimized for Windows, macOS, and Linux
+   • Efficient file handling and storage
+        """
+        
+        self.create_guide_content(content, guide_text)
+    
+    def create_examples_tab(self):
+        """Create examples tab"""
+        tab = self.notebook.add("📝 Examples")
+        
+        content = ctk.CTkScrollableFrame(tab, fg_color=VSCODE_COLORS["surface"])
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        guide_text = """
+📝 ANIMATION EXAMPLES
+
+🎯 BASIC SHAPES ANIMATION:
+
+from manim import *
+
+class BasicShapes(Scene):
+    def construct(self):
+        # Create shapes
+        square = Square(color=BLUE)
+        circle = Circle(color=RED)
+        triangle = Triangle(color=GREEN)
+        
+        # Position shapes
+        square.shift(LEFT * 3)
+        circle.shift(RIGHT * 3)
+        
+        # Animate creation
+        self.play(Create(square), Create(circle), Create(triangle))
+        self.play(square.animate.rotate(PI/4))
+        self.play(circle.animate.scale(1.5))
+        self.play(triangle.animate.flip(UP))
+        self.wait()
+
+📊 MATHEMATICAL FUNCTIONS:
+
+from manim import *
+
+class MathFunction(Scene):
+    def construct(self):
+        # Create axes
+        axes = Axes(
+            x_range=[-3, 3, 1],
+            y_range=[-2, 2, 1],
+            x_length=6,
+            y_length=4
+        )
+        
+        # Create function
+        func = axes.plot(lambda x: x**2, color=YELLOW)
+        func_label = MathTex(r"f(x) = x^2").next_to(func, UP)
+        
+        # Animate
+        self.play(Create(axes))
+        self.play(Create(func), Write(func_label))
+        self.wait()
+
+🎭 TEXT ANIMATIONS:
+
+from manim import *
+
+class TextAnimation(Scene):
+    def construct(self):
+        # Create text
+        title = Text("ManimStudio", font_size=48, color=BLUE)
+        subtitle = Text("Mathematical Animations Made Easy", font_size=24)
+        subtitle.next_to(title, DOWN)
+        
+        # Animate text
+        self.play(Write(title))
+        self.play(FadeIn(subtitle))
+        self.play(title.animate.scale(1.2).set_color(YELLOW))
+        self.play(subtitle.animate.shift(DOWN))
+        self.wait()
+
+🔄 TRANSFORMATIONS:
+
+from manim import *
+
+class Transformations(Scene):
+    def construct(self):
+        # Create objects
+        square = Square(color=BLUE)
+        circle = Circle(color=RED)
+        
+        # Transform square to circle
+        self.play(Create(square))
+        self.play(Transform(square, circle))
+        self.play(square.animate.move_to(RIGHT * 2))
+        self.play(Rotate(square, PI))
+        self.wait()
+
+📈 GRAPH ANIMATION:
+
+from manim import *
+
+class GraphScene(Scene):
+    def construct(self):
+        # Create number plane
+        plane = NumberPlane()
+        
+        # Create points
+        points = [plane.coords_to_point(x, x**2) for x in range(-3, 4)]
+        dots = VGroup(*[Dot(point, color=YELLOW) for point in points])
+        
+        # Create curve
+        curve = plane.plot(lambda x: x**2, color=BLUE)
+        
+        # Animate
+        self.play(Create(plane))
+        self.play(Create(dots))
+        self.play(Create(curve))
+        self.wait()
+
+💡 TIPS FOR YOUR OWN ANIMATIONS:
+   • Start simple and build complexity gradually
+   • Use self.play() for smooth animations
+   • Combine multiple objects with VGroup()
+   • Experiment with colors: RED, BLUE, GREEN, YELLOW, etc.
+   • Use .animate for property changes
+   • Add self.wait() for pauses between scenes
+        """
+        
+        self.create_guide_content(content, guide_text)
+    
+    def create_troubleshooting_tab(self):
+        """Create troubleshooting tab"""
+        tab = self.notebook.add("🔧 Troubleshooting")
+        
+        content = ctk.CTkScrollableFrame(tab, fg_color=VSCODE_COLORS["surface"])
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        guide_text = """
+🔧 TROUBLESHOOTING GUIDE
+
+❌ COMMON ISSUES AND SOLUTIONS:
+
+🐍 "No Python Environment" Error:
+   SOLUTION:
+   • Click "Environment Setup" button
+   • Follow the automatic setup wizard
+   • Wait for virtual environment creation
+   • Restart ManimStudio if needed
+
+📦 "Manim not found" Error:
+   SOLUTION:
+   • Go to Tools → Environment Setup
+   • Click "Fix Manim Dependencies"
+   • Wait for automatic package installation
+   • Verify installation in terminal output
+
+🎬 "No scene class found" Error:
+   SOLUTION:
+   • Ensure your class inherits from Scene
+   • Check class name spelling and capitalization
+   • Verify proper indentation (4 spaces)
+   • Make sure construct() method exists
+
+⚡ Preview Not Working:
+   SOLUTION:
+   • Check terminal output for error messages
+   • Verify your code syntax is correct
+   • Try a simpler example first
+   • Check if all imports are correct
+
+🎥 Rendering Fails:
+   SOLUTION:
+   • Check available disk space
+   • Verify output directory permissions
+   • Try lower quality settings first
+   • Check for conflicting file names
+
+🔊 Audio Issues:
+   SOLUTION:
+   • Verify audio file format (MP3, WAV supported)
+   • Check file path and existence
+   • Ensure audio file isn't corrupted
+   • Try converting to MP3 format
+
+💾 File Save Problems:
+   SOLUTION:
+   • Check file permissions in target directory
+   • Verify disk space availability
+   • Try saving to different location
+   • Check for special characters in filename
+
+🌐 Package Installation Fails:
+   SOLUTION:
+   • Check internet connection
+   • Try running as administrator (Windows)
+   • Clear pip cache: pip cache purge
+   • Use VPN if behind corporate firewall
+
+🖥️ PERFORMANCE ISSUES:
+
+💻 Slow Rendering:
+   • Lower preview quality in settings
+   • Close other applications
+   • Use SSD storage if available
+   • Increase virtual memory
+
+🔥 High CPU Usage:
+   • Normal during rendering
+   • Close unnecessary programs
+   • Use "Draft" quality for testing
+   • Enable multi-threading in settings
+
+💡 QUICK FIXES:
+   • Restart ManimStudio for environment issues
+   • Try the "Getting Started" example first
+   • Check the terminal output for detailed errors
+   • Use File → New to start with clean template
+
+🆘 STILL NEED HELP?
+   • Check Manim Community documentation
+   • Visit GitHub issues page
+   • Contact support with error logs
+   • Join Manim Discord community
+        """
+        
+        self.create_guide_content(content, guide_text)
+    
+    def create_tips_tab(self):
+        """Create tips and tricks tab"""
+        tab = self.notebook.add("💡 Pro Tips")
+        
+        content = ctk.CTkScrollableFrame(tab, fg_color=VSCODE_COLORS["surface"])
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        guide_text = """
+💡 PRO TIPS AND TRICKS
+
+⚡ PRODUCTIVITY SHORTCUTS:
+   • F5: Quick preview (fastest way to test)
+   • F7: Render final animation
+   • Ctrl+Space: IntelliSense autocompletion
+   • Ctrl+F: Find text in code
+   • Ctrl+H: Find and replace
+   • Ctrl+S: Save your work frequently
+
+🎨 ANIMATION BEST PRACTICES:
+   • Start with simple shapes before complex scenes
+   • Use consistent timing (self.wait(1) for 1 second)
+   • Group related objects with VGroup()
+   • Name your variables descriptively
+   • Comment your code for future reference
+   • Plan your animation sequence on paper first
+
+🚀 OPTIMIZATION TECHNIQUES:
+   • Use "Draft" quality for testing and iteration
+   • Save "High" quality for final renders only
+   • Close preview panel if not needed during coding
+   • Use lower frame rates (15fps) for faster previews
+   • Clear terminal output regularly for performance
+
+📁 PROJECT ORGANIZATION:
+   • Save each animation as a separate .py file
+   • Use descriptive filenames (math_functions.py)
+   • Keep assets in the same folder as your script
+   • Export your environment settings for backup
+   • Create templates for common animation types
+
+🎯 WORKFLOW EFFICIENCY:
+   • Write and test small parts incrementally
+   • Use Quick Preview frequently during development
+   • Keep the Manim documentation open in browser
+   • Save your work before major changes
+   • Create backups of working animations
+
+🔧 ADVANCED TECHNIQUES:
+   • Use custom colors: color=rgb_to_color([0.5, 0.8, 0.2])
+   • Create custom animations with AnimationGroup
+   • Use updaters for dynamic objects
+   • Implement camera movements for cinematic effects
+   • Combine multiple scenes in one script
+
+📚 LEARNING RESOURCES:
+   • 3Blue1Brown YouTube channel (creator of Manim)
+   • Manim Community documentation and examples
+   • Practice with mathematical visualizations
+   • Study existing Manim projects on GitHub
+   • Join the Manim Discord community
+
+🎬 RENDERING STRATEGIES:
+   • Test with 720p before rendering 4K
+   • Use MP4 for most purposes, GIF for web
+   • Higher frame rates (60fps) for smooth motion
+   • PNG sequences for post-processing in other software
+   • WebM format for web optimization
+
+💾 BACKUP AND SHARING:
+   • Export your virtual environment settings
+   • Save project files with version numbers
+   • Share .py files with others easily
+   • Use Git for version control of projects
+   • Document your animation process for reuse
+
+🌟 CREATIVE IDEAS:
+   • Visualize mathematical concepts and formulas
+   • Create educational content for teaching
+   • Design presentation animations for slides
+   • Build interactive demonstrations
+   • Combine with screen recording for tutorials
+
+Remember: The best way to learn Manim is by doing!
+Start simple, experiment often, and gradually build complexity.
+        """
+        
+        self.create_guide_content(content, guide_text)
+    
+    def create_guide_content(self, parent, text_content):
+        """Create formatted guide content"""
+        # Text widget for proper formatting
+        text_widget = ctk.CTkTextbox(
+            parent,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            wrap="word",
+            height=600
+        )
+        text_widget.pack(fill="both", expand=True)
+        
+        # Insert and format content
+        text_widget.insert("1.0", text_content.strip())
+        text_widget.configure(state="disabled")  # Make read-only
+    
+    def open_manim_docs(self):
+        """Open Manim documentation"""
+        import webbrowser
+        webbrowser.open("https://docs.manim.community/")
 class ManimStudioApp:
     def __init__(self, latex_path: Optional[str] = None, debug: bool = False):
         # Initialize main window
         self.root = ctk.CTk()
-       
+        
         # Initialize enhanced responsive UI system
         self.responsive = ResponsiveUI(self.root)
         
@@ -8980,24 +12938,27 @@ class ManimStudioApp:
         self.logger = logger
         self.last_manim_output_path = None
         
-        # Initialize virtual environment manager
-        self.venv_manager = VirtualEnvironmentManager(self)
         
         # Initialize system terminal manager
         self.terminal = None
         
         # IMPORTANT: Auto-activate manim_studio_default environment if it exists and is ready
         self.auto_activate_default_environment()
-
+        # Initialize virtual environment manager
+        self.venv_manager = VirtualEnvironmentManager(self)
+        
         # Load settings before initializing variables that depend on them
         self.load_settings()
+        
+        # **CRITICAL FIX: Initialize VSCODE_COLORS immediately after loading settings**
+        initialize_vscode_colors(self.settings.get("theme", "Dark+"))
         
         # CRITICAL FIX: Update responsive UI with loaded quality setting
         loaded_quality = self.settings.get("quality", "720p")
         self.responsive.set_quality_scaling(loaded_quality)
         
         self.initialize_variables()
-        
+        self.check_latex_installation()
         # Setup UI (minimal logging) but keep hidden
         try:
             self.create_ui()
@@ -9010,6 +12971,83 @@ class ManimStudioApp:
         except Exception as e:
             self.logger.error(f"UI creation failed: {e}")
             raise
+    def check_latex_installation(self):
+        """Check LaTeX installation - QUICK FIX"""
+        try:
+            # First check bundled LaTeX in WindowsApps path
+            bundled_latex_path = r"C:\Program Files\WindowsApps\9NZFT55DVCBS_1.0.2.0_x64__c5s549jf2x494\app\dependencies\miktex\bin"
+            
+            if os.path.exists(bundled_latex_path):
+                # Check for pdflatex.exe in bundled path
+                pdflatex_path = os.path.join(bundled_latex_path, "pdflatex.exe")
+                if os.path.exists(pdflatex_path):
+                    self.latex_available = True
+                    self.latex_installed = True
+                    self.latex_path = pdflatex_path
+                    status_text = "LaTeX: Bundled MikTeX"
+                    status_color = VSCODE_COLORS["success"]
+                    print(f"✅ Found bundled LaTeX: {pdflatex_path}")
+                else:
+                    # Fallback to system check
+                    self.latex_available = False
+                    self.latex_installed = False
+                    self.latex_path = None
+                    status_text = "LaTeX: Missing"
+                    status_color = VSCODE_COLORS["error"]
+            else:
+                # Check system PATH for LaTeX
+                try:
+                    result = subprocess.run(['pdflatex', '--version'], capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        self.latex_available = True
+                        self.latex_installed = True
+                        self.latex_path = "pdflatex"
+                        status_text = "LaTeX: System Installation"
+                        status_color = VSCODE_COLORS["success"]
+                    else:
+                        raise Exception("pdflatex not found")
+                except:
+                    self.latex_available = False
+                    self.latex_installed = False
+                    self.latex_path = None
+                    status_text = "LaTeX: Missing"
+                    status_color = VSCODE_COLORS["error"]
+            
+            # Update UI
+            if hasattr(self, 'latex_status_label') and self.latex_status_label:
+                self.latex_status_label.configure(text=status_text, text_color=status_color)
+            
+            return self.latex_available
+            
+        except Exception as e:
+            print(f"❌ Error checking LaTeX: {e}")
+            return False
+    def force_latex_status_update(self, status_text, status_color):
+        """Force LaTeX status update - helper method"""
+        try:
+            # Try all possible label references
+            possible_labels = [
+                getattr(self, 'latex_status_label', None),
+                getattr(self, 'env_status_label', None), 
+                getattr(self, 'status_label', None),
+                getattr(self, 'latex_label', None)
+            ]
+            
+            for label in possible_labels:
+                if label:
+                    try:
+                        label.configure(text=status_text, text_color=status_color)
+                        print(f"✅ Force updated label with: {status_text}")
+                        break
+                    except:
+                        continue
+            
+            # Force UI refresh again
+            self.update_idletasks()
+            self.update()
+            
+        except Exception as e:
+            print(f"❌ Error in force update: {e}")
     def check_environment_before_showing_ui(self):
         """Check environment before showing main UI - BETTER UX"""
         try:
@@ -9019,7 +13057,14 @@ class ManimStudioApp:
             
             self._environment_check_scheduled = True
             
-            # Check if environment needs setup
+            # IMPORTANT: Check if environment was already detected during auto_activate_default_environment
+            if not self.venv_manager.needs_setup:
+                self.logger.info("Environment already ready - showing main UI directly")
+                self.update_environment_status()
+                self.show_main_window()
+                return
+            
+            # Only show setup dialog if environment actually needs setup
             if self.venv_manager.needs_setup:
                 self.logger.info("Environment setup needed - showing setup dialog first")
                 
@@ -9041,9 +13086,6 @@ class ManimStudioApp:
                 
                 # Update status
                 self.update_environment_status()
-            else:
-                self.logger.info("Environment is ready")
-                self.update_environment_status()
             
             # NOW show the main window for the first time
             self.show_main_window()
@@ -9052,7 +13094,6 @@ class ManimStudioApp:
             self.logger.error(f"Environment check error: {e}")
             # Show main window even if check failed
             self.show_main_window()
-    
     def show_main_window(self):
         """Show the main application window for the first time"""
         try:
@@ -9107,8 +13148,231 @@ class ManimStudioApp:
             self.logger.error(f"Environment health check failed: {e}")
             return False
     
-    
-    
+    def add_image_file(self):
+        """Add image file to assets and show path"""
+        filetypes = [
+            ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp *.svg"),
+            ("PNG files", "*.png"),
+            ("JPEG files", "*.jpg *.jpeg"),
+            ("All files", "*.*")
+        ]
+        
+        file_path = filedialog.askopenfilename(
+            title="Select Image File",
+            filetypes=filetypes,
+            parent=self.root
+        )
+        
+        if file_path:
+            try:
+                assets_folder = self.ensure_assets_folder()
+                filename = os.path.basename(file_path)
+                
+                # Handle duplicate names
+                counter = 1
+                base_name, ext = os.path.splitext(filename)
+                while os.path.exists(os.path.join(assets_folder, filename)):
+                    filename = f"{base_name}_{counter}{ext}"
+                    counter += 1
+                
+                destination = os.path.join(assets_folder, filename)
+                shutil.copy2(file_path, destination)
+                
+                # Show success message with path to use
+                relative_path = f"assets/{filename}"
+                messagebox.showinfo(
+                    "Image Added",
+                    f"Image copied to assets folder!\n\n"
+                    f"Use this path in your Manim code:\n"
+                    f'"{relative_path}"\n\n'
+                    f"Example:\n"
+                    f'img = ImageMobject("{relative_path}")',
+                    parent=self.root
+                )
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to copy image:\n{str(e)}", parent=self.root)
+
+    def add_audio_file(self):
+        """Add audio file to assets and show path"""
+        filetypes = [
+            ("Audio files", "*.mp3 *.wav *.ogg *.m4a *.flac"),
+            ("MP3 files", "*.mp3"),
+            ("WAV files", "*.wav"),
+            ("All files", "*.*")
+        ]
+        
+        file_path = filedialog.askopenfilename(
+            title="Select Audio File",
+            filetypes=filetypes,
+            parent=self.root
+        )
+        
+        if file_path:
+            try:
+                assets_folder = self.ensure_assets_folder()
+                filename = os.path.basename(file_path)
+                
+                # Handle duplicate names
+                counter = 1
+                base_name, ext = os.path.splitext(filename)
+                while os.path.exists(os.path.join(assets_folder, filename)):
+                    filename = f"{base_name}_{counter}{ext}"
+                    counter += 1
+                
+                destination = os.path.join(assets_folder, filename)
+                shutil.copy2(file_path, destination)
+                
+                # Show success message with path to use
+                relative_path = f"assets/{filename}"
+                messagebox.showinfo(
+                    "Audio Added",
+                    f"Audio copied to assets folder!\n\n"
+                    f"Use this path in your Manim code:\n"
+                    f'"{relative_path}"\n\n'
+                    f"Example:\n"
+                    f'self.add_sound("{relative_path}")',
+                    parent=self.root
+                )
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to copy audio:\n{str(e)}", parent=self.root)
+    def show_add_asset_menu(self):
+        """Show Assets Manager instead of simple menu"""
+        assets_manager = AssetsManager(self.root, self)
+        self.root.wait_window(assets_manager)
+        
+        # Refresh the main assets display after manager closes
+        self.update_assets_display()
+
+    def create_assets_section(self):
+        """Create enhanced assets section with visual cards"""
+        # Section header
+        assets_header = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
+        assets_header.pack(fill="x", pady=(0, 10))
+        
+        header_frame = ctk.CTkFrame(assets_header, fg_color="transparent")
+        header_frame.pack(fill="x", padx=15, pady=12)
+        header_frame.grid_columnconfigure(0, weight=1)
+        
+        # Assets title
+        ctk.CTkLabel(
+            header_frame,
+            text="📁 Assets",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=VSCODE_COLORS["text_bright"]
+        ).grid(row=0, column=0, sticky="w")
+        
+        # Assets controls frame
+        controls_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        controls_frame.grid(row=0, column=1, sticky="e")
+        
+        # CHANGED: Assets Manager button instead of Add button
+        manager_button = ctk.CTkButton(
+            controls_frame,
+            text="📁 Assets Manager",
+            width=120,
+            height=28,
+            font=ctk.CTkFont(size=11),
+            command=self.show_add_asset_menu,  # This now opens the manager
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS.get("primary_hover", VSCODE_COLORS["primary"])
+        )
+        manager_button.pack(side="right", padx=(5, 0))
+        
+        # Clear assets button
+        clear_button = ctk.CTkButton(
+            controls_frame,
+            text="Clear",
+            width=60,
+            height=28,
+            font=ctk.CTkFont(size=11),
+            command=self.clear_assets,
+            fg_color=VSCODE_COLORS.get("warning", "#F39C12"),
+            hover_color=VSCODE_COLORS.get("error", "#E74C3C")
+        )
+        clear_button.pack(side="right", padx=(5, 5))
+        
+        # Assets container
+        self.assets_container = ctk.CTkScrollableFrame(
+            self.sidebar_scroll,
+            height=200,
+            fg_color=VSCODE_COLORS["surface"],
+            corner_radius=8
+        )
+        self.assets_container.pack(fill="x", pady=(0, 15))
+        
+        # Assets info
+        self.assets_info = ctk.CTkLabel(
+            self.assets_container,
+            text="Click 'Assets Manager' to view and manage assets",
+            font=ctk.CTkFont(size=12),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.assets_info.pack(pady=20)
+    def set_environment_ready(self):
+        """NEW METHOD: Mark environment as ready and skip setup UI"""
+        try:
+            # Mark that environment is ready
+            self.venv_manager.needs_setup = False
+            
+            # Update environment status silently
+            self.update_environment_status()
+            
+            # Don't show any setup dialogs
+            self._skip_environment_dialogs = True
+            
+        except Exception as e:
+            self.logger.error(f"Error setting environment ready: {e}")
+
+    def check_environment_before_showing_ui(self):
+        """MODIFIED: Check environment and skip UI if ready"""
+        try:
+            # Check if we should skip dialogs
+            if hasattr(self, '_skip_environment_dialogs') and self._skip_environment_dialogs:
+                # Environment already validated by splash, show main window
+                self.show_main_window()
+                return
+            
+            # Prevent multiple checks
+            if self._environment_check_scheduled:
+                return
+            
+            self._environment_check_scheduled = True
+            
+            # Check if environment needs setup
+            if self.venv_manager.needs_setup:
+                self.logger.info("Environment setup needed - showing setup dialog first")
+                
+                # Show setup dialog WITHOUT showing main window first
+                try:
+                    # Create a temporary root if needed for the dialog
+                    setup_dialog = EnvironmentSetupDialog(self.root, self.venv_manager)
+                    self.root.wait_window(setup_dialog)
+                    
+                    # After setup dialog closes, check if environment is now ready
+                    if self.venv_manager.needs_setup:
+                        # User skipped setup or setup failed
+                        self.logger.info("Setup skipped or failed - showing main UI anyway")
+                    else:
+                        self.logger.info("Setup completed - environment ready")
+                    
+                except Exception as e:
+                    self.logger.error(f"Setup dialog error: {e}")
+                
+                # Update status
+                self.update_environment_status()
+            else:
+                self.logger.info("Environment is ready")
+                self.update_environment_status()
+            
+            # NOW show the main window for the first time
+            self.show_main_window()
+                
+        except Exception as e:
+            self.logger.error(f"Environment check error: {e}")
+            # Show main window even if check failed
+            self.show_main_window()
     def setup_environment_simple(self):
         """Simple environment setup without complex dialog"""
         try:
@@ -9286,7 +13550,7 @@ class ManimStudioApp:
             logger.error(f"Error saving settings: {e}")
             
     def initialize_variables(self):
-        """Initialize all application variables"""
+        """Initialize all application variables - FIXED VERSION"""
         # Application state
         self.current_code = ""
         self.current_file_path = None
@@ -9327,55 +13591,70 @@ class ManimStudioApp:
         self.cpu_usage_var = ctk.StringVar(value=self.settings.get("cpu_usage", "Medium"))
         self.cpu_custom_cores_var = ctk.IntVar(value=self.settings.get("cpu_custom_cores", 2))
         
-        # Load the selected theme
+        # FIXED: Ensure VSCODE_COLORS has all required keys
+        global VSCODE_COLORS
         if self.current_theme in THEME_SCHEMES:
-            global VSCODE_COLORS
             VSCODE_COLORS = THEME_SCHEMES[self.current_theme].copy()
+        else:
+            VSCODE_COLORS = THEME_SCHEMES["Dark+"].copy()
             
-            # Ensure critical colors exist after theme switch
-            required_colors = {
-                "success": "#16A085",
-                "error": "#E74C3C", 
-                "warning": "#F39C12",
-                "info": "#3498DB"
-            }
-            for key, default_value in required_colors.items():
-                if key not in VSCODE_COLORS:
-                    VSCODE_COLORS[key] = default_value
+        # Ensure all critical colors exist
+        required_colors = {
+            "primary": "#007ACC",
+            "primary_hover": "#005A9E", 
+            "secondary": "#6366f1",
+            "accent": "#0E7490",
+            "success": "#16A085",
+            "warning": "#F39C12",
+            "error": "#E74C3C",
+            "info": "#3498DB",
+            "surface": "#252526",
+            "surface_light": "#2D2D30",
+            "surface_lighter": "#383838",
+            "background": "#1E1E1E",
+            "text": "#CCCCCC",
+            "text_secondary": "#858585",
+            "text_bright": "#FFFFFF",
+            "border": "#464647",
+            "selection": "#264F78",
+            "current_line": "#2A2D2E"
+        }
         
+        for key, default_value in required_colors.items():
+            if key not in VSCODE_COLORS:
+                VSCODE_COLORS[key] = default_value
+                
     def apply_vscode_theme(self):
-        """Apply VSCode-like color theme safely"""
+        """Apply VSCode-like color theme safely - FIXED VERSION"""
         colors = VSCODE_COLORS
         
         try:
             # Apply to main window
             self.root.configure(fg_color=colors["background"])
             
-            # Apply to sidebar
+            # Apply to sidebar with error handling
             if hasattr(self, 'sidebar'):
                 try:
                     self.sidebar.configure(fg_color=colors["surface"])
                 except Exception:
                     pass
                     
-            # Apply to main area
+            # Apply to main area with error handling
             if hasattr(self, 'main_area'):
                 try:
                     self.main_area.configure(fg_color=colors["background"])
                 except Exception:
                     pass
             
-            # FIXED: Apply to output text with error handling
+            # Apply to output text with error handling
             if hasattr(self, 'output_text'):
                 try:
-                    # Check if it's a CustomTkinter widget
                     if hasattr(self.output_text, 'fg_color'):
                         self.output_text.configure(
                             fg_color=colors["background"],
                             text_color=colors["text"]
                         )
                     else:
-                        # It's a regular tkinter widget
                         self.output_text.configure(
                             bg=colors["background"],
                             fg=colors["text"],
@@ -9386,35 +13665,23 @@ class ManimStudioApp:
                 except Exception as e:
                     print(f"Warning: Could not apply theme to output_text: {e}")
             
-            # Apply to code editor
+            # Apply to code editor with error handling
             if hasattr(self, 'code_editor'):
                 try:
                     self.code_editor.configure(
                         bg=colors["background"],
                         fg=colors["text"],
                         insertbackground=colors["text"],
-                        selectbackground=colors["selection"]
+                        selectbackground=colors["selection"],
+                        selectforeground=colors.get("text_bright", colors["text"])
                     )
-                except Exception:
-                    pass
-            
-            # Apply to other components safely
-            components_to_theme = [
-                'sidebar_scroll', 'assets_frame', 'preview_frame', 
-                'render_frame', 'settings_frame'
-            ]
-            
-            for component_name in components_to_theme:
-                if hasattr(self, component_name):
-                    try:
-                        component = getattr(self, component_name)
-                        if hasattr(component, 'configure'):
-                            component.configure(fg_color=colors["surface"])
-                    except Exception:
-                        pass
-                        
+                except Exception as e:
+                    print(f"Warning: Could not apply theme to code_editor: {e}")
+                    
         except Exception as e:
-            print(f"Warning: Theme application failed: {e}")     
+            print(f"Warning: Could not apply theme completely: {e}")
+    
+    
     def apply_theme(self, theme_colors):
         """Apply a new theme to the application"""
         global VSCODE_COLORS
@@ -9452,7 +13719,7 @@ class ManimStudioApp:
         # Save the theme
         self.settings["theme"] = "Custom"  # Mark as custom theme
         self.save_settings()
-        
+       
     def create_ui(self):
         """Create the main user interface"""
         # Configure main window grid
@@ -9652,7 +13919,7 @@ class ManimStudioApp:
         self.create_assets_section()
         
     def create_render_section(self):
-        """Create render settings section with responsive sizing"""
+        """Create render settings section with responsive sizing - FIXED VERSION"""
         # Get responsive dimensions
         fonts = self.responsive.get_optimal_font_sizes()
         spacing = self.responsive.get_optimal_spacing()
@@ -9664,16 +13931,16 @@ class ManimStudioApp:
         header_title = ctk.CTkLabel(
             render_header,
             text="🎬 Render Settings",
-            font=ctk.CTkFont(size=fonts["header"], weight="bold"),
-            text_color=VSCODE_COLORS["text_bright"]
+            font=ctk.CTkFont(size=fonts["large"], weight="bold"),
+            text_color=VSCODE_COLORS["text"]
         )
-        header_title.pack(side="left", padx=spacing["medium"], pady=spacing["normal"])
+        header_title.pack(padx=spacing["medium"], pady=spacing["medium"])
         
-        # Render settings frame
-        render_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
-        render_frame.pack(fill="x", pady=(0, spacing["large"]))
+        # Main render frame
+        render_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface"])
+        render_frame.pack(fill="x", pady=(0, spacing["normal"]))
         
-        # Quality setting with responsive sizing
+        # Quality controls with responsive sizing
         quality_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
         quality_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
         
@@ -9711,34 +13978,117 @@ class ManimStudioApp:
         )
         self.quality_info.pack(anchor="w", pady=(spacing["tiny"], 0))
         
-        # Custom resolution frame
+        # Custom resolution frame - FIXED: Each input on separate row
         self.custom_resolution_frame = ctk.CTkFrame(quality_frame, fg_color="transparent")
-        self.custom_resolution_frame.pack(fill="x", pady=(spacing["normal"], 0))
         
-        # Custom resolution inputs
+        # Custom resolution header
         custom_header = ctk.CTkLabel(
             self.custom_resolution_frame,
             text="Custom Resolution:",
             font=ctk.CTkFont(size=fonts["normal"], weight="bold"),
             text_color=VSCODE_COLORS["text"]
         )
-        custom_header.pack(anchor="w", pady=(0, spacing["small"]))
+        custom_header.pack(anchor="w", pady=(spacing["small"], spacing["small"]))
         
-        # Resolution input frame
-        resolution_input_frame = ctk.CTkFrame(self.custom_resolution_frame, fg_color="transparent")
-        resolution_input_frame.pack(fill="x")
-        resolution_input_frame.grid_columnconfigure((0, 2), weight=1)
+        # Width input - FIXED: On its own row
+        width_frame = ctk.CTkFrame(self.custom_resolution_frame, fg_color="transparent")
+        width_frame.pack(fill="x", pady=(0, spacing["small"]))
+        width_frame.grid_columnconfigure(1, weight=1)
         
-        # Width input
         ctk.CTkLabel(
-            resolution_input_frame, 
+            width_frame, 
             text="Width:", 
-            width=50,
-            font=ctk.CTkFont(size=fonts["normal"])
-        ).grid(row=0, column=0, sticky="w", pady=2)
+            font=ctk.CTkFont(size=fonts["normal"]),
+            width=60
+        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
         
-        # Continue with rest of custom resolution inputs...
-        # (Keep your existing custom resolution input code but add font sizing)
+        self.custom_width_entry = ctk.CTkEntry(
+            width_frame,
+            textvariable=self.custom_width_var,
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"]),
+            placeholder_text="e.g. 1920"
+        )
+        self.custom_width_entry.grid(row=0, column=1, sticky="ew")
+        self.custom_width_entry.bind("<KeyRelease>", self.validate_custom_resolution)
+        
+        # Height input - FIXED: On its own row
+        height_frame = ctk.CTkFrame(self.custom_resolution_frame, fg_color="transparent")
+        height_frame.pack(fill="x", pady=(0, spacing["small"]))
+        height_frame.grid_columnconfigure(1, weight=1)
+        
+        ctk.CTkLabel(
+            height_frame, 
+            text="Height:", 
+            font=ctk.CTkFont(size=fonts["normal"]),
+            width=60
+        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
+        
+        self.custom_height_entry = ctk.CTkEntry(
+            height_frame,
+            textvariable=self.custom_height_var,
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"]),
+            placeholder_text="e.g. 1080"
+        )
+        self.custom_height_entry.grid(row=0, column=1, sticky="ew")
+        self.custom_height_entry.bind("<KeyRelease>", self.validate_custom_resolution)
+        
+        # FPS input - FIXED: On its own row
+        fps_frame = ctk.CTkFrame(self.custom_resolution_frame, fg_color="transparent")
+        fps_frame.pack(fill="x", pady=(0, spacing["small"]))
+        fps_frame.grid_columnconfigure(1, weight=1)
+        
+        ctk.CTkLabel(
+            fps_frame, 
+            text="FPS:", 
+            font=ctk.CTkFont(size=fonts["normal"]),
+            width=60
+        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
+        
+        self.custom_fps_entry = ctk.CTkEntry(
+            fps_frame,
+            textvariable=self.custom_fps_var,
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"]),
+            placeholder_text="e.g. 30"
+        )
+        self.custom_fps_entry.grid(row=0, column=1, sticky="ew")
+        self.custom_fps_entry.bind("<KeyRelease>", self.validate_custom_resolution)
+        
+        # Validation label - FIXED: Added missing validation label
+        self.custom_validation_label = ctk.CTkLabel(
+            self.custom_resolution_frame,
+            text="",
+            font=ctk.CTkFont(size=fonts["small"]),
+            text_color=VSCODE_COLORS["text_secondary"]
+        )
+        self.custom_validation_label.pack(anchor="w", pady=(spacing["tiny"], 0))
+        
+        # Show/hide custom resolution frame based on current quality
+        if self.settings["quality"] == "Custom":
+            self.custom_resolution_frame.pack(fill="x", pady=(spacing["normal"], 0))
+        
+        # Format controls
+        format_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
+        format_frame.pack(fill="x", padx=spacing["medium"], pady=spacing["normal"])
+        
+        ctk.CTkLabel(
+            format_frame,
+            text="Output Format",
+            font=ctk.CTkFont(size=fonts["medium"], weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        ).pack(anchor="w")
+        
+        self.format_combo = ctk.CTkComboBox(
+            format_frame,
+            values=list(EXPORT_FORMATS.keys()),
+            variable=self.format_var,
+            command=lambda x: self.save_settings(),
+            height=combo_height,
+            font=ctk.CTkFont(size=fonts["normal"])
+        )
+        self.format_combo.pack(fill="x", pady=(spacing["small"], 0))
         
         # CPU usage controls with responsive sizing
         cpu_frame = ctk.CTkFrame(render_frame, fg_color="transparent")
@@ -9771,6 +14121,44 @@ class ManimStudioApp:
         )
         self.cpu_description.pack(anchor="w", pady=(spacing["tiny"], 0))
         
+        # Custom CPU frame implementation
+        self.custom_cpu_frame = ctk.CTkFrame(cpu_frame, fg_color="transparent")
+        
+        # Custom CPU slider
+        cpu_slider_frame = ctk.CTkFrame(self.custom_cpu_frame, fg_color="transparent")
+        cpu_slider_frame.pack(fill="x", pady=(spacing["small"], 0))
+        cpu_slider_frame.grid_columnconfigure(1, weight=1)
+        
+        ctk.CTkLabel(
+            cpu_slider_frame,
+            text="Cores:",
+            font=ctk.CTkFont(size=fonts["normal"])
+        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
+        
+        self.cpu_cores_slider = ctk.CTkSlider(
+            cpu_slider_frame,
+            from_=1,
+            to=self.cpu_count,
+            number_of_steps=self.cpu_count - 1,
+            variable=self.cpu_custom_cores_var,
+            command=self.update_cores_label,
+            height=20
+        )
+        self.cpu_cores_slider.grid(row=0, column=1, sticky="ew", padx=(0, 10))
+        
+        self.cores_value_label = ctk.CTkLabel(
+            cpu_slider_frame,
+            text=str(self.cpu_custom_cores_var.get()),
+            font=ctk.CTkFont(size=fonts["normal"], weight="bold"),
+            text_color=VSCODE_COLORS["primary"],
+            width=30
+        )
+        self.cores_value_label.grid(row=0, column=2, sticky="e")
+        
+        # Show custom CPU frame if Custom is selected
+        if self.cpu_usage_var.get() == "Custom":
+            self.custom_cpu_frame.pack(fill="x", pady=(5, 0))
+        
         # Render button with responsive sizing - LARGE button for prominence
         render_btn_height = self.responsive.get_button_dimensions(base_height=50)
         self.render_button = ctk.CTkButton(
@@ -9797,7 +14185,228 @@ class ManimStudioApp:
             font=ctk.CTkFont(size=fonts["normal"]),
             text_color=VSCODE_COLORS["text_secondary"]
         )
-        self.progress_label.pack(pady=(0, spacing["medium"]))  
+        self.progress_label.pack(pady=(0, spacing["medium"]))
+    def get_app_directory(self):
+        """Get the base directory where the app/exe is located"""
+        if getattr(sys, 'frozen', False):
+            # Running as executable
+            return os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            # Running as script
+            return os.path.dirname(os.path.abspath(__file__))
+    def render_animation(self):
+        """Render the current animation - FIXED to use app directory with CORRECT variable names"""
+        if not self.current_code.strip():
+            messagebox.showwarning("No Code", "Please write some Manim code first.")
+            return
+            
+        if not self.venv_manager.is_ready():
+            messagebox.showwarning(
+                "Environment Not Ready", 
+                "Please set up an environment first.\n\n"
+                "Click the Environment Setup button to create one."
+            )
+            return
+        
+        # Validate custom resolution if selected
+        try:
+            resolution_settings = self.get_current_resolution_settings()
+        except ValueError as e:
+            messagebox.showerror("Invalid Resolution", str(e))
+            return
+            
+        self.is_rendering = True
+        self.render_button.configure(text="⏳ Rendering...", state="disabled")
+        self.update_status("Starting render...")
+        self.progress_bar.set(0)
+        self.progress_label.configure(text="Initializing render...")
+        
+        try:
+            # Use directory next to app instead of system temp
+            app_dir = self.get_app_directory()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            temp_dir = os.path.join(app_dir, f"render_temp_{timestamp}")
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Extract scene class name
+            scene_class = self.extract_scene_class_name(self.current_code)
+            
+            # Write code to file in temp directory
+            scene_file = os.path.join(temp_dir, f"scene_{timestamp}.py")
+            with open(scene_file, "w", encoding="utf-8") as f:
+                f.write(self.current_code)
+                
+            # Get render settings - CORRECT variable names
+            quality_flag = resolution_settings["flag"]
+            format_ext = EXPORT_FORMATS[self.settings["format"]]
+            fps = resolution_settings["fps"]
+            
+            # Use environment Python
+            python_exe = get_long_path(ensure_ascii_path(self.venv_manager.python_path))
+            
+            # Get the number of cores to use
+            num_cores = self.get_render_cores()
+                
+            # Build manim command
+            command = [
+                str(python_exe), 
+                "-m", "manim",
+                os.path.basename(scene_file),  # Use basename since we set cwd
+                str(scene_class),
+                str(quality_flag),
+                "--format", format_ext,
+                "--fps", str(fps),
+                "--renderer", "cairo"
+            ]
+            
+            # Add custom resolution if using custom quality
+            if self.quality_var.get() == "Custom":
+                command.extend([
+                    "--resolution", f"{resolution_settings['width']},{resolution_settings['height']}"
+                ])
+            
+            # Add audio if available (check in app directory)
+            audio_files = [f for f in os.listdir(app_dir) if f.lower().endswith(('.mp3', '.wav', '.ogg', '.m4a'))]
+            if audio_files:
+                audio_path = os.path.join(app_dir, audio_files[0])  # Use first audio file found
+                command.extend(["--sound", audio_path])
+                self.append_terminal_output(f"🎵 Using audio: {audio_files[0]}\n")
+            
+            # Set environment variable for CPU control
+            env = {"OMP_NUM_THREADS": str(num_cores)}
+            
+            # Enhanced logging
+            self.append_terminal_output(f"Starting render...\n")
+            self.append_terminal_output(f"Resolution: {resolution_settings['resolution']} @ {fps}fps\n")
+            self.append_terminal_output(f"Using {num_cores} CPU cores\n")
+            self.append_terminal_output(f"Temp directory: {temp_dir}\n")
+            
+            # On render complete callback
+            def on_render_complete(success, return_code):
+                # Find output file
+                output_file = self.find_output_file(temp_dir, scene_class, format_ext)
+                
+                # Reset UI state
+                self.render_button.configure(text="🚀 Render Animation", state="normal")
+                self.is_rendering = False
+                
+                if success and output_file and os.path.exists(output_file):
+                    self.progress_bar.set(1.0)
+                    self.progress_label.configure(text="Render completed!")
+                    self.update_status("Render completed successfully")
+                    
+                    # Save rendered file
+                    self.save_rendered_file(output_file, format_ext)
+                else:
+                    self.progress_bar.set(0)
+                    self.progress_label.configure(text="Render failed")
+                    self.update_status("Render failed")
+                    self.append_terminal_output("Error: Output file not found or rendering failed\n")
+                
+                # Cleanup temp directory after a delay
+                def cleanup_temp():
+                    try:
+                        if os.path.exists(temp_dir):
+                            shutil.rmtree(temp_dir)
+                    except Exception as e:
+                        self.append_terminal_output(f"Warning: Could not clean up temp directory: {e}\n")
+                
+                # Schedule cleanup after 30 seconds
+                self.root.after(30000, cleanup_temp)
+            
+            # Run command from temp directory
+            self.terminal.run_command_redirected(command, on_render_complete, env, cwd=temp_dir)
+                
+        except Exception as e:
+            self.update_status(f"Render error: {e}")
+            self.append_terminal_output(f"Render error: {e}\n")
+            self.render_button.configure(text="🚀 Render Animation", state="normal")
+            self.is_rendering = False
+    
+    def initialize_variables(self):
+        """Initialize all application variables - FIXED VERSION"""
+        # Application state
+        self.current_code = ""
+        self.current_file_path = None
+        self.video_data = None
+        self.audio_path = None
+        self.image_paths = []
+        self.last_preview_code = ""
+        self.preview_video_path = None
+        self.current_temp_dir = None
+        self.current_scene_file = None
+
+        # UI state
+        self.is_rendering = False
+        self.is_previewing = False
+        self.render_process = None
+        self.preview_process = None
+        
+        # Asset management
+        self.asset_cards = []
+        
+        # Variables for UI controls
+        self.quality_var = ctk.StringVar(value=self.settings["quality"])
+        self.format_var = ctk.StringVar(value=self.settings["format"])
+        self.fps_var = ctk.StringVar(value=str(self.settings["fps"]))
+        self.preview_quality_var = ctk.StringVar(value=self.settings["preview_quality"])
+        self.auto_preview_var = ctk.BooleanVar(value=self.settings["auto_preview"])
+        self.font_size_var = ctk.IntVar(value=self.settings["font_size"])
+        self.intellisense_var = ctk.BooleanVar(value=self.settings["intellisense_enabled"])
+        self.current_theme = self.settings["theme"]
+        
+        # Custom resolution variables
+        self.custom_width_var = ctk.IntVar(value=self.settings["custom_width"])
+        self.custom_height_var = ctk.IntVar(value=self.settings["custom_height"])
+        self.custom_fps_var = ctk.IntVar(value=self.settings["custom_fps"])
+        
+        # CPU information
+        self.cpu_count = psutil.cpu_count(logical=True)
+        self.cpu_usage_var = ctk.StringVar(value=self.settings["cpu_usage"])
+        
+        # FIXED: Missing CPU custom cores variable
+        self.cpu_custom_cores_var = ctk.IntVar(value=self.settings.get("cpu_custom_cores", 2))
+
+    def on_cpu_usage_change(self, value):
+        """Handle CPU usage preset change - FIXED VERSION"""
+        self.settings["cpu_usage"] = value
+        self.cpu_description.configure(text=CPU_USAGE_PRESETS[value]["description"])
+        
+        # Show/hide custom slider based on selection
+        if value == "Custom":
+            self.custom_cpu_frame.pack(fill="x", pady=(5, 0))
+        else:
+            self.custom_cpu_frame.pack_forget()
+        
+        self.save_settings()
+
+    def update_cores_label(self, value):
+        """Update the cores value label - FIXED VERSION"""
+        cores = int(float(value))  # Handle float values from slider
+        self.cores_value_label.configure(text=str(cores))
+        self.settings["cpu_custom_cores"] = cores
+        self.save_settings()
+
+    def get_render_cores(self):
+        """Get the number of cores to use for rendering based on settings"""
+        usage_preset = self.cpu_usage_var.get()
+        preset_data = CPU_USAGE_PRESETS[usage_preset]
+        cores = preset_data["cores"]
+        
+        # For custom setting, use the slider value
+        if usage_preset == "Custom":
+            return self.cpu_custom_cores_var.get()
+        
+        # Special cases
+        if cores is None:
+            # Medium - use half available cores
+            return max(1, self.cpu_count // 2)
+        elif cores == -1:
+            # High - use all cores
+            return self.cpu_count
+        
+        # Return direct value (for Low)
+        return cores
     def validate_custom_resolution(self, event=None):
         """Validate custom resolution inputs"""
         try:
@@ -9812,8 +14421,8 @@ class ManimStudioApp:
                 errors.append("Width must be between 100 and 7680")
             if height < 100 or height > 4320:
                 errors.append("Height must be between 100 and 4320")
-            if fps < 1 or fps > 120:
-                errors.append("FPS must be between 1 and 120")
+            if fps < 1 or fps > 12000:
+                errors.append("FPS must be between 1 and 12000")
             
             # Check if width and height are even numbers (required for video encoding)
             if width % 2 != 0:
@@ -9876,7 +14485,7 @@ class ManimStudioApp:
             }
         
     def create_preview_section(self):
-        """Create preview settings section with responsive sizing"""
+        """Create preview settings section with responsive sizing - FIXED VERSION"""
         # Get responsive dimensions
         fonts = self.responsive.get_optimal_font_sizes()
         spacing = self.responsive.get_optimal_spacing()
@@ -9888,14 +14497,14 @@ class ManimStudioApp:
         header_title = ctk.CTkLabel(
             preview_header,
             text="👁️ Preview Settings",
-            font=ctk.CTkFont(size=fonts["header"], weight="bold"),
+            font=ctk.CTkFont(size=fonts["large"], weight="bold"),
             text_color=VSCODE_COLORS["text_bright"]
         )
         header_title.pack(side="left", padx=spacing["medium"], pady=spacing["normal"])
         
         # Preview settings frame
-        preview_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
-        preview_frame.pack(fill="x", pady=(0, spacing["large"]))
+        preview_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface"])
+        preview_frame.pack(fill="x", pady=(0, spacing["normal"]))
         
         # Preview quality with responsive sizing
         quality_frame = ctk.CTkFrame(preview_frame, fg_color="transparent")
@@ -9928,7 +14537,7 @@ class ManimStudioApp:
         )
         self.preview_info.pack(anchor="w", pady=(spacing["tiny"], 0))
         
-        # Preview button with responsive sizing - LARGE button for prominence
+        # Preview button with responsive sizing - FIXED: Use safe colors
         preview_btn_height = self.responsive.get_button_dimensions(base_height=45)
         self.quick_preview_button = ctk.CTkButton(
             preview_frame,
@@ -9936,94 +14545,74 @@ class ManimStudioApp:
             command=self.quick_preview,
             height=preview_btn_height,
             font=ctk.CTkFont(size=fonts["large"], weight="bold"),
-            fg_color=VSCODE_COLORS["accent"],
-            hover_color=VSCODE_COLORS["info"]
+            fg_color=VSCODE_COLORS["secondary"],
+            hover_color=VSCODE_COLORS["primary"]
         )
         self.quick_preview_button.pack(fill="x", padx=spacing["medium"], pady=spacing["medium"])
-    def create_assets_section(self):
-        """Create enhanced assets section with visual cards"""
-        # Section header
-        assets_header = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
-        assets_header.pack(fill="x", pady=(0, 10))
+    
+    
+    
+    
+    def create_controls(self):
+        """Create YouTube-style control layout - FIXED VERSION"""
+        # Left controls - Playback
+        left_controls = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
+        left_controls.grid(row=0, column=0, sticky="w", padx=15, pady=10)
         
-        header_frame = ctk.CTkFrame(assets_header, fg_color="transparent")
-        header_frame.pack(fill="x", padx=15, pady=12)
-        header_frame.grid_columnconfigure(0, weight=1)
-        
-        # Assets manager icon - MODIFIED TO USE CTkImage
-        assets_icon = load_icon_image("assets_manager.png", size=(20, 20))
-        if assets_icon:
-            # Create frame to hold icon and text
-            title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-            title_frame.grid(row=0, column=0, sticky="w")
-            
-            icon_label = ctk.CTkLabel(title_frame, image=assets_icon, text="")
-            icon_label.pack(side="left", padx=(0, 8))
-            
-            header_title = ctk.CTkLabel(
-                title_frame,
-                text="Assets Manager",
-                font=ctk.CTkFont(size=16, weight="bold"),
-                text_color=VSCODE_COLORS["text_bright"]
-            )
-            header_title.pack(side="left")
-        else:
-            # Fallback to emoji
-            header_title = ctk.CTkLabel(
-                header_frame,
-                text="🎨 Assets Manager",
-                font=ctk.CTkFont(size=16, weight="bold"),
-                text_color=VSCODE_COLORS["text_bright"]
-            )
-            header_title.grid(row=0, column=0, sticky="w")
-        
-        # Add asset button - MODIFIED TO USE CTkImage
-        add_icon = load_icon_image("add_asset.png", size=(16, 16))
-        if add_icon:
-            add_btn = ctk.CTkButton(
-                header_frame,
-                image=add_icon,
-                text="",
-                width=30,
-                height=25,
-                command=self.show_add_asset_menu,
-                fg_color=VSCODE_COLORS["success"],
-                hover_color="#117A65"
-            )
-        else:
-            add_btn = ctk.CTkButton(
-                header_frame,
-                text="+",
-                width=30,
-                height=25,
-                font=ctk.CTkFont(size=16, weight="bold"),
-                command=self.show_add_asset_menu,
-                fg_color=VSCODE_COLORS["success"],
-                hover_color="#117A65"
-            )
-        add_btn.grid(row=0, column=1, sticky="e")
-        
-        # Assets frame
-        self.assets_frame = ctk.CTkFrame(self.sidebar_scroll, fg_color=VSCODE_COLORS["surface_light"])
-        self.assets_frame.pack(fill="x", pady=(0, 20))
-        
-        # Assets scroll area
-        self.assets_scroll = ctk.CTkScrollableFrame(self.assets_frame, height=200, fg_color=VSCODE_COLORS["surface_light"])
-        self.assets_scroll.pack(fill="both", expand=True, padx=15, pady=15)
-        
-        # Assets info
-        self.assets_info = ctk.CTkLabel(
-            self.assets_frame,
-            text="Click + to add images or audio files",
-            font=ctk.CTkFont(size=12),
-            text_color=VSCODE_COLORS["text_secondary"]
+        # Play/Pause button (YouTube style - single button)
+        self.play_button = ctk.CTkButton(
+            left_controls,
+            text="▶",
+            width=55,
+            height=45,
+            font=ctk.CTkFont(size=24),
+            command=self.toggle_playback,
+            fg_color=VSCODE_COLORS["primary"],
+            hover_color=VSCODE_COLORS.get("primary_hover", VSCODE_COLORS["primary"]),
+            corner_radius=25
         )
-        self.assets_info.pack(pady=(0, 15))
+        self.play_button.pack(side="left", padx=(0, 15))
         
-        # Update assets display
-        self.update_assets_display()
-    
-    
+        # Fullscreen button
+        self.fullscreen_button = ctk.CTkButton(
+            left_controls,
+            text="⛶",
+            width=45,
+            height=45,
+            font=ctk.CTkFont(size=18),
+            command=self.enter_fullscreen,
+            fg_color=VSCODE_COLORS["surface_light"],
+            hover_color=VSCODE_COLORS["primary"],
+            corner_radius=22
+        )
+        self.fullscreen_button.pack(side="left", padx=(0, 15))
+        
+        # Time display
+        time_frame = ctk.CTkFrame(left_controls, fg_color="transparent")
+        time_frame.pack(side="left", padx=(0, 15))
+        
+        self.time_label = ctk.CTkLabel(
+            time_frame,
+            text="00:00 / 00:00",
+            font=ctk.CTkFont(family="Monaco", size=16, weight="bold"),
+            text_color=VSCODE_COLORS["text"]
+        )
+        self.time_label.pack()
+        
+        # Speed indicator
+        self.speed_indicator = ctk.CTkLabel(
+            time_frame,
+            text="1.0×",
+            font=ctk.CTkFont(size=11),
+            text_color=VSCODE_COLORS["primary"]
+        )
+        self.speed_indicator.pack()
+        
+        # Center controls - Speed
+        self.create_speed_controls()
+        
+        # Progress bar (right side)
+        self.create_progress_controls()
     def create_main_area(self):
         """Create main content area"""
         self.main_area = ctk.CTkFrame(self.root, corner_radius=0, fg_color=VSCODE_COLORS["background"])
@@ -11343,112 +15932,319 @@ class MyScene(Scene):
         if hasattr(self, 'line_numbers') and hasattr(self.code_editor, 'line_count'):
             self.line_numbers.update_line_numbers(self.code_editor.line_count)
             
-    # Asset management
-    def show_add_asset_menu(self):
-        """Show menu for adding assets"""
-        menu = tk.Menu(self.root, tearoff=0)
+    def clear_assets(self):
+        """Clear all assets"""
+        self.image_paths.clear()
+        self.audio_path = None
+        self.update_assets_display()
+        self.append_terminal_output("Cleared all assets\n")
+
+    def ensure_assets_folder(self):
+        """FIXED: Ensure assets folder exists next to the app - BETTER exe detection"""
         
-        # Try to create menu items with images
-        try:
-            # Load icons for menu items
-            image_icon = load_icon_image("image_placeholder.png", size=(16, 16))
-            audio_icon = load_icon_image("audio_icon.png", size=(16, 16))
-            
-            if image_icon:
-                menu.add_command(label="Add Images", image=image_icon, compound="left", command=self.add_images)
+        # ENHANCED detection for exe builds
+        if getattr(sys, 'frozen', False):
+            # Running as executable (.exe) 
+            if hasattr(sys, '_MEIPASS'):
+                # PyInstaller bundle - use original exe location
+                exe_dir = os.path.dirname(sys.executable)
+                # Check if we're in a temp extraction folder
+                if 'temp' in exe_dir.lower() or 'tmp' in exe_dir.lower() or '_MEI' in exe_dir:
+                    # Use the directory where the .exe was originally launched from
+                    base_dir = os.getcwd()
+                else:
+                    base_dir = exe_dir
             else:
-                menu.add_command(label="📷 Add Images", command=self.add_images)
+                # Nuitka onefile - get REAL exe directory  
+                real_exe_path = os.path.realpath(sys.executable)
+                if 'temp' in real_exe_path.lower() or 'tmp' in real_exe_path.lower():
+                    # OneDirBundle extraction - use launch directory
+                    base_dir = os.getcwd()
+                else:
+                    # OneFile in permanent location
+                    base_dir = os.path.dirname(real_exe_path)
+            
+            self.append_terminal_output(f"🔧 EXE detected - using: {base_dir}\n")
+        else:
+            # Running as script (.py)
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.append_terminal_output(f"🐍 Script detected - using: {base_dir}\n")
+        
+        # Force assets next to exe/script, NOT in temp
+        assets_path = os.path.join(base_dir, "assets")
+        os.makedirs(assets_path, exist_ok=True)
+        
+        # Verify we're NOT in a temp folder
+        if 'temp' in assets_path.lower() or 'tmp' in assets_path.lower():
+            # Fallback to current working directory 
+            fallback_path = os.path.join(os.getcwd(), "assets")
+            os.makedirs(fallback_path, exist_ok=True)
+            self.append_terminal_output(f"⚠️ Temp path detected, using fallback: {fallback_path}\n")
+            return fallback_path
+        
+        self.append_terminal_output(f"✅ Assets folder: {assets_path}\n")
+        return assets_path
+    def setup_drag_drop_availability(self):
+        """Enhanced drag and drop detection for exe builds"""
+        try:
+            # Try importing tkinterdnd2
+            import tkinterdnd2
+            from tkinterdnd2 import DND_FILES, TkinterDnD
+            
+            # Test if tkinterdnd2 can actually initialize
+            # This is critical for exe builds
+            test_successful = False
+            try:
+                # Create a test window to verify tkinterdnd2 works
+                import tkinter as tk
+                test_root = tk.Tk()
+                test_root.withdraw()  # Hide it
                 
-            if audio_icon:
-                menu.add_command(label="Add Audio", image=audio_icon, compound="left", command=self.add_audio)
-            else:
-                menu.add_command(label="🎵 Add Audio", command=self.add_audio)
-        except:
-            # Fallback to text-only menu
-            menu.add_command(label="📷 Add Images", command=self.add_images)
-            menu.add_command(label="🎵 Add Audio", command=self.add_audio)
-        
-        # Get button position
-        x = self.root.winfo_rootx() + 200
-        y = self.root.winfo_rooty() + 200
-        
-        try:
-            menu.post(x, y)
-        finally:
-            menu.grab_release()
+                # Try to initialize tkinterdnd2
+                TkinterDnD._require(test_root)
+                test_root.destroy()
+                test_successful = True
+                
+            except Exception as e:
+                if 'test_root' in locals():
+                    try:
+                        test_root.destroy()
+                    except:
+                        pass
+                print(f"⚠️ tkinterdnd2 initialization test failed: {e}")
+                test_successful = False
             
+            if test_successful:
+                # Store the imports for later use
+                self.tkinterdnd2 = tkinterdnd2
+                self.DND_FILES = DND_FILES
+                self.TkinterDnD = TkinterDnD
+                self.drag_drop_available = True
+                
+                print("✅ tkinterdnd2 available - drag & drop enabled")
+                if hasattr(self, 'main_app'):
+                    self.main_app.append_terminal_output("✅ Drag & Drop: ENABLED\n")
+            else:
+                raise Exception("tkinterdnd2 failed initialization test")
+                
+        except Exception as e:
+            self.drag_drop_available = False
+            self.tkinterdnd2 = None
+            self.DND_FILES = None
+            self.TkinterDnD = None
+            
+            print(f"⚠️ tkinterdnd2 not available: {e}")
+            if hasattr(self, 'main_app'):
+                self.main_app.append_terminal_output("⚠️ Drag & Drop: DISABLED (Use file buttons)\n")
+    def create_temp_animation_file(self, prefix="temp_preview"):
+        """Create temp file INSIDE assets folder"""
+        assets_folder = self.ensure_assets_folder()
+        timestamp = str(int(time.time() * 1000))
+        temp_filename = f"{prefix}_{timestamp}.py"
+        temp_path = os.path.join(assets_folder, temp_filename)
+        
+        # Write current code to temp file
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            f.write(self.current_code)
+        
+        self.append_terminal_output(f"📄 Created: {temp_filename}\n")
+        self.append_terminal_output(f"📁 Working in: {assets_folder}\n")
+        
+        return temp_path, assets_folder
     def add_images(self):
-        """Add image assets"""
+        """Add image assets to assets folder"""
+        from tkinter import filedialog, messagebox
         file_paths = filedialog.askopenfilenames(
             title="Select Images",
-            filetypes=[("Image files", "*.png *.jpg *.jpeg *.gif *.bmp *.svg")]
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp *.svg"),
+                ("PNG files", "*.png"),
+                ("JPEG files", "*.jpg *.jpeg"),
+                ("All files", "*.*")
+            ]
         )
         
         if file_paths:
-            for file_path in file_paths:
-                if file_path not in self.image_paths:
-                    self.image_paths.append(file_path)
+            try:
+                assets_folder = self.ensure_assets_folder()
+                copied_files = []
+                
+                for file_path in file_paths:
+                    filename = os.path.basename(file_path)
                     
-            self.update_assets_display()
-            self.append_terminal_output(f"Added {len(file_paths)} image(s)\n")
-            
+                    # Handle duplicate names
+                    counter = 1
+                    base_name, ext = os.path.splitext(filename)
+                    while os.path.exists(os.path.join(assets_folder, filename)):
+                        filename = f"{base_name}_{counter}{ext}"
+                        counter += 1
+                    
+                    destination = os.path.join(assets_folder, filename)
+                    shutil.copy2(file_path, destination)
+                    copied_files.append(filename)
+                    
+                    # Add to image paths list (using relative path)
+                    relative_path = f"assets/{filename}"
+                    if relative_path not in self.image_paths:
+                        self.image_paths.append(relative_path)
+                
+                self.update_assets_display()
+                
+                # Show success message with paths to use
+                paths_text = "\n".join([f'"assets/{f}"' for f in copied_files])
+                messagebox.showinfo(
+                    "Images Added",
+                    f"Copied {len(copied_files)} image(s) to assets folder!\n\n"
+                    f"Use these paths in your Manim code:\n{paths_text}\n\n"
+                    f"Example:\nimg = ImageMobject(\"assets/{copied_files[0]}\")",
+                    parent=self.root
+                )
+                
+                self.append_terminal_output(f"Added {len(copied_files)} image(s) to assets folder\n")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to copy images:\n{str(e)}", parent=self.root)
+
     def add_audio(self):
-        """Add audio asset"""
+        """Add audio asset to assets folder"""
+        from tkinter import filedialog, messagebox
         file_path = filedialog.askopenfilename(
             title="Select Audio File",
-            filetypes=[("Audio files", "*.mp3 *.wav *.ogg *.m4a")]
+            filetypes=[
+                ("Audio files", "*.mp3 *.wav *.ogg *.m4a *.flac"),
+                ("MP3 files", "*.mp3"),
+                ("WAV files", "*.wav"),
+                ("All files", "*.*")
+            ]
         )
         
         if file_path:
-            self.audio_path = file_path
-            self.update_assets_display()
-            self.append_terminal_output(f"Added audio: {os.path.basename(file_path)}\n")
-            
+            try:
+                assets_folder = self.ensure_assets_folder()
+                filename = os.path.basename(file_path)
+                
+                # Handle duplicate names
+                counter = 1
+                base_name, ext = os.path.splitext(filename)
+                while os.path.exists(os.path.join(assets_folder, filename)):
+                    filename = f"{base_name}_{counter}{ext}"
+                    counter += 1
+                
+                destination = os.path.join(assets_folder, filename)
+                shutil.copy2(file_path, destination)
+                
+                # Set audio path (using relative path)
+                relative_path = f"assets/{filename}"
+                self.audio_path = relative_path
+                
+                self.update_assets_display()
+                
+                # Show success message with path to use
+                messagebox.showinfo(
+                    "Audio Added",
+                    f"Audio copied to assets folder!\n\n"
+                    f"Use this path in your Manim code:\n"
+                    f'"{relative_path}"\n\n'
+                    f"Example:\n"
+                    f'self.add_sound("{relative_path}")',
+                    parent=self.root
+                )
+                
+                self.append_terminal_output(f"Added audio: {filename} to assets folder\n")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to copy audio:\n{str(e)}", parent=self.root)
+    
     def update_assets_display(self):
-        """Update assets display with visual cards"""
-        # Clear existing cards
-        for widget in self.assets_scroll.winfo_children():
+        """Update assets display"""
+        # Clear existing widgets
+        for widget in self.assets_container.winfo_children():
             widget.destroy()
-        self.asset_cards.clear()
         
-        # Add image assets
-        for img_path in self.image_paths:
-            card = AssetCard(
-                self.assets_scroll,
-                img_path,
-                "image",
-                self.use_asset,
-                self.remove_asset,
-                fg_color=VSCODE_COLORS["surface_lighter"]
-            )
-            card.pack(fill="x", pady=5)
-            self.asset_cards.append(card)
-            
-        # Add audio asset
-        if self.audio_path:
-            card = AssetCard(
-                self.assets_scroll,
-                self.audio_path,
-                "audio",
-                self.use_asset,
-                self.remove_asset,
-                fg_color=VSCODE_COLORS["surface_lighter"]
-            )
-            card.pack(fill="x", pady=5)
-            self.asset_cards.append(card)
-            
-        # Update info label
+        # Count total assets
         total_assets = len(self.image_paths) + (1 if self.audio_path else 0)
+        
         if total_assets > 0:
+            # Show asset count
             info_parts = []
             if self.image_paths:
                 info_parts.append(f"{len(self.image_paths)} image(s)")
             if self.audio_path:
                 info_parts.append("1 audio file")
-            self.assets_info.configure(text=", ".join(info_parts))
-        else:
-            self.assets_info.configure(text="Click + to add images or audio files")
             
+            info_text = ", ".join(info_parts)
+            self.assets_info = ctk.CTkLabel(
+                self.assets_container,
+                text=info_text,
+                font=ctk.CTkFont(size=12),
+                text_color=VSCODE_COLORS["text"]
+            )
+            self.assets_info.pack(pady=10)
+            
+            # List assets
+            for i, img_path in enumerate(self.image_paths):
+                asset_frame = ctk.CTkFrame(self.assets_container)
+                asset_frame.pack(fill="x", pady=2, padx=5)
+                
+                ctk.CTkLabel(
+                    asset_frame,
+                    text=f"📷 {os.path.basename(img_path)}",
+                    font=ctk.CTkFont(size=10)
+                ).pack(side="left", padx=5, pady=5)
+                
+                remove_btn = ctk.CTkButton(
+                    asset_frame,
+                    text="Remove",
+                    width=60,
+                    height=20,
+                    command=lambda path=img_path: self.remove_image_asset(path),
+                    fg_color=VSCODE_COLORS["error"]
+                )
+                remove_btn.pack(side="right", padx=5, pady=2)
+            
+            if self.audio_path:
+                asset_frame = ctk.CTkFrame(self.assets_container)
+                asset_frame.pack(fill="x", pady=2, padx=5)
+                
+                ctk.CTkLabel(
+                    asset_frame,
+                    text=f"🎵 {os.path.basename(self.audio_path)}",
+                    font=ctk.CTkFont(size=10)
+                ).pack(side="left", padx=5, pady=5)
+                
+                remove_btn = ctk.CTkButton(
+                    asset_frame,
+                    text="Remove",
+                    width=60,
+                    height=20,
+                    command=self.remove_audio_asset,
+                    fg_color=VSCODE_COLORS["error"]
+                )
+                remove_btn.pack(side="right", padx=5, pady=2)
+        else:
+            self.assets_info = ctk.CTkLabel(
+                self.assets_container,
+                text="Click + to add images or audio files",
+                font=ctk.CTkFont(size=12),
+                text_color=VSCODE_COLORS["text_secondary"]
+            )
+            self.assets_info.pack(pady=20)
+
+    def remove_image_asset(self, image_path):
+        """Remove a specific image asset"""
+        if image_path in self.image_paths:
+            self.image_paths.remove(image_path)
+            self.update_assets_display()
+            self.append_terminal_output(f"Removed image: {os.path.basename(image_path)}\n")
+
+    def remove_audio_asset(self):
+        """Remove audio asset"""
+        if self.audio_path:
+            filename = os.path.basename(self.audio_path)
+            self.audio_path = None
+            self.update_assets_display()
+            self.append_terminal_output(f"Removed audio: {filename}\n")
+
     def use_asset(self, asset_path, asset_type):
         """Use an asset in the code"""
         if asset_type == "image":
@@ -11465,7 +16261,7 @@ class MyScene(Scene):
         self.code_editor.insert(current_pos, code_snippet)
         
         self.append_terminal_output(f"Inserted code for {asset_type}: {os.path.basename(asset_path)}\n")
-        
+
     def remove_asset(self, asset_path, card_widget):
         """Remove an asset"""
         # Remove from lists
@@ -11478,7 +16274,6 @@ class MyScene(Scene):
         self.update_assets_display()
         
         self.append_terminal_output(f"Removed asset: {os.path.basename(asset_path)}\n")
-        
     # File operations
     def new_file(self):
         """Create new file"""
@@ -11557,7 +16352,7 @@ class MyScene(Scene):
             
     # Animation operations with System Terminal Integration
     def quick_preview(self):
-        """Generate quick preview - FORCE VIRTUAL ENVIRONMENT USAGE"""
+        """Generate quick preview - FIXED to create temp files inside assets folder"""
         if self.is_previewing:
             self.append_terminal_output("Preview already in progress...\n")
             return
@@ -11586,40 +16381,41 @@ class MyScene(Scene):
             self.is_previewing = False
             return
         
-        # Create temporary file
+        # FIXED: Create temp file INSIDE assets folder
+        assets_folder = self.ensure_assets_folder()
         temp_suffix = str(int(time.time() * 1000))
-        temp_dir = os.path.join(BASE_DIR, ".preview_temp", temp_suffix)
-        os.makedirs(temp_dir, exist_ok=True)
         
-        temp_file = os.path.join(temp_dir, f"preview_{temp_suffix}.py")
-        with open(temp_file, 'w', encoding='utf-8') as f:
-            f.write(self.current_code)
+        # Create temp file inside assets folder
+        temp_file = os.path.join(assets_folder, f"temp_preview_{temp_suffix}.py")
         
-        # FORCE USE OF VIRTUAL ENVIRONMENT - NO FALLBACK ALLOWED
+        # Write Python file inside assets folder
+        try:
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(self.current_code)
+            self.append_terminal_output(f"📄 Created temp file: {temp_file}\n")
+            self.append_terminal_output(f"📁 Working directory: {assets_folder}\n")
+            self.append_terminal_output(f"📁 Assets accessible directly by filename (e.g., 'pic.jpg')\n")
+        except Exception as e:
+            self.append_terminal_output(f"❌ Error writing temp file: {e}\n")
+            self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
+            self.is_previewing = False
+            return
+        
+        # FORCE USE OF VIRTUAL ENVIRONMENT
         if self.venv_manager.current_venv and self.venv_manager.python_path and os.path.exists(self.venv_manager.python_path):
             python_cmd = self.venv_manager.python_path
             self.append_terminal_output(f"✅ Using virtual environment: {self.venv_manager.current_venv}\n")
-            self.append_terminal_output(f"Python path: {python_cmd}\n")
         else:
-            # NO FALLBACK - Show error and stop
-            self.append_terminal_output("❌ Virtual environment not found or not properly configured!\n", "error")
-            self.append_terminal_output("Please set up the environment first using Tools → Environment Setup\n", "error")
+            self.append_terminal_output("❌ Virtual environment not found!\n", "error")
             self.quick_preview_button.configure(text="⚡ Quick Preview", state="normal")
             self.is_previewing = False
-            
-            # Cleanup temp directory
-            try:
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-            except:
-                pass
             return
         
-        # Build manim command with virtual environment
+        # Build manim command
         command = [
             python_cmd,
             "-m", "manim", "render",
-            temp_file,
+            os.path.basename(temp_file),  # Use basename since we set cwd to assets folder
             scene_class,
             "-qm",  # Medium quality
             "--format", "mp4",
@@ -11631,8 +16427,9 @@ class MyScene(Scene):
         self.log_command_start(f"Preview Generation - {scene_class}")
         self.log_info("Quality: Medium (720p) @ 15fps")
         self.log_info(f"Command: {' '.join(command)}")
+        self.log_info(f"Working directory: {assets_folder}")
         
-        # On preview complete callback - ENHANCED VERSION
+        # On preview complete callback
         def on_preview_complete(success, return_code):
             try:
                 # Reset UI state first
@@ -11640,116 +16437,53 @@ class MyScene(Scene):
                 self.is_previewing = False
                 
                 if success:
-                    self.append_terminal_output(f"\n✅ Preview generation completed successfully!\n", "success")
+                    # Find the output video file in media structure
+                    video_files = []
+                    media_dir = os.path.join(assets_folder, "media", "videos")
                     
-                    # Enhanced file finding with detailed logging
-                    output_file = self.find_output_file(temp_dir, scene_class, "mp4")
-
-                    if output_file and os.path.exists(output_file):
-                        self.append_terminal_output(f"✅ Output file confirmed: {output_file}\n", "success")
-
-                        # Copy to cache and use cached file for playback
-                        cache_dir = os.path.join(BASE_DIR, ".preview_cache")
-                        os.makedirs(cache_dir, exist_ok=True)
-                        cached_file = os.path.join(cache_dir, f"preview_{temp_suffix}.mp4")
-
-                        try:
-                            shutil.copy2(output_file, cached_file)
-                            self.append_terminal_output(f"📁 Cached to: {cached_file}\n", "info")
-                            self.load_preview_video(cached_file)
-                            self.update_status("Preview ready")
+                    # Search recursively for mp4 files
+                    if os.path.exists(media_dir):
+                        for root, dirs, files in os.walk(media_dir):
+                            for file in files:
+                                if file.endswith('.mp4') and f"preview_{temp_suffix}" in file:
+                                    video_files.append(os.path.join(root, file))
+                    
+                    if video_files:
+                        # Use the most recent video file
+                        latest_video = max(video_files, key=os.path.getmtime)
+                        self.log_success(f"Preview generated: {os.path.basename(latest_video)}")
+                        
+                        # Load the video in the preview
+                        if self.load_preview_video(latest_video):
                             self.last_preview_code = self.current_code
-                        except Exception as e:
-                            self.append_terminal_output(f"❌ Error caching preview: {e}\n", "error")
-                            # Fallback: try to load directly
-                            try:
-                                self.load_preview_video(output_file)
-                                self.update_status("Preview ready")
-                                self.last_preview_code = self.current_code
-                            except Exception as e2:
-                                self.append_terminal_output(f"❌ Error loading preview: {e2}\n", "error")
+                            self.last_manim_output_path = latest_video
+                        else:
+                            self.log_error("Failed to load preview video")
                     else:
-                        self.append_terminal_output("❌ No output file found after exhaustive search\n", "error")
-                        
-                        # Provide debugging information
-                        self.append_terminal_output("\n🔍 Debugging information:\n", "info")
-                        self.append_terminal_output(f"   Working directory: {os.getcwd()}\n", "info")
-                        self.append_terminal_output(f"   Temp directory: {temp_dir}\n", "info")
-                        self.append_terminal_output(f"   Scene class: {scene_class}\n", "info")
-                        
-                        # List contents of likely directories
-                        debug_dirs = [
-                            os.path.join(os.getcwd(), "media"),
-                            os.path.join(BASE_DIR, "media"),
-                            temp_dir
-                        ]
-                        
-                        for debug_dir in debug_dirs:
-                            if os.path.exists(debug_dir):
-                                self.append_terminal_output(f"   Contents of {debug_dir}:\n", "info")
-                                try:
-                                    for root, dirs, files in os.walk(debug_dir):
-                                        level = root.replace(debug_dir, '').count(os.sep)
-                                        indent = ' ' * 4 * (level + 1)
-                                        self.append_terminal_output(f"{indent}{os.path.basename(root)}/\n", "info")
-                                        subindent = ' ' * 4 * (level + 2)
-                                        for file in files:
-                                            self.append_terminal_output(f"{subindent}{file}\n", "info")
-                                except Exception as e:
-                                    self.append_terminal_output(f"   Error listing {debug_dir}: {e}\n", "warning")
+                        self.log_error("No output video file found")
                 else:
-                    self.append_terminal_output(f"\n❌ Preview generation failed (exit code: {return_code})\n", "error")
-                
-                # Cleanup temp directory
-                try:
-                    if os.path.exists(temp_dir):
-                        shutil.rmtree(temp_dir)
-                except Exception as e:
-                    self.append_terminal_output(f"⚠️ Could not clean temp directory: {e}\n", "warning")
+                    self.log_error(f"Preview generation failed (return code: {return_code})")
                     
             except Exception as e:
-                self.append_terminal_output(f"❌ Error in preview completion: {e}\n", "error")
+                self.log_error(f"Error in preview completion: {e}")
+            finally:
+                # Clean up temp Python file after a delay
+                def cleanup_temp():
+                    try:
+                        if os.path.exists(temp_file):
+                            os.remove(temp_file)
+                        # Also clean up media folder inside assets
+                        media_dir = os.path.join(assets_folder, "media")
+                        if os.path.exists(media_dir):
+                            shutil.rmtree(media_dir)
+                    except:
+                        pass
+                
+                # Schedule cleanup after 10 seconds
+                self.root.after(10000, cleanup_temp)
         
-        # FORCE USE OF VIRTUAL ENVIRONMENT STREAMING - NO FALLBACK
-        if hasattr(self.venv_manager, 'run_command_streaming'):
-            # Use virtual environment for streaming
-            self.venv_manager.run_command_streaming(
-                command, 
-                log_callback=self.enhanced_log_callback,
-                on_complete=on_preview_complete
-            )
-        else:
-            # NO FALLBACK - Use direct subprocess with virtual environment
-            self.append_terminal_output("✅ Using direct virtual environment execution\n")
-            def run_with_venv():
-                try:
-                    # Get virtual environment variables
-                    env = self.get_subprocess_environment()
-                    
-                    result = subprocess.run(
-                        command, 
-                        capture_output=True, 
-                        text=True, 
-                        timeout=300,
-                        encoding='utf-8',
-                        errors='replace',
-                        env=env  # Use virtual environment
-                    )
-                    
-                    # Process all output through enhanced callback
-                    if result.stdout:
-                        self.enhanced_log_callback(result.stdout, "output")
-                    if result.stderr:
-                        self.enhanced_log_callback(result.stderr, "error")
-                        
-                    on_preview_complete(result.returncode == 0, result.returncode)
-                except Exception as e:
-                    self.append_terminal_output(f"❌ Virtual environment execution error: {e}\n", "error")
-                    on_preview_complete(False, -1)
-            
-            threading.Thread(target=run_with_venv, daemon=True).start()
-
-    
+        # Run the command from assets folder (where Python file and assets are located)
+        self.terminal.run_command_redirected(command, on_preview_complete, cwd=assets_folder)
     def get_subprocess_environment(self):
         """Get environment variables for subprocess commands - NO FALLBACK"""
         env = os.environ.copy()
@@ -11789,105 +16523,120 @@ class MyScene(Scene):
                 self.current_scene_file = None
 
     def render_animation(self):
-        """Render high-quality animation using system terminal"""
-        if self.is_rendering:
-            return
-            
+        """Render the current animation - FIXED format parameter issue"""
         if not self.current_code.strip():
-            messagebox.showwarning("Warning", "Please enter code before rendering")
+            messagebox.showwarning("No Code", "Please write some Manim code first.")
             return
             
-        # Check if environment is active
-        if not self.venv_manager.current_venv:
+        if not self.venv_manager.is_ready():
             messagebox.showwarning(
-                "No Environment Active",
-                "No Python environment is active. Please set up an environment first.\n\n"
+                "Environment Not Ready", 
+                "Please set up an environment first.\n\n"
                 "Click the Environment Setup button to create one."
             )
             return
-        
-        # Validate custom resolution if selected
-        try:
-            resolution_settings = self.get_current_resolution_settings()
-        except ValueError as e:
-            messagebox.showerror("Invalid Resolution", str(e))
+            
+        # Check if already rendering
+        if self.is_rendering:
             return
-            
-        self.is_rendering = True
-        self.render_button.configure(text="⏳ Rendering...", state="disabled")
-        self.update_status("Starting render...")
-        self.progress_bar.set(0)
-        self.progress_label.configure(text="Initializing render...")
         
         try:
-            # Create temporary directory
-            temp_dir = tempfile.mkdtemp(
-                prefix="manim_render_",
-                dir=ensure_ascii_path(tempfile.gettempdir())
-            )
-            temp_dir = get_long_path(temp_dir)
+            self.is_rendering = True
+            self.render_button.configure(text="⏳ Rendering...", state="disabled")
             
-            # Extract scene class name
+            # Get settings
             scene_class = self.extract_scene_class_name(self.current_code)
+            if not scene_class:
+                messagebox.showerror("Error", "No valid Manim scene class found in the code.")
+                self.render_button.configure(text="🚀 Render Animation", state="normal")
+                self.is_rendering = False
+                return
             
-            # Write code to file
-            scene_file = os.path.join(temp_dir, "scene.py")
-            with open(scene_file, "w", encoding="utf-8") as f:
+            # FIXED: Clean format parameter
+            quality = self.quality_var.get()
+            format_raw = self.format_var.get()
+            fps_raw = self.fps_var.get()
+            
+            # Clean and validate format parameter
+            format_ext = format_raw.strip().strip('"').strip("'").lower()
+            if format_ext not in ['mp4', 'mov', 'gif', 'png', 'webm']:
+                format_ext = 'mp4'  # Default fallback
+            
+            # Clean fps parameter
+            try:
+                fps = str(int(fps_raw.strip().strip('"').strip("'")))
+            except:
+                fps = "30"  # Default fallback
+            
+            self.append_terminal_output(f"📋 Render settings: Quality={quality}, Format={format_ext}, FPS={fps}\n")
+            
+            # FIXED: Create temp file INSIDE assets folder
+            assets_folder = self.ensure_assets_folder()
+            temp_suffix = str(int(time.time() * 1000))
+            
+            # Create temp file inside assets folder
+            temp_file = os.path.join(assets_folder, f"temp_render_{temp_suffix}.py")
+            
+            # Write the current code to temp file
+            with open(temp_file, 'w', encoding='utf-8') as f:
                 f.write(self.current_code)
-                
-            # Get render settings
-            quality_flag = resolution_settings["flag"]
-            format_ext = EXPORT_FORMATS[self.settings["format"]]
-            fps = resolution_settings["fps"]
             
-            # Use environment Python
-            python_exe = get_long_path(ensure_ascii_path(self.venv_manager.python_path))
+            self.append_terminal_output(f"📄 Created temp file: {temp_file}\n")
+            self.append_terminal_output(f"📁 Working directory: {assets_folder}\n")
+            self.append_terminal_output(f"📁 Assets accessible directly by filename (e.g., 'pic.jpg')\n")
             
-            # Get the number of cores to use
-            num_cores = self.get_render_cores()
-                
-            # Build manim command
+            # Build manim command with FIXED format parameter
+            quality_flags = {
+                "Low": ["-ql"],
+                "Medium": ["-qm"], 
+                "High": ["-qh"],
+                "Ultra": ["-qk"]
+            }
+            
             command = [
-                str(python_exe), 
-                "-m", "manim", "render",  # FIXED: Added "render" subcommand
-                str(scene_file),
-                str(scene_class),
-                str(quality_flag),
-                "--format", format_ext,   # FIXED: Separate format flag
-                "--fps", str(fps),        # FIXED: Separate fps flag  
-                "--renderer", "cairo"     # FIXED: Separate renderer flag
+                self.venv_manager.python_path,
+                "-m", "manim", "render",
+                os.path.basename(temp_file),  # Use basename since we set cwd to assets folder
+                scene_class,
+                *quality_flags.get(quality, ["-qm"]),
+                "--format", format_ext,  # Now properly cleaned
+                "--fps", fps,            # Now properly cleaned
+                "--disable_caching",
+                "-o", f"render_{temp_suffix}"
             ]
             
-            # Add custom resolution if using custom quality
-            if self.quality_var.get() == "Custom":
-                command.extend([
-                    "--resolution", f"{resolution_settings['width']},{resolution_settings['height']}"  # FIXED: Separate resolution flag
-                ])
+            # Log the exact command for debugging
+            self.append_terminal_output(f"🔧 Command: {' '.join(command)}\n")
             
-            # Add audio if available
-            if self.audio_path and os.path.exists(self.audio_path):
-                command.extend(["--sound", self.audio_path])
+            # Get environment
+            env = self.get_subprocess_environment()
             
-            # Set environment variable for CPU control
-            env = {"OMP_NUM_THREADS": str(num_cores)}
+            # Progress tracking
+            self.progress_bar.set(0.1)
+            self.progress_label.configure(text="Rendering...")
+            self.update_status("Rendering animation...")
             
-            # Enhanced logging
-            self.append_terminal_output(f"Starting render...\n")
-            self.append_terminal_output(f"Resolution: {resolution_settings['resolution']} @ {fps}fps\n")
-            self.append_terminal_output(f"Using {num_cores} CPU cores\n")
-            
-            # On render complete callback
             def on_render_complete(success, return_code):
                 # Find output file
-                output_file = self.find_output_file(temp_dir, scene_class, format_ext)
+                output_file = None
+                media_dir = os.path.join(assets_folder, "media", "videos")
+                
+                if os.path.exists(media_dir):
+                    for root, dirs, files in os.walk(media_dir):
+                        for file in files:
+                            if file.endswith(f'.{format_ext}') and f"render_{temp_suffix}" in file:
+                                output_file = os.path.join(root, file)
+                                break
+                        if output_file:
+                            break
                 
                 # Reset UI state
                 self.render_button.configure(text="🚀 Render Animation", state="normal")
                 self.is_rendering = False
                 
-                if success and output_file and os.path.exists(output_file):
+                if output_file and os.path.exists(output_file):
                     self.progress_bar.set(1.0)
-                    self.progress_label.configure(text="Render completed!")
+                    self.progress_label.configure(text="Render completed")
                     self.update_status("Render completed successfully")
                     
                     # Save rendered file
@@ -11898,21 +16647,41 @@ class MyScene(Scene):
                     self.update_status("Render failed")
                     self.append_terminal_output("Error: Output file not found or rendering failed\n")
                 
-                # Cleanup temp directory
-                try:
-                    shutil.rmtree(temp_dir)
-                except Exception as e:
-                    self.append_terminal_output(f"Warning: Could not clean up temp directory: {e}\n")
+                # Cleanup temp files after a delay
+                def cleanup_temp():
+                    try:
+                        if os.path.exists(temp_file):
+                            os.remove(temp_file)
+                        # Also clean up media folder inside assets
+                        media_dir = os.path.join(assets_folder, "media")
+                        if os.path.exists(media_dir):
+                            shutil.rmtree(media_dir)
+                    except Exception as e:
+                        self.append_terminal_output(f"Warning: Could not clean up temp files: {e}\n")
+                
+                # Schedule cleanup after 30 seconds
+                self.root.after(30000, cleanup_temp)
             
-            # Run command using system terminal
-            self.terminal.run_command_redirected(command, on_render_complete, env)
+            # Run command from assets folder (where Python file and assets are located)
+            self.terminal.run_command_redirected(command, on_render_complete, env, cwd=assets_folder)
                 
         except Exception as e:
             self.update_status(f"Render error: {e}")
             self.append_terminal_output(f"Render error: {e}\n")
             self.render_button.configure(text="🚀 Render Animation", state="normal")
             self.is_rendering = False
+    def setup_format_dropdown(self):
+        """Setup format dropdown with proper values"""
+        # Make sure format dropdown has clean values
+        format_options = ["mp4", "mov", "gif", "png", "webm"]
         
+        # If you have a format dropdown widget, update it like this:
+        if hasattr(self, 'format_dropdown'):
+            self.format_dropdown.configure(values=format_options)
+        
+        # Set default value
+        if not self.format_var.get() or self.format_var.get().strip() == "":
+            self.format_var.set("mp4")
     def extract_scene_class_name(self, code):
         """Extract scene class name from code"""
         import re
@@ -12439,9 +17208,14 @@ else:
         )
         subtitle_label.pack(pady=(0, 20))
         
-        # Description
+        # Updated Description with credits
         description = f"""A modern, professional desktop application for creating
 mathematical animations using the Manim library.
+
+👨‍💻 Created by: Yu Yao-Hsing
+🤖 Coding assistance from:
+   • Claude Sonnet 4 (Anthropic)
+   • ChatGPT o3 (OpenAI)
 
 ✨ Features:
 - Advanced VSCode-like editor with IntelliSense
@@ -12467,48 +17241,74 @@ mathematical animations using the Manim library.
 - System Terminal Integration (Windows/macOS/Linux)
 - Jedi Language Server for IntelliSense
 - Advanced Text Widget with syntax highlighting
-- Manim Community Edition for animations
-- OpenCV for video processing
-- PIL for image handling
-- Integrated virtual environment management
+- Manim Community Edition for mathematical animations
+- FFmpeg for video processing and export
+- PIL/Pillow for image processing and manipulation
 
-👨‍💻 Author: {APP_AUTHOR}
-📧 Email: {APP_EMAIL}
-
-© 2025 {APP_AUTHOR}
-Licensed under MIT License"""
+📋 Technical Stack:
+- Frontend: CustomTkinter (Modern Python GUI)
+- Backend: Python 3.12+ with virtual environment management
+- Rendering: Manim Community Edition with FFmpeg
+- Editor: Custom text widget with syntax highlighting
+- IntelliSense: Jedi language server integration
+- Asset Management: PIL/Pillow with preview generation"""
         
-        desc_label = ctk.CTkLabel(
-            content_frame,
-            text=description,
-            font=ctk.CTkFont(size=12),
-            justify="left",
-            text_color=VSCODE_COLORS["text"]
+        # Create scrollable text widget for description
+        desc_frame = ctk.CTkFrame(content_frame, fg_color=VSCODE_COLORS["surface_light"])
+        desc_frame.pack(fill="both", expand=True, pady=(0, 15))
+        
+        desc_text = ctk.CTkTextbox(
+            desc_frame,
+            font=ctk.CTkFont(size=11, family="Consolas"),
+            wrap="word",
+            height=300
         )
-        desc_label.pack(pady=(0, 20), padx=20)
+        desc_text.pack(fill="both", expand=True, padx=10, pady=10)
+        desc_text.insert("1.0", description)
+        desc_text.configure(state="disabled")  # Make read-only
         
-        # Buttons
+        # Buttons frame
         button_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
-        button_frame.pack(pady=10)
+        button_frame.pack(fill="x", pady=(10, 0))
         
-        docs_btn = ctk.CTkButton(
+        # Show detailed guide button
+        guide_button = ctk.CTkButton(
             button_frame,
-            text="📚 Documentation",
-            command=self.open_manim_docs,
-            width=120,
-            fg_color=VSCODE_COLORS["primary"],
-            hover_color=VSCODE_COLORS["primary_hover"]
+            text="📖 Complete User Guide",
+            command=lambda: self.show_detailed_user_guide(),
+            height=35
         )
-        docs_btn.pack(side="left", padx=5)
+        guide_button.pack(side="left", padx=(0, 10))
         
-        close_btn = ctk.CTkButton(
+        # Close button
+        close_button = ctk.CTkButton(
             button_frame,
             text="Close",
             command=about_dialog.destroy,
-            width=80
+            height=35
         )
-        close_btn.pack(side="left", padx=5)
-        
+        close_button.pack(side="right")
+    def show_detailed_user_guide(self):
+        """Show detailed user guide dialog"""
+        try:
+            DetailedUserGuideDialog(self)
+        except Exception as e:
+            print(f"Error showing detailed user guide: {e}")
+    def show_post_installation_guide(self):
+        """Show comprehensive user guide after installation is complete"""
+        try:
+            # Show completion message first
+            if messagebox.askyesno(
+                "Installation Complete! 🎉",
+                "ManimStudio has been set up successfully!\n\n"
+                "Your virtual environment is ready with all required packages.\n"
+                "Python, Manim, and all dependencies are installed.\n\n"
+                "Would you like to see the complete user guide to get started?",
+                parent=self.root
+            ):
+                DetailedUserGuideDialog(self)
+        except Exception as e:
+            print(f"Error showing post-installation guide: {e}")
     def run(self):
         """Start the application main loop"""
         try:
@@ -12555,51 +17355,187 @@ Licensed under MIT License"""
                 "Error",
                 f"An error occurred while fixing dependencies: {e}"
             )
-    def auto_activate_default_environment(self):
-        """Automatically activate manim_studio_default environment if it exists - NO DIALOGS"""
+    def _setup_paths(self):
+        """Setup application paths - EXE COMPATIBLE"""
+        print("📁 Setting up application paths...")
+        
+        # FORCE FROZEN DETECTION - Fix for exe builds
+        self.is_frozen = (getattr(sys, 'frozen', False) or 
+                         sys.executable.endswith('.exe') or 
+                         'dist' in sys.executable or
+                         'app.exe' in sys.executable.lower())
+        
+        print(f"🔧 Frozen detection: {self.is_frozen}")
+        print(f"🔧 sys.frozen: {getattr(sys, 'frozen', False)}")
+        print(f"🔧 sys.executable: {sys.executable}")
+        
+        # Set base directory
+        if self.is_frozen:
+            # For exe builds, use the directory containing the exe
+            self.base_dir = os.path.dirname(sys.executable)
+            print(f"🔧 Exe build detected - base dir: {self.base_dir}")
+        else:
+            # For script builds, use the script directory
+            self.base_dir = os.path.dirname(os.path.abspath(__file__))
+            print(f"🐍 Script build detected - base dir: {self.base_dir}")
+        
+        # Set app directory - always use user directory for data
+        self.app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        self.venv_dir = os.path.join(self.app_dir, "venvs")
+        
+        # Create directories with proper error handling
         try:
-            default_venv_path = os.path.join(self.venv_manager.venv_dir, "manim_studio_default")
+            os.makedirs(self.venv_dir, exist_ok=True)
+            os.makedirs(self.app_dir, exist_ok=True)
+            print(f"✅ Created directories successfully")
+        except PermissionError:
+            print(f"❌ Permission denied creating directories")
+            # Fallback to temp directory
+            import tempfile
+            self.app_dir = tempfile.mkdtemp(prefix="manim_studio_")
+            self.venv_dir = os.path.join(self.app_dir, "venvs")
+            os.makedirs(self.venv_dir, exist_ok=True)
+            print(f"📁 Using temp directory: {self.app_dir}")
+        except Exception as e:
+            print(f"❌ Error creating directories: {e}")
+            raise
+        
+        print(f"📁 Base directory: {self.base_dir}")
+        print(f"📁 App directory: {self.app_dir}")
+        print(f"📁 Venv directory: {self.venv_dir}")
+    def auto_activate_default_environment(self):
+        """Auto-activate manim_studio_default environment - WITH WINDOWSAPPS DETECTION AND COPY"""
+        try:
+            print("🔍 Checking for existing environments...")
+            
+            # Ensure we have the necessary attributes
+            if not hasattr(self, 'venv_dir'):
+                print("⚠️ venv_dir not initialized, running path setup...")
+                self._setup_paths()
+            
+            # Check for default environment in usual location first
+            default_venv_path = os.path.join(self.venv_dir, "manim_studio_default")
             
             if os.path.exists(default_venv_path):
-                self.logger.info("Checking manim_studio_default environment for auto-activation...")
+                print("🎯 Found manim_studio_default environment in usual location")
                 
-                # Check if environment is valid
-                if self.venv_manager.is_valid_venv(default_venv_path):
-                    self.logger.info("manim_studio_default environment structure is valid")
-                    
-                    # Set up paths
-                    if os.name == 'nt':
-                        python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
-                        pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
-                    else:
-                        python_path = os.path.join(default_venv_path, "bin", "python")
-                        pip_path = os.path.join(default_venv_path, "bin", "pip")
-                    
-                    # Verify executables exist
-                    if os.path.exists(python_path) and os.path.exists(pip_path):
-                        # Update VirtualEnvironmentManager state
-                        self.venv_manager.python_path = python_path
-                        self.venv_manager.pip_path = pip_path
-                        self.venv_manager.current_venv = "manim_studio_default"
-                        
-                        # SKIP MANIM CHECK - Just assume it's working
-                        self.logger.info("✅ Auto-activated manim_studio_default environment")
-                        self.venv_manager.needs_setup = False
-                        # REMOVED: Don't schedule status update here
-                    else:
-                        self.logger.warning("manim_studio_default environment has missing executables")
-                        self.venv_manager.needs_setup = True
+                # Get Python and pip paths
+                if sys.platform == "win32":
+                    python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+                    pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
                 else:
-                    self.logger.warning("manim_studio_default environment structure is invalid")
-                    self.venv_manager.needs_setup = True
+                    python_path = os.path.join(default_venv_path, "bin", "python")
+                    pip_path = os.path.join(default_venv_path, "bin", "pip")
+                
+                # Verify executables exist
+                if os.path.exists(python_path) and os.path.exists(pip_path):
+                    # ACTIVATE THE ENVIRONMENT
+                    self.python_path = python_path
+                    self.pip_path = pip_path
+                    self.current_venv = "manim_studio_default"
+                    self.needs_setup = False  # CRITICAL: Mark as ready
+                    print(f"✅ Activated existing environment: {python_path}")
+                    return
+                else:
+                    print("❌ Environment exists but executables missing")
+            
+            # YOUR SPECIFIC WINDOWSAPPS PATH - Check for bundled environment
+            bundled_path = r"C:\Program Files\WindowsApps\9NZFT55DVCBS_1.0.2.0_x64__c5s549jf2x494\app\venv_bundle\manim_studio_default"
+            
+            print(f"🔍 Checking your specific bundled location: {bundled_path}")
+            
+            if os.path.exists(bundled_path):
+                print(f"🎯 Found bundled environment at: {bundled_path}")
+                
+                # Get Python and pip paths for bundled environment
+                if sys.platform == "win32":
+                    bundled_python_path = os.path.join(bundled_path, "Scripts", "python.exe")
+                    bundled_pip_path = os.path.join(bundled_path, "Scripts", "pip.exe")
+                else:
+                    bundled_python_path = os.path.join(bundled_path, "bin", "python")
+                    bundled_pip_path = os.path.join(bundled_path, "bin", "pip")
+                
+                # Verify bundled executables exist
+                if os.path.exists(bundled_python_path) and os.path.exists(bundled_pip_path):
+                    print(f"✅ Bundled environment verified: {bundled_path}")
+                    
+                    # COPY bundled environment to usual location
+                    try:
+                        print(f"📋 Copying bundled environment to: {default_venv_path}")
+                        print("⏳ This may take a few minutes...")
+                        
+                        # Use shutil.copytree to copy the entire environment
+                        if os.path.exists(default_venv_path):
+                            print(f"🗑️ Removing existing incomplete environment...")
+                            shutil.rmtree(default_venv_path)
+                        
+                        shutil.copytree(bundled_path, default_venv_path, symlinks=True, dirs_exist_ok=True)
+                        
+                        print(f"✅ Successfully copied bundled environment")
+                        
+                        # Verify the copied environment works
+                        if sys.platform == "win32":
+                            python_path = os.path.join(default_venv_path, "Scripts", "python.exe")
+                            pip_path = os.path.join(default_venv_path, "Scripts", "pip.exe")
+                        else:
+                            python_path = os.path.join(default_venv_path, "bin", "python")
+                            pip_path = os.path.join(default_venv_path, "bin", "pip")
+                        
+                        if os.path.exists(python_path) and os.path.exists(pip_path):
+                            # ACTIVATE THE COPIED ENVIRONMENT
+                            self.python_path = python_path
+                            self.pip_path = pip_path
+                            self.current_venv = "manim_studio_default"
+                            self.needs_setup = False  # CRITICAL: Mark as ready
+                            
+                            print(f"✅ Activated copied environment: {python_path}")
+                            print(f"📁 Environment location: {default_venv_path}")
+                            
+                            # Test the environment quickly
+                            try:
+                                result = subprocess.run(
+                                    [python_path, "--version"],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=10
+                                )
+                                if result.returncode == 0:
+                                    python_version = result.stdout.strip()
+                                    print(f"✅ Environment test successful: {python_version}")
+                                else:
+                                    print(f"⚠️ Environment test warning: {result.stderr}")
+                            except Exception as test_e:
+                                print(f"⚠️ Environment test failed: {test_e}")
+                            
+                            return  # SUCCESS - environment copied and activated
+                        else:
+                            print(f"❌ Copied environment missing executables")
+                            
+                    except Exception as copy_e:
+                        print(f"❌ Failed to copy bundled environment: {copy_e}")
+                        
+                        # Fallback: Use bundled environment directly (original behavior)
+                        print(f"🔄 Falling back to direct bundled environment usage")
+                        self.python_path = bundled_python_path
+                        self.pip_path = bundled_pip_path
+                        self.current_venv = "manim_studio_default"
+                        self.needs_setup = False  # CRITICAL: Mark as ready even for direct usage
+                        print(f"✅ Activated bundled environment directly: {bundled_python_path}")
+                        return
+                else:
+                    print(f"❌ Bundled environment exists but executables missing: {bundled_path}")
             else:
-                self.logger.info("No manim_studio_default environment found")
-                self.venv_manager.needs_setup = True
+                print(f"❌ Bundled environment NOT found at: {bundled_path}")
+            
+            # If we get here, no environment was found
+            print("📝 No manim_studio_default environment found")
+            self.needs_setup = True
                 
         except Exception as e:
-            self.logger.error(f"Error in auto-activation: {e}")
-            self.venv_manager.needs_setup = True
-    
+            print(f"❌ Error in auto-activation: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"Error in auto-activation: {e}")
+            self.needs_setup = True
     def force_environment_revalidation(self, env_name=None):
         """Force re-validation of environment (clear cache)"""
         if not env_name:
@@ -13267,132 +18203,67 @@ def setup_logging(app_dir=None):
     return logger
 
 def main():
-    """Main entry point - Fixed to prevent double dialogs and proper startup flow"""
+    """Main entry point - Direct initialization without splash"""
     try:
-        # Check if running from source or frozen
-        if getattr(sys, 'frozen', False):
-            logger.info("Running from executable")
-        else:
-            logger.info("Running from source")
+        # Set flag to prevent duplicate encoding fixes
+        os.environ['ENCODING_FIXES_APPLIED'] = '1'
+        
+        print("Initializing Manim Studio...")
+        
+        # Setup essential paths and data
+        app_data_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+        os.makedirs(app_data_dir, exist_ok=True)
+        
+        print("Setting up logging...")
+        
+        # Setup logging
+        logger = setup_logging(app_data_dir)
+        logger.info("Starting application...")
+        
+        print("Checking dependencies...")
+        
+        # Check Jedi availability
+        if not JEDI_AVAILABLE:
+            print("Warning: Jedi not available. IntelliSense features will be limited.")
+            logger.warning("Jedi not available. IntelliSense features will be limited.")
+        
+        print("Parsing command line arguments...")
         
         # Parse command line arguments
+        import argparse
         parser = argparse.ArgumentParser(description="Manim Animation Studio")
         parser.add_argument("--debug", action="store_true", help="Enable debug mode")
         args = parser.parse_args()
-        
         debug_mode = args.debug
         
-        if debug_mode:
-            logger.info("Debug mode enabled")
-            print("🐛 Debug mode activated")
+        print("Creating main application...")
         
-        # Check Jedi availability for IntelliSense
-        if not JEDI_AVAILABLE:
-            print("Warning: Jedi not available. IntelliSense features will be limited.")
-            print("Install Jedi with: pip install jedi")
-
-        # Check LaTeX availability (fast check)
-        logger.info("Checking LaTeX installation...")
-        latex_path = check_latex_installation()
-        if latex_path:
-            logger.info(f"LaTeX found at: {latex_path}")
-        else:
-            logger.warning("LaTeX not found - some features may be limited")
-
-        # Create main application instance
-        logger.info("Creating main application...")
-        app = ManimStudioApp(latex_path=latex_path, debug=debug_mode)
+        # Create main application directly - VirtualEnvironmentManager will handle all setup
+        app = ManimStudioApp(latex_path=None, debug=debug_mode)
         
-        # REMOVED: Environment check from here - let the app handle it internally
-        # The app will:
-        # 1. Keep window hidden initially
-        # 2. Check environment first
-        # 3. Show setup dialog if needed (without main UI visible)
-        # 4. Show main UI only after environment is ready
-        
+        print("Starting main application...")
+        app.root.after(1000, lambda: DetailedUserGuideDialog(app))
+        # Start main application
         logger.info("Starting application main loop...")
+        app.run()
         
-        # Start the main loop - app will handle showing window when ready
-        try:
-            # DON'T show window here - app handles it after environment check
-            app.run()
-            
-        except KeyboardInterrupt:
-            logger.info("Application interrupted by user")
-            
-        except Exception as e:
-            error_msg = str(e)
-            # Filter out common shutdown messages that aren't real errors
-            if not any(msg in error_msg.lower() for msg in [
-                "application has been destroyed",
-                "invalid command name",
-                "bad window path",
-                "can't invoke",
-                "destroyed while"
-            ]):
-                logger.error(f"UI error during main loop: {e}")
-                # Try to show error dialog if possible
-                try:
-                    if app.root and app.root.winfo_exists():
-                        import tkinter.messagebox as messagebox
-                        messagebox.showerror(
-                            "Application Error", 
-                            f"An error occurred:\n{error_msg}",
-                            parent=app.root
-                        )
-                except:
-                    # If we can't show dialog, just print
-                    print(f"Application error: {error_msg}")
-        
-    except ImportError as e:
-        error_msg = f"Missing required dependency: {e}"
-        logger.error(error_msg)
-        try:
-            # Try to show error without tkinter dependencies
-            import tkinter
-            import tkinter.messagebox as messagebox
-            root = tkinter.Tk()
-            root.withdraw()
-            messagebox.showerror("Missing Dependency", error_msg)
-            root.destroy()
-        except:
-            print(error_msg)
-            print("Please install missing dependencies and try again.")
-    
     except Exception as e:
-        error_msg = f"Startup error: {e}"
-        logger.error(error_msg)
+        print(f"Critical startup error: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Show error dialog with fresh tkinter instance
         try:
-            # Try to show startup error dialog
             import tkinter
             import tkinter.messagebox as messagebox
-            root = tkinter.Tk()
-            root.withdraw()
-            messagebox.showerror("Startup Error", f"Failed to start application:\n\n{error_msg}")
-            root.destroy()
+            error_root = tkinter.Tk()
+            error_root.withdraw()
+            messagebox.showerror("Startup Error", f"Failed to start application:\n\n{str(e)}")
+            error_root.destroy()
         except:
-            print(f"Failed to start application: {error_msg}")
-            print("Please check the log file for more details.")
+            pass
     
     finally:
-        # Cleanup logging handlers
-        if 'logger' in locals() and logger:
-            try:
-                for handler in logger.handlers[:]:
-                    try:
-                        handler.close()
-                        logger.removeHandler(handler)
-                    except:
-                        pass
-            except:
-                pass
-        
-        # Final cleanup message
-        try:
-            logger.info("Application shutdown complete")
-        except:
-            print("Application shutdown complete")
-
-
+        print("Application shutdown complete")
 if __name__ == "__main__":
     main()
