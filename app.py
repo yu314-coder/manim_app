@@ -44,6 +44,8 @@ import hashlib
 import traceback
 import argparse
 import tkinterdnd2
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="pydub")
 try:
     from fixes import ensure_ascii_path
 except Exception:
@@ -52,6 +54,19 @@ except Exception:
 from queue import Queue, Empty
 import threading
 import time
+import tkinter as tk
+import atexit
+
+def cleanup_tkinter():
+    """Simple tkinter cleanup"""
+    try:
+        if hasattr(tk, '_default_root') and tk._default_root:
+            tk._default_root.quit()
+    except:
+        pass
+
+# Register cleanup to run on exit
+atexit.register(cleanup_tkinter)
 # Determine base directory of the running script or executable
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
@@ -91,6 +106,16 @@ if getattr(sys, 'frozen', False):
         os.environ['TMP'] = stable_temp
 def load_icon_image(icon_name: str, size: tuple[int, int] = (24, 24), fallback_text: str = "?") -> bool:
     return False
+# CRITICAL: Create directories BEFORE logging setup
+def ensure_manimstudio_directories():
+    manimstudio_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
+    os.makedirs(os.path.join(manimstudio_dir, "logs"), exist_ok=True)
+    os.makedirs(os.path.join(manimstudio_dir, "assets"), exist_ok=True)
+    os.makedirs(os.path.join(manimstudio_dir, "config"), exist_ok=True)
+    return manimstudio_dir
+
+# Call this IMMEDIATELY
+ensure_manimstudio_directories()
 # Add this to the top of app.py after the imports section
 # =============================================================================
 # EMERGENCY ENCODING FIXES - Add this RIGHT AFTER imports
@@ -128,6 +153,7 @@ def get_responsive_dialog_size(base_width: int, base_height: int, screen_w: int 
     final_height = max(300, scaled_height)
     
     return final_width, final_height, dpi_scale
+
 def apply_emergency_encoding_fixes():
     """Apply immediate encoding fixes for cp950 errors"""
     import os
@@ -177,17 +203,12 @@ def get_executable_directory():
 # Add this near the top of your app.py, after BASE_DIR is defined
 
 def setup_portable_logging() -> str:
-    """Set up logging to go next to the app.exe for portability"""
+    """Set up logging to .manimstudio folder - PERMISSION FIX"""
     
-    # Determine where to put logs - next to executable for portability
-    if getattr(sys, 'frozen', False):
-        # Running as executable - logs next to app.exe
-        log_dir = os.path.dirname(os.path.abspath(sys.executable))
-    else:
-        # Running as script - logs next to script
-        log_dir = BASE_DIR
+    # Use .manimstudio folder instead of next to exe
+    log_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
     
-    # Create logs directory next to executable
+    # Create logs directory in .manimstudio folder
     logs_dir = os.path.join(log_dir, "logs")
     os.makedirs(logs_dir, exist_ok=True)
     
@@ -208,13 +229,12 @@ def setup_portable_logging() -> str:
     
     # Log the setup
     logger = logging.getLogger(__name__)
-    logger.info(f"📁 Portable logging initialized")
+    logger.info(f"📁 Logging initialized in .manim_studio folder")
     logger.info(f"   Log directory: {logs_dir}")
     logger.info(f"   Main log: {main_log}")
     logger.info(f"   Debug log: {debug_log}")
     
     return logs_dir
-
 # Call this early in your app initialization
 LOGS_DIR = setup_portable_logging()
 def run_subprocess_safe(command: list[str] | str, **kwargs) -> subprocess.CompletedProcess:
@@ -494,7 +514,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('manim_studio.log', encoding='utf-8'),
+        logging.FileHandler(os.path.join(os.path.expanduser("~"), ".manim_studio", "logs", "manim_studio.log"), encoding='utf-8'),
         SafeStreamHandler(sys.stdout)
     ]
 )
@@ -1856,40 +1876,14 @@ class AssetsManager(ctk.CTkToplevel):
             self.setup_existing_file_timers()
             self.show_success_notification(f"Auto-delete set to {hours} hours")
     def get_assets_folder(self):
-        """Get the assets folder path - FIXED to always use exe/script directory"""
-        # Force detection of the actual executable/script location
-        if getattr(sys, 'frozen', False):
-            # Running as executable - get the REAL exe directory, not temp
-            exe_path = sys.executable
-            if 'temp' in exe_path.lower() or 'tmp' in exe_path.lower():
-                # This might be a onefile temp path, try to find the real exe
-                # Look for the original exe in common locations
-                possible_locations = [
-                    os.path.join(os.path.expanduser("~"), "Desktop"),
-                    os.path.join(os.path.expanduser("~"), "Downloads"),
-                    os.getcwd(),
-                ]
-                
-                for location in possible_locations:
-                    potential_exe = os.path.join(location, "app.exe")
-                    if os.path.exists(potential_exe):
-                        exe_path = potential_exe
-                        break
-                else:
-                    # Fallback: use current working directory
-                    exe_path = os.path.join(os.getcwd(), "app.exe")
-            
-            base_dir = os.path.dirname(os.path.abspath(exe_path))
-        else:
-            # Running as script
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # Create assets folder next to the exe/script
-        assets_path = os.path.join(base_dir, "assets")
+        """Get the assets folder path - FIXED for Assets Manager"""
+        # Always use .manim_studio folder in user's home
+        assets_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "assets")
         os.makedirs(assets_path, exist_ok=True)
         
-        print(f"📁 Assets folder determined: {assets_path}")
-        self.main_app.append_terminal_output(f"📁 Assets folder: {assets_path}\n")
+        print(f"📁 Assets Manager folder: {assets_path}")
+        if hasattr(self, 'main_app'):
+            self.main_app.append_terminal_output(f"📁 Assets folder: {assets_path}\n")
         return assets_path
     def get_asset_files(self):
         """Get list of asset files directly in the app directory"""
@@ -4758,18 +4752,31 @@ class EnvironmentSetupDialog(ctk.CTkToplevel):
             main_window.after(50, show_main_window)
     
     def on_closing(self):
-        """Handle window close event"""
-        if not self.setup_complete:
-            result = messagebox.askyesno(
-                "Close Setup", 
-                "Environment setup is not complete.\n\nClose anyway?",
-                parent=self
-            )
-            if result:
-                self.setup_complete = True
-                self.destroy()
-        else:
-            self.destroy()
+        """Handle application closing properly"""
+        try:
+            # Cancel any pending after() calls
+            if hasattr(self, 'root') and self.root:
+                # Cancel all pending after calls
+                for after_id in getattr(self, '_after_ids', []):
+                    try:
+                        self.root.after_cancel(after_id)
+                    except:
+                        pass
+                
+                # Stop any background timers
+                if hasattr(self, 'venv_manager'):
+                    # Stop any environment setup processes
+                    pass
+                
+                # Destroy the root window properly
+                self.root.quit()
+                self.root.destroy()
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+        finally:
+            # Force exit if needed
+            import sys
+            sys.exit(0)
     
     def log_message(self, message):
         """Add message to log with timestamp (thread-safe)"""
@@ -15940,49 +15947,13 @@ class MyScene(Scene):
         self.append_terminal_output("Cleared all assets\n")
 
     def ensure_assets_folder(self):
-        """FIXED: Ensure assets folder exists next to the app - BETTER exe detection"""
-        
-        # ENHANCED detection for exe builds
-        if getattr(sys, 'frozen', False):
-            # Running as executable (.exe) 
-            if hasattr(sys, '_MEIPASS'):
-                # PyInstaller bundle - use original exe location
-                exe_dir = os.path.dirname(sys.executable)
-                # Check if we're in a temp extraction folder
-                if 'temp' in exe_dir.lower() or 'tmp' in exe_dir.lower() or '_MEI' in exe_dir:
-                    # Use the directory where the .exe was originally launched from
-                    base_dir = os.getcwd()
-                else:
-                    base_dir = exe_dir
-            else:
-                # Nuitka onefile - get REAL exe directory  
-                real_exe_path = os.path.realpath(sys.executable)
-                if 'temp' in real_exe_path.lower() or 'tmp' in real_exe_path.lower():
-                    # OneDirBundle extraction - use launch directory
-                    base_dir = os.getcwd()
-                else:
-                    # OneFile in permanent location
-                    base_dir = os.path.dirname(real_exe_path)
-            
-            self.append_terminal_output(f"🔧 EXE detected - using: {base_dir}\n")
-        else:
-            # Running as script (.py)
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            self.append_terminal_output(f"🐍 Script detected - using: {base_dir}\n")
-        
-        # Force assets next to exe/script, NOT in temp
-        assets_path = os.path.join(base_dir, "assets")
+        """Create and return assets folder path - SIMPLE FIX"""
+        # Instead of next to exe, use user's home folder
+        assets_path = os.path.join(os.path.expanduser("~"), ".manim_studio", "assets")
         os.makedirs(assets_path, exist_ok=True)
         
-        # Verify we're NOT in a temp folder
-        if 'temp' in assets_path.lower() or 'tmp' in assets_path.lower():
-            # Fallback to current working directory 
-            fallback_path = os.path.join(os.getcwd(), "assets")
-            os.makedirs(fallback_path, exist_ok=True)
-            self.append_terminal_output(f"⚠️ Temp path detected, using fallback: {fallback_path}\n")
-            return fallback_path
-        
-        self.append_terminal_output(f"✅ Assets folder: {assets_path}\n")
+        print(f"📁 Assets folder determined: {assets_path}")
+        self.append_terminal_output(f"📁 Assets folder: {assets_path}\n")
         return assets_path
     def setup_drag_drop_availability(self):
         """Enhanced drag and drop detection for exe builds"""
@@ -16487,7 +16458,7 @@ class MyScene(Scene):
     def get_subprocess_environment(self):
         """Get environment variables for subprocess commands - NO FALLBACK"""
         env = os.environ.copy()
-        
+        env['PYTHONWARNINGS'] = 'ignore::SyntaxWarning'
         # FORCE USE OF VIRTUAL ENVIRONMENT - NO FALLBACK
         if self.venv_manager.current_venv and self.venv_manager.python_path:
             # Use virtual environment Python
@@ -18181,17 +18152,21 @@ class SimpleEnvironmentDialog(ctk.CTkToplevel):
 
 
 def setup_logging(app_dir=None):
-    """Setup logging configuration"""
+    """Setup logging configuration - FIXED to return logger"""
     if app_dir is None:
         app_dir = os.path.join(os.path.expanduser("~"), ".manim_studio")
         os.makedirs(app_dir, exist_ok=True)
     
-    log_file = os.path.join(app_dir, "manim_studio.log")
+    # Create logs directory
+    logs_dir = os.path.join(app_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    log_file = os.path.join(logs_dir, "manim_studio.log")
     
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_file, encoding='utf-8'),
             logging.StreamHandler(sys.stdout)
@@ -18199,9 +18174,11 @@ def setup_logging(app_dir=None):
         force=True  # Override any existing configuration
     )
     
-    logger = logging.getLogger(__name__)
-    return logger
-
+    # CRITICAL: Create and return the logger
+    logger = logging.getLogger('main')
+    logger.info(f"Logging initialized - Log file: {log_file}")
+    
+    return logger  # RETURN THE LOGGER!
 def main():
     """Main entry point - Direct initialization without splash"""
     try:
@@ -18218,7 +18195,7 @@ def main():
         
         # Setup logging
         logger = setup_logging(app_data_dir)
-        logger.info("Starting application...")
+        print("✅ Application started successfully!")
         
         print("Checking dependencies...")
         
