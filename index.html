@@ -1037,7 +1037,7 @@ class MyAnimation(Scene):
                 // Create a temp file and execute with secure API
                 const tempContent = `${content}\n\n# Auto-generated preview code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
                 
-                // Execute using secure API (the main process will handle temp file creation)
+                // Execute using secure API (main process runs via cmd.exe on Windows)
                 if (window.electronAPI) {
                     const command = `python -c "${tempContent.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
                     await window.electronAPI.executeCommand(command);
@@ -1079,6 +1079,7 @@ class MyAnimation(Scene):
                 // Create render command with quality settings
                 const renderContent = `${content}\n\n# Auto-generated render code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
                 
+                // Forward the render command to the main process (uses cmd.exe on Windows)
                 if (window.electronAPI) {
                     const command = `python -c "${renderContent.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --${quality} --fps ${fps}`;
                     await window.electronAPI.executeCommand(command);

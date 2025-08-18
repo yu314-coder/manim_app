@@ -417,11 +417,22 @@ async function executeTerminalCommand(command, cwd = process.cwd()) {
 
         console.log('🌍 Environment PATH:', enhancedEnv.PATH.split(';').slice(0, 3).join(';') + '...');
 
-        const childProcess = spawn(finalCommand, [], {
+        // Use cmd.exe directly on Windows to execute the command
+        const isWin = process.platform === 'win32';
+        const shell = isWin ? 'cmd.exe' : '/bin/sh';
+
+        let commandStr = finalCommand;
+        if (isWin && commandStr.toLowerCase().startsWith('cmd.exe')) {
+            commandStr = commandStr.replace(/^cmd\.exe\s*/i, '');
+        }
+
+        const args = isWin ? ['/d', '/s', '/c', commandStr] : ['-c', commandStr];
+
+        const childProcess = spawn(shell, args, {
             cwd: cwd,
-            shell: true,
             stdio: ['pipe', 'pipe', 'pipe'],
-            env: enhancedEnv
+            env: enhancedEnv,
+            windowsHide: true
         });
 
         childProcess.stdout.on('data', (data) => {
