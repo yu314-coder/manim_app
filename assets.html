@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assets Manager - Manim Studio Pro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            background: #252526;
+            padding: 15px 20px;
+            border-bottom: 1px solid #3c3c3c;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .assets-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            background: #37373d;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #464647;
+            color: #4ec9b0;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background: #0e639c;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1177bb;
+        }
+
+        .btn-secondary {
+            background: #3c3c3c;
+            color: #cccccc;
+        }
+
+        .btn-secondary:hover {
+            background: #4c4c4c;
+        }
+
+        .btn-success {
+            background: #16825d;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #1e9973;
+        }
+
+        .btn-danger {
+            background: #c5282f;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #d73e46;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: #252526;
+            border-right: 1px solid #3c3c3c;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 20px;
+            border-bottom: 1px solid #3c3c3c;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #cccccc;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Search and Filter */
+        .search-box {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .search-input {
+            flex: 1;
+            background: #3c3c3c;
+            border: 1px solid #464647;
+            border-radius: 4px;
+            padding: 8px;
+            color: #d4d4d4;
+            font-size: 12px;
+            font-family: inherit;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #569cd6;
+        }
+
+        /* Filter Options */
+        .filter-group {
+            margin-bottom: 15px;
+        }
+
+        .filter-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #cccccc;
+        }
+
+        .filter-options {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .filter-option:hover {
+            background: #37373d;
+        }
+
+        .filter-option input[type="checkbox"] {
+            accent-color: #569cd6;
+        }
+
+        .filter-option label {
+            font-size: 12px;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .filter-count {
+            font-size: 10px;
+            color: #969696;
+            background: #37373d;
+            padding: 2px 6px;
+            border-radius: 2px;
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed #464647;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #2d2d30;
+        }
+
+        .upload-area:hover,
+        .upload-area.drag-over {
+            border-color: #569cd6;
+            background: #323233;
+        }
+
+        .upload-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: #569cd6;
+        }
+
+        .upload-text {
+            font-size: 13px;
+            color: #cccccc;
+            margin-bottom: 8px;
+        }
+
+        .upload-hint {
+            font-size: 11px;
+            color: #969696;
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .quick-action {
+            background: #37373d;
+            border: 1px solid #464647;
+            border-radius: 4px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        .quick-action:hover {
+            background: #404041;
+            border-color: #569cd6;
+        }
+
+        /* Main Panel */
+        .main-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            background: #2d2d30;
+            border-bottom: 1px solid #3c3c3c;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .view-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .view-toggle {
+            display: flex;
+            background: #3c3c3c;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .view-btn {
+            padding: 6px 10px;
+            background: transparent;
+            border: none;
+            color: #cccccc;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .view-btn.active {
+            background: #569cd6;
+            color: white;
+        }
+
+        .sort-select {
+            background: #3c3c3c;
+            border: 1px solid #464647;
+            border-radius: 4px;
+            padding: 6px 8px;
+            color: #d4d4d4;
+            font-size: 12px;
+            font-family: inherit;
+        }
+
+        /* Assets Grid */
+        .assets-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #1e1e1e;
+        }
+
+        .assets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .assets-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* Asset Item - Grid View */
+        .asset-item {
+            background: #252526;
+            border: 1px solid #3c3c3c;
+            border-radius: 8px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .asset-item:hover {
+            background: #2d2d30;
+            border-color: #569cd6;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .asset-item.selected {
+            border-color: #4ec9b0;
+            background: #2a3a37;
+        }
+
+        /* Asset Preview */
+        .asset-preview {
+            width: 80px;
+            height: 80px;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #37373d;
+            position: relative;
+        }
+
+        .asset-preview img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: cover;
+        }
+
+        .asset-preview .icon {
+            font-size: 32px;
+            color: #969696;
+        }
+
+        .asset-preview .play-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.7);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+
+        /* Asset Info */
+        .asset-info {
+            text-align: center;
+            width: 100%;
+        }
+
+        .asset-name {
+            font-size: 12px;
+            font-weight: 500;
+            color: #d4d4d4;
+            margin-bottom: 4px;
+            word-break: break-word;
+            line-height: 1.3;
+        }
+
+        .asset-details {
+            font-size: 10px;
+            color: #969696;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .asset-size {
+            font-size: 10px;
+            color: #969696;
+        }
+
+        .asset-type {
+            background: #4ec9b0;
+            color: #1e1e1e;
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-size: 9px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        /* Asset Item - List View */
+        .asset-item-list {
+            background: #252526;
+            border: 1px solid #3c3c3c;
+            border-radius: 6px;
+            padding: 12px 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .asset-item-list:hover {
+            background: #2d2d30;
+            border-color: #569cd6;
+        }
+
+        .asset-item-list.selected {
+            border-color: #4ec9b0;
+            background: #2a3a37;
+        }
+
+        .asset-thumbnail {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #37373d;
+            flex-shrink: 0;
+        }
+
+        .asset-thumbnail img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: cover;
+        }
+
+        .asset-thumbnail .icon {
+            font-size: 20px;
+            color: #969696;
+        }
+
+        .asset-list-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .asset-list-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: #d4d4d4;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .asset-list-details {
+            font-size: 11px;
+            color: #969696;
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Context Menu */
+        .context-menu {
+            position: fixed;
+            background: #3c3c3c;
+            border: 1px solid #464647;
+            border-radius: 6px;
+            padding: 6px 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 150px;
+        }
+
+        .context-menu-item {
+            padding: 8px 15px;
+            font-size: 12px;
+            color: #d4d4d4;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .context-menu-item:hover {
+            background: #569cd6;
+            color: white;
+        }
+
+        .context-menu-separator {
+            height: 1px;
+            background: #464647;
+            margin: 4px 0;
+        }
+
+        /* Asset Actions */
+        .asset-actions {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .asset-item:hover .asset-actions {
+            opacity: 1;
+        }
+
+        .action-btn {
+            background: rgba(0,0,0,0.7);
+            border: none;
+            border-radius: 3px;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            font-size: 10px;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: #569cd6;
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 300px;
+            color: #969696;
+            text-align: center;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: #464647;
+        }
+
+        .empty-state .title {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #cccccc;
+        }
+
+        .empty-state .description {
+            font-size: 12px;
+            line-height: 1.5;
+            max-width: 300px;
+        }
+
+        /* Loading State */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #969696;
+        }
+
+        .spinner {
+            border: 2px solid #3c3c3c;
+            border-top: 2px solid #569cd6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Statistics Bar */
+        .stats-bar {
+            background: #252526;
+            border-top: 1px solid #3c3c3c;
+            padding: 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #969696;
+        }
+
+        .stats-info {
+            display: flex;
+            gap: 15px;
+        }
+
+        .stats-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 250px;
+            }
+            
+            .assets-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 200px;
+                order: 2;
+            }
+            
+            .main-panel {
+                order: 1;
+            }
+            
+            .assets-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #2d2d30;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #464647;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #569cd6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="title">
+                <span>📁</span>
+                <span>Assets Manager</span>
+            </div>
+            
+            <div class="assets-status">
+                <span>📊</span>
+                <span id="assets-count">0 assets</span>
+            </div>
+            
+            <div class="header-actions">
+                <button class="btn btn-success" onclick="importAssets()">📥 Import Assets</button>
+                <button class="btn btn-primary" onclick="refreshAssets()">🔄 Refresh</button>
+                <button class="btn btn-secondary" onclick="openAssetsFolder()">📂 Open Folder</button>
+                <button class="btn btn-secondary" onclick="window.close()">✖ Close</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Search -->
+                <div class="sidebar-section">
+                    <div class="section-title">Search & Filter</div>
+                    <div class="search-box">
+                        <input type="text" class="search-input" id="search-input" 
+                               placeholder="Search assets..." oninput="filterAssets()" />
+                        <button class="btn btn-primary" onclick="clearSearch()">✖</button>
+                    </div>
+                </div>
+
+                <!-- File Type Filters -->
+                <div class="sidebar-section">
+                    <div class="section-title">File Types</div>
+                    <div class="filter-group">
+                        <div class="filter-options">
+                            <div class="filter-option">
+                                <input type="checkbox" id="filter-images" checked onchange="filterAssets()" />
+                                <label for="filter-images">🖼️ Images</label>
+                                <span class="filter-count" id="images-count">0</span>
+                            </div>
+                            <div class="filter-option">
+                                <input type="checkbox" id="filter-audio" checked onchange="filterAssets()" />
+                                <label for="filter-audio">🎵 Audio</label>
+                                <span class="filter-count" id="audio-count">0</span>
+                            </div>
+                            <div class="filter-option">
+                                <input type="checkbox" id="filter-videos" checked onchange="filterAssets()" />
+                                <label for="filter-videos">🎬 Videos</label>
+                                <span class="filter-count" id="videos-count">0</span>
+                            </div>
+                            <div class="filter-option">
+                                <input type="checkbox" id="filter-other" checked onchange="filterAssets()" />
+                                <label for="filter-other">📄 Other</label>
+                                <span class="filter-count" id="other-count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upload Area -->
+                <div class="sidebar-section">
+                    <div class="section-title">Add Assets</div>
+                    <div class="upload-area" onclick="importAssets()" 
+                         ondrop="handleDrop(event)" ondragover="handleDragOver(event)" 
+                         ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)">
+                        <div class="upload-icon">📁</div>
+                        <div class="upload-text">Drop files here</div>
+                        <div class="upload-hint">or click to browse</div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="sidebar-section">
+                    <div class="section-title">Quick Actions</div>
+                    <div class="quick-actions">
+                        <div class="quick-action" onclick="openAssetsFolder()">
+                            📂 Open Assets Folder
+                        </div>
+                        <div class="quick-action" onclick="clearAllAssets()">
+                            🗑️ Clear All Assets
+                        </div>
+                        <div class="quick-action" onclick="generateAssetCode()">
+                            📝 Generate Code
+                        </div>
+                        <div class="quick-action" onclick="exportAssetsList()">
+                            📋 Export List
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Panel -->
+            <div class="main-panel">
+                <!-- Toolbar -->
+                <div class="toolbar">
+                    <div class="view-controls">
+                        <div class="view-toggle">
+                            <button class="view-btn active" id="grid-view-btn" onclick="setViewMode('grid')">⊞ Grid</button>
+                            <button class="view-btn" id="list-view-btn" onclick="setViewMode('list')">☰ List</button>
+                        </div>
+                        
+                        <select class="sort-select" id="sort-select" onchange="sortAssets()">
+                            <option value="name">Sort by Name</option>
+                            <option value="type">Sort by Type</option>
+                            <option value="size">Sort by Size</option>
+                            <option value="date">Sort by Date</option>
+                        </select>
+                    </div>
+                    
+                    <div class="view-controls">
+                        <button class="btn btn-secondary" onclick="selectAll()">Select All</button>
+                        <button class="btn btn-secondary" onclick="deselectAll()">Deselect All</button>
+                        <button class="btn btn-danger" onclick="deleteSelected()" id="delete-btn" disabled>🗑️ Delete</button>
+                    </div>
+                </div>
+
+                <!-- Assets Content -->
+                <div class="assets-content">
+                    <div id="assets-container">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            Loading assets...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stats-info">
+                <div class="stats-item">
+                    <span>📊</span>
+                    <span>Total: <span id="total-assets">0</span> assets</span>
+                </div>
+                <div class="stats-item">
+                    <span>💾</span>
+                    <span>Size: <span id="total-size">0 B</span></span>
+                </div>
+            </div>
+            <div class="stats-info">
+                <div class="stats-item">
+                    <span>🖼️</span>
+                    <span id="images-total">0</span>
+                </div>
+                <div class="stats-item">
+                    <span>🎵</span>
+                    <span id="audio-total">0</span>
+                </div>
+                <div class="stats-item">
+                    <span>🎬</span>
+                    <span id="videos-total">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="context-menu" style="display: none;">
+        <div class="context-menu-item" onclick="previewAsset()">
+            <span>👁️</span>
+            <span>Preview</span>
+        </div>
+        <div class="context-menu-item" onclick="copyAssetCode()">
+            <span>📝</span>
+            <span>Copy Code</span>
+        </div>
+        <div class="context-menu-item" onclick="renameAsset()">
+            <span>✏️</span>
+            <span>Rename</span>
+        </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="showInExplorer()">
+            <span>📂</span>
+            <span>Show in Explorer</span>
+        </div>
+        <div class="context-menu-item" onclick="copyPath()">
+            <span>📋</span>
+            <span>Copy Path</span>
+        </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="deleteAsset()" style="color: #f44747;">
+            <span>🗑️</span>
+            <span>Delete</span>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const fs = require('fs');
+        const path = require('path');
+        const os = require('os');
+        const { shell } = require('electron');
+
+        // State management
+        let assets = [];
+        let filteredAssets = [];
+        let selectedAssets = new Set();
+        let currentViewMode = 'grid';
+        let currentSort = 'name';
+        let searchQuery = '';
+        let contextMenuTarget = null;
+
+        // Asset folder path
+        const ASSETS_DIR = path.join(os.homedir(), '.manim_studio', 'assets');
+
+        // Supported file types
+        const SUPPORTED_TYPES = {
+            images: ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.svg'],
+            audio: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma'],
+            videos: ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.wmv', '.flv'],
+            other: ['.txt', '.md', '.json', '.xml', '.csv']
+        };
+
+        // Initialize when DOM loads
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('📁 Assets Manager loaded');
+            initializeAssetsManager();
+            setupEventListeners();
+        });
+
+        // Initialize assets manager
+        async function initializeAssetsManager() {
+            try {
+                // Ensure assets directory exists
+                if (!fs.existsSync(ASSETS_DIR)) {
+                    fs.mkdirSync(ASSETS_DIR, { recursive: true });
+                    console.log(`Created assets directory: ${ASSETS_DIR}`);
+                }
+
+                // Load assets
+                await loadAssets();
+                
+                console.log('✅ Assets Manager ready');
+            } catch (error) {
+                console.error('Assets Manager init error:', error);
+                showError(`Failed to initialize: ${error.message}`);
+            }
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Hide context menu on click
+            document.addEventListener('click', () => {
+                hideContextMenu();
+            });
+
+            // Handle keyboard shortcuts
+            document.addEventListener('keydown', handleKeyboard);
+
+            // Handle window resize
+            window.addEventListener('resize', updateLayout);
+        }
+
+        // Load assets from directory
+        async function loadAssets() {
+            try {
+                assets = [];
+                
+                if (!fs.existsSync(ASSETS_DIR)) {
+                    updateAssetsDisplay();
+                    updateStats();
+                    return;
+                }
+
+                const files = fs.readdirSync(ASSETS_DIR);
+                
+                for (const file of files) {
+                    // Skip hidden files and temp files
+                    if (file.startsWith('.') || file.startsWith('temp_')) {
+                        continue;
+                    }
+
+                    const filePath = path.join(ASSETS_DIR, file);
+                    const stats = fs.statSync(filePath);
+                    
+                    if (stats.isFile()) {
+                        const ext = path.extname(file).toLowerCase();
+                        const type = getFileType(ext);
+                        
+                        assets.push({
+                            name: file,
+                            path: filePath,
+                            size: stats.size,
+                            type: type,
+                            extension: ext,
+                            modified: stats.mtime,
+                            created: stats.birthtime
+                        });
+                    }
+                }
+
+                // Apply current filters and sort
+                filterAssets();
+                sortAssets();
+                updateAssetsDisplay();
+                updateStats();
+                
+                console.log(`Loaded ${assets.length} assets`);
+            } catch (error) {
+                console.error('Error loading assets:', error);
+                showError(`Failed to load assets: ${error.message}`);
+            }
+        }
+
+        // Get file type from extension
+        function getFileType(extension) {
+            for (const [type, extensions] of Object.entries(SUPPORTED_TYPES)) {
+                if (extensions.includes(extension)) {
+                    return type;
+                }
+            }
+            return 'other';
+        }
+
+        // Filter assets based on search and type filters
+        function filterAssets() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            const showImages = document.getElementById('filter-images').checked;
+            const showAudio = document.getElementById('filter-audio').checked;
+            const showVideos = document.getElementById('filter-videos').checked;
+            const showOther = document.getElementById('filter-other').checked;
+
+            filteredAssets = assets.filter(asset => {
+                // Text search
+                const matchesSearch = asset.name.toLowerCase().includes(searchTerm);
+                
+                // Type filter
+                const matchesType = 
+                    (asset.type === 'images' && showImages) ||
+                    (asset.type === 'audio' && showAudio) ||
+                    (asset.type === 'videos' && showVideos) ||
+                    (asset.type === 'other' && showOther);
+
+                return matchesSearch && matchesType;
+            });
+
+            updateAssetsDisplay();
+            updateFilterCounts();
+        }
+
+        // Sort assets
+        function sortAssets() {
+            const sortBy = document.getElementById('sort-select').value;
+            
+            filteredAssets.sort((a, b) => {
+                switch (sortBy) {
+                    case 'name':
+                        return a.name.localeCompare(b.name);
+                    case 'type':
+                        return a.type.localeCompare(b.type) || a.name.localeCompare(b.name);
+                    case 'size':
+                        return b.size - a.size;
+                    case 'date':
+                        return b.modified - a.modified;
+                    default:
+                        return 0;
+                }
+            });
+
+            updateAssetsDisplay();
+        }
+
+        // Update assets display
+        function updateAssetsDisplay() {
+            const container = document.getElementById('assets-container');
+            
+            if (filteredAssets.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📁</div>
+                        <div class="title">${assets.length === 0 ? 'No Assets Found' : 'No Matching Assets'}</div>
+                        <div class="description">
+                            ${assets.length === 0 
+                                ? 'Import some assets to get started. You can drag and drop files or click the Import button.'
+                                : 'Try adjusting your search or filter criteria to find assets.'
+                            }
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            if (currentViewMode === 'grid') {
+                displayAssetsGrid();
+            } else {
+                displayAssetsList();
+            }
+        }
+
+        // Display assets in grid view
+        function displayAssetsGrid() {
+            const container = document.getElementById('assets-container');
+            container.innerHTML = `
+                <div class="assets-grid">
+                    ${filteredAssets.map(asset => `
+                        <div class="asset-item ${selectedAssets.has(asset.path) ? 'selected' : ''}" 
+                             data-path="${asset.path}"
+                             onclick="selectAsset('${asset.path}', event)"
+                             oncontextmenu="showContextMenu(event, '${asset.path}')"
+                             ondblclick="openAsset('${asset.path}')">
+                            
+                            <div class="asset-actions">
+                                <button class="action-btn" onclick="event.stopPropagation(); previewAsset('${asset.path}')" title="Preview">👁️</button>
+                                <button class="action-btn" onclick="event.stopPropagation(); copyAssetCode('${asset.path}')" title="Copy Code">📝</button>
+                            </div>
+                            
+                            <div class="asset-preview">
+                                ${getAssetPreview(asset)}
+                            </div>
+                            
+                            <div class="asset-info">
+                                <div class="asset-name" title="${asset.name}">${truncateText(asset.name, 15)}</div>
+                                <div class="asset-details">
+                                    <span class="asset-size">${formatFileSize(asset.size)}</span>
+                                    <span class="asset-type">${asset.type}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // Display assets in list view
+        function displayAssetsList() {
+            const container = document.getElementById('assets-container');
+            container.innerHTML = `
+                <div class="assets-list">
+                    ${filteredAssets.map(asset => `
+                        <div class="asset-item-list ${selectedAssets.has(asset.path) ? 'selected' : ''}" 
+                             data-path="${asset.path}"
+                             onclick="selectAsset('${asset.path}', event)"
+                             oncontextmenu="showContextMenu(event, '${asset.path}')"
+                             ondblclick="openAsset('${asset.path}')">
+                            
+                            <div class="asset-thumbnail">
+                                ${getAssetThumbnail(asset)}
+                            </div>
+                            
+                            <div class="asset-list-info">
+                                <div class="asset-list-name">${asset.name}</div>
+                                <div class="asset-list-details">
+                                    <span>${asset.type}</span>
+                                    <span>${formatFileSize(asset.size)}</span>
+                                    <span>${formatDate(asset.modified)}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="asset-actions">
+                                <button class="action-btn" onclick="event.stopPropagation(); previewAsset('${asset.path}')" title="Preview">👁️</button>
+                                <button class="action-btn" onclick="event.stopPropagation(); copyAssetCode('${asset.path}')" title="Copy Code">📝</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // Get asset preview for grid view
+        function getAssetPreview(asset) {
+            if (asset.type === 'images') {
+                return `<img src="file://${asset.path}" alt="${asset.name}" />`;
+            } else if (asset.type === 'videos') {
+                return `
+                    <img src="file://${asset.path}" alt="${asset.name}" />
+                    <div class="play-overlay">▶</div>
+                `;
+            } else {
+                return `<div class="icon">${getFileIcon(asset.type, asset.extension)}</div>`;
+            }
+        }
+
+        // Get asset thumbnail for list view
+        function getAssetThumbnail(asset) {
+            if (asset.type === 'images') {
+                return `<img src="file://${asset.path}" alt="${asset.name}" />`;
+            } else {
+                return `<div class="icon">${getFileIcon(asset.type, asset.extension)}</div>`;
+            }
+        }
+
+        // Get file icon
+        function getFileIcon(type, extension) {
+            const icons = {
+                images: '🖼️',
+                audio: '🎵',
+                videos: '🎬',
+                other: '📄'
+            };
+            
+            // Special cases
+            if (extension === '.gif') return '🎞️';
+            if (extension === '.svg') return '🎨';
+            if (extension === '.mp3' || extension === '.wav') return '🎵';
+            if (extension === '.mp4') return '🎬';
+            
+            return icons[type] || '📄';
+        }
+
+        // Update statistics
+        function updateStats() {
+            const totalAssets = assets.length;
+            const totalSize = assets.reduce((sum, asset) => sum + asset.size, 0);
+            
+            const counts = {
+                images: assets.filter(a => a.type === 'images').length,
+                audio: assets.filter(a => a.type === 'audio').length,
+                videos: assets.filter(a => a.type === 'videos').length,
+                other: assets.filter(a => a.type === 'other').length
+            };
+
+            // Update header
+            document.getElementById('assets-count').textContent = `${totalAssets} assets`;
+            
+            // Update stats bar
+            document.getElementById('total-assets').textContent = totalAssets;
+            document.getElementById('total-size').textContent = formatFileSize(totalSize);
+            document.getElementById('images-total').textContent = counts.images;
+            document.getElementById('audio-total').textContent = counts.audio;
+            document.getElementById('videos-total').textContent = counts.videos;
+            
+            // Update filter counts
+            updateFilterCounts();
+        }
+
+        // Update filter counts
+        function updateFilterCounts() {
+            const counts = {
+                images: assets.filter(a => a.type === 'images').length,
+                audio: assets.filter(a => a.type === 'audio').length,
+                videos: assets.filter(a => a.type === 'videos').length,
+                other: assets.filter(a => a.type === 'other').length
+            };
+
+            document.getElementById('images-count').textContent = counts.images;
+            document.getElementById('audio-count').textContent = counts.audio;
+            document.getElementById('videos-count').textContent = counts.videos;
+            document.getElementById('other-count').textContent = counts.other;
+        }
+
+        // Asset selection
+        function selectAsset(assetPath, event) {
+            if (event.ctrlKey || event.metaKey) {
+                // Toggle selection
+                if (selectedAssets.has(assetPath)) {
+                    selectedAssets.delete(assetPath);
+                } else {
+                    selectedAssets.add(assetPath);
+                }
+            } else {
+                // Single selection
+                selectedAssets.clear();
+                selectedAssets.add(assetPath);
+            }
+            
+            updateSelectionDisplay();
+            updateDeleteButton();
+        }
+
+        // Update selection display
+        function updateSelectionDisplay() {
+            document.querySelectorAll('.asset-item, .asset-item-list').forEach(item => {
+                const path = item.dataset.path;
+                if (selectedAssets.has(path)) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        // Update delete button state
+        function updateDeleteButton() {
+            const deleteBtn = document.getElementById('delete-btn');
+            deleteBtn.disabled = selectedAssets.size === 0;
+        }
+
+        // Context menu
+        function showContextMenu(event, assetPath) {
+            event.preventDefault();
+            contextMenuTarget = assetPath;
+            
+            const menu = document.getElementById('context-menu');
+            menu.style.display = 'block';
+            menu.style.left = event.pageX + 'px';
+            menu.style.top = event.pageY + 'px';
+        }
+
+        function hideContextMenu() {
+            document.getElementById('context-menu').style.display = 'none';
+            contextMenuTarget = null;
+        }
+
+        // View mode switching
+        function setViewMode(mode) {
+            currentViewMode = mode;
+            
+            // Update buttons
+            document.getElementById('grid-view-btn').classList.toggle('active', mode === 'grid');
+            document.getElementById('list-view-btn').classList.toggle('active', mode === 'list');
+            
+            updateAssetsDisplay();
+        }
+
+        // Import assets
+        function importAssets() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = Object.values(SUPPORTED_TYPES).flat().join(',');
+            
+            input.onchange = async (event) => {
+                const files = Array.from(event.target.files);
+                await copyFilesToAssets(files);
+            };
+            
+            input.click();
+        }
+
+        // Copy files to assets directory
+        async function copyFilesToAssets(files) {
+            try {
+                let copied = 0;
+                
+                for (const file of files) {
+                    const destPath = path.join(ASSETS_DIR, file.name);
+                    
+                    // Check if file already exists
+                    if (fs.existsSync(destPath)) {
+                        const overwrite = confirm(`File "${file.name}" already exists. Overwrite?`);
+                        if (!overwrite) continue;
+                    }
+                    
+                    // Copy file
+                    const buffer = await file.arrayBuffer();
+                    fs.writeFileSync(destPath, Buffer.from(buffer));
+                    copied++;
+                }
+                
+                if (copied > 0) {
+                    showSuccess(`Imported ${copied} asset(s)`);
+                    await loadAssets();
+                }
+            } catch (error) {
+                console.error('Import error:', error);
+                showError(`Failed to import assets: ${error.message}`);
+            }
+        }
+
+        // Drag and drop handlers
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+        }
+
+        function handleDragEnter(event) {
+            event.preventDefault();
+            event.target.closest('.upload-area').classList.add('drag-over');
+        }
+
+        function handleDragLeave(event) {
+            event.preventDefault();
+            if (!event.target.closest('.upload-area').contains(event.relatedTarget)) {
+                event.target.closest('.upload-area').classList.remove('drag-over');
+            }
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            event.target.closest('.upload-area').classList.remove('drag-over');
+            
+            const files = Array.from(event.dataTransfer.files);
+            copyFilesToAssets(files);
+        }
+
+        // Asset operations
+        function openAsset(assetPath) {
+            shell.openPath(assetPath);
+        }
+
+        function previewAsset(assetPath = contextMenuTarget) {
+            if (!assetPath) return;
+            shell.openPath(assetPath);
+        }
+
+        function copyAssetCode(assetPath = contextMenuTarget) {
+            if (!assetPath) return;
+            
+            const asset = assets.find(a => a.path === assetPath);
+            if (!asset) return;
+            
+            let code = '';
+            const filename = asset.name;
+            
+            switch (asset.type) {
+                case 'images':
+                    code = `image = ImageMobject("${filename}")`;
+                    break;
+                case 'audio':
+                    code = `# Add to scene:\n# self.add_sound("${filename}")`;
+                    break;
+                case 'videos':
+                    code = `# Video reference: "${filename}"`;
+                    break;
+                default:
+                    code = `# Asset: "${filename}"`;
+            }
+            
+            navigator.clipboard.writeText(code);
+            showSuccess('Code copied to clipboard');
+        }
+
+        function renameAsset(assetPath = contextMenuTarget) {
+            if (!assetPath) return;
+            
+            const asset = assets.find(a => a.path === assetPath);
+            if (!asset) return;
+            
+            const newName = prompt('Enter new name:', asset.name);
+            if (!newName || newName === asset.name) return;
+            
+            try {
+                const newPath = path.join(ASSETS_DIR, newName);
+                fs.renameSync(assetPath, newPath);
+                showSuccess('Asset renamed');
+                loadAssets();
+            } catch (error) {
+                showError(`Failed to rename: ${error.message}`);
+            }
+        }
+
+        function deleteAsset(assetPath = contextMenuTarget) {
+            if (!assetPath) return;
+            
+            const asset = assets.find(a => a.path === assetPath);
+            if (!asset) return;
+            
+            if (!confirm(`Delete "${asset.name}"?`)) return;
+            
+            try {
+                fs.unlinkSync(assetPath);
+                selectedAssets.delete(assetPath);
+                showSuccess('Asset deleted');
+                loadAssets();
+            } catch (error) {
+                showError(`Failed to delete: ${error.message}`);
+            }
+        }
+
+        function showInExplorer(assetPath = contextMenuTarget) {
+            if (!assetPath) return;
+            shell.showItemInFolder(assetPath);
+        }
+
+        function copyPath(assetPath = contextMenuTarget) {
+            if (!assetPath) return;
+            navigator.clipboard.writeText(assetPath);
+            showSuccess('Path copied to clipboard');
+        }
+
+        // Bulk operations
+        function selectAll() {
+            selectedAssets.clear();
+            filteredAssets.forEach(asset => selectedAssets.add(asset.path));
+            updateSelectionDisplay();
+            updateDeleteButton();
+        }
+
+        function deselectAll() {
+            selectedAssets.clear();
+            updateSelectionDisplay();
+            updateDeleteButton();
+        }
+
+        function deleteSelected() {
+            if (selectedAssets.size === 0) return;
+            
+            if (!confirm(`Delete ${selectedAssets.size} selected asset(s)?`)) return;
+            
+            try {
+                let deleted = 0;
+                for (const assetPath of selectedAssets) {
+                    if (fs.existsSync(assetPath)) {
+                        fs.unlinkSync(assetPath);
+                        deleted++;
+                    }
+                }
+                
+                selectedAssets.clear();
+                showSuccess(`Deleted ${deleted} asset(s)`);
+                loadAssets();
+            } catch (error) {
+                showError(`Failed to delete assets: ${error.message}`);
+            }
+        }
+
+        // Utility functions
+        function clearSearch() {
+            document.getElementById('search-input').value = '';
+            filterAssets();
+        }
+
+        function clearAllAssets() {
+            if (!confirm('Delete ALL assets? This cannot be undone!')) return;
+            
+            try {
+                const files = fs.readdirSync(ASSETS_DIR);
+                files.forEach(file => {
+                    if (!file.startsWith('.') && !file.startsWith('temp_')) {
+                        fs.unlinkSync(path.join(ASSETS_DIR, file));
+                    }
+                });
+                
+                selectedAssets.clear();
+                showSuccess('All assets deleted');
+                loadAssets();
+            } catch (error) {
+                showError(`Failed to clear assets: ${error.message}`);
+            }
+        }
+
+        function generateAssetCode() {
+            if (selectedAssets.size === 0) {
+                showError('No assets selected');
+                return;
+            }
+            
+            let code = '# Generated asset code:\n\n';
+            
+            for (const assetPath of selectedAssets) {
+                const asset = assets.find(a => a.path === assetPath);
+                if (asset) {
+                    const filename = asset.name;
+                    switch (asset.type) {
+                        case 'images':
+                            code += `${filename.split('.')[0]}_image = ImageMobject("${filename}")\n`;
+                            break;
+                        case 'audio':
+                            code += `# self.add_sound("${filename}")\n`;
+                            break;
+                        case 'videos':
+                            code += `# Video: "${filename}"\n`;
+                            break;
+                    }
+                }
+            }
+            
+            navigator.clipboard.writeText(code);
+            showSuccess('Generated code copied to clipboard');
+        }
+
+        function exportAssetsList() {
+            const list = assets.map(asset => ({
+                name: asset.name,
+                type: asset.type,
+                size: formatFileSize(asset.size)
+            }));
+            
+            const csv = [
+                'Name,Type,Size',
+                ...list.map(item => `"${item.name}","${item.type}","${item.size}"`)
+            ].join('\n');
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'assets_list.csv';
+            a.click();
+            
+            URL.revokeObjectURL(url);
+            showSuccess('Assets list exported');
+        }
+
+        function refreshAssets() {
+            selectedAssets.clear();
+            loadAssets();
+            showSuccess('Assets refreshed');
+        }
+
+        function openAssetsFolder() {
+            shell.openPath(ASSETS_DIR);
+        }
+
+        // Keyboard shortcuts
+        function handleKeyboard(event) {
+            if (event.ctrlKey || event.metaKey) {
+                switch (event.key) {
+                    case 'a':
+                        event.preventDefault();
+                        selectAll();
+                        break;
+                    case 'r':
+                        event.preventDefault();
+                        refreshAssets();
+                        break;
+                    case 'f':
+                        event.preventDefault();
+                        document.getElementById('search-input').focus();
+                        break;
+                    case 'i':
+                        event.preventDefault();
+                        importAssets();
+                        break;
+                }
+            }
+            
+            if (event.key === 'Delete' && selectedAssets.size > 0) {
+                deleteSelected();
+            }
+            
+            if (event.key === 'Escape') {
+                deselectAll();
+                hideContextMenu();
+            }
+        }
+
+        // UI helpers
+        function updateLayout() {
+            // Handle responsive layout changes if needed
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function formatDate(date) {
+            return new Date(date).toLocaleDateString();
+        }
+
+        function truncateText(text, maxLength) {
+            return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+        }
+
+        // Notification helpers
+        function showSuccess(message) {
+            showNotification(message, 'success');
+        }
+
+        function showError(message) {
+            showNotification(message, 'error');
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'error' ? '#c5282f' : type === 'success' ? '#16825d' : '#0e639c'};
+                color: white;
+                padding: 12px 20px;
+                border-radius: 6px;
+                z-index: 1000;
+                font-size: 13px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                max-width: 400px;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (document.body.contains(notification)) {
+                    document.body.removeChild(notification);
+                }
+            }, 3000);
+        }
+
+        console.log('✅ Assets Manager ready');
+    </script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+{
+  "name": "manim-studio-pro",
+  "version": "1.0.0",
+  "description": "Professional Development Environment for Manim - Upgraded Architecture with Separated UI Components",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start-dev": "electron . --dev",
+    "start-safe": "electron . --disable-gpu --disable-dev-shm-usage --no-sandbox",
+    "start-admin": "powershell -Command \"Start-Process cmd -ArgumentList '/c cd /d \"%cd%\" && npm start' -Verb RunAs\"",
+    "dev": "electron . --dev --enable-logging",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux",
+    "clean": "rimraf dist node_modules",
+    "rebuild": "npm run clean && npm install",
+    "postinstall": "electron-builder install-app-deps",
+    "test": "echo \"Testing Manim Studio Pro\" && npm run check-files",
+    "check-files": "node -e \"const fs=require('fs'); const files=['index.html','venv.html','assets.html','main.js','renderer.js','app.py']; files.forEach(f=>{if(fs.existsSync(f)){console.log('✅',f)}else{console.log('❌',f)}});\"",
+    "setup": "npm install && npm run check-files && echo \"Setup complete!\"",
+    "fix-permissions": "node -e \"const fs=require('fs'),path=require('path'),os=require('os'); const dir=path.join(os.homedir(),'.manim_studio'); if(!fs.existsSync(dir)) fs.mkdirSync(dir,{recursive:true}); console.log('✅ Created Manim Studio directory');\"",
+    "create-shortcuts": "node -e \"console.log('Shortcuts: Ctrl+N (New), Ctrl+O (Open), Ctrl+S (Save), F5 (Preview), F7 (Render), Ctrl+Shift+V (VEnv), Ctrl+Shift+A (Assets)');\"",
+    "doctor": "node -e \"const fs=require('fs'),path=require('path'),os=require('os'); console.log('🔍 Manim Studio Pro Health Check'); const checks=[{name:'Node.js',check:()=>process.version},{name:'Assets Directory',check:()=>fs.existsSync(path.join(os.homedir(),'.manim_studio','assets'))?'✅':'❌'},{name:'VEnv Directory',check:()=>fs.existsSync(path.join(os.homedir(),'.manim_studio','venvs'))?'✅':'❌'},{name:'Python',check:()=>{try{require('child_process').execSync('python --version',{stdio:'pipe'});return '✅';}catch{return '❌'}}},{name:'App Files',check:()=>['index.html','venv.html','assets.html','main.js'].every(f=>fs.existsSync(f))?'✅':'❌'}]; checks.forEach(c=>console.log(c.name+':',typeof c.check==='function'?c.check():c.check));\""
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.0.0",
+    "rimraf": "^5.0.0"
+  },
+  "dependencies": {
+    "@electron/remote": "^2.1.2",
+    "chokidar": "^3.5.3",
+    "fs-extra": "^11.1.1",
+    "node-fetch": "^3.3.2"
+  },
+  "build": {
+    "appId": "com.manimstudio.pro",
+    "productName": "Manim Studio Pro",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!node_modules",
+      "!dist",
+      "!.git",
+      "!.gitignore",
+      "!README.md",
+      "!build",
+      "!.github"
+    ],
+    "extraFiles": [
+      {
+        "from": "app.py",
+        "to": "app.py"
+      },
+      {
+        "from": "index.html",
+        "to": "index.html"
+      },
+      {
+        "from": "venv.html",
+        "to": "venv.html"
+      },
+      {
+        "from": "assets.html",
+        "to": "assets.html"
+      },
+      {
+        "from": "renderer.js",
+        "to": "renderer.js"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Manim Studio Pro"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "icon.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.png",
+      "category": "Development"
+    }
+  },
+  "keywords": [
+    "manim",
+    "animation",
+    "mathematics",
+    "python",
+    "electron",
+    "studio",
+    "professional",
+    "development",
+    "education",
+    "visualization",
+    "mathematical-animation",
+    "code-editor",
+    "virtual-environment",
+    "asset-management"
+  ],
+  "author": "Manim Studio Team <support@manimstudio.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/manim-studio/manim-studio-pro",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manim-studio/manim-studio-pro.git"
+  },
+  "bugs": {
+    "url": "https://github.com/manim-studio/manim-studio-pro/issues"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

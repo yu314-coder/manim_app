@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Studio Pro - Enhanced Edition</title>
+    
+    <!-- Content Security Policy - Secure -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; connect-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob:; child-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+    
+    <!-- Monaco Editor - VS Code Engine for IntelliSense -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 300px;
+            background: #252526;
+            border-right: 1px solid #3c3c3c;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            background: #2d2d30;
+            padding: 15px;
+            border-bottom: 1px solid #3c3c3c;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo {
+            font-size: 20px;
+        }
+
+        .app-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        /* Settings Section */
+        .settings-section {
+            padding: 15px;
+            border-bottom: 1px solid #3c3c3c;
+        }
+
+        .settings-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #969696;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .setting-group {
+            margin-bottom: 12px;
+        }
+
+        .setting-label {
+            font-size: 12px;
+            color: #cccccc;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .setting-select {
+            width: 100%;
+            background: #3c3c3c;
+            border: 1px solid #464647;
+            color: #d4d4d4;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .setting-select:focus {
+            border-color: #569cd6;
+            outline: none;
+        }
+
+        /* Environment Check */
+        .env-check {
+            padding: 15px;
+            border-bottom: 1px solid #3c3c3c;
+        }
+
+        .env-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #f44747;
+        }
+
+        .status-indicator.ready {
+            background: #4ec9b0;
+        }
+
+        .status-indicator.checking {
+            background: #dcdcaa;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .env-text {
+            font-size: 12px;
+            color: #cccccc;
+        }
+
+        /* Assets Section */
+        .assets-section {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .assets-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .assets-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #969696;
+            text-transform: uppercase;
+        }
+
+        .assets-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .btn-icon {
+            background: #3c3c3c;
+            border: 1px solid #464647;
+            color: #d4d4d4;
+            padding: 4px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: #464647;
+            border-color: #569cd6;
+        }
+
+        .assets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+            gap: 8px;
+        }
+
+        .asset-item {
+            aspect-ratio: 1;
+            background: #37373d;
+            border: 1px solid #464647;
+            border-radius: 4px;
+            padding: 6px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .asset-item:hover {
+            background: #404041;
+            border-color: #569cd6;
+        }
+
+        .asset-icon {
+            font-size: 16px;
+            margin-bottom: 2px;
+        }
+
+        .asset-name {
+            font-size: 9px;
+            color: #cccccc;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* File Tab */
+        .file-tab {
+            background: #2d2d30;
+            border-bottom: 1px solid #3c3c3c;
+            border-radius: 6px 6px 0 0;
+            padding: 8px 15px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .file-info {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* Content Area */
+        .content-area {
+            flex: 1;
+            display: flex;
+        }
+
+        .editor-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        /* Monaco Editor Container (hidden until Monaco loads successfully) */
+        .monaco-editor-container {
+            flex: 1;
+            min-height: 300px;
+            background: #1e1e1e;
+            display: none; /* Hidden until Monaco loads */
+        }
+
+        /* Fallback textarea (shown by default until Monaco loads) */
+        .code-editor {
+            flex: 1;
+            background: #1e1e1e;
+            border: none;
+            color: #d4d4d4;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            padding: 20px;
+            resize: none;
+            outline: none;
+            min-height: 300px;
+            display: block; /* Show by default until Monaco loads */
+        }
+
+        /* Preview Section */
+        .preview-section {
+            width: 350px;
+            background: #252526;
+            border-left: 1px solid #3c3c3c;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .preview-header {
+            background: #2d2d30;
+            padding: 10px 15px;
+            border-bottom: 1px solid #3c3c3c;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .preview-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .preview-video {
+            flex: 1;
+            background: #1e1e1e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #969696;
+            min-height: 200px;
+            position: relative;
+        }
+
+        .video-element {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 4px;
+        }
+
+        .preview-placeholder {
+            text-align: center;
+            color: #969696;
+            font-size: 14px;
+        }
+
+        /* Terminal Section */
+        .terminal-section {
+            height: 300px;
+            background: #1e1e1e;
+            border-top: 1px solid #3c3c3c;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-header {
+            background: #2d2d30;
+            padding: 8px 15px;
+            border-bottom: 1px solid #3c3c3c;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .terminal-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+
+        .terminal-actions {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .terminal-output {
+            flex: 1;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            background: #0c0c0c;
+            color: #d4d4d4;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .terminal-line {
+            margin-bottom: 4px;
+            word-wrap: break-word;
+        }
+
+        .terminal-line.success { color: #4ec9b0; }
+        .terminal-line.error { color: #f44747; }
+        .terminal-line.warning { color: #dcdcaa; }
+        .terminal-line.info { color: #569cd6; }
+
+        /* Buttons */
+        .btn {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #1177bb;
+        }
+
+        .btn:disabled {
+            background: #404040;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #404040;
+        }
+
+        .btn-secondary:hover {
+            background: #505050;
+        }
+
+        .btn-success {
+            background: #0e7d20;
+        }
+
+        .btn-success:hover {
+            background: #1a9433;
+        }
+
+        .btn-primary {
+            background: #0e639c;
+        }
+
+        .btn-primary:hover {
+            background: #1177bb;
+        }
+
+        /* Status Messages */
+        .status-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 4px;
+            color: white;
+            font-size: 12px;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+        }
+
+        .status-message.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .status-message.success {
+            background: #0e7d20;
+        }
+
+        .status-message.error {
+            background: #d83b01;
+        }
+
+        .status-message.warning {
+            background: #ffb900;
+            color: #000;
+        }
+
+        .status-message.info {
+            background: #0e639c;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #2d2d30;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #464647;
+            border-radius: 6px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #5a5a5a;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 1200px) {
+            .preview-section {
+                width: 300px;
+            }
+        }
+
+        @media (max-width: 1000px) {
+            .sidebar {
+                width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">ðŸŽ¬</div>
+                <div class="app-title">Manim Studio Pro</div>
+            </div>
+            
+            <!-- Settings Section -->
+            <div class="settings-section">
+                <div class="settings-title">Render Settings</div>
+                
+                <div class="setting-group">
+                    <label class="setting-label">Quality</label>
+                    <select id="quality-select" class="setting-select">
+                        <option value="low_quality">Low Quality (Fast)</option>
+                        <option value="medium_quality">Medium Quality</option>
+                        <option value="high_quality" selected>High Quality</option>
+                        <option value="fourk_quality">4K Quality</option>
+                    </select>
+                </div>
+                
+                <div class="setting-group">
+                    <label class="setting-label">Frame Rate</label>
+                    <select id="fps-select" class="setting-select">
+                        <option value="15">15 FPS</option>
+                        <option value="30" selected>30 FPS</option>
+                        <option value="60">60 FPS</option>
+                    </select>
+                </div>
+                
+                <div class="setting-group">
+                    <label class="setting-label">Output Format</label>
+                    <select id="format-select" class="setting-select">
+                        <option value="mp4" selected>MP4</option>
+                        <option value="mov">MOV</option>
+                        <option value="gif">GIF</option>
+                        <option value="png">PNG Sequence</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Environment Status -->
+            <div class="env-check">
+                <div class="settings-title">Environment Status</div>
+                <div class="env-status" id="env-status">
+                    <div class="status-indicator checking" id="status-indicator"></div>
+                    <div class="env-text" id="env-text">Checking Python environment...</div>
+                </div>
+            </div>
+
+            <!-- Assets Section -->
+            <div class="assets-section">
+                <div class="assets-header">
+                    <div class="assets-title">Assets</div>
+                    <div class="assets-actions">
+                        <button class="btn-icon" onclick="addAsset()" title="Add Asset">+</button>
+                        <button class="btn-icon" onclick="openAssetsManager()" title="Assets Manager">ðŸ“</button>
+                    </div>
+                </div>
+                <div class="assets-grid" id="assets-grid">
+                    <!-- Assets will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- File Tab -->
+            <div class="file-tab">
+                <div class="file-info">
+                    <span>ðŸ“„</span>
+                    <span id="file-name">untitled.py</span>
+                    <span id="file-dirty" style="display: none;">â—</span>
+                </div>
+                
+                <div class="header-actions">
+                    <button class="btn btn-secondary" onclick="newFile()">
+                        <span>ðŸ“„</span> New
+                    </button>
+                    <button class="btn btn-secondary" onclick="openFile()">
+                        <span>ðŸ“‚</span> Open
+                    </button>
+                    <button class="btn btn-secondary" onclick="saveFile()">
+                        <span>ðŸ’¾</span> Save
+                    </button>
+                    <button class="btn btn-success" onclick="previewAnimation()" title="Quick Preview (F5)">
+                        <span>âš¡</span> Preview
+                    </button>
+                    <button class="btn btn-primary" onclick="renderAnimation()" title="Render Animation (F7)">
+                        <span>ðŸŽ¬</span> Render
+                    </button>
+                    <button class="btn btn-secondary" onclick="openVenvManager()">
+                        <span>ðŸ</span> VEnv
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- Editor -->
+                <div class="editor-section">
+                    <!-- Monaco Editor Container (with IntelliSense) -->
+                    <div id="monaco-editor-container" class="monaco-editor-container"></div>
+                    
+                    <!-- Fallback Textarea (shown by default until Monaco loads) -->
+                    <textarea id="code-editor" class="code-editor"># Welcome to Manim Studio Pro!
+# Loading Monaco Editor with IntelliSense...
+
+from manim import *
+
+class MyAnimation(Scene):
+    def construct(self):
+        # Your animation code here
+        circle = Circle()
+        text = Text('Hello Manim Studio!')
+        
+        self.play(Create(circle))
+        self.play(Write(text))
+        self.wait()</textarea>
+                    
+                    <!-- Terminal -->
+                    <div class="terminal-section">
+                        <div class="terminal-header">
+                            <div class="terminal-title">Terminal</div>
+                            <div class="terminal-actions">
+                                <button class="btn-icon" onclick="clearTerminal()" title="Clear Terminal">ðŸ—‘ï¸</button>
+                            </div>
+                        </div>
+                        <div id="terminal-output" class="terminal-output">
+                            <div class="terminal-line info">Manim Studio Pro Terminal</div>
+                            <div class="terminal-line info">Ready for commands...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview Panel -->
+                <div class="preview-section">
+                    <div class="preview-header">
+                        <span>Preview</span>
+                    </div>
+                    <div class="preview-content">
+                        <div class="preview-video">
+                            <div class="preview-placeholder">
+                                ðŸŽ¬ Your animation preview will appear here
+                                <br><br>
+                                Click "Preview" to render a quick preview
+                                <br>
+                                Click "Render" for full quality output
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar" id="status-bar"></div>
+
+    <script>
+        // Global variables and initialization - NO DIRECT REQUIRES
+        let currentFile = null;
+        let isDirty = false;
+        let isEnvironmentSetup = false;
+        let isProcessRunning = false;
+        let terminalOutput = null;
+        let monacoEditor = null;
+        let commandHistory = [];
+        let commandHistoryIndex = 0;
+        let isWaitingForCommand = false;
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('ðŸš€ Manim Studio Pro initializing...');
+            
+            // Check if secure APIs are available
+            if (window.electronAPI) {
+                console.log('âœ… Secure Electron APIs available');
+                initializeApp();
+            } else {
+                console.error('âŒ Secure APIs not available - preload.js not loaded');
+                updateEnvironmentStatus(false, 'Secure APIs not available');
+                showStatus('Error: Secure APIs not available', 'error');
+            }
+        });
+
+        function initializeApp() {
+            try {
+                // Start environment verification
+                startEnvironmentCheck();
+                
+                // Initialize Monaco Editor
+                setTimeout(initializeMonacoEditor, 2000);
+                
+                // Setup global error handlers
+                window.addEventListener('error', handleGlobalError);
+                window.addEventListener('unhandledrejection', handleUnhandledRejection);
+                
+                // Setup process listeners
+                setupProcessListeners();
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                showStatus('Initialization failed', 'error');
+            }
+        }
+
+        function handleGlobalError(event) {
+            console.error('Global error:', event.error);
+        }
+
+        function handleUnhandledRejection(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+        }
+
+        // Setup process listeners using secure APIs
+        function setupProcessListeners() {
+            if (window.electronAPI) {
+                // Listen for process completion
+                window.electronAPI.onProcessComplete((result) => {
+                    isProcessRunning = false;
+                    
+                    // Reset buttons
+                    const previewBtn = document.querySelector('[onclick*="previewAnimation"]');
+                    if (previewBtn) {
+                        previewBtn.textContent = 'âš¡ Preview';
+                        previewBtn.disabled = false;
+                    }
+                    
+                    const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
+                    if (renderBtn) {
+                        renderBtn.textContent = 'ðŸŽ¬ Render';
+                        renderBtn.disabled = false;
+                    }
+                    
+                    if (result.success) {
+                        showStatus('âœ… Operation completed successfully', 'success');
+                        addTerminalLine('âœ… Process completed successfully', 'success');
+                    } else {
+                        showStatus(`âŒ Operation failed (Code: ${result.code})`, 'error');
+                        addTerminalLine(`âŒ Process failed with code: ${result.code}`, 'error');
+                    }
+                });
+
+                // Listen for process output
+                window.electronAPI.onProcessOutput((data) => {
+                    const prefix = data.type === 'stderr' ? 'âŒ' : 'ðŸ“¤';
+                    addTerminalLine(`${prefix} ${data.data}`);
+                });
+            }
+        }
+
+        // Environment check using secure APIs
+        async function startEnvironmentCheck() {
+            updateEnvironmentStatus(false, 'ðŸ” Checking environment...');
+            
+            try {
+                if (window.electronAPI) {
+                    const result = await window.electronAPI.getPythonInfo();
+                    if (result.success && result.exists) {
+                        updateEnvironmentStatus(true, 'Environment verified and ready');
+                        addTerminalLine('Environment verified and ready', 'success');
+                        addTerminalLine('Press âš¡ Preview (F5) or ðŸŽ¬ Render (F7) to start', 'info');
+                    } else {
+                        updateEnvironmentStatus(false, 'Python environment not configured');
+                        addTerminalLine('Environment setup may be required', 'warning');
+                    }
+                }
+            } catch (error) {
+                console.error('Environment check error:', error);
+                updateEnvironmentStatus(false, 'Environment check failed');
+            }
+        }
+
+        function updateEnvironmentStatus(isReady, message) {
+            const indicator = document.getElementById('status-indicator');
+            const text = document.getElementById('env-text');
+            
+            if (indicator) {
+                indicator.className = `status-indicator ${isReady ? 'ready' : ''}`;
+            }
+            
+            if (text) {
+                text.textContent = message;
+            }
+        }
+
+        // Monaco Editor initialization
+        function initializeMonacoEditor() {
+            if (typeof require === 'undefined') {
+                console.error('Monaco Editor loader not available');
+                showFallbackEditor();
+                return;
+            }
+
+            try {
+                require.config({
+                    paths: {
+                        'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'
+                    }
+                });
+
+                require(['vs/editor/editor.main'], function() {
+                    try {
+                        monacoEditor = monaco.editor.create(document.getElementById('monaco-editor-container'), {
+                            value: getDefaultCode(),
+                            language: 'python',
+                            theme: 'vs-dark',
+                            automaticLayout: true,
+                            fontSize: 14,
+                            lineNumbers: 'on',
+                            wordWrap: 'on',
+                            minimap: { enabled: true }
+                        });
+
+                        // Setup change detection
+                        monacoEditor.onDidChangeModelContent(() => {
+                            if (!isDirty) {
+                                isDirty = true;
+                                updateFileTab();
+                            }
+                        });
+
+                        // Show Monaco, hide fallback
+                        const fallbackEditor = document.getElementById('code-editor');
+                        const monacoContainer = document.getElementById('monaco-editor-container');
+                        
+                        if (fallbackEditor) fallbackEditor.style.display = 'none';
+                        if (monacoContainer) monacoContainer.style.display = 'flex';
+
+                        console.log('âœ… Monaco Editor initialized');
+                        
+                    } catch (error) {
+                        console.error('Monaco creation error:', error);
+                        showFallbackEditor();
+                    }
+                }, function(error) {
+                    console.error('Monaco load error:', error);
+                    showFallbackEditor();
+                });
+                
+            } catch (error) {
+                console.error('Monaco config error:', error);
+                showFallbackEditor();
+            }
+        }
+
+        function showFallbackEditor() {
+            try {
+                const fallbackEditor = document.getElementById('code-editor');
+                const monacoContainer = document.getElementById('monaco-editor-container');
+                
+                if (fallbackEditor) {
+                    fallbackEditor.style.display = 'block';
+                    fallbackEditor.value = getDefaultCode();
+                    
+                    fallbackEditor.addEventListener('input', () => {
+                        if (!isDirty) {
+                            isDirty = true;
+                            updateFileTab();
+                        }
+                    });
+                }
+                
+                if (monacoContainer) monacoContainer.style.display = 'none';
+                
+                console.log('Using fallback textarea editor');
+            } catch (error) {
+                console.error('Error showing fallback editor:', error);
+            }
+        }
+
+        function getDefaultCode() {
+            return `# Welcome to Manim Studio Pro!
+# Start writing your Manim animation code here...
+
+from manim import *
+
+class MyAnimation(Scene):
+    def construct(self):
+        # Your animation code here
+        circle = Circle()
+        text = Text('Hello Manim Studio!')
+        
+        self.play(Create(circle))
+        self.play(Write(text))
+        self.wait()`;
+        }
+
+        function getCodeContent() {
+            try {
+                if (monacoEditor && typeof monacoEditor.getValue === 'function') {
+                    return monacoEditor.getValue();
+                } else {
+                    const fallbackEditor = document.getElementById('code-editor');
+                    return fallbackEditor ? fallbackEditor.value : '';
+                }
+            } catch (error) {
+                console.error('Error getting code content:', error);
+                return '';
+            }
+        }
+
+        function setCodeContent(content) {
+            try {
+                if (monacoEditor && typeof monacoEditor.setValue === 'function') {
+                    monacoEditor.setValue(content);
+                } else {
+                    const fallbackEditor = document.getElementById('code-editor');
+                    if (fallbackEditor) {
+                        fallbackEditor.value = content;
+                    }
+                }
+            } catch (error) {
+                console.error('Error setting code content:', error);
+            }
+        }
+
+        // File operations using secure APIs
+        function newFile() {
+            try {
+                setCodeContent(getDefaultCode());
+                currentFile = null;
+                isDirty = false;
+                updateFileTab();
+            } catch (error) {
+                console.error('Error creating new file:', error);
+                showStatus('Error creating new file', 'error');
+            }
+        }
+
+        async function openFile() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                const result = await window.electronAPI.openFile();
+                if (result && result.success) {
+                    setCodeContent(result.content);
+                    currentFile = result.filePath;
+                    isDirty = false;
+                    updateFileTab();
+                    showStatus(`Opened: ${result.fileName}`, 'success');
+                } else if (result && result.error && !result.error.includes('canceled')) {
+                    showStatus(`Error opening file: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error opening file:', error);
+                showStatus('Error opening file', 'error');
+            }
+        }
+
+        async function saveFile() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                const content = getCodeContent();
+                
+                if (currentFile) {
+                    const result = await window.electronAPI.saveFile(currentFile, content);
+                    if (result && result.success) {
+                        isDirty = false;
+                        updateFileTab();
+                        showStatus('File saved', 'success');
+                    } else {
+                        showStatus(`Error saving file: ${result.error}`, 'error');
+                    }
+                } else {
+                    const result = await window.electronAPI.saveFileAs(content);
+                    if (result && result.success) {
+                        currentFile = result.filePath;
+                        isDirty = false;
+                        updateFileTab();
+                        showStatus(`Saved as: ${result.fileName}`, 'success');
+                    } else if (result && result.error && !result.error.includes('canceled')) {
+                        showStatus(`Error saving file: ${result.error}`, 'error');
+                    }
+                }
+            } catch (error) {
+                console.error('Error saving file:', error);
+                showStatus('Error saving file', 'error');
+            }
+        }
+
+        function updateFileTab() {
+            try {
+                const fileName = document.getElementById('file-name');
+                const fileDirty = document.getElementById('file-dirty');
+                
+                if (fileName) {
+                    if (currentFile && window.electronAPI) {
+                        fileName.textContent = window.electronAPI.utils.basename(currentFile);
+                    } else {
+                        fileName.textContent = 'untitled.py';
+                    }
+                }
+                
+                if (fileDirty) {
+                    fileDirty.style.display = isDirty ? 'inline' : 'none';
+                }
+            } catch (error) {
+                console.error('Error updating file tab:', error);
+            }
+        }
+
+        // Animation operations using secure APIs
+        async function previewAnimation() {
+            if (isProcessRunning) {
+                showStatus('Process already running', 'warning');
+                return;
+            }
+
+            try {
+                const content = getCodeContent();
+                if (!content.trim()) {
+                    showStatus('No code to preview', 'warning');
+                    return;
+                }
+
+                isProcessRunning = true;
+                const previewBtn = document.querySelector('[onclick*="previewAnimation"]');
+                if (previewBtn) {
+                    previewBtn.textContent = 'â³ Previewing...';
+                    previewBtn.disabled = true;
+                }
+
+                addTerminalLine('ðŸŽ¬ Starting preview...', 'info');
+                
+                // Create a temp file and execute with secure API
+                const tempContent = `${content}\n\n# Auto-generated preview code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
+                
+                // Execute using secure API (the main process will handle temp file creation)
+                if (window.electronAPI) {
+                    const command = `python -c "${tempContent.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+                    await window.electronAPI.executeCommand(command);
+                }
+
+            } catch (error) {
+                console.error('Preview error:', error);
+                showStatus('Preview failed', 'error');
+                resetProcessState();
+            }
+        }
+
+        async function renderAnimation() {
+            if (isProcessRunning) {
+                showStatus('Process already running', 'warning');
+                return;
+            }
+
+            try {
+                const content = getCodeContent();
+                if (!content.trim()) {
+                    showStatus('No code to render', 'warning');
+                    return;
+                }
+
+                isProcessRunning = true;
+                const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
+                if (renderBtn) {
+                    renderBtn.textContent = 'â³ Rendering...';
+                    renderBtn.disabled = true;
+                }
+
+                addTerminalLine('ðŸŽ¬ Starting render...', 'info');
+                
+                // Get render settings
+                const quality = document.getElementById('quality-select').value;
+                const fps = document.getElementById('fps-select').value;
+                
+                // Create render command with quality settings
+                const renderContent = `${content}\n\n# Auto-generated render code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
+                
+                if (window.electronAPI) {
+                    const command = `python -c "${renderContent.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --${quality} --fps ${fps}`;
+                    await window.electronAPI.executeCommand(command);
+                }
+
+            } catch (error) {
+                console.error('Render error:', error);
+                showStatus('Render failed', 'error');
+                resetProcessState();
+            }
+        }
+
+        function resetProcessState() {
+            isProcessRunning = false;
+            
+            const previewBtn = document.querySelector('[onclick*="previewAnimation"]');
+            if (previewBtn) {
+                previewBtn.textContent = 'âš¡ Preview';
+                previewBtn.disabled = false;
+            }
+            
+            const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
+            if (renderBtn) {
+                renderBtn.textContent = 'ðŸŽ¬ Render';
+                renderBtn.disabled = false;
+            }
+        }
+
+        // Window management using secure APIs
+        async function openVenvManager() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                const result = await window.electronAPI.openVenvManager();
+                if (!result.success) {
+                    showStatus(`Error opening VEnv Manager: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error opening VEnv Manager:', error);
+                showStatus('Error opening VEnv Manager', 'error');
+            }
+        }
+
+        async function openAssetsManager() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                const result = await window.electronAPI.openAssetsManager();
+                if (!result.success) {
+                    showStatus(`Error opening Assets Manager: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error opening Assets Manager:', error);
+                showStatus('Error opening Assets Manager', 'error');
+            }
+        }
+
+        // Terminal functions
+        function addTerminalLine(text, type = 'info') {
+            const terminal = document.getElementById('terminal-output');
+            const line = document.createElement('div');
+            line.className = `terminal-line ${type}`;
+            line.textContent = text;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function clearTerminal() {
+            const terminal = document.getElementById('terminal-output');
+            terminal.innerHTML = `
+                <div class="terminal-line info">Manim Studio Pro Terminal</div>
+                <div class="terminal-line info">Ready for commands...</div>
+            `;
+        }
+
+        // Asset management using secure APIs
+        async function loadAssets() {
+            try {
+                if (!window.electronAPI) return;
+                
+                const pathsResult = await window.electronAPI.getAppPaths();
+                if (pathsResult.success) {
+                    const assetsPath = window.electronAPI.utils.join(
+                        pathsResult.paths.home, 
+                        '.manim_studio', 
+                        'assets'
+                    );
+                    
+                    const result = await window.electronAPI.readWorkspaceFiles(assetsPath);
+                    if (result.success) {
+                        displayAssets(result.files);
+                    } else {
+                        const assetsGrid = document.getElementById('assets-grid');
+                        assetsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #969696; font-size: 12px; padding: 20px;">No assets found</div>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading assets:', error);
+            }
+        }
+
+        function displayAssets(files) {
+            const assetsGrid = document.getElementById('assets-grid');
+            assetsGrid.innerHTML = '';
+            
+            const mediaFiles = files.filter(file => {
+                if (file.isDirectory) return false;
+                const ext = window.electronAPI.utils.extname(file.name).toLowerCase();
+                return ['.png', '.jpg', '.jpeg', '.gif', '.wav', '.mp3', '.mp4', '.avi'].includes(ext);
+            });
+            
+            if (mediaFiles.length === 0) {
+                assetsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #969696; font-size: 12px; padding: 20px;">No assets found</div>';
+                return;
+            }
+            
+            mediaFiles.forEach(file => {
+                const ext = window.electronAPI.utils.extname(file.name).toLowerCase();
+                let icon = 'ðŸ“„';
+                
+                if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
+                    icon = 'ðŸ–¼ï¸';
+                } else if (['.wav', '.mp3'].includes(ext)) {
+                    icon = 'ðŸŽµ';
+                } else if (['.mp4', '.avi'].includes(ext)) {
+                    icon = 'ðŸŽ¬';
+                }
+                
+                const assetItem = document.createElement('div');
+                assetItem.className = 'asset-item';
+                assetItem.innerHTML = `
+                    <div class="asset-icon">${icon}</div>
+                    <div class="asset-name">${file.name}</div>
+                `;
+                
+                assetItem.addEventListener('click', () => insertAssetCode(file.name));
+                assetsGrid.appendChild(assetItem);
+            });
+        }
+
+        function insertAssetCode(filename) {
+            try {
+                const ext = window.electronAPI.utils.extname(filename).toLowerCase();
+                let code = '';
+                
+                if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
+                    code = `ImageMobject("${filename}")`;
+                } else if (['.wav', '.mp3'].includes(ext)) {
+                    code = `# Audio file: ${filename}`;
+                }
+                
+                if (monacoEditor && typeof monacoEditor.getValue === 'function') {
+                    const selection = monacoEditor.getSelection();
+                    const range = new monaco.Range(
+                        selection.startLineNumber,
+                        selection.startColumn,
+                        selection.endLineNumber,
+                        selection.endColumn
+                    );
+                    monacoEditor.executeEdits('', [{
+                        range: range,
+                        text: code,
+                        forceMoveMarkers: true
+                    }]);
+                    monacoEditor.focus();
+                } else {
+                    const editor = document.getElementById('code-editor');
+                    if (editor) {
+                        const start = editor.selectionStart;
+                        const end = editor.selectionEnd;
+                        const value = editor.value;
+                        editor.value = value.substring(0, start) + code + value.substring(end);
+                        editor.focus();
+                    }
+                }
+            } catch (error) {
+                console.error('Error inserting asset code:', error);
+            }
+        }
+
+        function addAsset() {
+            showStatus('Asset addition feature coming soon', 'info');
+        }
+
+        // Status message system
+        function showStatus(message, type = 'info') {
+            const statusMessage = document.createElement('div');
+            statusMessage.className = `status-message ${type}`;
+            statusMessage.textContent = message;
+            document.body.appendChild(statusMessage);
+            
+            setTimeout(() => {
+                statusMessage.classList.add('show');
+            }, 100);
+            
+            setTimeout(() => {
+                statusMessage.classList.remove('show');
+                setTimeout(() => {
+                    if (document.body.contains(statusMessage)) {
+                        document.body.removeChild(statusMessage);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Global file operation functions for backwards compatibility
+        window.saveFileToSystem = async function(content) {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+                const result = await window.electronAPI.saveFileAs(content);
+                return result;
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        window.loadFileFromSystem = async function() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+                const result = await window.electronAPI.openFile();
+                if (result.success) {
+                    return { success: true, content: result.content, filePath: result.filePath };
+                } else {
+                    return { success: false, error: result.error };
+                }
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            try {
+                if (e.ctrlKey) {
+                    switch (e.key) {
+                        case 'n':
+                            e.preventDefault();
+                            newFile();
+                            break;
+                        case 'o':
+                            e.preventDefault();
+                            openFile();
+                            break;
+                        case 's':
+                            e.preventDefault();
+                            saveFile();
+                            break;
+                    }
+                } else {
+                    switch (e.key) {
+                        case 'F5':
+                            e.preventDefault();
+                            previewAnimation();
+                            break;
+                        case 'F7':
+                            e.preventDefault();
+                            renderAnimation();
+                            break;
+                    }
+                }
+            } catch (error) {
+                console.error('Keyboard shortcut error:', error);
+            }
+        });
+
+        // Load assets on startup
+        setTimeout(loadAssets, 1000);
+
+        // Load renderer.js for additional functionality - safe fallback
+        try {
+            if (window.electronAPI) {
+                // Renderer.js will use secure APIs if available
+                console.log('Secure mode: renderer.js will use electronAPI');
+            }
+        } catch (error) {
+            console.log('Renderer.js not available:', error.message);
+        }
+    </script>
+</body>
+</html>
