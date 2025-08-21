@@ -158,8 +158,21 @@ def apply_emergency_encoding_fixes():
     """Apply immediate encoding fixes for cp950 errors"""
     import os
     import locale
+    import sys
     
-    print("🔧 Applying emergency encoding fixes...")
+    # FIX: Use ASCII-safe characters only - NO EMOJIS before encoding is fixed
+    try:
+        # First, try to fix stdout/stderr encoding BEFORE any print statements
+        if hasattr(sys.stdout, 'reconfigure'):
+            try:
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+                sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+            except Exception:
+                pass
+    except Exception:
+        pass
+    
+    print("=> Applying emergency encoding fixes...")  # ASCII safe
     
     # Set critical environment variables
     encoding_vars = {
@@ -174,21 +187,20 @@ def apply_emergency_encoding_fixes():
     
     for key, value in encoding_vars.items():
         os.environ[key] = value
-        print(f"✅ Set {key}={value}")
+        print(f"[OK] Set {key}={value}")  # ASCII safe
     
     # Set system locale
     try:
         locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
-        print("✅ Set system locale to UTF-8")
+        print("[OK] Set system locale to UTF-8")  # ASCII safe
     except:
         try:
             locale.setlocale(locale.LC_ALL, 'C.UTF-8')
-            print("✅ Set system locale to C.UTF-8")
+            print("[OK] Set system locale to C.UTF-8")  # ASCII safe
         except:
-            print("⚠️ Using system default locale")
+            print("[WARN] Using system default locale")  # ASCII safe
     
-    print("✅ Emergency encoding fixes applied")
-
+    print("[OK] Emergency encoding fixes applied")  # ASCII safe
 # Call this IMMEDIATELY - before any other code
 apply_emergency_encoding_fixes()
 # =============================================================================

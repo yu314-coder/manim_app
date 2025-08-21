@@ -1,0 +1,196 @@
+{
+  "name": "manim-studio-pro",
+  "version": "1.0.2",
+  "description": "Professional Development Environment for Manim - Upgraded Architecture with Separated UI Components",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start-dev": "electron . --dev",
+    "start-safe": "electron . --disable-gpu --disable-dev-shm-usage --no-sandbox",
+    "start-admin": "powershell -Command \"Start-Process cmd -ArgumentList '/c cd /d \"%cd%\" && npm start' -Verb RunAs\"",
+    "dev": "electron . --dev --enable-logging",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux",
+    "clean": "del /q dist\\* 2>nul || rmdir /s /q dist 2>nul || echo Clean completed",
+    "clean-npm": "del /q node_modules\\* 2>nul || rmdir /s /q node_modules 2>nul || echo Clean completed",
+    "rebuild": "npm run clean && npm run clean-npm && npm install",
+    "postinstall": "electron-builder install-app-deps",
+    "test": "echo \"Testing Manim Studio Pro\" && npm run check-files",
+    "check-files": "node -e \"const fs=require('fs'); const files=['index.html','venv.html','assets.html','main.js','renderer.js','preload.js','app.py']; files.forEach(f=>{if(fs.existsSync(f)){console.log('✅',f)}else{console.log('❌',f)}});\"",
+    "setup": "npm install && npm run check-files && echo \"Setup complete!\"",
+    "doctor": "node -e \"const fs=require('fs'),path=require('path'),os=require('os'); console.log('🔍 Manim Studio Pro Health Check'); const checks=[{name:'Node.js',check:()=>process.version},{name:'Assets Directory',check:()=>fs.existsSync(path.join(os.homedir(),'.manim_studio','assets'))?'✅':'❌'},{name:'VEnv Directory',check:()=>fs.existsSync(path.join(os.homedir(),'.manim_studio','venvs'))?'✅':'❌'},{name:'Python',check:()=>{try{require('child_process').execSync('python --version',{stdio:'pipe'});return '✅';}catch{return '❌'}}},{name:'App Files',check:()=>['index.html','venv.html','assets.html','main.js','preload.js'].every(f=>fs.existsSync(f))?'✅':'❌'},{name:'VEnv Directory',check:()=>fs.existsSync(path.join(os.homedir(),'.manim_studio','venvs'))?'✅':'❌'},{name:'Python',check:()=>{try{require('child_process').execSync('python --version',{stdio:'pipe'});return '✅';}catch{return '❌'}}},{name:'App Files',check:()=>['index.html','venv.html','assets.html','main.js','preload.js'].every(f=>fs.existsSync(f))?'✅':'❌'}]; checks.forEach(c=>console.log(c.name+':',typeof c.check==='function'?c.check():c.check));\""
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "@electron/remote": "^2.1.2",
+    "chokidar": "^3.5.3",
+    "fs-extra": "^11.1.1",
+    "node-fetch": "^3.3.2"
+  },
+  "build": {
+    "appId": "com.yuyaohsng.manimstudio",
+    "productName": "Manim Studio Pro",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "venv.html",
+      "assets.html",
+      "styles.css",
+      "package.json",
+      "icon.ico",
+      "node_modules/**/*",
+      "!node_modules/**/test/**/*",
+      "!node_modules/**/tests/**/*",
+      "!node_modules/**/*.d.ts",
+      "!node_modules/**/.bin/**/*",
+      "!node_modules/**/README.md",
+      "!node_modules/**/LICENSE*",
+      "!node_modules/**/CHANGELOG*",
+      "!node_modules/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "app.py",
+        "to": "app.py"
+      },
+      {
+        "from": "fixes.py",
+        "to": "fixes.py"
+      },
+      {
+        "from": "process_utils.py",
+        "to": "process_utils.py"
+      },
+      {
+        "from": "ENHANCED_NO_CONSOLE_PATCH.py",
+        "to": "ENHANCED_NO_CONSOLE_PATCH.py"
+      }
+    ],
+    "asarUnpack": [
+      "**/*.{py,exe,dll,so,dylib}"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "publisherName": "Yu Yao-Hsng",
+      "verifyUpdateCodeSignature": false,
+      "sign": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Manim Studio Pro",
+      "displayLanguageSelector": false,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "icon.icns",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "icon.ico",
+      "category": "Development"
+    },
+    "deb": {
+      "depends": ["python3", "python3-pip"]
+    },
+    "compression": "normal",
+    "removePackageScripts": false,
+    "buildDependenciesFromSource": false,
+    "nodeGypRebuild": false,
+    "npmRebuild": false
+  },
+  "keywords": [
+    "manim",
+    "animation",
+    "mathematics",
+    "python",
+    "electron",
+    "studio",
+    "professional",
+    "development",
+    "education",
+    "visualization",
+    "mathematical-animation",
+    "code-editor",
+    "virtual-environment",
+    "asset-management"
+  ],
+  "author": {
+    "name": "Yu Yao-Hsng",
+    "email": "yu314.coder@gmail.com",
+    "url": "https://yu314-coder.github.io/projects.html"
+  },
+  "license": "MIT",
+  "homepage": "https://yu314-coder.github.io/projects.html",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yu314-coder/manim_app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yu314-coder/manim_app/issues"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

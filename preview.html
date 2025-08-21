@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Preview Window</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1e1e1e;
+            color: #cccccc;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .preview-header {
+            height: 40px;
+            background: linear-gradient(135deg, #252526 0%, #2d2d30 100%);
+            border-bottom: 1px solid #3c3c3c;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .preview-title {
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .preview-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.1);
+            color: #cccccc;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .preview-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        .preview-video {
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .preview-placeholder {
+            text-align: center;
+            color: #666;
+            font-size: 18px;
+        }
+
+        .preview-placeholder .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .video-controls {
+            height: 60px;
+            background: rgba(37, 37, 38, 0.9);
+            border-top: 1px solid #3c3c3c;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 15px;
+            backdrop-filter: blur(20px);
+        }
+
+        .play-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: #569cd6;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .play-btn:hover {
+            background: #4a9eff;
+            transform: scale(1.05);
+        }
+
+        .timeline {
+            flex: 1;
+            margin: 0 15px;
+        }
+
+        .timeline input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #3c3c3c;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+
+        .timeline input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #569cd6;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .time-display {
+            font-size: 12px;
+            color: #969696;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .volume-slider {
+            width: 80px;
+            height: 4px;
+            background: #3c3c3c;
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #569cd6;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-header">
+        <div class="preview-title">
+            <span>🎬</span>
+            <span>Manim Preview</span>
+        </div>
+        <div class="preview-controls">
+            <button class="btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+            <button class="btn" onclick="window.close()">✕ Close</button>
+        </div>
+    </div>
+
+    <div class="preview-content">
+        <div id="preview-placeholder" class="preview-placeholder">
+            <div class="icon">🎬</div>
+            <div>No video loaded</div>
+            <div style="font-size: 14px; margin-top: 10px; opacity: 0.7;">
+                Generate a preview from the main window
+            </div>
+        </div>
+        
+        <video id="preview-video" class="preview-video hidden" controls>
+            Your browser does not support the video tag.
+        </video>
+    </div>
+
+    <div id="video-controls" class="video-controls hidden">
+        <button id="play-pause-btn" class="play-btn">▶️</button>
+        
+        <div class="timeline">
+            <input type="range" id="video-timeline" min="0" max="100" value="0">
+        </div>
+        
+        <div class="time-display">
+            <span id="current-time">00:00</span> / <span id="total-time">00:00</span>
+        </div>
+        
+        <div class="volume-control">
+            <span>🔊</span>
+            <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="50">
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        let video = null;
+        let isPlaying = false;
+
+        // Initialize video controls
+        function initializeVideo() {
+            video = document.getElementById('preview-video');
+            const playPauseBtn = document.getElementById('play-pause-btn');
+            const timeline = document.getElementById('video-timeline');
+            const volumeSlider = document.getElementById('volume-slider');
+            const currentTimeSpan = document.getElementById('current-time');
+            const totalTimeSpan = document.getElementById('total-time');
+
+            if (!video) return;
+
+            // Play/Pause button
+            playPauseBtn.addEventListener('click', () => {
+                if (video.paused) {
+                    video.play();
+                    playPauseBtn.textContent = '⏸️';
+                    isPlaying = true;
+                } else {
+                    video.pause();
+                    playPauseBtn.textContent = '▶️';
+                    isPlaying = false;
+                }
+            });
+
+            // Timeline
+            timeline.addEventListener('input', () => {
+                const time = (timeline.value / 100) * video.duration;
+                video.currentTime = time;
+            });
+
+            // Volume control
+            volumeSlider.addEventListener('input', () => {
+                video.volume = volumeSlider.value / 100;
+            });
+
+            // Update timeline and time display
+            video.addEventListener('timeupdate', () => {
+                const progress = (video.currentTime / video.duration) * 100;
+                timeline.value = progress;
+                
+                currentTimeSpan.textContent = formatTime(video.currentTime);
+                totalTimeSpan.textContent = formatTime(video.duration);
+            });
+
+            // Video loaded
+            video.addEventListener('loadedmetadata', () => {
+                totalTimeSpan.textContent = formatTime(video.duration);
+                timeline.max = 100;
+            });
+
+            // Video ended
+            video.addEventListener('ended', () => {
+                playPauseBtn.textContent = '▶️';
+                isPlaying = false;
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    playPauseBtn.click();
+                } else if (e.code === 'ArrowLeft') {
+                    video.currentTime -= 5;
+                } else if (e.code === 'ArrowRight') {
+                    video.currentTime += 5;
+                } else if (e.code === 'ArrowUp') {
+                    video.volume = Math.min(1, video.volume + 0.1);
+                    volumeSlider.value = video.volume * 100;
+                } else if (e.code === 'ArrowDown') {
+                    video.volume = Math.max(0, video.volume - 0.1);
+                    volumeSlider.value = video.volume * 100;
+                }
+            });
+        }
+
+        // Format time for display
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return '00:00';
+            
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Toggle fullscreen
+        function toggleFullscreen() {
+            if (video && !video.classList.contains('hidden')) {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    video.requestFullscreen();
+                }
+            }
+        }
+
+        // Load video from main window
+        ipcRenderer.on('load-video', (event, videoPath) => {
+            console.log('Loading video:', videoPath);
+            
+            const placeholder = document.getElementById('preview-placeholder');
+            const video = document.getElementById('preview-video');
+            const controls = document.getElementById('video-controls');
+            
+            if (placeholder) placeholder.classList.add('hidden');
+            if (video) {
+                video.classList.remove('hidden');
+                video.src = videoPath;
+                video.load();
+            }
+            if (controls) controls.classList.remove('hidden');
+            
+            initializeVideo();
+        });
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Preview window ready');
+            initializeVideo();
+        });
+    </script>
+</body>
+</html>
