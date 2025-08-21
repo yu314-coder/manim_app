@@ -724,17 +724,16 @@
                 if (window.electronAPI && window.electronAPI.getPythonInfo) {
                     const result = await window.electronAPI.getPythonInfo();
                     if (result.success) {
-                        if (result.venvName && result.venvPath) {
-                            // Real virtual environment found
+                        if (result.venvExists && result.venvPath) {
+                            const venvName = result.venvPath.split(/[/\\]/).pop();
                             currentEnvironment = {
-                                name: result.venvName,
+                                name: venvName,
                                 path: result.venvPath,
                                 pythonPath: result.pythonPath,
                                 active: true
                             };
-                            addLog(`Found virtual environment: ${result.venvName}`, 'success');
+                            addLog(`Found virtual environment: ${venvName}`, 'success');
                         } else if (result.pythonPath) {
-                            // Python found but no virtual environment
                             currentEnvironment = {
                                 name: 'system_python',
                                 path: 'System Python Installation',
