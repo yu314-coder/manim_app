@@ -2131,13 +2131,22 @@ class MyAnimation(Scene):
                         addTerminalLine('Press    Preview (F5) or   Render (F7) to start', 'info');
                         addTerminalLine('Tip: All panels are resizable - drag the borders!', 'info');
                     } else {
-                        updateEnvironmentStatus(false, '  Python environment not configured');
-                        addTerminalLine(' Environment setup may be required', 'warning');
+                        updateEnvironmentStatus(false, ' Installing Python environment...');
+                        addTerminalLine(' No Python environment detected – installing now...', 'warning');
+                        const setupResult = await window.electronAPI.autoCreateEnvironment();
+                        if (setupResult && setupResult.success) {
+                            updateEnvironmentStatus(true, ' Environment installed and ready');
+                            addTerminalLine(' Virtual environment installed successfully', 'success');
+                        } else {
+                            const errMsg = (setupResult && setupResult.error) ? setupResult.error : 'Environment installation failed';
+                            updateEnvironmentStatus(false, ' Environment setup failed');
+                            addTerminalLine(` ${errMsg}`, 'error');
+                        }
                     }
                 }
             } catch (error) {
                 console.error('Environment check error:', error);
-                updateEnvironmentStatus(false, '  Environment check failed');
+                updateEnvironmentStatus(false, ' Environment check failed');
             }
         }
 

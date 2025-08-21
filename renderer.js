@@ -70,17 +70,52 @@ if (typeof window !== 'undefined') {
             
             // ENFORCE: Check virtual environment before executing
             if (!fs.existsSync(FORCED_PYTHON_EXE)) {
-                const errorMsg = `Virtual environment not found at: ${FORCED_PYTHON_EXE}. Environment setup required.`;
-                console.error('❌ CRITICAL:', errorMsg);
-                
+                const warnMsg = `Virtual environment not found at: ${FORCED_PYTHON_EXE}. Attempting automatic setup...`;
+                console.warn('⚠️', warnMsg);
                 if (window.addTerminalLine) {
-                    window.addTerminalLine(`❌ ${errorMsg}`, 'error');
+                    window.addTerminalLine(`⚠️ ${warnMsg}`, 'warning');
                 }
-                
+                if (window.electronAPI && window.electronAPI.autoCreateEnvironment) {
+                    const setup = await window.electronAPI.autoCreateEnvironment();
+                    if (!setup || !setup.success) {
+                        const err = (setup && setup.error) ? setup.error : 'Automatic environment setup failed';
+                        if (window.addTerminalLine) {
+                            window.addTerminalLine(`❌ ${err}`, 'error');
+                        }
+                        return {
+                            success: false,
+                            output: '',
+                            error: err,
+                            code: -1,
+                            timestamp: new Date().toISOString()
+                        };
+                    }
+                    if (window.addTerminalLine) {
+                        window.addTerminalLine('✅ Virtual environment installed', 'success');
+                    }
+                } else {
+                    const err = 'Environment setup API not available';
+                    if (window.addTerminalLine) {
+                        window.addTerminalLine(`❌ ${err}`, 'error');
+                    }
+                    return {
+                        success: false,
+                        output: '',
+                        error: err,
+                        code: -1,
+                        timestamp: new Date().toISOString()
+                    };
+                }
+            }
+            if (!fs.existsSync(FORCED_PYTHON_EXE)) {
+                const err = `Virtual environment setup failed to create: ${FORCED_PYTHON_EXE}`;
+                if (window.addTerminalLine) {
+                    window.addTerminalLine(`❌ ${err}`, 'error');
+                }
                 return {
                     success: false,
                     output: '',
-                    error: errorMsg,
+                    error: err,
                     code: -1,
                     timestamp: new Date().toISOString()
                 };
