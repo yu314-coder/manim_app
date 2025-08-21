@@ -247,6 +247,16 @@ function setupIPCHandlers() {
         }
     });
 
+    ipcMain.handle('delete-file', async (event, filePath) => {
+        try {
+            await fs.promises.unlink(filePath);
+            return { success: true };
+        } catch (error) {
+            console.error('❌ File delete error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // Dialog operations
     ipcMain.handle('show-save-dialog', async (event, options) => {
         try {
@@ -809,22 +819,20 @@ async function executeTerminalCommand(command, cwd = process.cwd()) {
         
         // REPLACE any python/manim command with our specific virtual environment Python
         let modifiedCommand = command;
-        
-        // Handle various Python command patterns
-        if (command.includes('python') || command.includes('manim')) {
+
+        if (command.includes('python') || command.match(/\bmanim\b/i)) {
             console.log('🔧 Modifying Python/Manim command to use virtual environment');
-            
-            // Replace common patterns
-            modifiedCommand = modifiedCommand
-                .replace(/^python\s+/gi, `"${FORCED_PYTHON_EXE}" `)
-                .replace(/^python$/gi, `"${FORCED_PYTHON_EXE}"`)
-                .replace(/\spython\s+/gi, ` "${FORCED_PYTHON_EXE}" `)
-                .replace(/^manim\s+/gi, `"${FORCED_PYTHON_EXE}" -m manim `)
-                .replace(/^manim$/gi, `"${FORCED_PYTHON_EXE}" -m manim`)
-                .replace(/\smanim\s+/gi, ` "${FORCED_PYTHON_EXE}" -m manim `);
+
+            // Replace any python references with venv python
+            modifiedCommand = modifiedCommand.replace(/\bpython(\.exe)?\b/gi, `"${FORCED_PYTHON_EXE}"`);
+
+            // Replace standalone manim commands (avoid "-m manim" already using python)
+            if (!/-m\s+manim\b/i.test(command) && /\bmanim\b/i.test(command)) {
+                modifiedCommand = modifiedCommand.replace(/(^|\s)manim\b/i, `$1"${FORCED_PYTHON_EXE}" -m manim`);
+            }
+
+            console.log('🎯 Modified command:', modifiedCommand);
         }
-        
-        console.log('🎯 Modified command:', modifiedCommand);
         
         // Execute with proper environment
         const process = spawn(modifiedCommand, [], {
