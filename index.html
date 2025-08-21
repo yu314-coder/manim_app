@@ -1049,61 +1049,79 @@ class MyAnimation(Scene):
                     return;
                 }
 
+                // Ask user where to save the rendered video
+                const saveResult = await window.electronAPI.showSaveDialog({
+                    title: 'Save Rendered Video',
+                    defaultPath: 'MyAnimation.mp4',
+                    filters: [{ name: 'Video Files', extensions: ['mp4'] }]
+                });
+                if (saveResult.canceled || !saveResult.filePath) {
+                    addTerminalLine('Render canceled: no save location selected', 'warning');
+                    showStatus('Render canceled', 'warning');
+                    return;
+                }
+
+                const outputPath = saveResult.filePath;
+                const outputDir = window.electronAPI.utils.dirname(outputPath);
+                const outputFile = window.electronAPI.utils.basename(outputPath);
+
                 isProcessRunning = true;
                 const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
                 if (renderBtn) {
-                    renderBtn.textContent = ' ³ Rendering...';
+                    renderBtn.textContent = ' ³ Rendering...';
                     renderBtn.disabled = true;
                 }
 
                 // Show loading in preview immediately
                 showPreviewLoading('Preparing render...');
-                
+
                 addTerminalLine('  Starting render...', 'info');
-                
+
                 // Get quality settings
                 const settings = getQualitySettings();
-                addTerminalLine(`  Resolution: ${settings.quality}, FPS: ${settings.fps}`, 'info');
-                
+                addTerminalLine(`  Resolution: ${settings.quality}, FPS: ${settings.fps}`, 'info');
+
                 // Create render content
                 const renderContent = `${content}\n\n# Auto-generated render code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
-                
+
                 if (window.electronAPI) {
                     // Get assets folder path
                     const pathsResult = await window.electronAPI.getAppPaths();
                     if (!pathsResult.success) {
                         throw new Error('Could not get app paths');
                     }
-                    
+
                     const assetsPath = pathsResult.paths.home + '\\.manim_studio\\assets';
                     const tempFileName = `render_${Date.now()}.py`;
                     const tempFilePath = assetsPath + '\\' + tempFileName;
-                    
+
                     addTerminalLine(`Saving to assets folder: ${tempFilePath}`, 'info');
-                    
+
                     // Save to assets folder
-                    const saveResult = await window.electronAPI.saveFile(tempFilePath, renderContent);
-                    if (saveResult.success) {
+                    const saveResultPy = await window.electronAPI.saveFile(tempFilePath, renderContent);
+                    if (saveResultPy.success) {
                         addTerminalLine(`  File saved: ${tempFileName}`, 'success');
-                        
+
                         // Update preview status
                         showPreviewLoading('Rendering animation...');
-                        
-                        // Build Manim command with quality settings
-                        const command = `manim ${tempFileName} MyAnimation ${settings.resolution} --fps ${settings.fps}`;
-                        
+
+                        // Build Manim command with quality settings and output path
+                        const command = `manim ${tempFileName} MyAnimation ${settings.resolution} --fps ${settings.fps} -o "${outputFile}" --output_directory "${outputDir}"`;
+
                         addTerminalLine(`Command: ${command}`, 'info');
                         const result = await executeTerminalCommand(command, assetsPath);
 
                         // Remove temporary file
                         await window.electronAPI.deleteFile(tempFilePath);
 
-                        // Look for output video file after successful render
                         if (result.success) {
-                            showPreviewLoading('Looking for video...');
-                            setTimeout(() => {
-                                findAndDisplayVideo(assetsPath, 'MyAnimation', 'render', settings.quality);
-                            }, 1000);
+                            showPreviewLoading('Render complete');
+                            const previewContent = document.getElementById('preview-content');
+                            if (previewContent) {
+                                previewContent.innerHTML = `<div class="preview-placeholder">Render saved to:<br>${outputPath}</div>`;
+                            }
+                            addTerminalLine(`Render saved to: ${outputPath}`, 'success');
+                            window.electronAPI.showItemInFolder(outputPath);
                         } else {
                             showPreviewError('Render failed - check terminal for details');
                         }
@@ -1115,10 +1133,10 @@ class MyAnimation(Scene):
             } catch (error) {
                 console.error('Render error:', error);
                 showStatus('Render failed', 'error');
-                addTerminalLine(` Œ Render error: ${error.message}`, 'error');
-                showPreviewError(`Render error: ${error.message}`);
-                resetProcessState();
+                addTerminalLine(`❗ Render error: ${error.message}`, 'error');
             }
+
+            resetProcessState();
         }
 
         function resetProcessState() {
