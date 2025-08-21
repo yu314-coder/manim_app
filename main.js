@@ -18,10 +18,13 @@ async function autoCreateEnvironmentInternal() {
     const sendProgress = (message, type = 'info') => {
         console.log(`[ENV-SETUP] ${message}`);
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('terminal-output', {
+            const payload = {
                 type: 'stdout',
                 data: `[${new Date().toLocaleTimeString()}] ${message}\n`
-            });
+            };
+            // Send to both channels for backward compatibility
+            mainWindow.webContents.send('process-output', payload);
+            mainWindow.webContents.send('terminal-output', payload);
         }
     };
 
@@ -31,8 +34,25 @@ async function autoCreateEnvironmentInternal() {
         const venvsDir = path.join(manimStudioDir, 'venvs');
         const venvDir = path.join(venvsDir, 'manim_studio_default');
 
+        // Notify renderer that setup has started
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('process-started', { command: 'auto-create-environment' });
+        }
+
         sendProgress('🏗️ Starting virtual environment setup...');
         sendProgress(`📁 Target directory: ${venvDir}`);
+
+        // If environment already exists, skip creation
+        const existingPython = os.platform() === 'win32'
+            ? path.join(venvDir, 'Scripts', 'python.exe')
+            : path.join(venvDir, 'bin', 'python');
+        if (fs.existsSync(existingPython)) {
+            sendProgress('✅ Virtual environment already exists');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('process-complete', { success: true, code: 0 });
+            }
+            return { success: true, skipped: true };
+        }
 
         // Create directories
         sendProgress('📂 Creating directories...');
@@ -54,6 +74,9 @@ async function autoCreateEnvironmentInternal() {
             });
         } catch (pythonError) {
             sendProgress(`❌ Python check failed: ${pythonError.message}`, 'error');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('process-complete', { success: false, code: 1, error: pythonError.message });
+            }
             return { success: false, error: pythonError.message, step: 'python-check' };
         }
 
@@ -146,6 +169,10 @@ async function autoCreateEnvironmentInternal() {
         sendProgress('🎉 Virtual environment setup completed!');
         sendProgress('🚀 You can now start creating animations!');
 
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('process-complete', { success: true, code: 0 });
+        }
+
         return {
             success: true,
             venvPath: venvDir,
@@ -159,6 +186,9 @@ async function autoCreateEnvironmentInternal() {
     } catch (error) {
         console.error('❌ Environment creation error:', error);
         sendProgress(`❌ Setup failed: ${error.message}`, 'error');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('process-complete', { success: false, code: 1, error: error.message });
+        }
         return { success: false, error: error.message, step: 'environment-creation' };
     }
 }
@@ -184,6 +214,11 @@ function createWindow() {
     // Remote module removed for security
 
     mainWindow.loadFile('index.html');
+
+    // Automatically ensure virtual environment on startup
+    mainWindow.webContents.on('did-finish-load', () => {
+        autoCreateEnvironmentInternal();
+    });
 
     // Setup IPC handlers ONLY if not already registered
     if (!global.ipcHandlersRegistered) {
@@ -693,10 +728,9 @@ async function executeTerminalCommandDirect(command, cwd = process.cwd(), progre
             
             // Send real-time output to renderer
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stdout',
-                    data: text
-                });
+                const payload = { type: 'stdout', data: text };
+                mainWindow.webContents.send('process-output', payload);
+                mainWindow.webContents.send('terminal-output', payload);
             }
         });
 
@@ -713,10 +747,9 @@ async function executeTerminalCommandDirect(command, cwd = process.cwd(), progre
             
             // Send real-time output to renderer
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stderr', 
-                    data: text
-                });
+                const payload = { type: 'stderr', data: text };
+                mainWindow.webContents.send('process-output', payload);
+                mainWindow.webContents.send('terminal-output', payload);
             }
         });
 
@@ -850,10 +883,9 @@ async function executeTerminalCommand(command, cwd = process.cwd()) {
             
             // Send real-time output to renderer
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stdout',
-                    data: text
-                });
+                const payload = { type: 'stdout', data: text };
+                mainWindow.webContents.send('process-output', payload);
+                mainWindow.webContents.send('terminal-output', payload);
             }
         });
 
@@ -865,10 +897,9 @@ async function executeTerminalCommand(command, cwd = process.cwd()) {
             
             // Send real-time output to renderer
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stderr', 
-                    data: text
-                });
+                const payload = { type: 'stderr', data: text };
+                mainWindow.webContents.send('process-output', payload);
+                mainWindow.webContents.send('terminal-output', payload);
             }
         });
 

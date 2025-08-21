@@ -2360,6 +2360,10 @@ class MyAnimation(Scene):
             
             // Setup process listeners for real-time output
             setupProcessListeners();
+
+            // Show initial status
+            showStatus('Initializing environment...', 'info');
+            addTerminalLine('Initializing environment...', 'info');
             
             // Setup terminal input
             setupTerminalInput();
