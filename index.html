@@ -364,17 +364,33 @@
             font-size: 14px;
             line-height: 1.6;
             padding: 20px;
-            resize: none;
+            resize: vertical;
             outline: none;
             min-height: 300px;
             display: block;
+        }
+
+        /* Resize handle between editor and terminal */
+        .terminal-resize-handle {
+            height: 4px;
+            background: #3c3c3c;
+            cursor: ns-resize;
+            transition: background 0.2s;
+        }
+
+        .terminal-resize-handle:hover {
+            background: #569cd6;
+            box-shadow: 0 0 3px rgba(86, 156, 214, 0.5);
+        }
+
+        .terminal-resize-handle:active {
+            background: #4f94cd;
         }
 
         /* Terminal Section */
         .terminal-section {
             height: 220px;
             background: #1e1e1e;
-            border-top: 1px solid #3c3c3c;
             display: flex;
             flex-direction: column;
         }
@@ -787,10 +803,10 @@ class MyAnimation(Scene):
         self.play(Create(circle))
         self.play(Write(text))
         self.wait()</textarea>
-                    
+                        <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
+
                         <!-- Terminal -->
                         <div class="terminal-section" id="terminal-section">
-                            <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
                             <div class="terminal-header">
                                 <div class="terminal-title">Terminal</div>
                                 <div class="terminal-actions">
