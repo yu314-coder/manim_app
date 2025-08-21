@@ -107,6 +107,11 @@
             background: #d73e46;
         }
 
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         /* Main Content */
         .main-content {
             flex: 1;
@@ -121,110 +126,86 @@
             border-right: 1px solid #3c3c3c;
             display: flex;
             flex-direction: column;
+            padding: 20px;
             overflow-y: auto;
         }
 
         .sidebar-section {
-            padding: 20px;
-            border-bottom: 1px solid #3c3c3c;
+            margin-bottom: 20px;
         }
 
         .section-title {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 600;
-            color: #cccccc;
-            margin-bottom: 15px;
+            color: #969696;
+            margin-bottom: 10px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
-        /* Search and Filter */
+        /* Search */
         .search-box {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 15px;
+            position: relative;
+            margin-bottom: 10px;
         }
 
         .search-input {
-            flex: 1;
-            background: #3c3c3c;
+            width: 100%;
+            background: #2d2d30;
             border: 1px solid #464647;
             border-radius: 4px;
-            padding: 8px;
+            padding: 8px 12px;
             color: #d4d4d4;
             font-size: 12px;
             font-family: inherit;
         }
 
         .search-input:focus {
-            outline: none;
             border-color: #569cd6;
+            outline: none;
         }
 
-        /* Filter Options */
-        .filter-group {
+        /* Filter Buttons */
+        .filter-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
             margin-bottom: 15px;
         }
 
-        .filter-label {
-            display: block;
-            font-size: 12px;
-            font-weight: 500;
-            margin-bottom: 8px;
+        .filter-btn {
+            padding: 4px 8px;
+            background: #3c3c3c;
+            border: 1px solid #464647;
+            border-radius: 3px;
             color: #cccccc;
-        }
-
-        .filter-options {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .filter-option {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .filter-option:hover {
-            background: #37373d;
-        }
-
-        .filter-option input[type="checkbox"] {
-            accent-color: #569cd6;
-        }
-
-        .filter-option label {
-            font-size: 12px;
-            cursor: pointer;
-            flex: 1;
-        }
-
-        .filter-count {
             font-size: 10px;
-            color: #969696;
-            background: #37373d;
-            padding: 2px 6px;
-            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active {
+            background: #569cd6;
+            border-color: #569cd6;
+            color: white;
+        }
+
+        .filter-btn:hover {
+            background: #464647;
         }
 
         /* Upload Area */
         .upload-area {
-            border: 2px dashed #464647;
-            border-radius: 8px;
+            border: 2px dashed #3c3c3c;
+            border-radius: 6px;
             padding: 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
-            background: #2d2d30;
+            margin-bottom: 15px;
         }
 
-        .upload-area:hover,
-        .upload-area.drag-over {
+        .upload-area:hover {
             border-color: #569cd6;
             background: #323233;
         }
@@ -308,6 +289,7 @@
             cursor: pointer;
             font-size: 12px;
             transition: all 0.2s;
+            font-family: inherit;
         }
 
         .view-btn.active {
@@ -325,7 +307,7 @@
             font-family: inherit;
         }
 
-        /* Assets Grid */
+        /* Assets Content */
         .assets-content {
             flex: 1;
             padding: 20px;
@@ -444,146 +426,60 @@
             background: #4ec9b0;
             color: #1e1e1e;
             padding: 2px 6px;
-            border-radius: 2px;
+            border-radius: 3px;
             font-size: 9px;
-            font-weight: 500;
-            text-transform: uppercase;
+            font-weight: 600;
         }
 
-        /* Asset Item - List View */
-        .asset-item-list {
-            background: #252526;
-            border: 1px solid #3c3c3c;
-            border-radius: 6px;
-            padding: 12px 15px;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
+        /* List View Styles */
+        .assets-list .asset-item {
+            flex-direction: row;
             align-items: center;
-            gap: 15px;
+            padding: 12px 15px;
         }
 
-        .asset-item-list:hover {
-            background: #2d2d30;
-            border-color: #569cd6;
-        }
-
-        .asset-item-list.selected {
-            border-color: #4ec9b0;
-            background: #2a3a37;
-        }
-
-        .asset-thumbnail {
+        .assets-list .asset-preview {
             width: 40px;
             height: 40px;
-            border-radius: 4px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #37373d;
-            flex-shrink: 0;
+            margin-right: 15px;
+            margin-bottom: 0;
         }
 
-        .asset-thumbnail img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: cover;
-        }
-
-        .asset-thumbnail .icon {
-            font-size: 20px;
-            color: #969696;
-        }
-
-        .asset-list-info {
+        .assets-list .asset-info {
             flex: 1;
-            min-width: 0;
-        }
-
-        .asset-list-name {
-            font-size: 13px;
-            font-weight: 500;
-            color: #d4d4d4;
-            margin-bottom: 2px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .asset-list-details {
-            font-size: 11px;
-            color: #969696;
+            text-align: left;
             display: flex;
-            gap: 10px;
-        }
-
-        /* Context Menu */
-        .context-menu {
-            position: fixed;
-            background: #3c3c3c;
-            border: 1px solid #464647;
-            border-radius: 6px;
-            padding: 6px 0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 1000;
-            min-width: 150px;
-        }
-
-        .context-menu-item {
-            padding: 8px 15px;
-            font-size: 12px;
-            color: #d4d4d4;
-            cursor: pointer;
-            transition: background 0.2s;
-            display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 8px;
         }
 
-        .context-menu-item:hover {
-            background: #569cd6;
-            color: white;
+        .assets-list .asset-name {
+            margin-bottom: 0;
         }
 
-        .context-menu-separator {
-            height: 1px;
-            background: #464647;
-            margin: 4px 0;
-        }
-
-        /* Asset Actions */
-        .asset-actions {
-            position: absolute;
-            top: 8px;
-            right: 8px;
+        /* Loading */
+        .loading {
             display: flex;
-            gap: 4px;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .asset-item:hover .asset-actions {
-            opacity: 1;
-        }
-
-        .action-btn {
-            background: rgba(0,0,0,0.7);
-            border: none;
-            border-radius: 3px;
-            width: 24px;
-            height: 24px;
-            display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: white;
-            cursor: pointer;
-            font-size: 10px;
-            transition: all 0.2s;
+            padding: 60px;
+            color: #969696;
         }
 
-        .action-btn:hover {
-            background: #569cd6;
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #3c3c3c;
+            border-top: 3px solid #569cd6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         /* Empty State */
@@ -592,75 +488,57 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 300px;
+            padding: 60px;
             color: #969696;
             text-align: center;
         }
 
-        .empty-state .icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-            color: #464647;
+        .empty-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
         }
 
-        .empty-state .title {
-            font-size: 16px;
-            font-weight: 500;
-            margin-bottom: 8px;
+        .empty-title {
+            font-size: 18px;
+            margin-bottom: 10px;
             color: #cccccc;
         }
 
-        .empty-state .description {
-            font-size: 12px;
+        .empty-description {
+            font-size: 14px;
             line-height: 1.5;
-            max-width: 300px;
+            max-width: 400px;
         }
 
-        /* Loading State */
-        .loading {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 40px;
-            color: #969696;
+        /* Context Menu */
+        .context-menu {
+            position: fixed;
+            background: #2d2d30;
+            border: 1px solid #464647;
+            border-radius: 4px;
+            padding: 4px 0;
+            min-width: 150px;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
 
-        .spinner {
-            border: 2px solid #3c3c3c;
-            border-top: 2px solid #569cd6;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            margin-right: 10px;
+        .context-menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .context-menu-item:hover {
+            background: #404041;
         }
 
-        /* Statistics Bar */
-        .stats-bar {
-            background: #252526;
-            border-top: 1px solid #3c3c3c;
-            padding: 8px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 11px;
-            color: #969696;
-        }
-
-        .stats-info {
-            display: flex;
-            gap: 15px;
-        }
-
-        .stats-item {
-            display: flex;
-            align-items: center;
-            gap: 4px;
+        .context-menu-separator {
+            height: 1px;
+            background: #464647;
+            margin: 4px 0;
         }
 
         /* Responsive */
@@ -724,7 +602,7 @@
             
             <div class="assets-status">
                 <span>📊</span>
-                <span id="assets-count">0 assets</span>
+                <span id="assets-count">5 assets</span>
             </div>
             
             <div class="header-actions">
@@ -745,48 +623,23 @@
                     <div class="search-box">
                         <input type="text" class="search-input" id="search-input" 
                                placeholder="Search assets..." oninput="filterAssets()" />
-                        <button class="btn btn-primary" onclick="clearSearch()">✖</button>
                     </div>
-                </div>
-
-                <!-- File Type Filters -->
-                <div class="sidebar-section">
-                    <div class="section-title">File Types</div>
-                    <div class="filter-group">
-                        <div class="filter-options">
-                            <div class="filter-option">
-                                <input type="checkbox" id="filter-images" checked onchange="filterAssets()" />
-                                <label for="filter-images">🖼️ Images</label>
-                                <span class="filter-count" id="images-count">0</span>
-                            </div>
-                            <div class="filter-option">
-                                <input type="checkbox" id="filter-audio" checked onchange="filterAssets()" />
-                                <label for="filter-audio">🎵 Audio</label>
-                                <span class="filter-count" id="audio-count">0</span>
-                            </div>
-                            <div class="filter-option">
-                                <input type="checkbox" id="filter-videos" checked onchange="filterAssets()" />
-                                <label for="filter-videos">🎬 Videos</label>
-                                <span class="filter-count" id="videos-count">0</span>
-                            </div>
-                            <div class="filter-option">
-                                <input type="checkbox" id="filter-other" checked onchange="filterAssets()" />
-                                <label for="filter-other">📄 Other</label>
-                                <span class="filter-count" id="other-count">0</span>
-                            </div>
-                        </div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+                        <button class="filter-btn" data-filter="images" onclick="setFilter('images')">Images</button>
+                        <button class="filter-btn" data-filter="videos" onclick="setFilter('videos')">Videos</button>
+                        <button class="filter-btn" data-filter="audio" onclick="setFilter('audio')">Audio</button>
+                        <button class="filter-btn" data-filter="documents" onclick="setFilter('documents')">Docs</button>
                     </div>
                 </div>
 
                 <!-- Upload Area -->
                 <div class="sidebar-section">
                     <div class="section-title">Add Assets</div>
-                    <div class="upload-area" onclick="importAssets()" 
-                         ondrop="handleDrop(event)" ondragover="handleDragOver(event)" 
-                         ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)">
+                    <div class="upload-area" onclick="importAssets()">
                         <div class="upload-icon">📁</div>
-                        <div class="upload-text">Drop files here</div>
-                        <div class="upload-hint">or click to browse</div>
+                        <div class="upload-text">Click to import assets</div>
+                        <div class="upload-hint">or drag & drop files here</div>
                     </div>
                 </div>
 
@@ -838,452 +691,306 @@
                 <!-- Assets Content -->
                 <div class="assets-content">
                     <div id="assets-container">
-                        <div class="loading">
-                            <div class="spinner"></div>
-                            Loading assets...
+                        <div class="assets-grid" id="assets-grid">
+                            <!-- Sample assets will be loaded here -->
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Stats Bar -->
-        <div class="stats-bar">
-            <div class="stats-info">
-                <div class="stats-item">
-                    <span>📊</span>
-                    <span>Total: <span id="total-assets">0</span> assets</span>
-                </div>
-                <div class="stats-item">
-                    <span>💾</span>
-                    <span>Size: <span id="total-size">0 B</span></span>
-                </div>
-            </div>
-            <div class="stats-info">
-                <div class="stats-item">
-                    <span>🖼️</span>
-                    <span id="images-total">0</span>
-                </div>
-                <div class="stats-item">
-                    <span>🎵</span>
-                    <span id="audio-total">0</span>
-                </div>
-                <div class="stats-item">
-                    <span>🎬</span>
-                    <span id="videos-total">0</span>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Context Menu -->
-    <div class="context-menu" id="context-menu" style="display: none;">
-        <div class="context-menu-item" onclick="previewAsset()">
-            <span>👁️</span>
-            <span>Preview</span>
-        </div>
-        <div class="context-menu-item" onclick="copyAssetCode()">
-            <span>📝</span>
-            <span>Copy Code</span>
-        </div>
-        <div class="context-menu-item" onclick="renameAsset()">
-            <span>✏️</span>
-            <span>Rename</span>
-        </div>
+    <div class="context-menu" id="context-menu">
+        <div class="context-menu-item" onclick="useAsset()">📝 Use in Code</div>
+        <div class="context-menu-item" onclick="previewAsset()">👁️ Preview</div>
+        <div class="context-menu-item" onclick="copyAssetPath()">📋 Copy Path</div>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" onclick="showInExplorer()">
-            <span>📂</span>
-            <span>Show in Explorer</span>
-        </div>
-        <div class="context-menu-item" onclick="copyPath()">
-            <span>📋</span>
-            <span>Copy Path</span>
-        </div>
-        <div class="context-menu-separator"></div>
-        <div class="context-menu-item" onclick="deleteAsset()" style="color: #f44747;">
-            <span>🗑️</span>
-            <span>Delete</span>
-        </div>
+        <div class="context-menu-item" onclick="deleteAsset()">🗑️ Delete</div>
     </div>
 
     <script>
-        const { ipcRenderer } = require('electron');
-        const fs = require('fs');
-        const path = require('path');
-        const os = require('os');
-        const { shell } = require('electron');
-
-        // State management
+        // Global variables
         let assets = [];
-        let filteredAssets = [];
         let selectedAssets = new Set();
+        let currentFilter = 'all';
         let currentViewMode = 'grid';
-        let currentSort = 'name';
-        let searchQuery = '';
         let contextMenuTarget = null;
-
-        // Asset folder path
-        const ASSETS_DIR = path.join(os.homedir(), '.manim_studio', 'assets');
-
-        // Supported file types
-        const SUPPORTED_TYPES = {
-            images: ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.svg'],
-            audio: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma'],
-            videos: ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.wmv', '.flv'],
-            other: ['.txt', '.md', '.json', '.xml', '.csv']
-        };
 
         // Initialize when DOM loads
         document.addEventListener('DOMContentLoaded', () => {
             console.log('📁 Assets Manager loaded');
-            initializeAssetsManager();
+            loadAssets();
             setupEventListeners();
         });
 
-        // Initialize assets manager
-        async function initializeAssetsManager() {
-            try {
-                // Ensure assets directory exists
-                if (!fs.existsSync(ASSETS_DIR)) {
-                    fs.mkdirSync(ASSETS_DIR, { recursive: true });
-                    console.log(`Created assets directory: ${ASSETS_DIR}`);
-                }
-
-                // Load assets
-                await loadAssets();
-                
-                console.log('✅ Assets Manager ready');
-            } catch (error) {
-                console.error('Assets Manager init error:', error);
-                showError(`Failed to initialize: ${error.message}`);
-            }
-        }
-
         // Setup event listeners
         function setupEventListeners() {
-            // Hide context menu on click
-            document.addEventListener('click', () => {
+            // Context menu
+            document.addEventListener('contextmenu', function(e) {
+                if (e.target.closest('.asset-item')) {
+                    e.preventDefault();
+                    contextMenuTarget = e.target.closest('.asset-item');
+                    showContextMenu(e.clientX, e.clientY);
+                }
+            });
+
+            // Close context menu
+            document.addEventListener('click', function() {
                 hideContextMenu();
             });
 
-            // Handle keyboard shortcuts
-            document.addEventListener('keydown', handleKeyboard);
+            // Drag and drop
+            const uploadArea = document.querySelector('.upload-area');
+            uploadArea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#569cd6';
+                this.style.background = '#323233';
+            });
 
-            // Handle window resize
-            window.addEventListener('resize', updateLayout);
+            uploadArea.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#3c3c3c';
+                this.style.background = 'transparent';
+            });
+
+            uploadArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#3c3c3c';
+                this.style.background = 'transparent';
+                handleFileDrop(e.dataTransfer.files);
+            });
         }
 
-        // Load assets from directory
+        // Load and display assets
         async function loadAssets() {
             try {
-                assets = [];
-                
-                if (!fs.existsSync(ASSETS_DIR)) {
-                    updateAssetsDisplay();
-                    updateStats();
-                    return;
-                }
+                // Show loading state
+                const container = document.getElementById('assets-grid');
+                container.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading assets from filesystem...
+                    </div>
+                `;
 
-                const files = fs.readdirSync(ASSETS_DIR);
-                
-                for (const file of files) {
-                    // Skip hidden files and temp files
-                    if (file.startsWith('.') || file.startsWith('temp_')) {
-                        continue;
+                if (window.electronAPI) {
+                    // Try to get real assets from the filesystem
+                    if (window.electronAPI.readWorkspaceFiles) {
+                        // Get the assets directory path
+                        const pathsResult = await window.electronAPI.getAppPaths();
+                        if (pathsResult.success) {
+                            const assetsPath = `${pathsResult.paths.home}/.manim_studio/assets`;
+                            
+                            // Read files from assets directory
+                            const result = await window.electronAPI.readWorkspaceFiles(assetsPath);
+                            if (result.success && result.files) {
+                                // Convert file list to our asset format
+                                assets = result.files.map((file, index) => ({
+                                    id: index + 1,
+                                    name: file.name,
+                                    type: getFileTypeFromName(file.name),
+                                    size: file.size ? formatFileSize(file.size) : 'Unknown',
+                                    path: file.path || `${assetsPath}/${file.name}`,
+                                    preview: null
+                                }));
+                                
+                                updateAssetsCount();
+                                renderAssets();
+                                addLog(`Loaded ${assets.length} assets from filesystem`, 'success');
+                                return;
+                            }
+                        }
                     }
-
-                    const filePath = path.join(ASSETS_DIR, file);
-                    const stats = fs.statSync(filePath);
                     
-                    if (stats.isFile()) {
-                        const ext = path.extname(file).toLowerCase();
-                        const type = getFileType(ext);
-                        
-                        assets.push({
-                            name: file,
-                            path: filePath,
-                            size: stats.size,
-                            type: type,
-                            extension: ext,
-                            modified: stats.mtime,
-                            created: stats.birthtime
-                        });
+                    // Fallback: Try alternative method
+                    if (window.electronAPI.executeCommand) {
+                        try {
+                            // Use a command to list files (cross-platform)
+                            const userHome = window.electronAPI.os?.homedir ? window.electronAPI.os.homedir() : '~';
+                            const assetsDir = `${userHome}/.manim_studio/assets`;
+                            
+                            // Try to list directory contents
+                            const result = await window.electronAPI.executeCommand(`ls "${assetsDir}" 2>/dev/null || dir "${assetsDir}" 2>nul || echo "directory_not_found"`);
+                            
+                            if (result.success && result.output && !result.output.includes('directory_not_found')) {
+                                const fileNames = result.output.trim().split('\n').filter(name => name.trim());
+                                
+                                assets = fileNames.map((fileName, index) => ({
+                                    id: index + 1,
+                                    name: fileName.trim(),
+                                    type: getFileTypeFromName(fileName),
+                                    size: 'Unknown',
+                                    path: `${assetsDir}/${fileName.trim()}`,
+                                    preview: null
+                                }));
+                                
+                                updateAssetsCount();
+                                renderAssets();
+                                addLog(`Loaded ${assets.length} assets via directory listing`, 'success');
+                                return;
+                            }
+                        } catch (dirError) {
+                            console.warn('Directory listing failed:', dirError);
+                        }
                     }
                 }
-
-                // Apply current filters and sort
-                filterAssets();
-                sortAssets();
-                updateAssetsDisplay();
-                updateStats();
                 
-                console.log(`Loaded ${assets.length} assets`);
+                // If all else fails, show empty state or create sample data
+                addLog('Could not access assets directory - showing empty state', 'warning');
+                assets = [];
+                updateAssetsCount();
+                renderAssets();
+                
             } catch (error) {
                 console.error('Error loading assets:', error);
-                showError(`Failed to load assets: ${error.message}`);
-            }
-        }
-
-        // Get file type from extension
-        function getFileType(extension) {
-            for (const [type, extensions] of Object.entries(SUPPORTED_TYPES)) {
-                if (extensions.includes(extension)) {
-                    return type;
-                }
-            }
-            return 'other';
-        }
-
-        // Filter assets based on search and type filters
-        function filterAssets() {
-            const searchTerm = document.getElementById('search-input').value.toLowerCase();
-            const showImages = document.getElementById('filter-images').checked;
-            const showAudio = document.getElementById('filter-audio').checked;
-            const showVideos = document.getElementById('filter-videos').checked;
-            const showOther = document.getElementById('filter-other').checked;
-
-            filteredAssets = assets.filter(asset => {
-                // Text search
-                const matchesSearch = asset.name.toLowerCase().includes(searchTerm);
+                addLog(`Error loading assets: ${error.message}`, 'error');
                 
-                // Type filter
-                const matchesType = 
-                    (asset.type === 'images' && showImages) ||
-                    (asset.type === 'audio' && showAudio) ||
-                    (asset.type === 'videos' && showVideos) ||
-                    (asset.type === 'other' && showOther);
-
-                return matchesSearch && matchesType;
-            });
-
-            updateAssetsDisplay();
-            updateFilterCounts();
+                // Show error state
+                const container = document.getElementById('assets-grid');
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">❌</div>
+                        <div class="empty-title">Error Loading Assets</div>
+                        <div class="empty-description">
+                            ${error.message}<br>
+                            Please check if the assets directory exists.
+                        </div>
+                    </div>
+                `;
+            }
         }
 
-        // Sort assets
-        function sortAssets() {
-            const sortBy = document.getElementById('sort-select').value;
+        function getFileTypeFromName(fileName) {
+            const ext = fileName.toLowerCase().split('.').pop();
             
-            filteredAssets.sort((a, b) => {
-                switch (sortBy) {
-                    case 'name':
-                        return a.name.localeCompare(b.name);
-                    case 'type':
-                        return a.type.localeCompare(b.type) || a.name.localeCompare(b.name);
-                    case 'size':
-                        return b.size - a.size;
-                    case 'date':
-                        return b.modified - a.modified;
-                    default:
-                        return 0;
-                }
-            });
-
-            updateAssetsDisplay();
+            if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'webp', 'svg'].includes(ext)) {
+                return 'image';
+            } else if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) {
+                return 'audio';
+            } else if (['mp4', 'avi', 'mov', 'mkv', 'webm', 'wmv'].includes(ext)) {
+                return 'video';
+            } else {
+                return 'document';
+            }
         }
 
-        // Update assets display
-        function updateAssetsDisplay() {
-            const container = document.getElementById('assets-container');
-            
+        function addLog(message, type = 'info') {
+            console.log(`[Assets Manager] ${message}`);
+            // You could also add a log display if needed
+        }
+
+        function renderAssets() {
+            const container = document.getElementById('assets-grid');
+            const filteredAssets = getFilteredAssets();
+
             if (filteredAssets.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="icon">📁</div>
-                        <div class="title">${assets.length === 0 ? 'No Assets Found' : 'No Matching Assets'}</div>
-                        <div class="description">
-                            ${assets.length === 0 
-                                ? 'Import some assets to get started. You can drag and drop files or click the Import button.'
-                                : 'Try adjusting your search or filter criteria to find assets.'
-                            }
+                        <div class="empty-icon">📁</div>
+                        <div class="empty-title">No assets found</div>
+                        <div class="empty-description">
+                            Import some assets to get started.<br>
+                            You can drag & drop files or click the import button.
                         </div>
                     </div>
                 `;
                 return;
             }
 
-            if (currentViewMode === 'grid') {
-                displayAssetsGrid();
-            } else {
-                displayAssetsList();
-            }
+            container.className = currentViewMode === 'grid' ? 'assets-grid' : 'assets-list';
+            container.innerHTML = filteredAssets.map(asset => createAssetHTML(asset)).join('');
         }
 
-        // Display assets in grid view
-        function displayAssetsGrid() {
-            const container = document.getElementById('assets-container');
-            container.innerHTML = `
-                <div class="assets-grid">
-                    ${filteredAssets.map(asset => `
-                        <div class="asset-item ${selectedAssets.has(asset.path) ? 'selected' : ''}" 
-                             data-path="${asset.path}"
-                             onclick="selectAsset('${asset.path}', event)"
-                             oncontextmenu="showContextMenu(event, '${asset.path}')"
-                             ondblclick="openAsset('${asset.path}')">
-                            
-                            <div class="asset-actions">
-                                <button class="action-btn" onclick="event.stopPropagation(); previewAsset('${asset.path}')" title="Preview">👁️</button>
-                                <button class="action-btn" onclick="event.stopPropagation(); copyAssetCode('${asset.path}')" title="Copy Code">📝</button>
-                            </div>
-                            
-                            <div class="asset-preview">
-                                ${getAssetPreview(asset)}
-                            </div>
-                            
-                            <div class="asset-info">
-                                <div class="asset-name" title="${asset.name}">${truncateText(asset.name, 15)}</div>
-                                <div class="asset-details">
-                                    <span class="asset-size">${formatFileSize(asset.size)}</span>
-                                    <span class="asset-type">${asset.type}</span>
-                                </div>
-                            </div>
+        function createAssetHTML(asset) {
+            const isSelected = selectedAssets.has(asset.id);
+            const icon = getAssetIcon(asset.type);
+            
+            return `
+                <div class="asset-item ${isSelected ? 'selected' : ''}" 
+                     data-asset-id="${asset.id}"
+                     onclick="toggleAssetSelection(${asset.id})"
+                     ondblclick="useAsset(${asset.id})">
+                    <div class="asset-preview">
+                        <div class="icon">${icon}</div>
+                        ${asset.type === 'video' ? '<div class="play-overlay">▶</div>' : ''}
+                    </div>
+                    <div class="asset-info">
+                        <div class="asset-name">${asset.name}</div>
+                        <div class="asset-details">
+                            <span class="asset-type">${asset.type}</span>
+                            <span class="asset-size">${asset.size}</span>
                         </div>
-                    `).join('')}
+                    </div>
                 </div>
             `;
         }
 
-        // Display assets in list view
-        function displayAssetsList() {
-            const container = document.getElementById('assets-container');
-            container.innerHTML = `
-                <div class="assets-list">
-                    ${filteredAssets.map(asset => `
-                        <div class="asset-item-list ${selectedAssets.has(asset.path) ? 'selected' : ''}" 
-                             data-path="${asset.path}"
-                             onclick="selectAsset('${asset.path}', event)"
-                             oncontextmenu="showContextMenu(event, '${asset.path}')"
-                             ondblclick="openAsset('${asset.path}')">
-                            
-                            <div class="asset-thumbnail">
-                                ${getAssetThumbnail(asset)}
-                            </div>
-                            
-                            <div class="asset-list-info">
-                                <div class="asset-list-name">${asset.name}</div>
-                                <div class="asset-list-details">
-                                    <span>${asset.type}</span>
-                                    <span>${formatFileSize(asset.size)}</span>
-                                    <span>${formatDate(asset.modified)}</span>
-                                </div>
-                            </div>
-                            
-                            <div class="asset-actions">
-                                <button class="action-btn" onclick="event.stopPropagation(); previewAsset('${asset.path}')" title="Preview">👁️</button>
-                                <button class="action-btn" onclick="event.stopPropagation(); copyAssetCode('${asset.path}')" title="Copy Code">📝</button>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-
-        // Get asset preview for grid view
-        function getAssetPreview(asset) {
-            if (asset.type === 'images') {
-                return `<img src="file://${asset.path}" alt="${asset.name}" />`;
-            } else if (asset.type === 'videos') {
-                return `
-                    <img src="file://${asset.path}" alt="${asset.name}" />
-                    <div class="play-overlay">▶</div>
-                `;
-            } else {
-                return `<div class="icon">${getFileIcon(asset.type, asset.extension)}</div>`;
-            }
-        }
-
-        // Get asset thumbnail for list view
-        function getAssetThumbnail(asset) {
-            if (asset.type === 'images') {
-                return `<img src="file://${asset.path}" alt="${asset.name}" />`;
-            } else {
-                return `<div class="icon">${getFileIcon(asset.type, asset.extension)}</div>`;
-            }
-        }
-
-        // Get file icon
-        function getFileIcon(type, extension) {
+        function getAssetIcon(type) {
             const icons = {
-                images: '🖼️',
+                image: '🖼️',
+                video: '🎬',
                 audio: '🎵',
-                videos: '🎬',
-                other: '📄'
+                document: '📄'
             };
-            
-            // Special cases
-            if (extension === '.gif') return '🎞️';
-            if (extension === '.svg') return '🎨';
-            if (extension === '.mp3' || extension === '.wav') return '🎵';
-            if (extension === '.mp4') return '🎬';
-            
             return icons[type] || '📄';
         }
 
-        // Update statistics
-        function updateStats() {
-            const totalAssets = assets.length;
-            const totalSize = assets.reduce((sum, asset) => sum + asset.size, 0);
-            
-            const counts = {
-                images: assets.filter(a => a.type === 'images').length,
-                audio: assets.filter(a => a.type === 'audio').length,
-                videos: assets.filter(a => a.type === 'videos').length,
-                other: assets.filter(a => a.type === 'other').length
-            };
+        function getFilteredAssets() {
+            let filtered = assets;
 
-            // Update header
-            document.getElementById('assets-count').textContent = `${totalAssets} assets`;
-            
-            // Update stats bar
-            document.getElementById('total-assets').textContent = totalAssets;
-            document.getElementById('total-size').textContent = formatFileSize(totalSize);
-            document.getElementById('images-total').textContent = counts.images;
-            document.getElementById('audio-total').textContent = counts.audio;
-            document.getElementById('videos-total').textContent = counts.videos;
-            
-            // Update filter counts
-            updateFilterCounts();
-        }
+            // Apply type filter
+            if (currentFilter !== 'all') {
+                const typeMap = {
+                    images: 'image',
+                    videos: 'video',
+                    audio: 'audio',
+                    documents: 'document'
+                };
+                filtered = filtered.filter(asset => asset.type === typeMap[currentFilter]);
+            }
 
-        // Update filter counts
-        function updateFilterCounts() {
-            const counts = {
-                images: assets.filter(a => a.type === 'images').length,
-                audio: assets.filter(a => a.type === 'audio').length,
-                videos: assets.filter(a => a.type === 'videos').length,
-                other: assets.filter(a => a.type === 'other').length
-            };
+            // Apply search filter
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            if (searchTerm) {
+                filtered = filtered.filter(asset => 
+                    asset.name.toLowerCase().includes(searchTerm)
+                );
+            }
 
-            document.getElementById('images-count').textContent = counts.images;
-            document.getElementById('audio-count').textContent = counts.audio;
-            document.getElementById('videos-count').textContent = counts.videos;
-            document.getElementById('other-count').textContent = counts.other;
+            return filtered;
         }
 
         // Asset selection
-        function selectAsset(assetPath, event) {
-            if (event.ctrlKey || event.metaKey) {
-                // Toggle selection
-                if (selectedAssets.has(assetPath)) {
-                    selectedAssets.delete(assetPath);
-                } else {
-                    selectedAssets.add(assetPath);
-                }
+        function toggleAssetSelection(assetId) {
+            if (selectedAssets.has(assetId)) {
+                selectedAssets.delete(assetId);
             } else {
-                // Single selection
-                selectedAssets.clear();
-                selectedAssets.add(assetPath);
+                selectedAssets.add(assetId);
             }
             
-            updateSelectionDisplay();
+            updateSelectionUI();
             updateDeleteButton();
         }
 
-        // Update selection display
-        function updateSelectionDisplay() {
-            document.querySelectorAll('.asset-item, .asset-item-list').forEach(item => {
-                const path = item.dataset.path;
-                if (selectedAssets.has(path)) {
+        function selectAll() {
+            const filteredAssets = getFilteredAssets();
+            filteredAssets.forEach(asset => selectedAssets.add(asset.id));
+            updateSelectionUI();
+            updateDeleteButton();
+        }
+
+        function deselectAll() {
+            selectedAssets.clear();
+            updateSelectionUI();
+            updateDeleteButton();
+        }
+
+        function updateSelectionUI() {
+            const assetItems = document.querySelectorAll('.asset-item');
+            assetItems.forEach(item => {
+                const assetId = parseInt(item.dataset.assetId);
+                if (selectedAssets.has(assetId)) {
                     item.classList.add('selected');
                 } else {
                     item.classList.remove('selected');
@@ -1291,21 +998,253 @@
             });
         }
 
-        // Update delete button state
         function updateDeleteButton() {
             const deleteBtn = document.getElementById('delete-btn');
             deleteBtn.disabled = selectedAssets.size === 0;
         }
 
-        // Context menu
-        function showContextMenu(event, assetPath) {
-            event.preventDefault();
-            contextMenuTarget = assetPath;
+        // Filter and view controls
+        function setFilter(filter) {
+            currentFilter = filter;
             
-            const menu = document.getElementById('context-menu');
-            menu.style.display = 'block';
-            menu.style.left = event.pageX + 'px';
-            menu.style.top = event.pageY + 'px';
+            // Update filter buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
+            
+            renderAssets();
+        }
+
+        function setViewMode(mode) {
+            currentViewMode = mode;
+            
+            // Update view buttons
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`${mode}-view-btn`).classList.add('active');
+            
+            renderAssets();
+        }
+
+        function filterAssets() {
+            renderAssets();
+        }
+
+        function sortAssets() {
+            const sortBy = document.getElementById('sort-select').value;
+            
+            assets.sort((a, b) => {
+                switch (sortBy) {
+                    case 'name':
+                        return a.name.localeCompare(b.name);
+                    case 'type':
+                        return a.type.localeCompare(b.type);
+                    case 'size':
+                        return parseFloat(a.size) - parseFloat(b.size);
+                    case 'date':
+                        return new Date(b.dateAdded || 0) - new Date(a.dateAdded || 0);
+                    default:
+                        return 0;
+                }
+            });
+            
+            renderAssets();
+        }
+
+        // Asset operations
+        function useAsset(assetId = null) {
+            const targetId = assetId || (contextMenuTarget ? parseInt(contextMenuTarget.dataset.assetId) : null);
+            if (!targetId) return;
+            
+            const asset = assets.find(a => a.id === targetId);
+            if (!asset) return;
+
+            const code = generateAssetCode(asset);
+            
+            // Copy to clipboard or send to main window
+            navigator.clipboard.writeText(code).then(() => {
+                showNotification(`Code for ${asset.name} copied to clipboard`, 'success');
+            }).catch(() => {
+                showNotification(`Generated code for ${asset.name}`, 'info');
+            });
+
+            hideContextMenu();
+        }
+
+        function generateAssetCode(asset) {
+            const assetType = asset.type;
+            const assetPath = asset.path;
+            
+            switch (assetType) {
+                case 'image':
+                    return `# Using image asset: ${asset.name}
+image = ImageMobject("${assetPath}")
+image.scale(2)  # Adjust size as needed
+self.add(image)`;
+                case 'audio':
+                    return `# Using audio asset: ${asset.name}
+self.add_sound("${assetPath}")`;
+                case 'video':
+                    return `# Using video asset: ${asset.name}
+# Note: Video assets are typically used as backgrounds or references`;
+                default:
+                    return `# Asset path: ${assetPath}`;
+            }
+        }
+
+        function previewAsset() {
+            if (!contextMenuTarget) return;
+            
+            const assetId = parseInt(contextMenuTarget.dataset.assetId);
+            const asset = assets.find(a => a.id === assetId);
+            
+            if (asset) {
+                showNotification(`Previewing ${asset.name}`, 'info');
+                // Here you could open a preview modal or external viewer
+            }
+            
+            hideContextMenu();
+        }
+
+        function copyAssetPath() {
+            if (!contextMenuTarget) return;
+            
+            const assetId = parseInt(contextMenuTarget.dataset.assetId);
+            const asset = assets.find(a => a.id === assetId);
+            
+            if (asset) {
+                navigator.clipboard.writeText(asset.path).then(() => {
+                    showNotification(`Path copied: ${asset.path}`, 'success');
+                });
+            }
+            
+            hideContextMenu();
+        }
+
+        function deleteAsset() {
+            if (!contextMenuTarget) return;
+            
+            const assetId = parseInt(contextMenuTarget.dataset.assetId);
+            const asset = assets.find(a => a.id === assetId);
+            
+            if (asset && confirm(`Are you sure you want to delete "${asset.name}"?`)) {
+                try {
+                    // Try to use electronAPI to delete the actual file
+                    if (window.electronAPI && window.electronAPI.deleteFile) {
+                        window.electronAPI.deleteFile(asset.path).then(function(result) {
+                            if (result && result.success) {
+                                // Remove from assets array
+                                assets = assets.filter(a => a.id !== assetId);
+                                selectedAssets.delete(assetId);
+                                updateAssetsCount();
+                                renderAssets();
+                                showNotification(`Deleted ${asset.name}`, 'success');
+                                addLog(`Successfully deleted: ${asset.name}`, 'success');
+                            } else {
+                                showNotification(`Failed to delete ${asset.name}`, 'error');
+                                addLog(`Failed to delete file: ${asset.name}`, 'error');
+                            }
+                        }).catch(function(error) {
+                            showNotification(`Error deleting ${asset.name}`, 'error');
+                            addLog(`Delete error: ${error.message}`, 'error');
+                        });
+                    } else if (window.electronAPI && window.electronAPI.executeCommand) {
+                        // Fallback to command execution
+                        const isWindows = navigator.platform.includes('Win');
+                        const deleteCmd = isWindows ? 
+                            `del /f "${asset.path}"` : 
+                            `rm -f "${asset.path}"`;
+                        
+                        window.electronAPI.executeCommand(deleteCmd).then(function(result) {
+                            if (result.success) {
+                                assets = assets.filter(a => a.id !== assetId);
+                                selectedAssets.delete(assetId);
+                                updateAssetsCount();
+                                renderAssets();
+                                showNotification(`Deleted ${asset.name}`, 'success');
+                                addLog(`Successfully deleted: ${asset.name}`, 'success');
+                            } else {
+                                showNotification(`Failed to delete ${asset.name}`, 'error');
+                                addLog(`Delete command failed: ${asset.name}`, 'error');
+                            }
+                        }).catch(function(error) {
+                            showNotification(`Error deleting ${asset.name}`, 'error');
+                            addLog(`Delete error: ${error.message}`, 'error');
+                        });
+                    } else {
+                        // Just remove from UI if no backend available
+                        assets = assets.filter(a => a.id !== assetId);
+                        selectedAssets.delete(assetId);
+                        updateAssetsCount();
+                        renderAssets();
+                        showNotification(`Removed ${asset.name} from list (file may still exist)`, 'warning');
+                        addLog(`Removed from UI: ${asset.name}`, 'warning');
+                    }
+                } catch (error) {
+                    showNotification(`Error deleting ${asset.name}`, 'error');
+                    addLog(`Delete error: ${error.message}`, 'error');
+                }
+            }
+            
+            hideContextMenu();
+        }
+
+        function deleteSelected() {
+            if (selectedAssets.size === 0) return;
+            
+            if (confirm(`Are you sure you want to delete ${selectedAssets.size} selected asset(s)?`)) {
+                let deletedCount = 0;
+                let totalCount = selectedAssets.size;
+                
+                selectedAssets.forEach(function(assetId) {
+                    const asset = assets.find(a => a.id === assetId);
+                    if (asset) {
+                        try {
+                            if (window.electronAPI && window.electronAPI.deleteFile) {
+                                window.electronAPI.deleteFile(asset.path).then(function(result) {
+                                    deletedCount++;
+                                    if (deletedCount === totalCount) {
+                                        // All deletions attempted, refresh the list
+                                        loadAssets();
+                                        showNotification(`Deleted ${deletedCount} assets`, 'success');
+                                    }
+                                }).catch(function() {
+                                    deletedCount++;
+                                    if (deletedCount === totalCount) {
+                                        loadAssets();
+                                        showNotification(`Attempted to delete ${totalCount} assets`, 'warning');
+                                    }
+                                });
+                            } else {
+                                // Just remove from UI
+                                assets = assets.filter(a => a.id !== assetId);
+                                deletedCount++;
+                            }
+                        } catch (error) {
+                            addLog(`Error deleting ${asset.name}: ${error.message}`, 'error');
+                            deletedCount++;
+                        }
+                    }
+                });
+                
+                // If no electronAPI, update UI immediately
+                if (!window.electronAPI || !window.electronAPI.deleteFile) {
+                    selectedAssets.clear();
+                    updateAssetsCount();
+                    renderAssets();
+                    showNotification(`Removed ${totalCount} assets from list`, 'warning');
+                }
+            }
+        }
+
+        // Context menu
+        function showContextMenu(x, y) {
+            const contextMenu = document.getElementById('context-menu');
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = x + 'px';
+            contextMenu.style.top = y + 'px';
         }
 
         function hideContextMenu() {
@@ -1313,359 +1252,227 @@
             contextMenuTarget = null;
         }
 
-        // View mode switching
-        function setViewMode(mode) {
-            currentViewMode = mode;
-            
-            // Update buttons
-            document.getElementById('grid-view-btn').classList.toggle('active', mode === 'grid');
-            document.getElementById('list-view-btn').classList.toggle('active', mode === 'list');
-            
-            updateAssetsDisplay();
-        }
-
-        // Import assets
-        function importAssets() {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.multiple = true;
-            input.accept = Object.values(SUPPORTED_TYPES).flat().join(',');
-            
-            input.onchange = async (event) => {
-                const files = Array.from(event.target.files);
-                await copyFilesToAssets(files);
-            };
-            
-            input.click();
-        }
-
-        // Copy files to assets directory
-        async function copyFilesToAssets(files) {
+        // File operations
+        async function importAssets() {
             try {
-                let copied = 0;
-                
-                for (const file of files) {
-                    const destPath = path.join(ASSETS_DIR, file.name);
-                    
-                    // Check if file already exists
-                    if (fs.existsSync(destPath)) {
-                        const overwrite = confirm(`File "${file.name}" already exists. Overwrite?`);
-                        if (!overwrite) continue;
+                if (window.electronAPI) {
+                    // Try to use the actual file dialog
+                    if (window.electronAPI.openFile) {
+                        const result = await window.electronAPI.openFile({
+                            properties: ['openFile', 'multiSelections'],
+                            filters: [
+                                { name: 'All Assets', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'mp3', 'wav', 'ogg', 'm4a', 'mp4', 'avi', 'mov'] },
+                                { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg'] },
+                                { name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a'] },
+                                { name: 'Videos', extensions: ['mp4', 'avi', 'mov', 'mkv'] }
+                            ]
+                        });
+                        
+                        if (result.success && result.filePaths) {
+                            showNotification(`Importing ${result.filePaths.length} file(s)...`, 'info');
+                            
+                            // Copy files to assets directory
+                            for (const filePath of result.filePaths) {
+                                try {
+                                    const fileName = filePath.split(/[/\\]/).pop();
+                                    
+                                    if (window.electronAPI.copyFileToAssets) {
+                                        const copyResult = await window.electronAPI.copyFileToAssets(filePath, fileName);
+                                        if (copyResult.success) {
+                                            addLog(`Imported: ${fileName}`, 'success');
+                                        } else {
+                                            addLog(`Failed to import: ${fileName}`, 'error');
+                                        }
+                                    }
+                                } catch (importError) {
+                                    addLog(`Error importing file: ${importError.message}`, 'error');
+                                }
+                            }
+                            
+                            // Reload assets to show the new files
+                            await loadAssets();
+                            showNotification(`Successfully imported ${result.filePaths.length} asset(s)`, 'success');
+                            return;
+                        }
                     }
                     
-                    // Copy file
-                    const buffer = await file.arrayBuffer();
-                    fs.writeFileSync(destPath, Buffer.from(buffer));
-                    copied++;
+                    // Fallback: simulate import
+                    showNotification('File dialog not available - using simulation', 'warning');
                 }
                 
-                if (copied > 0) {
-                    showSuccess(`Imported ${copied} asset(s)`);
-                    await loadAssets();
-                }
+                // Simulate asset import for demo purposes
+                showNotification('Opening file dialog...', 'info');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                const simulatedFile = {
+                    id: Date.now(),
+                    name: `imported_file_${Date.now()}.png`,
+                    type: 'image',
+                    size: '512KB',
+                    path: `~/.manim_studio/assets/imported_file_${Date.now()}.png`,
+                    preview: null
+                };
+                
+                assets.push(simulatedFile);
+                updateAssetsCount();
+                renderAssets();
+                showNotification('Simulated: Asset imported successfully', 'success');
+                
             } catch (error) {
                 console.error('Import error:', error);
-                showError(`Failed to import assets: ${error.message}`);
+                showNotification('Failed to import assets', 'error');
+                addLog(`Import error: ${error.message}`, 'error');
             }
         }
 
-        // Drag and drop handlers
-        function handleDragOver(event) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'copy';
+        function handleFileDrop(files) {
+            const fileArray = Array.from(files);
+            showNotification(`Processing ${fileArray.length} dropped file(s)...`, 'info');
+            
+            fileArray.forEach(file => {
+                const asset = {
+                    id: Date.now() + Math.random(),
+                    name: file.name,
+                    type: getFileType(file.type),
+                    size: formatFileSize(file.size),
+                    path: `/assets/${getFileType(file.type)}s/${file.name}`,
+                    preview: null
+                };
+                assets.push(asset);
+            });
+            
+            loadAssets();
+            showNotification(`Added ${fileArray.length} assets from drop`, 'success');
         }
 
-        function handleDragEnter(event) {
-            event.preventDefault();
-            event.target.closest('.upload-area').classList.add('drag-over');
+        function getFileType(mimeType) {
+            if (mimeType.startsWith('image/')) return 'image';
+            if (mimeType.startsWith('video/')) return 'video';
+            if (mimeType.startsWith('audio/')) return 'audio';
+            return 'document';
         }
 
-        function handleDragLeave(event) {
-            event.preventDefault();
-            if (!event.target.closest('.upload-area').contains(event.relatedTarget)) {
-                event.target.closest('.upload-area').classList.remove('drag-over');
-            }
+        function formatFileSize(bytes) {
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            if (bytes === 0) return '0 B';
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return parseFloat((bytes / Math.pow(1024, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
-        function handleDrop(event) {
-            event.preventDefault();
-            event.target.closest('.upload-area').classList.remove('drag-over');
-            
-            const files = Array.from(event.dataTransfer.files);
-            copyFilesToAssets(files);
-        }
-
-        // Asset operations
-        function openAsset(assetPath) {
-            shell.openPath(assetPath);
-        }
-
-        function previewAsset(assetPath = contextMenuTarget) {
-            if (!assetPath) return;
-            shell.openPath(assetPath);
-        }
-
-        function copyAssetCode(assetPath = contextMenuTarget) {
-            if (!assetPath) return;
-            
-            const asset = assets.find(a => a.path === assetPath);
-            if (!asset) return;
-            
-            let code = '';
-            const filename = asset.name;
-            
-            switch (asset.type) {
-                case 'images':
-                    code = `image = ImageMobject("${filename}")`;
-                    break;
-                case 'audio':
-                    code = `# Add to scene:\n# self.add_sound("${filename}")`;
-                    break;
-                case 'videos':
-                    code = `# Video reference: "${filename}"`;
-                    break;
-                default:
-                    code = `# Asset: "${filename}"`;
-            }
-            
-            navigator.clipboard.writeText(code);
-            showSuccess('Code copied to clipboard');
-        }
-
-        function renameAsset(assetPath = contextMenuTarget) {
-            if (!assetPath) return;
-            
-            const asset = assets.find(a => a.path === assetPath);
-            if (!asset) return;
-            
-            const newName = prompt('Enter new name:', asset.name);
-            if (!newName || newName === asset.name) return;
+        async function refreshAssets() {
+            showNotification('Refreshing assets from filesystem...', 'info');
             
             try {
-                const newPath = path.join(ASSETS_DIR, newName);
-                fs.renameSync(assetPath, newPath);
-                showSuccess('Asset renamed');
-                loadAssets();
+                // Clear current assets and reload from filesystem
+                assets = [];
+                selectedAssets.clear();
+                
+                // Reload assets from the actual filesystem
+                await loadAssets();
+                
+                showNotification(`Refreshed - found ${assets.length} assets`, 'success');
+                addLog(`Refresh completed - ${assets.length} assets found`, 'success');
             } catch (error) {
-                showError(`Failed to rename: ${error.message}`);
+                console.error('Refresh error:', error);
+                showNotification('Failed to refresh assets', 'error');
+                addLog(`Refresh error: ${error.message}`, 'error');
             }
         }
 
-        function deleteAsset(assetPath = contextMenuTarget) {
-            if (!assetPath) return;
-            
-            const asset = assets.find(a => a.path === assetPath);
-            if (!asset) return;
-            
-            if (!confirm(`Delete "${asset.name}"?`)) return;
-            
+        function openAssetsFolder() {
             try {
-                fs.unlinkSync(assetPath);
-                selectedAssets.delete(assetPath);
-                showSuccess('Asset deleted');
-                loadAssets();
-            } catch (error) {
-                showError(`Failed to delete: ${error.message}`);
-            }
-        }
-
-        function showInExplorer(assetPath = contextMenuTarget) {
-            if (!assetPath) return;
-            shell.showItemInFolder(assetPath);
-        }
-
-        function copyPath(assetPath = contextMenuTarget) {
-            if (!assetPath) return;
-            navigator.clipboard.writeText(assetPath);
-            showSuccess('Path copied to clipboard');
-        }
-
-        // Bulk operations
-        function selectAll() {
-            selectedAssets.clear();
-            filteredAssets.forEach(asset => selectedAssets.add(asset.path));
-            updateSelectionDisplay();
-            updateDeleteButton();
-        }
-
-        function deselectAll() {
-            selectedAssets.clear();
-            updateSelectionDisplay();
-            updateDeleteButton();
-        }
-
-        function deleteSelected() {
-            if (selectedAssets.size === 0) return;
-            
-            if (!confirm(`Delete ${selectedAssets.size} selected asset(s)?`)) return;
-            
-            try {
-                let deleted = 0;
-                for (const assetPath of selectedAssets) {
-                    if (fs.existsSync(assetPath)) {
-                        fs.unlinkSync(assetPath);
-                        deleted++;
+                if (window.electronAPI) {
+                    // Try to use the real folder opening functionality
+                    if (window.electronAPI.openFolder) {
+                        window.electronAPI.openFolder('~/.manim_studio/assets');
+                        showNotification('Opening assets folder...', 'info');
+                        return;
+                    } else if (window.electronAPI.showInFolder) {
+                        // Alternative method
+                        window.electronAPI.showInFolder('~/.manim_studio/assets');
+                        showNotification('Opening assets folder...', 'info');
+                        return;
+                    } else if (window.electronAPI.executeCommand) {
+                        // Use system command to open folder
+                        const userHome = '~'; // This would be resolved by the backend
+                        const assetsPath = `${userHome}/.manim_studio/assets`;
+                        
+                        // Try platform-specific commands
+                        if (navigator.platform.includes('Win')) {
+                            window.electronAPI.executeCommand(`explorer "${assetsPath}"`);
+                        } else if (navigator.platform.includes('Mac')) {
+                            window.electronAPI.executeCommand(`open "${assetsPath}"`);
+                        } else {
+                            window.electronAPI.executeCommand(`xdg-open "${assetsPath}"`);
+                        }
+                        
+                        showNotification('Opening assets folder...', 'info');
+                        return;
                     }
                 }
                 
-                selectedAssets.clear();
-                showSuccess(`Deleted ${deleted} asset(s)`);
-                loadAssets();
+                // Fallback: Just show the path
+                const assetsPath = '~/.manim_studio/assets';
+                showNotification(`Assets folder: ${assetsPath}`, 'info');
+                
+                // Try to copy path to clipboard
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(assetsPath).then(() => {
+                        showNotification('Assets folder path copied to clipboard', 'success');
+                    });
+                }
+                
             } catch (error) {
-                showError(`Failed to delete assets: ${error.message}`);
+                console.error('Error opening assets folder:', error);
+                showNotification('Cannot open assets folder automatically', 'error');
             }
-        }
-
-        // Utility functions
-        function clearSearch() {
-            document.getElementById('search-input').value = '';
-            filterAssets();
         }
 
         function clearAllAssets() {
-            if (!confirm('Delete ALL assets? This cannot be undone!')) return;
+            if (assets.length === 0) {
+                showNotification('No assets to clear', 'info');
+                return;
+            }
             
-            try {
-                const files = fs.readdirSync(ASSETS_DIR);
-                files.forEach(file => {
-                    if (!file.startsWith('.') && !file.startsWith('temp_')) {
-                        fs.unlinkSync(path.join(ASSETS_DIR, file));
-                    }
-                });
-                
+            if (confirm(`Are you sure you want to clear all ${assets.length} assets?`)) {
+                assets = [];
                 selectedAssets.clear();
-                showSuccess('All assets deleted');
                 loadAssets();
-            } catch (error) {
-                showError(`Failed to clear assets: ${error.message}`);
+                showNotification('All assets cleared', 'success');
             }
         }
 
         function generateAssetCode() {
-            if (selectedAssets.size === 0) {
-                showError('No assets selected');
+            const filteredAssets = getFilteredAssets();
+            if (filteredAssets.length === 0) {
+                showNotification('No assets to generate code for', 'warning');
                 return;
             }
             
-            let code = '# Generated asset code:\n\n';
-            
-            for (const assetPath of selectedAssets) {
-                const asset = assets.find(a => a.path === assetPath);
-                if (asset) {
-                    const filename = asset.name;
-                    switch (asset.type) {
-                        case 'images':
-                            code += `${filename.split('.')[0]}_image = ImageMobject("${filename}")\n`;
-                            break;
-                        case 'audio':
-                            code += `# self.add_sound("${filename}")\n`;
-                            break;
-                        case 'videos':
-                            code += `# Video: "${filename}"\n`;
-                            break;
-                    }
-                }
-            }
-            
-            navigator.clipboard.writeText(code);
-            showSuccess('Generated code copied to clipboard');
+            const code = filteredAssets.map(asset => generateAssetCode(asset)).join('\n\n');
+            navigator.clipboard.writeText(code).then(() => {
+                showNotification(`Generated code for ${filteredAssets.length} assets`, 'success');
+            });
         }
 
         function exportAssetsList() {
-            const list = assets.map(asset => ({
+            const assetsList = assets.map(asset => ({
                 name: asset.name,
                 type: asset.type,
-                size: formatFileSize(asset.size)
+                size: asset.size,
+                path: asset.path
             }));
             
-            const csv = [
-                'Name,Type,Size',
-                ...list.map(item => `"${item.name}","${item.type}","${item.size}"`)
-            ].join('\n');
-            
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'assets_list.csv';
-            a.click();
-            
-            URL.revokeObjectURL(url);
-            showSuccess('Assets list exported');
+            const dataStr = JSON.stringify(assetsList, null, 2);
+            navigator.clipboard.writeText(dataStr).then(() => {
+                showNotification('Assets list copied to clipboard', 'success');
+            });
         }
 
-        function refreshAssets() {
-            selectedAssets.clear();
-            loadAssets();
-            showSuccess('Assets refreshed');
-        }
-
-        function openAssetsFolder() {
-            shell.openPath(ASSETS_DIR);
-        }
-
-        // Keyboard shortcuts
-        function handleKeyboard(event) {
-            if (event.ctrlKey || event.metaKey) {
-                switch (event.key) {
-                    case 'a':
-                        event.preventDefault();
-                        selectAll();
-                        break;
-                    case 'r':
-                        event.preventDefault();
-                        refreshAssets();
-                        break;
-                    case 'f':
-                        event.preventDefault();
-                        document.getElementById('search-input').focus();
-                        break;
-                    case 'i':
-                        event.preventDefault();
-                        importAssets();
-                        break;
-                }
-            }
-            
-            if (event.key === 'Delete' && selectedAssets.size > 0) {
-                deleteSelected();
-            }
-            
-            if (event.key === 'Escape') {
-                deselectAll();
-                hideContextMenu();
-            }
-        }
-
-        // UI helpers
-        function updateLayout() {
-            // Handle responsive layout changes if needed
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-        }
-
-        function formatDate(date) {
-            return new Date(date).toLocaleDateString();
-        }
-
-        function truncateText(text, maxLength) {
-            return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
-        }
-
-        // Notification helpers
-        function showSuccess(message) {
-            showNotification(message, 'success');
-        }
-
-        function showError(message) {
-            showNotification(message, 'error');
+        // Utility functions
+        function updateAssetsCount() {
+            const count = getFilteredAssets().length;
+            document.getElementById('assets-count').textContent = `${count} asset${count !== 1 ? 's' : ''}`;
         }
 
         function showNotification(message, type = 'info') {
@@ -1692,8 +1499,6 @@
                 }
             }, 3000);
         }
-
-        console.log('✅ Assets Manager ready');
     </script>
 </body>
 </html>

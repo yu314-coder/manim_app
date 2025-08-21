@@ -28,16 +28,41 @@
 
         .container {
             display: flex;
-            height: 100vh;
+            height: calc(100vh - 24px);
+            position: relative;
         }
 
-        /* Sidebar */
+        /* Sidebar - Resizable */
         .sidebar {
             width: 300px;
+            min-width: 200px;
+            max-width: 500px;
             background: #252526;
             border-right: 1px solid #3c3c3c;
             display: flex;
             flex-direction: column;
+            position: relative;
+        }
+
+        .sidebar-resize-handle {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: transparent;
+            cursor: ew-resize;
+            z-index: 10;
+            transition: background 0.2s;
+        }
+
+        .sidebar-resize-handle:hover {
+            background: #569cd6;
+            box-shadow: 0 0 3px rgba(86, 156, 214, 0.5);
+        }
+
+        .sidebar-resize-handle:active {
+            background: #4f94cd;
         }
 
         .sidebar-header {
@@ -246,6 +271,61 @@
             align-items: center;
         }
 
+        /* Buttons */
+        .btn {
+            background: #464647;
+            border: 1px solid #464647;
+            color: #d4d4d4;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            background: #525253;
+            border-color: #569cd6;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #0e639c;
+            border-color: #0e639c;
+        }
+
+        .btn-primary:hover {
+            background: #1177bb;
+            border-color: #1177bb;
+        }
+
+        .btn-success {
+            background: #16825d;
+            border-color: #16825d;
+        }
+
+        .btn-success:hover {
+            background: #1e9973;
+            border-color: #1e9973;
+        }
+
+        .btn-secondary {
+            background: #464647;
+            border-color: #464647;
+        }
+
+        .btn-secondary:hover {
+            background: #525253;
+            border-color: #569cd6;
+        }
+
         /* Content Area */
         .content-area {
             flex: 1;
@@ -259,15 +339,22 @@
             min-width: 0;
         }
 
-        /* Monaco Editor Container (hidden until Monaco loads successfully) */
+        /* Editor and Terminal Container */
+        .editor-terminal-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Monaco Editor Container */
         .monaco-editor-container {
             flex: 1;
             min-height: 300px;
             background: #1e1e1e;
-            display: none; /* Hidden until Monaco loads */
+            display: none;
         }
 
-        /* Fallback textarea (shown by default until Monaco loads) */
+        /* Fallback textarea */
         .code-editor {
             flex: 1;
             background: #1e1e1e;
@@ -280,61 +367,12 @@
             resize: none;
             outline: none;
             min-height: 300px;
-            display: block; /* Show by default until Monaco loads */
-        }
-
-        /* Preview Section */
-        .preview-section {
-            width: 350px;
-            background: #252526;
-            border-left: 1px solid #3c3c3c;
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-        }
-
-        .preview-header {
-            background: #2d2d30;
-            padding: 10px 15px;
-            border-bottom: 1px solid #3c3c3c;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .preview-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-        }
-
-        .preview-video {
-            flex: 1;
-            background: #1e1e1e;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #969696;
-            min-height: 200px;
-            position: relative;
-        }
-
-        .video-element {
-            max-width: 100%;
-            max-height: 100%;
-            border-radius: 4px;
-        }
-
-        .preview-placeholder {
-            text-align: center;
-            color: #969696;
-            font-size: 14px;
+            display: block;
         }
 
         /* Terminal Section */
         .terminal-section {
-            height: 300px;
+            height: 220px;
             background: #1e1e1e;
             border-top: 1px solid #3c3c3c;
             display: flex;
@@ -348,7 +386,6 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 10px;
         }
 
         .terminal-title {
@@ -359,207 +396,334 @@
 
         .terminal-actions {
             display: flex;
-            gap: 8px;
-            margin-left: auto;
+            gap: 4px;
         }
 
         .terminal-output {
             flex: 1;
-            font-family: 'Cascadia Code', 'Consolas', monospace;
-            background: #0c0c0c;
-            color: #d4d4d4;
             padding: 10px;
             overflow-y: auto;
-            font-size: 13px;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 12px;
             line-height: 1.4;
+            background: #1e1e1e;
+        }
+
+        .terminal-input-container {
+            background: #1e1e1e;
+            border-top: 1px solid #3c3c3c;
+            padding: 8px 10px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 12px;
+        }
+
+        .terminal-prompt {
+            color: #569cd6;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .terminal-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #d4d4d4;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 12px;
+            outline: none;
+            padding: 2px;
+        }
+
+        .terminal-input:focus {
+            background: rgba(86, 156, 214, 0.1);
         }
 
         .terminal-line {
-            margin-bottom: 4px;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            padding: 2px 5px;
+            border-radius: 2px;
+            margin-bottom: 1px;
             word-wrap: break-word;
         }
 
-        .terminal-line.success { color: #4ec9b0; }
-        .terminal-line.error { color: #f44747; }
-        .terminal-line.warning { color: #dcdcaa; }
-        .terminal-line.info { color: #569cd6; }
+        .terminal-timestamp {
+            color: #969696;
+            font-weight: normal;
+        }
 
-        /* Buttons */
-        .btn {
-            background: #0e639c;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
+        .terminal-line.info {
+            color: #569cd6;
+        }
+
+        .terminal-line.success {
+            color: #4ec9b0;
+        }
+
+        .terminal-line.warning {
+            color: #dcdcaa;
+        }
+
+        .terminal-line.error {
+            color: #f44747;
+        }
+
+        .terminal-line.directory {
+            color: #c586c0;
+        }
+
+        /* Preview Section - Resizable */
+        .preview-section {
+            width: 350px;
+            min-width: 250px;
+            max-width: 600px;
+            background: #252526;
+            border-left: 1px solid #3c3c3c;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            resize: horizontal;
+            overflow: auto;
+        }
+
+        .preview-resize-handle {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: transparent;
+            cursor: ew-resize;
+            z-index: 10;
+        }
+
+        .preview-resize-handle:hover {
+            background: #569cd6;
+        }
+
+        .preview-header {
+            background: #2d2d30;
+            padding: 10px 15px;
+            border-bottom: 1px solid #3c3c3c;
             font-size: 12px;
+            font-weight: 600;
+            color: #cccccc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .preview-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .preview-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .preview-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #969696;
+            text-align: center;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .preview-video {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .preview-video video {
+            flex: 1;
+            width: 100%;
+            background: #000;
+            object-fit: contain;
+        }
+
+        .preview-info {
+            padding: 10px;
+            background: #2d2d30;
+            border-top: 1px solid #3c3c3c;
+            font-size: 11px;
+            color: #cccccc;
+        }
+
+        .preview-info p {
+            margin: 0 0 8px 0;
+            word-break: break-all;
+        }
+
+        .preview-info button {
+            font-size: 10px;
+            padding: 4px 8px;
+        }
+
+        /* Loading animations */
+        .loading-spinner {
+            font-size: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-bar {
+            width: 200px;
+            height: 4px;
+            background: #3c3c3c;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 10px auto;
+        }
+
+        .loading-progress {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #569cd6, #4f94cd, #569cd6);
+            background-size: 200% 100%;
+            animation: loading-slide 1.5s ease-in-out infinite;
+        }
+
+        @keyframes loading-slide {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* Status Bar */
+        .status-bar {
+            height: 24px;
+            background: #007acc;
+            color: white;
             display: flex;
             align-items: center;
-            gap: 4px;
-            transition: background 0.2s;
-        }
-
-        .btn:hover {
-            background: #1177bb;
-        }
-
-        .btn:disabled {
-            background: #404040;
-            cursor: not-allowed;
-        }
-
-        .btn-secondary {
-            background: #404040;
-        }
-
-        .btn-secondary:hover {
-            background: #505050;
-        }
-
-        .btn-success {
-            background: #0e7d20;
-        }
-
-        .btn-success:hover {
-            background: #1a9433;
-        }
-
-        .btn-primary {
-            background: #0e639c;
-        }
-
-        .btn-primary:hover {
-            background: #1177bb;
-        }
-
-        /* Status Messages */
-        .status-message {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 15px;
-            border-radius: 4px;
-            color: white;
+            padding: 0 15px;
             font-size: 12px;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
             z-index: 1000;
-            opacity: 0;
-            transform: translateX(100%);
-            transition: all 0.3s ease;
         }
 
-        .status-message.show {
-            opacity: 1;
-            transform: translateX(0);
+        .status-bar.error {
+            background: #f44747;
         }
 
-        .status-message.success {
-            background: #0e7d20;
-        }
-
-        .status-message.error {
-            background: #d83b01;
-        }
-
-        .status-message.warning {
-            background: #ffb900;
+        .status-bar.warning {
+            background: #ffcc02;
             color: #000;
         }
 
-        .status-message.info {
-            background: #0e639c;
+        .status-bar.success {
+            background: #16825d;
         }
 
         /* Scrollbars */
         ::-webkit-scrollbar {
-            width: 12px;
+            width: 8px;
+            height: 8px;
         }
 
         ::-webkit-scrollbar-track {
-            background: #2d2d30;
+            background: #1e1e1e;
         }
 
         ::-webkit-scrollbar-thumb {
             background: #464647;
-            border-radius: 6px;
+            border-radius: 4px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: #5a5a5a;
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 1200px) {
-            .preview-section {
-                width: 300px;
-            }
-        }
-
-        @media (max-width: 1000px) {
-            .sidebar {
-                width: 250px;
-            }
+            background: #525253;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Sidebar -->
-        <div class="sidebar">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
             <div class="sidebar-header">
-                <div class="logo">ðŸŽ¬</div>
-                <div class="app-title">Manim Studio Pro</div>
+                <span class="logo"> </span>
+                <span class="app-title">Manim Studio Pro</span>
             </div>
-            
-            <!-- Settings Section -->
+
+            <!-- Settings -->
             <div class="settings-section">
                 <div class="settings-title">Render Settings</div>
                 
                 <div class="setting-group">
                     <label class="setting-label">Quality</label>
-                    <select id="quality-select" class="setting-select">
-                        <option value="low_quality">Low Quality (Fast)</option>
-                        <option value="medium_quality">Medium Quality</option>
-                        <option value="high_quality" selected>High Quality</option>
-                        <option value="fourk_quality">4K Quality</option>
+                    <select id="quality-select" class="setting-select" onchange="handleQualityChange()">
+                        <option value="240p">240p (426*240)</option>
+                        <option value="360p">360p (640*360)</option>
+                        <option value="480p">480p (854*480)</option>
+                        <option value="720p" selected>720p (1280*720)</option>
+                        <option value="1080p">1080p (1920*1080)</option>
+                        <option value="1440p">1440p (2560*1440)</option>
+                        <option value="4k">4K (3840*2160)</option>
+                        <option value="8k">8K (7680*4320)</option>
+                        <option value="custom">Custom Resolution</option>
                     </select>
                 </div>
-                
+
+                <div class="setting-group" id="custom-resolution-group" style="display: none;">
+                    <label class="setting-label">Custom Resolution</label>
+                    <input type="text" id="custom-width" class="setting-select" placeholder="Width" style="width: 48%; margin-right: 4%;">
+                    <input type="text" id="custom-height" class="setting-select" placeholder="Height" style="width: 48%;">
+                </div>
+
                 <div class="setting-group">
                     <label class="setting-label">Frame Rate</label>
-                    <select id="fps-select" class="setting-select">
+                    <select id="fps-select" class="setting-select" onchange="handleFpsChange()">
                         <option value="15">15 FPS</option>
+                        <option value="24">24 FPS</option>
                         <option value="30" selected>30 FPS</option>
                         <option value="60">60 FPS</option>
+                        <option value="120">120 FPS</option>
+                        <option value="custom_fps">Custom FPS</option>
                     </select>
                 </div>
-                
-                <div class="setting-group">
-                    <label class="setting-label">Output Format</label>
-                    <select id="format-select" class="setting-select">
-                        <option value="mp4" selected>MP4</option>
-                        <option value="mov">MOV</option>
-                        <option value="gif">GIF</option>
-                        <option value="png">PNG Sequence</option>
-                    </select>
+
+                <div class="setting-group" id="custom-fps-group" style="display: none;">
+                    <label class="setting-label">Custom FPS</label>
+                    <input type="number" id="custom-fps" class="setting-select" placeholder="Enter FPS" min="1" max="240">
                 </div>
             </div>
 
-            <!-- Environment Status -->
+            <!-- Environment Check -->
             <div class="env-check">
-                <div class="settings-title">Environment Status</div>
-                <div class="env-status" id="env-status">
-                    <div class="status-indicator checking" id="status-indicator"></div>
-                    <div class="env-text" id="env-text">Checking Python environment...</div>
+                <div class="env-status">
+                    <div id="status-indicator" class="status-indicator"></div>
+                    <span id="env-text" class="env-text">Checking environment...</span>
                 </div>
             </div>
 
-            <!-- Assets Section -->
+            <!-- Assets -->
             <div class="assets-section">
                 <div class="assets-header">
                     <div class="assets-title">Assets</div>
                     <div class="assets-actions">
                         <button class="btn-icon" onclick="addAsset()" title="Add Asset">+</button>
-                        <button class="btn-icon" onclick="openAssetsManager()" title="Assets Manager">ðŸ“</button>
+                        <button class="btn-icon" onclick="openAssetsManager()" title="Assets Manager">open</button>
                     </div>
                 </div>
                 <div class="assets-grid" id="assets-grid">
@@ -573,29 +737,29 @@
             <!-- File Tab -->
             <div class="file-tab">
                 <div class="file-info">
-                    <span>ðŸ“„</span>
+                    <span></span>
                     <span id="file-name">untitled.py</span>
-                    <span id="file-dirty" style="display: none;">â—</span>
+                    <span id="file-dirty" style="display: none;"> —</span>
                 </div>
                 
                 <div class="header-actions">
                     <button class="btn btn-secondary" onclick="newFile()">
-                        <span>ðŸ“„</span> New
+                        <span>New</span> New
                     </button>
                     <button class="btn btn-secondary" onclick="openFile()">
-                        <span>ðŸ“‚</span> Open
+                        <span>Open</span> Open
                     </button>
                     <button class="btn btn-secondary" onclick="saveFile()">
-                        <span>ðŸ’¾</span> Save
+                        <span>Save</span> Save
                     </button>
                     <button class="btn btn-success" onclick="previewAnimation()" title="Quick Preview (F5)">
-                        <span>âš¡</span> Preview
+                        <span>Preview </span> Preview
                     </button>
                     <button class="btn btn-primary" onclick="renderAnimation()" title="Render Animation (F7)">
-                        <span>ðŸŽ¬</span> Render
+                        <span>Render</span> Render
                     </button>
                     <button class="btn btn-secondary" onclick="openVenvManager()">
-                        <span>ðŸ</span> VEnv
+                        <span>VEnv</span> VEnv
                     </button>
                 </div>
             </div>
@@ -604,11 +768,12 @@
             <div class="content-area">
                 <!-- Editor -->
                 <div class="editor-section">
-                    <!-- Monaco Editor Container (with IntelliSense) -->
-                    <div id="monaco-editor-container" class="monaco-editor-container"></div>
-                    
-                    <!-- Fallback Textarea (shown by default until Monaco loads) -->
-                    <textarea id="code-editor" class="code-editor"># Welcome to Manim Studio Pro!
+                    <div class="editor-terminal-container">
+                        <!-- Monaco Editor Container -->
+                        <div id="monaco-editor-container" class="monaco-editor-container"></div>
+                        
+                        <!-- Fallback Textarea -->
+                        <textarea id="code-editor" class="code-editor"># Welcome to Manim Studio Pro!
 # Loading Monaco Editor with IntelliSense...
 
 from manim import *
@@ -623,35 +788,50 @@ class MyAnimation(Scene):
         self.play(Write(text))
         self.wait()</textarea>
                     
-                    <!-- Terminal -->
-                    <div class="terminal-section">
-                        <div class="terminal-header">
-                            <div class="terminal-title">Terminal</div>
-                            <div class="terminal-actions">
-                                <button class="btn-icon" onclick="clearTerminal()" title="Clear Terminal">ðŸ—‘ï¸</button>
+                        <!-- Terminal -->
+                        <div class="terminal-section" id="terminal-section">
+                            <div class="terminal-resize-handle" id="terminal-resize-handle"></div>
+                            <div class="terminal-header">
+                                <div class="terminal-title">Terminal</div>
+                                <div class="terminal-actions">
+                                    <button class="btn-icon" onclick="clearTerminal()" title="Clear Terminal">Clear</button>
+                                </div>
                             </div>
-                        </div>
-                        <div id="terminal-output" class="terminal-output">
-                            <div class="terminal-line info">Manim Studio Pro Terminal</div>
-                            <div class="terminal-line info">Ready for commands...</div>
+                            <div id="terminal-output" class="terminal-output">
+                                <div class="terminal-line info">
+                                    <span class="terminal-timestamp">[00:00:00]</span> 
+                                    Manim Studio Pro Terminal
+                                </div>
+                                <div class="terminal-line info">
+                                    <span class="terminal-timestamp">[00:00:00]</span> 
+                                    Type "help" for Manim commands Type commands directly below
+                                </div>
+                            </div>
+                            <div class="terminal-input-container">
+                                <span class="terminal-prompt">C:\Users\euler\.manim_studio\assets> </span>
+                                <input type="text" id="terminal-input" class="terminal-input" placeholder="Type commands here..." autocomplete="off">
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Preview Panel -->
-                <div class="preview-section">
+                <div class="preview-section" id="preview-section">
+                    <div class="preview-resize-handle" id="preview-resize-handle"></div>
                     <div class="preview-header">
                         <span>Preview</span>
+                        <div class="preview-controls">
+                            <button class="btn-icon" onclick="clearPreview()" title="Clear Preview">Clear</button>
+                            <button class="btn-icon" onclick="togglePreviewSize()" title="Toggle Size"> Toggle</button>
+                        </div>
                     </div>
-                    <div class="preview-content">
-                        <div class="preview-video">
-                            <div class="preview-placeholder">
-                                ðŸŽ¬ Your animation preview will appear here
-                                <br><br>
-                                Click "Preview" to render a quick preview
-                                <br>
-                                Click "Render" for full quality output
-                            </div>
+                    <div class="preview-content" id="preview-content">
+                        <div class="preview-placeholder">
+                              Your animation preview will appear here
+                            <br><br>
+                            Click "Preview" to render a quick preview
+                            <br>
+                            Click "Render" for full quality output
                         </div>
                     </div>
                 </div>
@@ -660,120 +840,1264 @@ class MyAnimation(Scene):
     </div>
 
     <!-- Status Bar -->
-    <div class="status-bar" id="status-bar"></div>
+    <div class="status-bar" id="status-bar">Ready</div>
 
     <script>
-        // Global variables and initialization - NO DIRECT REQUIRES
-        let currentFile = null;
-        let isDirty = false;
-        let isEnvironmentSetup = false;
-        let isProcessRunning = false;
-        let terminalOutput = null;
+        // Global variables
         let monacoEditor = null;
-        let commandHistory = [];
-        let commandHistoryIndex = 0;
-        let isWaitingForCommand = false;
+        let isDirty = false;
+        let currentFilePath = null;
+        let isProcessRunning = false;
 
-        // Initialize app
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('ðŸš€ Manim Studio Pro initializing...');
+        // Handle quality and FPS selection changes
+        function handleQualityChange() {
+            const qualitySelect = document.getElementById('quality-select');
+            const customGroup = document.getElementById('custom-resolution-group');
             
-            // Check if secure APIs are available
-            if (window.electronAPI) {
-                console.log('âœ… Secure Electron APIs available');
-                initializeApp();
+            if (qualitySelect.value === 'custom') {
+                customGroup.style.display = 'block';
             } else {
-                console.error('âŒ Secure APIs not available - preload.js not loaded');
-                updateEnvironmentStatus(false, 'Secure APIs not available');
-                showStatus('Error: Secure APIs not available', 'error');
+                customGroup.style.display = 'none';
             }
-        });
+        }
 
-        function initializeApp() {
+        function handleFpsChange() {
+            const fpsSelect = document.getElementById('fps-select');
+            const customFpsGroup = document.getElementById('custom-fps-group');
+            
+            if (fpsSelect.value === 'custom_fps') {
+                customFpsGroup.style.display = 'block';
+            } else {
+                customFpsGroup.style.display = 'none';
+            }
+        }
+
+        // Get quality settings for Manim command
+        function getQualitySettings() {
+            const quality = document.getElementById('quality-select')?.value || '720p';
+            const fps = document.getElementById('fps-select')?.value || '30';
+            
+            let actualFps = fps;
+            if (fps === 'custom_fps') {
+                actualFps = document.getElementById('custom-fps')?.value || '30';
+            }
+            
+            let resolution = '';
+            if (quality === 'custom') {
+                const width = document.getElementById('custom-width')?.value || '1280';
+                const height = document.getElementById('custom-height')?.value || '720';
+                resolution = `--resolution ${width},${height}`;
+            } else {
+                // Map quality to resolution
+                const qualityMap = {
+                    '240p': '--resolution 426,240',
+                    '360p': '--resolution 640,360', 
+                    '480p': '--resolution 854,480',
+                    '720p': '--resolution 1280,720',
+                    '1080p': '--resolution 1920,1080',
+                    '1440p': '--resolution 2560,1440',
+                    '4k': '--resolution 3840,2160',
+                    '8k': '--resolution 7680,4320'
+                };
+                resolution = qualityMap[quality] || '--resolution 1280,720';
+            }
+            
+            return {
+                resolution: resolution,
+                fps: actualFps,
+                quality: quality
+            };
+        }
+
+        // Enhanced terminal command execution with direct cmd.exe usage
+        async function executeTerminalCommand(command, workingDir = null) {
             try {
-                // Start environment verification
-                startEnvironmentCheck();
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                addTerminalLine(`ðŸ”§ Executing: ${command}`, 'info');
                 
-                // Initialize Monaco Editor
-                setTimeout(initializeMonacoEditor, 2000);
+                // Use cmd.exe directly without wrapping in quotes
+                const result = await window.electronAPI.executeCommand(command, workingDir);
                 
-                // Setup global error handlers
-                window.addEventListener('error', handleGlobalError);
-                window.addEventListener('unhandledrejection', handleUnhandledRejection);
+                if (result.success) {
+                    if (result.output && result.output.trim()) {
+                        const lines = result.output.trim().split('\n');
+                        lines.forEach(line => {
+                            if (line.trim()) {
+                                addTerminalLine(line.trim(), 'success');
+                            }
+                        });
+                    }
+                    addTerminalLine('  Command completed successfully', 'success');
+                } else {
+                    if (result.error && result.error.trim()) {
+                        const errorLines = result.error.trim().split('\n');
+                        errorLines.forEach(line => {
+                            if (line.trim()) {
+                                addTerminalLine(line.trim(), 'error');
+                            }
+                        });
+                    }
+                    addTerminalLine(` Œ Command failed with code: ${result.code || 'unknown'}`, 'error');
+                }
                 
-                // Setup process listeners
-                setupProcessListeners();
+                return result;
+            } catch (error) {
+                addTerminalLine(` Œ Error: ${error.message}`, 'error');
+                return { success: false, error: error.message };
+            }
+        }
+
+        // Enhanced animation operations with full quality range and direct preview
+        async function previewAnimation() {
+            if (isProcessRunning) {
+                showStatus('Process already running', 'warning');
+                return;
+            }
+
+            try {
+                const content = getCodeContent();
+                if (!content.trim()) {
+                    showStatus('No code to preview', 'warning');
+                    return;
+                }
+
+                isProcessRunning = true;
+                const previewBtn = document.querySelector('[onclick*="previewAnimation"]');
+                if (previewBtn) {
+                    previewBtn.textContent = ' ³ Previewing...';
+                    previewBtn.disabled = true;
+                }
+
+                // Show loading in preview immediately
+                showPreviewLoading('Preparing preview...');
+                
+                addTerminalLine(' Starting preview...', 'info');
+                
+                // Get quality settings
+                const settings = getQualitySettings();
+                addTerminalLine(`  Resolution: ${settings.quality}, FPS: ${settings.fps}`, 'info');
+                
+                // Create preview content
+                const previewContent = `${content}\n\n# Auto-generated preview code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
+                
+                if (window.electronAPI) {
+                    // Get assets folder path
+                    const pathsResult = await window.electronAPI.getAppPaths();
+                    if (!pathsResult.success) {
+                        throw new Error('Could not get app paths');
+                    }
+                    
+                    const assetsPath = pathsResult.paths.home + '\\.manim_studio\\assets';
+                    const tempFileName = `preview_${Date.now()}.py`;
+                    const tempFilePath = assetsPath + '\\' + tempFileName;
+                    
+                    addTerminalLine(` Saving to assets folder: ${tempFilePath}`, 'info');
+                    
+                    // Save to assets folder
+                    const saveResult = await window.electronAPI.saveFile(tempFilePath, previewContent);
+                    if (saveResult.success) {
+                        addTerminalLine(`  File saved: ${tempFileName}`, 'success');
+                        
+                        // Update preview status
+                        showPreviewLoading('Rendering animation...');
+                        
+                        // Build Manim command with quality settings
+                        const command = `manim ${tempFileName} MyAnimation ${settings.resolution} --fps ${settings.fps}`;
+                        
+                        addTerminalLine(` Command: ${command}`, 'info');
+                        const result = await executeTerminalCommand(command, assetsPath);
+                        
+                        // Look for output video file after successful render
+                        if (result.success) {
+                            showPreviewLoading('Looking for video...');
+                            setTimeout(() => {
+                                findAndDisplayVideo(assetsPath, 'MyAnimation', 'preview', settings.quality);
+                            }, 1000);
+                        } else {
+                            showPreviewError('Preview failed - check terminal for details');
+                        }
+                    } else {
+                        throw new Error('Failed to save temporary file');
+                    }
+                }
+
+            } catch (error) {
+                console.error('Preview error:', error);
+                showStatus('Preview failed', 'error');
+                addTerminalLine(` Œ Preview error: ${error.message}`, 'error');
+                showPreviewError(`Preview error: ${error.message}`);
+                resetProcessState();
+            }
+        }
+
+        async function renderAnimation() {
+            if (isProcessRunning) {
+                showStatus('Process already running', 'warning');
+                return;
+            }
+
+            try {
+                const content = getCodeContent();
+                if (!content.trim()) {
+                    showStatus('No code to render', 'warning');
+                    return;
+                }
+
+                isProcessRunning = true;
+                const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
+                if (renderBtn) {
+                    renderBtn.textContent = ' ³ Rendering...';
+                    renderBtn.disabled = true;
+                }
+
+                // Show loading in preview immediately
+                showPreviewLoading('Preparing render...');
+                
+                addTerminalLine('  Starting render...', 'info');
+                
+                // Get quality settings
+                const settings = getQualitySettings();
+                addTerminalLine(`  Resolution: ${settings.quality}, FPS: ${settings.fps}`, 'info');
+                
+                // Create render content
+                const renderContent = `${content}\n\n# Auto-generated render code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
+                
+                if (window.electronAPI) {
+                    // Get assets folder path
+                    const pathsResult = await window.electronAPI.getAppPaths();
+                    if (!pathsResult.success) {
+                        throw new Error('Could not get app paths');
+                    }
+                    
+                    const assetsPath = pathsResult.paths.home + '\\.manim_studio\\assets';
+                    const tempFileName = `render_${Date.now()}.py`;
+                    const tempFilePath = assetsPath + '\\' + tempFileName;
+                    
+                    addTerminalLine(`Saving to assets folder: ${tempFilePath}`, 'info');
+                    
+                    // Save to assets folder
+                    const saveResult = await window.electronAPI.saveFile(tempFilePath, renderContent);
+                    if (saveResult.success) {
+                        addTerminalLine(`  File saved: ${tempFileName}`, 'success');
+                        
+                        // Update preview status
+                        showPreviewLoading('Rendering animation...');
+                        
+                        // Build Manim command with quality settings
+                        const command = `manim ${tempFileName} MyAnimation ${settings.resolution} --fps ${settings.fps}`;
+                        
+                        addTerminalLine(`Command: ${command}`, 'info');
+                        const result = await executeTerminalCommand(command, assetsPath);
+                        
+                        // Look for output video file after successful render
+                        if (result.success) {
+                            showPreviewLoading('Looking for video...');
+                            setTimeout(() => {
+                                findAndDisplayVideo(assetsPath, 'MyAnimation', 'render', settings.quality);
+                            }, 1000);
+                        } else {
+                            showPreviewError('Render failed - check terminal for details');
+                        }
+                    } else {
+                        throw new Error('Failed to save temporary file');
+                    }
+                }
+
+            } catch (error) {
+                console.error('Render error:', error);
+                showStatus('Render failed', 'error');
+                addTerminalLine(` Œ Render error: ${error.message}`, 'error');
+                showPreviewError(`Render error: ${error.message}`);
+                resetProcessState();
+            }
+        }
+
+        function resetProcessState() {
+            isProcessRunning = false;
+            
+            const previewBtn = document.querySelector('[onclick*="previewAnimation"]');
+            if (previewBtn) {
+                previewBtn.textContent = '   Preview';
+                previewBtn.disabled = false;
+            }
+            
+            const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
+            if (renderBtn) {
+                renderBtn.textContent = '  Render';
+                renderBtn.disabled = false;
+            }
+        }
+
+        // Enhanced terminal functions with real-time output streaming and direct input
+        let commandHistory = [];
+        let historyIndex = -1;
+
+        function addTerminalLine(text, type = 'info') {
+            const terminal = document.getElementById('terminal-output');
+            if (!terminal) return;
+            
+            const line = document.createElement('div');
+            line.className = `terminal-line ${type}`;
+            
+            // Add timestamp
+            const timestamp = new Date().toLocaleTimeString();
+            line.innerHTML = `<span class="terminal-timestamp">[${timestamp}]</span> ${text}`;
+            
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+            
+            // Limit terminal lines to prevent memory issues
+            const lines = terminal.children;
+            if (lines.length > 1000) {
+                terminal.removeChild(lines[0]);
+            }
+        }
+
+        function clearTerminal() {
+            const terminal = document.getElementById('terminal-output');
+            if (!terminal) return;
+            
+            terminal.innerHTML = `
+                <div class="terminal-line info">
+                    <span class="terminal-timestamp">[${new Date().toLocaleTimeString()}]</span> 
+                    Manim Studio Pro Terminal
+                </div>
+                <div class="terminal-line info">
+                    <span class="terminal-timestamp">[${new Date().toLocaleTimeString()}]</span> 
+                    Type "help" for Manim commands   Type commands directly below
+                </div>
+            `;
+        }
+
+        function setupTerminalInput() {
+            const terminalInput = document.getElementById('terminal-input');
+            if (!terminalInput) return;
+
+            terminalInput.addEventListener('keydown', async function(e) {
+                if (e.key === 'Enter') {
+                    const command = terminalInput.value.trim();
+                    if (command) {
+                        // Add command to history
+                        commandHistory.push(command);
+                        if (commandHistory.length > 100) {
+                            commandHistory = commandHistory.slice(-100);
+                        }
+                        historyIndex = commandHistory.length;
+
+                        // Show command in terminal
+                        addTerminalLine(`C:\\Users\\euler\\.manim_studio\\assets> ${command}`, 'info');
+                        
+                        // Clear input
+                        terminalInput.value = '';
+                        
+                        // Handle special commands
+                        if (command === 'help' || command === 'manim help') {
+                            showManimHelp();
+                        } else if (command === 'clear' || command === 'cls') {
+                            clearTerminal();
+                        } else {
+                            // Execute command
+                            await executeTerminalCommand(command, 'C:\\Users\\euler\\.manim_studio\\assets');
+                        }
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (historyIndex > 0) {
+                        historyIndex--;
+                        terminalInput.value = commandHistory[historyIndex];
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (historyIndex < commandHistory.length - 1) {
+                        historyIndex++;
+                        terminalInput.value = commandHistory[historyIndex];
+                    } else {
+                        historyIndex = commandHistory.length;
+                        terminalInput.value = '';
+                    }
+                } else if (e.key === 'Tab') {
+                    e.preventDefault();
+                    // Enhanced tab completion for Manim commands
+                    const value = terminalInput.value.toLowerCase();
+                    const suggestions = [
+                        'manim', 'python', 'pip', 'cd', 'dir', 'ls', 'cls', 'clear',
+                        'manim scene.py MyAnimation -p -ql',
+                        'manim scene.py MyAnimation -p -qm',
+                        'manim scene.py MyAnimation -p -qh',
+                        'pip install manim',
+                        'pip list'
+                    ];
+                    const match = suggestions.find(cmd => cmd.startsWith(value));
+                    if (match) {
+                        terminalInput.value = match;
+                    }
+                }
+            });
+        }
+
+        function showManimHelp() {
+            addTerminalLine(' Manim Command Reference:', 'success');
+            addTerminalLine('', 'info');
+            addTerminalLine('Basic Syntax:', 'warning');
+            addTerminalLine('  manim file.py ClassName [flags]', 'info');
+            addTerminalLine('', 'info');
+            addTerminalLine('Quality Flags:', 'warning');
+            addTerminalLine('  -ql  Low quality (480p, 15fps)', 'info');
+            addTerminalLine('  -qm  Medium quality (720p, 30fps)', 'info');
+            addTerminalLine('  -qh  High quality (1080p, 60fps)', 'info');
+            addTerminalLine('  -qk  4K quality (2160p, 60fps)', 'info');
+            addTerminalLine('', 'info');
+            addTerminalLine('Other Flags:', 'warning');
+            addTerminalLine('  -p   Preview (open video after render)', 'info');
+            addTerminalLine('  -s   Save last frame only', 'info');
+            addTerminalLine('  --fps N  Set frame rate to N', 'info');
+            addTerminalLine('', 'info');
+            addTerminalLine('Examples:', 'warning');
+            addTerminalLine('  manim my_scene.py MyAnimation -ql', 'success');
+            addTerminalLine('  manim my_scene.py MyAnimation -qh --fps 30', 'success');
+            addTerminalLine('  manim my_scene.py MyAnimation -p -ql  (external player)', 'success');
+            addTerminalLine('', 'info');
+            addTerminalLine('Note: Studio shows videos in preview panel automatically', 'info');
+            addTerminalLine('Type "help" anytime for this reference', 'info');
+        }
+
+        // Setup real-time process listeners using secure APIs
+        function setupProcessListeners() {
+            if (!window.electronAPI) return;
+            
+            // Listen for real-time process output
+            window.electronAPI.onProcessOutput && window.electronAPI.onProcessOutput((data) => {
+                if (data.data && data.data.trim()) {
+                    // Split multi-line output and add each line separately
+                    const lines = data.data.trim().split('\n');
+                    lines.forEach(line => {
+                        if (line.trim()) {
+                            const cleanLine = line.trim();
+                            const outputType = data.type === 'stderr' ? 'error' : 'info';
+                            addTerminalLine(cleanLine, outputType);
+                        }
+                    });
+                }
+            });
+
+            // Listen for process completion
+            window.electronAPI.onProcessComplete && window.electronAPI.onProcessComplete((result) => {
+                isProcessRunning = false;
+                resetProcessState();
+                
+                addTerminalLine(` Process finished with code: ${result.code}`, result.success ? 'success' : 'error');
+                
+                if (result.success) {
+                    showStatus('  Operation completed successfully', 'success');
+                    addTerminalLine('  Operation completed successfully', 'success');
+                    addTerminalLine(' Looking for output video...', 'info');
+                } else {
+                    showStatus(` Œ Operation failed (Code: ${result.code})`, 'error');
+                    
+                    if (result.error && result.error.trim()) {
+                        const errorLines = result.error.trim().split('\n');
+                        errorLines.forEach(line => {
+                            if (line.trim()) {
+                                addTerminalLine(line.trim(), 'error');
+                            }
+                        });
+                    }
+                }
+            });
+
+            // Listen for process start
+            window.electronAPI.onProcessStart && window.electronAPI.onProcessStart((data) => {
+                addTerminalLine(` Process started: ${data.command}`, 'info');
+            });
+        }
+
+        // Preview loading and status functions
+        function showPreviewLoading(message) {
+            const previewContent = document.getElementById('preview-content');
+            if (previewContent) {
+                previewContent.innerHTML = `
+                    <div class="preview-placeholder">
+                        <div class="loading-spinner"> ³</div>
+                        <br>
+                        ${message}
+                        <br><br>
+                        <div class="loading-bar">
+                            <div class="loading-progress"></div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function showPreviewError(message) {
+            const previewContent = document.getElementById('preview-content');
+            if (previewContent) {
+                previewContent.innerHTML = `
+                    <div class="preview-placeholder">
+                          ${message}
+                        <br><br>
+                        <button onclick="clearPreview()" class="btn btn-secondary">
+                             Try Again
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // Find and display rendered video in preview panel with enhanced search
+        async function findAndDisplayVideo(assetsPath, sceneName, type, quality) {
+            try {
+                if (!window.electronAPI) return;
+                
+                addTerminalLine(`Searching for ${type} video...`, 'info');
+                showPreviewLoading(`Looking for ${type} video...`);
+                
+                const mainVideoPath = `${assetsPath}\\media\\videos`;
+                addTerminalLine(`Main search path: ${mainVideoPath}`, 'info');
+                
+                let candidateVideos = [];
+                const now = Date.now();
+                const tenMinutesAgo = now - (10 * 60 * 1000); // Extended to 10 minutes
+                
+                try {
+                    // First, get all subdirectories in the videos folder
+                    const videosResult = await window.electronAPI.readWorkspaceFiles(mainVideoPath);
+                    
+                    if (videosResult.success && videosResult.files) {
+                        addTerminalLine(`Found ${videosResult.files.length} items in videos folder`, 'info');
+                        
+                        // Look for directories that match our patterns
+                        const possibleDirs = videosResult.files.filter(item => {
+                            // Look for preview_XXXXX or render_XXXXX folders, or scene names
+                            const name = item.name.toLowerCase();
+                            return name.includes('preview_') || 
+                                   name.includes('render_') || 
+                                   name.includes('myanimation') || 
+                                   name.includes('scene') ||
+                                   name.includes(sceneName.toLowerCase());
+                        });
+                        
+                        addTerminalLine(`Found ${possibleDirs.length} potential scene directories`, 'info');
+                        
+                        // Check each potential directory
+                        for (let dir of possibleDirs) {
+                            const dirPath = `${mainVideoPath}\\${dir.name}`;
+                            addTerminalLine(`Checking scene folder: ${dir.name}`, 'info');
+                            
+                            try {
+                                // Check quality subfolders in each scene directory
+                                const qualityDirs = ['720p30', '1080p60', '480p15', '426p15', '640x360', '1280x720', '1920x1080'];
+                                
+                                for (let qualityDir of qualityDirs) {
+                                    const qualityPath = `${dirPath}\\${qualityDir}`;
+                                    
+                                    try {
+                                        const qualityResult = await window.electronAPI.readWorkspaceFiles(qualityPath);
+                                        if (qualityResult.success && qualityResult.files) {
+                                            const mp4Files = qualityResult.files.filter(file => file.name.endsWith('.mp4'));
+                                            
+                                            for (let file of mp4Files) {
+                                                const fileTime = file.modified || now;
+                                                
+                                                if (fileTime >= tenMinutesAgo) {
+                                                    candidateVideos.push({
+                                                        name: file.name,
+                                                        path: `${qualityPath}\\${file.name}`,
+                                                        modified: fileTime,
+                                                        score: calculateVideoScore(file.name, dir.name, type, quality),
+                                                        location: qualityPath,
+                                                        folder: dir.name
+                                                    });
+                                                    
+                                                    addTerminalLine(`Found video: ${file.name} in ${dir.name}\\${qualityDir}`, 'success');
+                                                }
+                                            }
+                                        }
+                                    } catch (qualityError) {
+                                        // Quality folder doesn't exist, continue
+                                    }
+                                }
+                                
+                                // Also check directly in the scene folder (no quality subfolder)
+                                try {
+                                    const directResult = await window.electronAPI.readWorkspaceFiles(dirPath);
+                                    if (directResult.success && directResult.files) {
+                                        const mp4Files = directResult.files.filter(file => file.name.endsWith('.mp4'));
+                                        
+                                        for (let file of mp4Files) {
+                                            const fileTime = file.modified || now;
+                                            
+                                            if (fileTime >= tenMinutesAgo) {
+                                                candidateVideos.push({
+                                                    name: file.name,
+                                                    path: `${dirPath}\\${file.name}`,
+                                                    modified: fileTime,
+                                                    score: calculateVideoScore(file.name, dir.name, type, quality),
+                                                    location: dirPath,
+                                                    folder: dir.name
+                                                });
+                                                
+                                                addTerminalLine(`Found video: ${file.name} in ${dir.name}`, 'success');
+                                            }
+                                        }
+                                    }
+                                } catch (directError) {
+                                    // Continue
+                                }
+                                
+                            } catch (dirError) {
+                                addTerminalLine(`Could not access: ${dir.name}`, 'warning');
+                                continue;
+                            }
+                        }
+                    }
+                } catch (mainError) {
+                    addTerminalLine(`Could not access main videos folder: ${mainError.message}`, 'error');
+                }
+                
+                if (candidateVideos.length > 0) {
+                    // Sort by score (best match first), then by time (newest first)
+                    candidateVideos.sort((a, b) => {
+                        if (a.score !== b.score) {
+                            return b.score - a.score; // Higher score first
+                        }
+                        return b.modified - a.modified; // Newer first
+                    });
+                    
+                    const bestVideo = candidateVideos[0];
+                    addTerminalLine(`Selected video: ${bestVideo.name}`, 'success');
+                    addTerminalLine(`From folder: ${bestVideo.folder}`, 'info');
+                    addTerminalLine(`Full path: ${bestVideo.path}`, 'info');
+                    
+                    // DISPLAY THE CORRECT VIDEO
+                    displayVideoInPreview(bestVideo.path, bestVideo.name, type, quality);
+                    return;
+                } else {
+                    addTerminalLine(`No recent videos found in any scene folders`, 'warning');
+                    addTerminalLine(`Check if the video was created successfully`, 'info');
+                    
+                    const previewContent = document.getElementById('preview-content');
+                    if (previewContent) {
+                        previewContent.innerHTML = `
+                            <div class="preview-placeholder">
+                                Animation ${type} completed!
+                                <br><br>
+                                Warning: Video not found in preview
+                                <br>
+                                Expected location: media/videos/preview_XXXXX/720p30/
+                                <br><br>
+                                <button onclick="openFileLocation('${mainVideoPath}')" class="btn btn-secondary">
+                                    Open Videos Folder
+                                </button>
+                                <button onclick="openFileLocation('${assetsPath}\\\\media')" class="btn btn-secondary">
+                                    Open Media Folder
+                                </button>
+                                <button onclick="findAndDisplayVideo('${assetsPath}', 'MyAnimation', '${type}', '${quality}')" class="btn btn-secondary">
+                                    Search Again
+                                </button>
+                            </div>
+                        `;
+                    }
+                }
                 
             } catch (error) {
-                console.error('Initialization error:', error);
-                showStatus('Initialization failed', 'error');
+                console.error('Error finding video:', error);
+                addTerminalLine(`Video search error: ${error.message}`, 'warning');
+                showPreviewError(`Search error: ${error.message}`);
             }
         }
 
-        function handleGlobalError(event) {
-            console.error('Global error:', event.error);
+        // UPDATE the scoring function to handle dynamic folder names:
+        function calculateVideoScore(fileName, folderName, type, quality) {
+            let score = 0;
+            const name = fileName.toLowerCase();
+            const folder = folderName.toLowerCase();
+            
+            // High score for matching the type of operation
+            if (folder.includes(`${type}_`)) score += 100; // preview_ or render_ folder
+            
+            // Prefer files with scene name
+            if (name.includes('myanimation')) score += 50;
+            if (name.includes('scene')) score += 40;
+            
+            // Prefer files with type indicator
+            if (name.includes(type.toLowerCase())) score += 30;
+            
+            // Quality matching
+            if (name.includes(quality.toLowerCase())) score += 20;
+            if (name.includes('720p') && quality === '720p') score += 20;
+            if (name.includes('1080p') && quality === '1080p') score += 20;
+            
+            // Folder name bonuses
+            if (folder.includes('myanimation')) score += 25;
+            if (folder.includes('scene')) score += 20;
+            
+            // Penalty for obviously wrong files
+            if (name.includes('old') || name.includes('backup') || name.includes('copy')) score -= 50;
+            
+            return score;
+        }
+        // REPLACE displayVideoInPreview with this NO-EMOJI version:
+        function displayVideoInPreview(videoPath, fileName, type, quality) {
+            try {
+                const previewContent = document.getElementById('preview-content');
+                if (previewContent) {
+                    showPreviewLoading('Loading video...');
+                    
+                    // Convert Windows path to file URL
+                    const normalizedPath = videoPath.replace(/\\/g, '/');
+                    const fileUrl = `file:///${normalizedPath}`;
+                    
+                    addTerminalLine(`Loading video: ${fileName}`, 'info');
+                    
+                    setTimeout(() => {
+                        previewContent.innerHTML = `
+                            <div class="preview-video">
+                                <video 
+                                    id="preview-video-player"
+                                    controls 
+                                    muted 
+                                    loop
+                                    preload="auto"
+                                    style="width: 100%; height: auto; max-height: 100%; object-fit: contain; background: #000;"
+                                    onloadeddata="handleVideoLoaded(); autoPlayVideo();"
+                                    onerror="handleVideoError()"
+                                    onloadstart="addTerminalLine('Video loading started...', 'info')"
+                                    oncanplay="autoPlayVideo();"
+                                >
+                                    <source src="${fileUrl}" type="video/mp4">
+                                    <source src="file:///${videoPath}" type="video/mp4">
+                                    <p style="color: #f44747; text-align: center; padding: 20px;">
+                                        Video file found but cannot be displayed in browser.<br>
+                                        File: ${fileName}
+                                    </p>
+                                </video>
+                                <div class="preview-info">
+                                    <p><strong>${type}:</strong> ${fileName}</p>
+                                    <p><strong>Quality:</strong> ${quality || 'Standard'}</p>
+                                    <p><strong>Location:</strong> ${videoPath}</p>
+                                    <div style="display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap;">
+                                        <button onclick="openFileLocation('${videoPath}')" class="btn btn-secondary">
+                                            Open Folder
+                                        </button>
+                                        <button onclick="replayVideo()" class="btn btn-secondary">
+                                            Replay
+                                        </button>
+                                        <button onclick="copyVideoPath('${videoPath}')" class="btn btn-secondary">
+                                            Copy Path
+                                        </button>
+                                        <button onclick="fullscreenVideo()" class="btn btn-secondary">
+                                            Fullscreen
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Force autoplay
+                        setTimeout(() => {
+                            autoPlayVideo();
+                        }, 100);
+                        
+                    }, 500);
+                }
+            } catch (error) {
+                console.error('Error displaying video:', error);
+                addTerminalLine(`Error displaying video: ${error.message}`, 'error');
+                showPreviewError(`Display error: ${error.message}`);
+            }
         }
 
-        function handleUnhandledRejection(event) {
-            console.error('Unhandled promise rejection:', event.reason);
+        // REPLACE handleVideoLoaded and handleVideoError to remove emojis:
+        function handleVideoLoaded() {
+            addTerminalLine(`Video loaded successfully in preview panel`, 'success');
         }
 
-        // Setup process listeners using secure APIs
-        function setupProcessListeners() {
-            if (window.electronAPI) {
-                // Listen for process completion
-                window.electronAPI.onProcessComplete((result) => {
-                    isProcessRunning = false;
+        function handleVideoError() {
+            addTerminalLine(`Video file exists but browser cannot play it`, 'warning');
+            addTerminalLine(`Try opening the file location to play externally`, 'info');
+        }
+        
+        function autoPlayVideo() {
+            try {
+                const video = document.getElementById('preview-video-player');
+                if (video && video.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+                    video.muted = true; // Ensure muted for autoplay
+                    const playPromise = video.play();
                     
-                    // Reset buttons
-                    const previewBtn = document.querySelector('[onclick*="previewAnimation"]');
-                    if (previewBtn) {
-                        previewBtn.textContent = 'âš¡ Preview';
-                        previewBtn.disabled = false;
+                    if (playPromise !== undefined) {
+                        playPromise.then(() => {
+                            addTerminalLine(`▶️ Video playing automatically in preview`, 'success');
+                        }).catch(error => {
+                            console.log('Autoplay prevented, but video is ready for manual play');
+                            addTerminalLine(`🎬 Video ready - click to play`, 'info');
+                        });
                     }
-                    
-                    const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
-                    if (renderBtn) {
-                        renderBtn.textContent = 'ðŸŽ¬ Render';
-                        renderBtn.disabled = false;
-                    }
-                    
+                }
+            } catch (error) {
+                console.log('Autoplay error (this is normal):', error);
+            }
+        }
+        function handleVideoLoaded() {
+            addTerminalLine(`Video loaded successfully in preview panel`, 'success');
+        }
+
+        
+        function fullscreenVideo() {
+            const video = document.querySelector('.preview-video video');
+            if (video) {
+                if (video.requestFullscreen) {
+                    video.requestFullscreen();
+                } else if (video.webkitRequestFullscreen) {
+                    video.webkitRequestFullscreen();
+                } else if (video.msRequestFullscreen) {
+                    video.msRequestFullscreen();
+                }
+            }
+        }
+
+        function copyVideoPath(path) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(path).then(() => {
+                    addTerminalLine(` Path copied to clipboard`, 'success');
+                });
+            }
+        }
+
+        function replayVideo() {
+            const video = document.querySelector('.preview-video video');
+            if (video) {
+                video.currentTime = 0;
+                video.play();
+            }
+        }
+
+        function clearPreview() {
+            const previewContent = document.getElementById('preview-content');
+            if (previewContent) {
+                previewContent.innerHTML = `
+                    <div class="preview-placeholder">
+                        Your animation preview will appear here
+                        <br><br>
+                        Click "Preview" to render a quick preview
+                        <br>
+                        Click "Render" for full quality output
+                    </div>
+                `;
+            }
+        }
+
+        function togglePreviewSize() {
+            const previewSection = document.getElementById('preview-section');
+            if (previewSection) {
+                const currentWidth = previewSection.style.width || '350px';
+                if (currentWidth === '350px' || currentWidth === '') {
+                    previewSection.style.width = '500px';
+                } else if (currentWidth === '500px') {
+                    previewSection.style.width = '250px';
+                } else {
+                    previewSection.style.width = '350px';
+                }
+            }
+        }
+
+        // Setup resize functionality for all panels
+        function setupAllResize() {
+            setupSidebarResize();
+            setupTerminalResize();
+            setupPreviewResize();
+        }
+
+        // Setup sidebar resize functionality
+        function setupSidebarResize() {
+            const sidebar = document.getElementById('sidebar');
+            const resizeHandle = document.getElementById('sidebar-resize-handle');
+            
+            if (!sidebar || !resizeHandle) return;
+            
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+            
+            resizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = parseInt(getComputedStyle(sidebar, null).getPropertyValue('width'));
+                document.addEventListener('mousemove', handleResize);
+                document.addEventListener('mouseup', stopResize);
+                e.preventDefault();
+            });
+            
+            function handleResize(e) {
+                if (!isResizing) return;
+                
+                const width = startWidth + (e.clientX - startX);
+                const minWidth = 200;
+                const maxWidth = 500;
+                
+                if (width >= minWidth && width <= maxWidth) {
+                    sidebar.style.width = width + 'px';
+                }
+            }
+            
+            function stopResize() {
+                isResizing = false;
+                document.removeEventListener('mousemove', handleResize);
+                document.removeEventListener('mouseup', stopResize);
+            }
+        }
+
+        // Setup terminal resize functionality
+        function setupTerminalResize() {
+            const terminalSection = document.getElementById('terminal-section');
+            const resizeHandle = document.getElementById('terminal-resize-handle');
+            
+            if (!terminalSection || !resizeHandle) return;
+            
+            let isResizing = false;
+            let startY = 0;
+            let startHeight = 0;
+            
+            resizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startY = e.clientY;
+                startHeight = parseInt(getComputedStyle(terminalSection, null).getPropertyValue('height'));
+                document.addEventListener('mousemove', handleResize);
+                document.addEventListener('mouseup', stopResize);
+                e.preventDefault();
+            });
+            
+            function handleResize(e) {
+                if (!isResizing) return;
+                
+                const height = startHeight - (e.clientY - startY);
+                const minHeight = 100;
+                const maxHeight = 400;
+                
+                if (height >= minHeight && height <= maxHeight) {
+                    terminalSection.style.height = height + 'px';
+                }
+            }
+            
+            function stopResize() {
+                isResizing = false;
+                document.removeEventListener('mousemove', handleResize);
+                document.removeEventListener('mouseup', stopResize);
+            }
+        }
+
+        // Setup preview resize functionality
+        function setupPreviewResize() {
+            const previewSection = document.getElementById('preview-section');
+            const resizeHandle = document.getElementById('preview-resize-handle');
+            
+            if (!previewSection || !resizeHandle) return;
+            
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+            
+            resizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = parseInt(getComputedStyle(previewSection, null).getPropertyValue('width'));
+                document.addEventListener('mousemove', handleResize);
+                document.addEventListener('mouseup', stopResize);
+                e.preventDefault();
+            });
+            
+            function handleResize(e) {
+                if (!isResizing) return;
+                
+                const width = startWidth - (e.clientX - startX);
+                const minWidth = 250;
+                const maxWidth = 600;
+                
+                if (width >= minWidth && width <= maxWidth) {
+                    previewSection.style.width = width + 'px';
+                }
+            }
+            
+            function stopResize() {
+                isResizing = false;
+                document.removeEventListener('mousemove', handleResize);
+                document.removeEventListener('mouseup', stopResize);
+            }
+        }
+
+        async function openFileLocation(filePath) {
+            try {
+                if (window.electronAPI && window.electronAPI.showInFolder) {
+                    await window.electronAPI.showInFolder(filePath);
+                }
+            } catch (error) {
+                console.error('Error opening file location:', error);
+            }
+        }
+
+        // File management functions
+        function getCodeContent() {
+            if (monacoEditor) {
+                return monacoEditor.getValue();
+            } else {
+                const fallbackEditor = document.getElementById('code-editor');
+                return fallbackEditor ? fallbackEditor.value : '';
+            }
+        }
+
+        function setCodeContent(content) {
+            if (monacoEditor) {
+                monacoEditor.setValue(content);
+            } else {
+                const fallbackEditor = document.getElementById('code-editor');
+                if (fallbackEditor) {
+                    fallbackEditor.value = content;
+                }
+            }
+            isDirty = false;
+            updateFileTab();
+        }
+
+        function updateFileTab() {
+            try {
+                const fileName = document.getElementById('file-name');
+                const fileDirty = document.getElementById('file-dirty');
+                
+                if (fileName && fileDirty) {
+                    fileDirty.style.display = isDirty ? 'inline' : 'none';
+                }
+            } catch (error) {
+                console.error('Error updating file tab:', error);
+            }
+        }
+
+        async function newFile() {
+            try {
+                if (isDirty) {
+                    const confirmed = confirm('You have unsaved changes. Are you sure you want to create a new file?');
+                    if (!confirmed) return;
+                }
+
+                setCodeContent(getDefaultCode());
+                currentFilePath = null;
+                document.getElementById('file-name').textContent = 'untitled.py';
+                showStatus('New file created', 'success');
+            } catch (error) {
+                console.error('Error creating new file:', error);
+                showStatus('Error creating new file', 'error');
+            }
+        }
+
+        async function openFile() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                const result = await window.electronAPI.openFile();
+                if (result.success) {
+                    setCodeContent(result.content);
+                    currentFilePath = result.filePath;
+                    const fileName = result.filePath.split('\\').pop() || result.filePath.split('/').pop();
+                    document.getElementById('file-name').textContent = fileName;
+                    showStatus(`File opened: ${fileName}`, 'success');
+                } else {
+                    showStatus(`Error opening file: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error opening file:', error);
+                showStatus('Error opening file', 'error');
+            }
+        }
+
+        async function saveFile() {
+            try {
+                const content = getCodeContent();
+                
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                let result;
+                if (currentFilePath) {
+                    result = await window.electronAPI.saveFile(currentFilePath, content);
+                } else {
+                    result = await window.electronAPI.saveFileAs(content);
                     if (result.success) {
-                        showStatus('âœ… Operation completed successfully', 'success');
-                        addTerminalLine('âœ… Process completed successfully', 'success');
-                    } else {
-                        showStatus(`âŒ Operation failed (Code: ${result.code})`, 'error');
-                        addTerminalLine(`âŒ Process failed with code: ${result.code}`, 'error');
+                        currentFilePath = result.filePath;
+                        const fileName = result.filePath.split('\\').pop() || result.filePath.split('/').pop();
+                        document.getElementById('file-name').textContent = fileName;
                     }
-                });
+                }
 
-                // Listen for process output
-                window.electronAPI.onProcessOutput((data) => {
-                    const prefix = data.type === 'stderr' ? 'âŒ' : 'ðŸ“¤';
-                    addTerminalLine(`${prefix} ${data.data}`);
+                if (result.success) {
+                    isDirty = false;
+                    updateFileTab();
+                    showStatus('File saved successfully', 'success');
+                } else {
+                    showStatus(`Error saving file: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving file:', error);
+                showStatus('Error saving file', 'error');
+            }
+        }
+
+        // Window management using secure APIs
+        async function openVenvManager() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                const result = await window.electronAPI.openVenvManager();
+                if (!result.success) {
+                    showStatus(`Error opening VEnv Manager: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error opening VEnv Manager:', error);
+                showStatus('Error opening VEnv Manager', 'error');
+            }
+        }
+
+        async function openAssetsManager() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+
+                const result = await window.electronAPI.openAssetsManager();
+                if (!result.success) {
+                    showStatus(`Error opening Assets Manager: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error opening Assets Manager:', error);
+                showStatus('Error opening Assets Manager', 'error');
+            }
+        }
+
+        // Asset management using secure APIs
+        async function loadAssets() {
+            try {
+                if (!window.electronAPI) return;
+                
+                const pathsResult = await window.electronAPI.getAppPaths();
+                if (pathsResult.success) {
+                    const assetsPath = window.electronAPI.utils.join(
+                        pathsResult.paths.home, 
+                        '.manim_studio', 
+                        'assets'
+                    );
+                    
+                    const result = await window.electronAPI.readWorkspaceFiles(assetsPath);
+                    if (result.success) {
+                        displayAssets(result.files);
+                    } else {
+                        const assetsGrid = document.getElementById('assets-grid');
+                        assetsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #969696; font-size: 12px; padding: 20px;">No assets found</div>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading assets:', error);
+            }
+        }
+
+        function displayAssets(files) {
+            const assetsGrid = document.getElementById('assets-grid');
+            if (!files || files.length === 0) {
+                assetsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #969696; font-size: 12px; padding: 20px;">No assets found</div>';
+                return;
+            }
+
+            assetsGrid.innerHTML = files.map(file => {
+                const fileExt = file.name.split('.').pop().toLowerCase();
+                const isImage = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg'].includes(fileExt);
+                const isAudio = ['mp3', 'wav', 'ogg', 'm4a'].includes(fileExt);
+                
+                let icon = '';
+                if (isImage) icon = '';
+                else if (isAudio) icon = '';
+                
+                return `
+                    <div class="asset-item" onclick="insertAsset('${file.name}')" title="${file.name}">
+                        <div class="asset-icon">${icon}</div>
+                        <div class="asset-name">${file.name}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function insertAsset(assetName) {
+            const assetCode = `# Using asset: ${assetName}\n`;
+            
+            if (monacoEditor) {
+                const position = monacoEditor.getPosition();
+                monacoEditor.executeEdits('insert-asset', [{
+                    range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                    text: assetCode
+                }]);
+            } else {
+                const fallbackEditor = document.getElementById('code-editor');
+                if (fallbackEditor) {
+                    const cursorPos = fallbackEditor.selectionStart;
+                    const textBefore = fallbackEditor.value.substring(0, cursorPos);
+                    const textAfter = fallbackEditor.value.substring(cursorPos);
+                    fallbackEditor.value = textBefore + assetCode + textAfter;
+                    fallbackEditor.setSelectionRange(cursorPos + assetCode.length, cursorPos + assetCode.length);
+                }
+            }
+            
+            showStatus(`Asset inserted: ${assetName}`, 'success');
+        }
+
+        async function addAsset() {
+            try {
+                if (!window.electronAPI) {
+                    throw new Error('Electron API not available');
+                }
+                
+                const result = await window.electronAPI.openFile({
+                    properties: ['openFile'],
+                    filters: [
+                        { name: 'All Assets', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'mp3', 'wav', 'ogg', 'm4a'] },
+                        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg'] },
+                        { name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a'] }
+                    ]
                 });
+                
+                if (result.success) {
+                    showStatus(`Asset added: ${result.fileName}`, 'success');
+                    setTimeout(loadAssets, 500);
+                }
+            } catch (error) {
+                console.error('Error adding asset:', error);
+                showStatus('Error adding asset', 'error');
             }
         }
 
         // Environment check using secure APIs
         async function startEnvironmentCheck() {
-            updateEnvironmentStatus(false, 'ðŸ” Checking environment...');
+            updateEnvironmentStatus(false, ' Checking environment...');
             
             try {
                 if (window.electronAPI) {
                     const result = await window.electronAPI.getPythonInfo();
                     if (result.success && result.exists) {
-                        updateEnvironmentStatus(true, 'Environment verified and ready');
-                        addTerminalLine('Environment verified and ready', 'success');
-                        addTerminalLine('Press âš¡ Preview (F5) or ðŸŽ¬ Render (F7) to start', 'info');
+                        updateEnvironmentStatus(true, ' Environment verified and ready');
+                        addTerminalLine(' Environment verified and ready', 'success');
+                        addTerminalLine('Press    Preview (F5) or   Render (F7) to start', 'info');
+                        addTerminalLine('Tip: All panels are resizable - drag the borders!', 'info');
                     } else {
-                        updateEnvironmentStatus(false, 'Python environment not configured');
-                        addTerminalLine('Environment setup may be required', 'warning');
+                        updateEnvironmentStatus(false, '  Python environment not configured');
+                        addTerminalLine(' Environment setup may be required', 'warning');
                     }
                 }
             } catch (error) {
                 console.error('Environment check error:', error);
-                updateEnvironmentStatus(false, 'Environment check failed');
+                updateEnvironmentStatus(false, '  Environment check failed');
             }
         }
 
@@ -815,7 +2139,12 @@ class MyAnimation(Scene):
                             fontSize: 14,
                             lineNumbers: 'on',
                             wordWrap: 'on',
-                            minimap: { enabled: true }
+                            minimap: { enabled: true },
+                            suggestOnTriggerCharacters: true,
+                            quickSuggestions: true,
+                            scrollBeyondLastLine: false,
+                            renderLineHighlight: 'all',
+                            selectOnLineNumbers: true
                         });
 
                         // Setup change detection
@@ -833,7 +2162,7 @@ class MyAnimation(Scene):
                         if (fallbackEditor) fallbackEditor.style.display = 'none';
                         if (monacoContainer) monacoContainer.style.display = 'flex';
 
-                        console.log('âœ… Monaco Editor initialized');
+                        console.log('  Monaco Editor initialized');
                         
                     } catch (error) {
                         console.error('Monaco creation error:', error);
@@ -892,430 +2221,54 @@ class MyAnimation(Scene):
         self.wait()`;
         }
 
-        function getCodeContent() {
-            try {
-                if (monacoEditor && typeof monacoEditor.getValue === 'function') {
-                    return monacoEditor.getValue();
-                } else {
-                    const fallbackEditor = document.getElementById('code-editor');
-                    return fallbackEditor ? fallbackEditor.value : '';
-                }
-            } catch (error) {
-                console.error('Error getting code content:', error);
-                return '';
-            }
-        }
-
-        function setCodeContent(content) {
-            try {
-                if (monacoEditor && typeof monacoEditor.setValue === 'function') {
-                    monacoEditor.setValue(content);
-                } else {
-                    const fallbackEditor = document.getElementById('code-editor');
-                    if (fallbackEditor) {
-                        fallbackEditor.value = content;
-                    }
-                }
-            } catch (error) {
-                console.error('Error setting code content:', error);
-            }
-        }
-
-        // File operations using secure APIs
-        function newFile() {
-            try {
-                setCodeContent(getDefaultCode());
-                currentFile = null;
-                isDirty = false;
-                updateFileTab();
-            } catch (error) {
-                console.error('Error creating new file:', error);
-                showStatus('Error creating new file', 'error');
-            }
-        }
-
-        async function openFile() {
-            try {
-                if (!window.electronAPI) {
-                    throw new Error('Electron API not available');
-                }
-
-                const result = await window.electronAPI.openFile();
-                if (result && result.success) {
-                    setCodeContent(result.content);
-                    currentFile = result.filePath;
-                    isDirty = false;
-                    updateFileTab();
-                    showStatus(`Opened: ${result.fileName}`, 'success');
-                } else if (result && result.error && !result.error.includes('canceled')) {
-                    showStatus(`Error opening file: ${result.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('Error opening file:', error);
-                showStatus('Error opening file', 'error');
-            }
-        }
-
-        async function saveFile() {
-            try {
-                if (!window.electronAPI) {
-                    throw new Error('Electron API not available');
-                }
-
-                const content = getCodeContent();
-                
-                if (currentFile) {
-                    const result = await window.electronAPI.saveFile(currentFile, content);
-                    if (result && result.success) {
-                        isDirty = false;
-                        updateFileTab();
-                        showStatus('File saved', 'success');
-                    } else {
-                        showStatus(`Error saving file: ${result.error}`, 'error');
-                    }
-                } else {
-                    const result = await window.electronAPI.saveFileAs(content);
-                    if (result && result.success) {
-                        currentFile = result.filePath;
-                        isDirty = false;
-                        updateFileTab();
-                        showStatus(`Saved as: ${result.fileName}`, 'success');
-                    } else if (result && result.error && !result.error.includes('canceled')) {
-                        showStatus(`Error saving file: ${result.error}`, 'error');
-                    }
-                }
-            } catch (error) {
-                console.error('Error saving file:', error);
-                showStatus('Error saving file', 'error');
-            }
-        }
-
-        function updateFileTab() {
-            try {
-                const fileName = document.getElementById('file-name');
-                const fileDirty = document.getElementById('file-dirty');
-                
-                if (fileName) {
-                    if (currentFile && window.electronAPI) {
-                        fileName.textContent = window.electronAPI.utils.basename(currentFile);
-                    } else {
-                        fileName.textContent = 'untitled.py';
-                    }
-                }
-                
-                if (fileDirty) {
-                    fileDirty.style.display = isDirty ? 'inline' : 'none';
-                }
-            } catch (error) {
-                console.error('Error updating file tab:', error);
-            }
-        }
-
-        // Animation operations using secure APIs
-        async function previewAnimation() {
-            if (isProcessRunning) {
-                showStatus('Process already running', 'warning');
-                return;
-            }
-
-            try {
-                const content = getCodeContent();
-                if (!content.trim()) {
-                    showStatus('No code to preview', 'warning');
-                    return;
-                }
-
-                isProcessRunning = true;
-                const previewBtn = document.querySelector('[onclick*="previewAnimation"]');
-                if (previewBtn) {
-                    previewBtn.textContent = 'â³ Previewing...';
-                    previewBtn.disabled = true;
-                }
-
-                addTerminalLine('ðŸŽ¬ Starting preview...', 'info');
-                
-                // Create a temp file and execute with secure API
-                const tempContent = `${content}\n\n# Auto-generated preview code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
-                
-                // Execute using secure API (the main process will handle temp file creation)
-                if (window.electronAPI) {
-                    const command = `python -c "${tempContent.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
-                    await window.electronAPI.executeCommand(command);
-                }
-
-            } catch (error) {
-                console.error('Preview error:', error);
-                showStatus('Preview failed', 'error');
-                resetProcessState();
-            }
-        }
-
-        async function renderAnimation() {
-            if (isProcessRunning) {
-                showStatus('Process already running', 'warning');
-                return;
-            }
-
-            try {
-                const content = getCodeContent();
-                if (!content.trim()) {
-                    showStatus('No code to render', 'warning');
-                    return;
-                }
-
-                isProcessRunning = true;
-                const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
-                if (renderBtn) {
-                    renderBtn.textContent = 'â³ Rendering...';
-                    renderBtn.disabled = true;
-                }
-
-                addTerminalLine('ðŸŽ¬ Starting render...', 'info');
-                
-                // Get render settings
-                const quality = document.getElementById('quality-select').value;
-                const fps = document.getElementById('fps-select').value;
-                
-                // Create render command with quality settings
-                const renderContent = `${content}\n\n# Auto-generated render code\nif __name__ == "__main__":\n    scene = MyAnimation()\n    scene.render()`;
-                
-                if (window.electronAPI) {
-                    const command = `python -c "${renderContent.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --${quality} --fps ${fps}`;
-                    await window.electronAPI.executeCommand(command);
-                }
-
-            } catch (error) {
-                console.error('Render error:', error);
-                showStatus('Render failed', 'error');
-                resetProcessState();
-            }
-        }
-
-        function resetProcessState() {
-            isProcessRunning = false;
-            
-            const previewBtn = document.querySelector('[onclick*="previewAnimation"]');
-            if (previewBtn) {
-                previewBtn.textContent = 'âš¡ Preview';
-                previewBtn.disabled = false;
-            }
-            
-            const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
-            if (renderBtn) {
-                renderBtn.textContent = 'ðŸŽ¬ Render';
-                renderBtn.disabled = false;
-            }
-        }
-
-        // Window management using secure APIs
-        async function openVenvManager() {
-            try {
-                if (!window.electronAPI) {
-                    throw new Error('Electron API not available');
-                }
-
-                const result = await window.electronAPI.openVenvManager();
-                if (!result.success) {
-                    showStatus(`Error opening VEnv Manager: ${result.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('Error opening VEnv Manager:', error);
-                showStatus('Error opening VEnv Manager', 'error');
-            }
-        }
-
-        async function openAssetsManager() {
-            try {
-                if (!window.electronAPI) {
-                    throw new Error('Electron API not available');
-                }
-
-                const result = await window.electronAPI.openAssetsManager();
-                if (!result.success) {
-                    showStatus(`Error opening Assets Manager: ${result.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('Error opening Assets Manager:', error);
-                showStatus('Error opening Assets Manager', 'error');
-            }
-        }
-
-        // Terminal functions
-        function addTerminalLine(text, type = 'info') {
-            const terminal = document.getElementById('terminal-output');
-            const line = document.createElement('div');
-            line.className = `terminal-line ${type}`;
-            line.textContent = text;
-            terminal.appendChild(line);
-            terminal.scrollTop = terminal.scrollHeight;
-        }
-
-        function clearTerminal() {
-            const terminal = document.getElementById('terminal-output');
-            terminal.innerHTML = `
-                <div class="terminal-line info">Manim Studio Pro Terminal</div>
-                <div class="terminal-line info">Ready for commands...</div>
-            `;
-        }
-
-        // Asset management using secure APIs
-        async function loadAssets() {
-            try {
-                if (!window.electronAPI) return;
-                
-                const pathsResult = await window.electronAPI.getAppPaths();
-                if (pathsResult.success) {
-                    const assetsPath = window.electronAPI.utils.join(
-                        pathsResult.paths.home, 
-                        '.manim_studio', 
-                        'assets'
-                    );
-                    
-                    const result = await window.electronAPI.readWorkspaceFiles(assetsPath);
-                    if (result.success) {
-                        displayAssets(result.files);
-                    } else {
-                        const assetsGrid = document.getElementById('assets-grid');
-                        assetsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #969696; font-size: 12px; padding: 20px;">No assets found</div>';
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading assets:', error);
-            }
-        }
-
-        function displayAssets(files) {
-            const assetsGrid = document.getElementById('assets-grid');
-            assetsGrid.innerHTML = '';
-            
-            const mediaFiles = files.filter(file => {
-                if (file.isDirectory) return false;
-                const ext = window.electronAPI.utils.extname(file.name).toLowerCase();
-                return ['.png', '.jpg', '.jpeg', '.gif', '.wav', '.mp3', '.mp4', '.avi'].includes(ext);
-            });
-            
-            if (mediaFiles.length === 0) {
-                assetsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #969696; font-size: 12px; padding: 20px;">No assets found</div>';
-                return;
-            }
-            
-            mediaFiles.forEach(file => {
-                const ext = window.electronAPI.utils.extname(file.name).toLowerCase();
-                let icon = 'ðŸ“„';
-                
-                if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
-                    icon = 'ðŸ–¼ï¸';
-                } else if (['.wav', '.mp3'].includes(ext)) {
-                    icon = 'ðŸŽµ';
-                } else if (['.mp4', '.avi'].includes(ext)) {
-                    icon = 'ðŸŽ¬';
-                }
-                
-                const assetItem = document.createElement('div');
-                assetItem.className = 'asset-item';
-                assetItem.innerHTML = `
-                    <div class="asset-icon">${icon}</div>
-                    <div class="asset-name">${file.name}</div>
-                `;
-                
-                assetItem.addEventListener('click', () => insertAssetCode(file.name));
-                assetsGrid.appendChild(assetItem);
-            });
-        }
-
-        function insertAssetCode(filename) {
-            try {
-                const ext = window.electronAPI.utils.extname(filename).toLowerCase();
-                let code = '';
-                
-                if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
-                    code = `ImageMobject("${filename}")`;
-                } else if (['.wav', '.mp3'].includes(ext)) {
-                    code = `# Audio file: ${filename}`;
-                }
-                
-                if (monacoEditor && typeof monacoEditor.getValue === 'function') {
-                    const selection = monacoEditor.getSelection();
-                    const range = new monaco.Range(
-                        selection.startLineNumber,
-                        selection.startColumn,
-                        selection.endLineNumber,
-                        selection.endColumn
-                    );
-                    monacoEditor.executeEdits('', [{
-                        range: range,
-                        text: code,
-                        forceMoveMarkers: true
-                    }]);
-                    monacoEditor.focus();
-                } else {
-                    const editor = document.getElementById('code-editor');
-                    if (editor) {
-                        const start = editor.selectionStart;
-                        const end = editor.selectionEnd;
-                        const value = editor.value;
-                        editor.value = value.substring(0, start) + code + value.substring(end);
-                        editor.focus();
-                    }
-                }
-            } catch (error) {
-                console.error('Error inserting asset code:', error);
-            }
-        }
-
-        function addAsset() {
-            showStatus('Asset addition feature coming soon', 'info');
-        }
-
-        // Status message system
+        // Status bar functions
         function showStatus(message, type = 'info') {
-            const statusMessage = document.createElement('div');
-            statusMessage.className = `status-message ${type}`;
-            statusMessage.textContent = message;
-            document.body.appendChild(statusMessage);
-            
-            setTimeout(() => {
-                statusMessage.classList.add('show');
-            }, 100);
-            
-            setTimeout(() => {
-                statusMessage.classList.remove('show');
-                setTimeout(() => {
-                    if (document.body.contains(statusMessage)) {
-                        document.body.removeChild(statusMessage);
-                    }
-                }, 300);
-            }, 3000);
+            const statusBar = document.getElementById('status-bar');
+            if (statusBar) {
+                statusBar.textContent = message;
+                statusBar.className = `status-bar ${type}`;
+                
+                // Auto-clear after 5 seconds for non-error messages
+                if (type !== 'error') {
+                    setTimeout(() => {
+                        statusBar.textContent = 'Ready';
+                        statusBar.className = 'status-bar';
+                    }, 5000);
+                }
+            }
         }
 
-        // Global file operation functions for backwards compatibility
-        window.saveFileToSystem = async function(content) {
-            try {
-                if (!window.electronAPI) {
-                    throw new Error('Electron API not available');
+        // Setup file management
+        function setupFileManagement() {
+            // Global functions for Electron API
+            window.saveFileToSystem = async function(content, fileName) {
+                try {
+                    if (!window.electronAPI) {
+                        throw new Error('Electron API not available');
+                    }
+                    const result = await window.electronAPI.saveFileAs(content, fileName);
+                    return { success: result.success, filePath: result.filePath, error: result.error };
+                } catch (error) {
+                    return { success: false, error: error.message };
                 }
-                const result = await window.electronAPI.saveFileAs(content);
-                return result;
-            } catch (error) {
-                return { success: false, error: error.message };
-            }
-        };
+            };
 
-        window.loadFileFromSystem = async function() {
-            try {
-                if (!window.electronAPI) {
-                    throw new Error('Electron API not available');
+            window.loadFileFromSystem = async function() {
+                try {
+                    if (!window.electronAPI) {
+                        throw new Error('Electron API not available');
+                    }
+                    const result = await window.electronAPI.openFile();
+                    if (result.success) {
+                        return { success: true, content: result.content, filePath: result.filePath };
+                    } else {
+                        return { success: false, error: result.error };
+                    }
+                } catch (error) {
+                    return { success: false, error: error.message };
                 }
-                const result = await window.electronAPI.openFile();
-                if (result.success) {
-                    return { success: true, content: result.content, filePath: result.filePath };
-                } else {
-                    return { success: false, error: result.error };
-                }
-            } catch (error) {
-                return { success: false, error: error.message };
-            }
-        };
+            };
+        }
 
         // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {
@@ -1352,13 +2305,37 @@ class MyAnimation(Scene):
             }
         });
 
-        // Load assets on startup
-        setTimeout(loadAssets, 1000);
+        // Initialize application on load
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('ðŸš€ Manim Studio Pro initializing...');
+            
+            // Setup process listeners for real-time output
+            setupProcessListeners();
+            
+            // Setup terminal input
+            setupTerminalInput();
+            
+            // Setup resize functionality for all panels
+            setupAllResize();
+            
+            // Initialize Monaco Editor
+            initializeMonacoEditor();
+            
+            // Start environment check
+            await startEnvironmentCheck();
+            
+            // Setup file management
+            setupFileManagement();
+            
+            // Load assets
+            setTimeout(loadAssets, 1000);
+            
+            console.log('  Manim Studio Pro initialized');
+        });
 
         // Load renderer.js for additional functionality - safe fallback
         try {
             if (window.electronAPI) {
-                // Renderer.js will use secure APIs if available
                 console.log('Secure mode: renderer.js will use electronAPI');
             }
         } catch (error) {

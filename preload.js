@@ -57,9 +57,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Terminal operations
-    async executeCommand(command, cwd) {
+    async executeCommand(command, cwd, tempFileContent) {
         try {
-            const result = await ipcRenderer.invoke('execute-terminal-command', command, cwd);
+            const result = await ipcRenderer.invoke('execute-terminal-command', command, cwd, tempFileContent);
             return result;
         } catch (error) {
             return { success: false, error: error.message };
@@ -85,10 +85,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
     },
 
+    // Dialog operations
+    showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
+    showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
+    selectFolder: () => ipcRenderer.invoke('select-folder'),
+
+    // System operations
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+    showItemInFolder: (path) => ipcRenderer.invoke('show-item-in-folder', path),
+
     // Workspace operations
     async readWorkspaceFiles(dirPath) {
         try {
             const result = await ipcRenderer.invoke('read-workspace-files', dirPath);
+            return result;
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    // Assets management
+    addAsset: (options) => ipcRenderer.invoke('add-asset', options),
+    listFiles: (dirPath) => ipcRenderer.invoke('list-files', dirPath),
+
+    // Alternative function names for compatibility
+    async listDirectoryFiles(dirPath) {
+        try {
+            const result = await ipcRenderer.invoke('list-files', dirPath);
             return result;
         } catch (error) {
             return { success: false, error: error.message };
@@ -128,6 +151,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     async setupEnvironment() {
         try {
             const result = await ipcRenderer.invoke('setup-environment');
+            return result;
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    // NEW: Auto-create environment
+    async autoCreateEnvironment() {
+        try {
+            const result = await ipcRenderer.invoke('auto-create-environment');
             return result;
         } catch (error) {
             return { success: false, error: error.message };
