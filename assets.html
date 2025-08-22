@@ -1256,9 +1256,9 @@ self.add_sound("${assetPath}")`;
         async function importAssets() {
             try {
                 if (window.electronAPI) {
-                    // Try to use the actual file dialog
-                    if (window.electronAPI.openFile) {
-                        const result = await window.electronAPI.openFile({
+                    // Use open dialog to select files
+                    if (window.electronAPI.showOpenDialog) {
+                        const result = await window.electronAPI.showOpenDialog({
                             properties: ['openFile', 'multiSelections'],
                             filters: [
                                 { name: 'All Assets', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'mp3', 'wav', 'ogg', 'm4a', 'mp4', 'avi', 'mov'] },
@@ -1268,7 +1268,7 @@ self.add_sound("${assetPath}")`;
                             ]
                         });
 
-                        if (result.success && result.filePaths) {
+                        if (!result.canceled && result.filePaths?.length) {
                             showNotification(`Importing ${result.filePaths.length} file(s)...`, 'info');
 
                             // Determine assets directory
@@ -1280,13 +1280,15 @@ self.add_sound("${assetPath}")`;
                                 }
                             }
 
+                            const sep = assetsPath && assetsPath.includes('\\') ? '\\' : '/';
+
                             // Copy files to assets directory
                             for (const filePath of result.filePaths) {
                                 try {
                                     const fileName = filePath.split(/[/\\]/).pop();
 
                                     if (assetsPath && window.electronAPI.copyFile) {
-                                        const destPath = `${assetsPath}/${fileName}`;
+                                        const destPath = assetsPath + sep + fileName;
                                         const copyResult = await window.electronAPI.copyFile(filePath, destPath);
                                         if (copyResult.success) {
                                             addLog(`Imported: ${fileName}`, 'success');
@@ -1344,9 +1346,17 @@ self.add_sound("${assetPath}")`;
                     const pathsResult = await window.electronAPI.getAppPaths();
                     if (pathsResult.success) {
                         const assetsPath = pathsResult.paths.assets;
+                        const sep = assetsPath.includes('\\') ? '\\' : '/';
                         for (const file of fileArray) {
-                            const destPath = `${assetsPath}/${file.name}`;
-                            await window.electronAPI.copyFile(file.path, destPath);
+                            if (file.path) {
+                                const destPath = assetsPath + sep + file.name;
+                                const copyResult = await window.electronAPI.copyFile(file.path, destPath);
+                                if (!copyResult.success) {
+                                    addLog(`Failed to import: ${file.name}`, 'error');
+                                }
+                            } else {
+                                addLog(`No path for dropped file: ${file.name}`, 'error');
+                            }
                         }
                         await loadAssets();
                         showNotification(`Added ${fileArray.length} assets from drop`, 'success');
