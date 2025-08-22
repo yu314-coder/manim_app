@@ -452,6 +452,16 @@ function setupIPCHandlers() {
         }
     });
 
+    ipcMain.handle('copy-file', async (event, sourcePath, destPath) => {
+        try {
+            await fs.promises.copyFile(sourcePath, destPath);
+            return { success: true };
+        } catch (error) {
+            console.error('❌ File copy error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // Dialog operations
     ipcMain.handle('show-save-dialog', async (event, options) => {
         try {

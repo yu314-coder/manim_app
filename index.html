@@ -1067,22 +1067,6 @@ class MyAnimation(Scene):
                     return;
                 }
 
-                // Ask user where to save the rendered video
-                const saveResult = await window.electronAPI.showSaveDialog({
-                    title: 'Save Rendered Video',
-                    defaultPath: 'MyAnimation.mp4',
-                    filters: [{ name: 'Video Files', extensions: ['mp4'] }]
-                });
-                if (saveResult.canceled || !saveResult.filePath) {
-                    addTerminalLine('Render canceled: no save location selected', 'warning');
-                    showStatus('Render canceled', 'warning');
-                    return;
-                }
-
-                const outputPath = saveResult.filePath;
-                const outputDir = window.electronAPI.utils.dirname(outputPath);
-                const outputFile = window.electronAPI.utils.basename(outputPath);
-
                 isProcessRunning = true;
                 const renderBtn = document.querySelector('[onclick*="renderAnimation"]');
                 if (renderBtn) {
@@ -1123,8 +1107,8 @@ class MyAnimation(Scene):
                         // Update preview status
                         showPreviewLoading('Rendering animation...');
 
-                        // Build Manim command with quality settings and output path
-                        const command = `manim ${tempFileName} MyAnimation ${settings.resolution} --fps ${settings.fps} -o "${outputFile}" --output_directory "${outputDir}"`;
+                        // Build Manim command with quality settings (output to default assets folder)
+                        const command = `manim ${tempFileName} MyAnimation ${settings.resolution} --fps ${settings.fps}`;
 
                         addTerminalLine(`Command: ${command}`, 'info');
                         let result;
@@ -1135,13 +1119,40 @@ class MyAnimation(Scene):
                         }
 
                         if (result.success) {
-                            showPreviewLoading('Render complete');
-                            const previewContent = document.getElementById('preview-content');
-                            if (previewContent) {
-                                previewContent.innerHTML = `<div class="preview-placeholder">Render saved to:<br>${outputPath}</div>`;
+                            // Find generated video
+                            const videoPath = await findAndDisplayVideo(assetsPath, 'MyAnimation', 'render', settings.quality, false);
+                            if (videoPath) {
+                                const saveResult = await window.electronAPI.showSaveDialog({
+                                    title: 'Save Rendered Video',
+                                    defaultPath: 'MyAnimation.mp4',
+                                    filters: [{ name: 'Video Files', extensions: ['mp4'] }]
+                                });
+                                if (!saveResult.canceled && saveResult.filePath) {
+                                    const copyResult = await window.electronAPI.copyFile(videoPath, saveResult.filePath);
+                                    if (copyResult.success) {
+                                        await window.electronAPI.deleteFile(videoPath);
+                                        showPreviewLoading('Render complete');
+                                        const previewContent = document.getElementById('preview-content');
+                                        if (previewContent) {
+                                            previewContent.innerHTML = `<div class="preview-placeholder">Render saved to:<br>${saveResult.filePath}</div>`;
+                                        }
+                                        addTerminalLine(`Render saved to: ${saveResult.filePath}`, 'success');
+                                        window.electronAPI.showItemInFolder(saveResult.filePath);
+                                    } else {
+                                        showPreviewError('Failed to save rendered video');
+                                    }
+                                } else {
+                                    showPreviewLoading('Render complete');
+                                    const previewContent = document.getElementById('preview-content');
+                                    if (previewContent) {
+                                        previewContent.innerHTML = `<div class="preview-placeholder">Render complete. File at:<br>${videoPath}</div>`;
+                                    }
+                                    addTerminalLine(`Render completed. File at: ${videoPath}`, 'warning');
+                                    window.electronAPI.showItemInFolder(videoPath);
+                                }
+                            } else {
+                                showPreviewError('Render complete but video not found');
                             }
-                            addTerminalLine(`Render saved to: ${outputPath}`, 'success');
-                            window.electronAPI.showItemInFolder(outputPath);
                         } else {
                             showPreviewError('Render failed - check terminal for details');
                         }
@@ -1392,12 +1403,14 @@ class MyAnimation(Scene):
         }
 
         // Find and display rendered video in preview panel with enhanced search
-        async function findAndDisplayVideo(assetsPath, sceneName, type, quality) {
+        async function findAndDisplayVideo(assetsPath, sceneName, type, quality, display = true) {
             try {
-                if (!window.electronAPI) return;
-                
+                if (!window.electronAPI) return null;
+
                 addTerminalLine(`Searching for ${type} video...`, 'info');
-                showPreviewLoading(`Looking for ${type} video...`);
+                if (display) {
+                    showPreviewLoading(`Looking for ${type} video...`);
+                }
                 
                 const mainVideoPath = `${assetsPath}\\media\\videos`;
                 addTerminalLine(`Main search path: ${mainVideoPath}`, 'info');
@@ -1515,42 +1528,50 @@ class MyAnimation(Scene):
                     addTerminalLine(`Selected video: ${bestVideo.name}`, 'success');
                     addTerminalLine(`From folder: ${bestVideo.folder}`, 'info');
                     addTerminalLine(`Full path: ${bestVideo.path}`, 'info');
-                    
-                    // DISPLAY THE CORRECT VIDEO
-                    displayVideoInPreview(bestVideo.path, bestVideo.name, type, quality);
-                    return;
+
+                    if (display) {
+                        // DISPLAY THE CORRECT VIDEO
+                        displayVideoInPreview(bestVideo.path, bestVideo.name, type, quality);
+                    }
+                    return bestVideo.path;
                 } else {
                     addTerminalLine(`No recent videos found in any scene folders`, 'warning');
                     addTerminalLine(`Check if the video was created successfully`, 'info');
-                    
-                    const previewContent = document.getElementById('preview-content');
-                    if (previewContent) {
-                        previewContent.innerHTML = `
-                            <div class="preview-placeholder">
-                                Animation ${type} completed!
-                                <br><br>
-                                Warning: Video not found in preview
-                                <br>
-                                Expected location: media/videos/preview_XXXXX/720p30/
-                                <br><br>
-                                <button onclick="openFileLocation('${mainVideoPath}')" class="btn btn-secondary">
-                                    Open Videos Folder
-                                </button>
-                                <button onclick="openFileLocation('${assetsPath}\\\\media')" class="btn btn-secondary">
-                                    Open Media Folder
-                                </button>
-                                <button onclick="findAndDisplayVideo('${assetsPath}', 'MyAnimation', '${type}', '${quality}')" class="btn btn-secondary">
-                                    Search Again
-                                </button>
-                            </div>
-                        `;
+
+                    if (display) {
+                        const previewContent = document.getElementById('preview-content');
+                        if (previewContent) {
+                            previewContent.innerHTML = `
+                                <div class="preview-placeholder">
+                                    Animation ${type} completed!
+                                    <br><br>
+                                    Warning: Video not found in preview
+                                    <br>
+                                    Expected location: media/videos/preview_XXXXX/720p30/
+                                    <br><br>
+                                    <button onclick="openFileLocation('${mainVideoPath}')" class="btn btn-secondary">
+                                        Open Videos Folder
+                                    </button>
+                                    <button onclick="openFileLocation('${assetsPath}\\\\media')" class="btn btn-secondary">
+                                        Open Media Folder
+                                    </button>
+                                    <button onclick="findAndDisplayVideo('${assetsPath}', 'MyAnimation', '${type}', '${quality}')" class="btn btn-secondary">
+                                        Search Again
+                                    </button>
+                                </div>
+                            `;
+                        }
                     }
+                    return null;
                 }
-                
+
             } catch (error) {
                 console.error('Error finding video:', error);
                 addTerminalLine(`Video search error: ${error.message}`, 'warning');
-                showPreviewError(`Search error: ${error.message}`);
+                if (display) {
+                    showPreviewError(`Search error: ${error.message}`);
+                }
+                return null;
             }
         }
 

@@ -44,6 +44,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
     },
 
+    async copyFile(sourcePath, destPath) {
+        try {
+            const result = await ipcRenderer.invoke('copy-file', sourcePath, destPath);
+            return result;
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    },
+
     async saveFileAs(content, options = {}) {
         try {
             const result = await ipcRenderer.invoke('show-save-dialog', options);
