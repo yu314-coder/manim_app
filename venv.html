@@ -733,16 +733,8 @@
                                 active: true
                             };
                             addLog(`Found virtual environment: ${venvName}`, 'success');
-                        } else if (result.pythonPath) {
-                            currentEnvironment = {
-                                name: 'system_python',
-                                path: 'System Python Installation',
-                                pythonPath: result.pythonPath,
-                                active: true
-                            };
-                            addLog('Using system Python - no virtual environment detected', 'warning');
                         } else {
-                            addLog('No Python installation found', 'error');
+                            addLog('No virtual environment detected', 'warning');
                             currentEnvironment = null;
                         }
                         updateEnvironmentStatus();
@@ -876,11 +868,6 @@
 
             let statusIcon = '✅';
             let statusText = 'Virtual Environment';
-            
-            if (currentEnvironment.name === 'system_python') {
-                statusIcon = '🐍';
-                statusText = 'System Python (No VEnv)';
-            }
 
             container.innerHTML = `
                 <div class="env-item active">

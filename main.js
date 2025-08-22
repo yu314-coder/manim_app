@@ -211,6 +211,15 @@ function createWindow() {
         }
     });
 
+    // Ensure assets directory exists on startup
+    try {
+        const assetsDir = path.join(os.homedir(), '.manim_studio', 'assets');
+        fs.mkdirSync(assetsDir, { recursive: true });
+        console.log('📁 Assets directory ready:', assetsDir);
+    } catch (err) {
+        console.error('❌ Failed to create assets directory:', err);
+    }
+
     // Remote module removed for security
 
     mainWindow.loadFile('index.html');
@@ -413,6 +422,7 @@ function setupIPCHandlers() {
     ipcMain.handle('save-file', async (event, filePath, content) => {
         try {
             console.log('💾 Saving file:', filePath);
+            await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
             await fs.promises.writeFile(filePath, content, 'utf8');
             return { success: true, filePath };
         } catch (error) {

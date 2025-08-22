@@ -1024,10 +1024,12 @@ class MyAnimation(Scene):
                         const command = `manim ${tempFileName} MyAnimation ${settings.resolution} --fps ${settings.fps}`;
                         
                         addTerminalLine(` Command: ${command}`, 'info');
-                        const result = await executeTerminalCommand(command, assetsPath);
-
-                        // Remove temporary file
-                        await window.electronAPI.deleteFile(tempFilePath);
+                        let result;
+                        try {
+                            result = await executeTerminalCommand(command, assetsPath);
+                        } finally {
+                            await window.electronAPI.deleteFile(tempFilePath);
+                        }
 
                         // Look for output video file after successful render
                         if (result.success) {
@@ -1125,10 +1127,12 @@ class MyAnimation(Scene):
                         const command = `manim ${tempFileName} MyAnimation ${settings.resolution} --fps ${settings.fps} -o "${outputFile}" --output_directory "${outputDir}"`;
 
                         addTerminalLine(`Command: ${command}`, 'info');
-                        const result = await executeTerminalCommand(command, assetsPath);
-
-                        // Remove temporary file
-                        await window.electronAPI.deleteFile(tempFilePath);
+                        let result;
+                        try {
+                            result = await executeTerminalCommand(command, assetsPath);
+                        } finally {
+                            await window.electronAPI.deleteFile(tempFilePath);
+                        }
 
                         if (result.success) {
                             showPreviewLoading('Render complete');
