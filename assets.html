@@ -780,7 +780,7 @@
                         // Get the assets directory path
                         const pathsResult = await window.electronAPI.getAppPaths();
                         if (pathsResult.success) {
-                            const assetsPath = `${pathsResult.paths.home}/.manim_studio/assets`;
+                            const assetsPath = pathsResult.paths.assets;
                             
                             // Read files from assets directory
                             const result = await window.electronAPI.readWorkspaceFiles(assetsPath);
@@ -1276,7 +1276,7 @@ self.add_sound("${assetPath}")`;
                             if (window.electronAPI.getAppPaths) {
                                 const pathsResult = await window.electronAPI.getAppPaths();
                                 if (pathsResult.success) {
-                                    assetsPath = `${pathsResult.paths.home}/.manim_studio/assets`;
+                                    assetsPath = pathsResult.paths.assets;
                                 }
                             }
 
@@ -1343,7 +1343,7 @@ self.add_sound("${assetPath}")`;
                 try {
                     const pathsResult = await window.electronAPI.getAppPaths();
                     if (pathsResult.success) {
-                        const assetsPath = `${pathsResult.paths.home}/.manim_studio/assets`;
+                        const assetsPath = pathsResult.paths.assets;
                         for (const file of fileArray) {
                             const destPath = `${assetsPath}/${file.name}`;
                             await window.electronAPI.copyFile(file.path, destPath);
@@ -1408,49 +1408,43 @@ self.add_sound("${assetPath}")`;
             }
         }
 
-        function openAssetsFolder() {
+        async function openAssetsFolder() {
             try {
+                let assetsPath = '~/.manim_studio/assets';
+                if (window.electronAPI && window.electronAPI.getAppPaths) {
+                    const pathsResult = await window.electronAPI.getAppPaths();
+                    if (pathsResult.success) {
+                        assetsPath = pathsResult.paths.assets;
+                    }
+                }
+
                 if (window.electronAPI) {
-                    // Try to use the real folder opening functionality
                     if (window.electronAPI.openFolder) {
-                        window.electronAPI.openFolder('~/.manim_studio/assets');
+                        window.electronAPI.openFolder(assetsPath);
                         showNotification('Opening assets folder...', 'info');
                         return;
                     } else if (window.electronAPI.showInFolder) {
-                        // Alternative method
-                        window.electronAPI.showInFolder('~/.manim_studio/assets');
+                        window.electronAPI.showInFolder(assetsPath);
                         showNotification('Opening assets folder...', 'info');
                         return;
                     } else if (window.electronAPI.executeCommand) {
-                        // Use system command to open folder
-                        const userHome = '~'; // This would be resolved by the backend
-                        const assetsPath = `${userHome}/.manim_studio/assets`;
-                        
-                        // Try platform-specific commands
-                        if (navigator.platform.includes('Win')) {
-                            window.electronAPI.executeCommand(`explorer "${assetsPath}"`);
-                        } else if (navigator.platform.includes('Mac')) {
-                            window.electronAPI.executeCommand(`open "${assetsPath}"`);
-                        } else {
-                            window.electronAPI.executeCommand(`xdg-open "${assetsPath}"`);
-                        }
-                        
+                        const cmd = navigator.platform.includes('Win')
+                            ? `explorer "${assetsPath}"`
+                            : navigator.platform.includes('Mac')
+                                ? `open "${assetsPath}"`
+                                : `xdg-open "${assetsPath}"`;
+                        window.electronAPI.executeCommand(cmd);
                         showNotification('Opening assets folder...', 'info');
                         return;
                     }
                 }
-                
-                // Fallback: Just show the path
-                const assetsPath = '~/.manim_studio/assets';
+
                 showNotification(`Assets folder: ${assetsPath}`, 'info');
-                
-                // Try to copy path to clipboard
                 if (navigator.clipboard) {
                     navigator.clipboard.writeText(assetsPath).then(() => {
                         showNotification('Assets folder path copied to clipboard', 'success');
                     });
                 }
-                
             } catch (error) {
                 console.error('Error opening assets folder:', error);
                 showNotification('Cannot open assets folder automatically', 'error');

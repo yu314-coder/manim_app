@@ -1006,9 +1006,10 @@ class MyAnimation(Scene):
                         throw new Error('Could not get app paths');
                     }
                     
-                    const assetsPath = pathsResult.paths.home + '\\.manim_studio\\assets';
+                    const assetsPath = pathsResult.paths.assets;
+                    const pathSep = assetsPath.includes('\\') ? '\\' : '/';
                     const tempFileName = `preview_${Date.now()}.py`;
-                    const tempFilePath = assetsPath + '\\' + tempFileName;
+                    const tempFilePath = assetsPath + pathSep + tempFileName;
                     
                     addTerminalLine(` Saving to assets folder: ${tempFilePath}`, 'info');
                     
@@ -1093,9 +1094,10 @@ class MyAnimation(Scene):
                         throw new Error('Could not get app paths');
                     }
 
-                    const assetsPath = pathsResult.paths.home + '\\.manim_studio\\assets';
+                    const assetsPath = pathsResult.paths.assets;
+                    const pathSep = assetsPath.includes('\\') ? '\\' : '/';
                     const tempFileName = `render_${Date.now()}.py`;
-                    const tempFilePath = assetsPath + '\\' + tempFileName;
+                    const tempFilePath = assetsPath + pathSep + tempFileName;
 
                     addTerminalLine(`Saving to assets folder: ${tempFilePath}`, 'info');
 
@@ -1235,6 +1237,9 @@ class MyAnimation(Scene):
                 if (e.key === 'Enter') {
                     const command = terminalInput.value.trim();
                     if (command) {
+                        const pathsResult = await window.electronAPI.getAppPaths();
+                        const assetsPath = pathsResult.success ? pathsResult.paths.assets : '';
+
                         // Add command to history
                         commandHistory.push(command);
                         if (commandHistory.length > 100) {
@@ -1243,11 +1248,11 @@ class MyAnimation(Scene):
                         historyIndex = commandHistory.length;
 
                         // Show command in terminal
-                        addTerminalLine(`C:\\Users\\euler\\.manim_studio\\assets> ${command}`, 'info');
-                        
+                        addTerminalLine(`${assetsPath}> ${command}`, 'info');
+
                         // Clear input
                         terminalInput.value = '';
-                        
+
                         // Handle special commands
                         if (command === 'help' || command === 'manim help') {
                             showManimHelp();
@@ -1255,7 +1260,7 @@ class MyAnimation(Scene):
                             clearTerminal();
                         } else {
                             // Execute command
-                            await executeTerminalCommand(command, 'C:\\Users\\euler\\.manim_studio\\assets');
+                            await executeTerminalCommand(command, assetsPath || undefined);
                         }
                     }
                 } else if (e.key === 'ArrowUp') {
