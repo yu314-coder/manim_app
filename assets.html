@@ -1267,17 +1267,27 @@ self.add_sound("${assetPath}")`;
                                 { name: 'Videos', extensions: ['mp4', 'avi', 'mov', 'mkv'] }
                             ]
                         });
-                        
+
                         if (result.success && result.filePaths) {
                             showNotification(`Importing ${result.filePaths.length} file(s)...`, 'info');
-                            
+
+                            // Determine assets directory
+                            let assetsPath = null;
+                            if (window.electronAPI.getAppPaths) {
+                                const pathsResult = await window.electronAPI.getAppPaths();
+                                if (pathsResult.success) {
+                                    assetsPath = `${pathsResult.paths.home}/.manim_studio/assets`;
+                                }
+                            }
+
                             // Copy files to assets directory
                             for (const filePath of result.filePaths) {
                                 try {
                                     const fileName = filePath.split(/[/\\]/).pop();
-                                    
-                                    if (window.electronAPI.copyFileToAssets) {
-                                        const copyResult = await window.electronAPI.copyFileToAssets(filePath, fileName);
+
+                                    if (assetsPath && window.electronAPI.copyFile) {
+                                        const destPath = `${assetsPath}/${fileName}`;
+                                        const copyResult = await window.electronAPI.copyFile(filePath, destPath);
                                         if (copyResult.success) {
                                             addLog(`Imported: ${fileName}`, 'success');
                                         } else {
@@ -1288,22 +1298,22 @@ self.add_sound("${assetPath}")`;
                                     addLog(`Error importing file: ${importError.message}`, 'error');
                                 }
                             }
-                            
+
                             // Reload assets to show the new files
                             await loadAssets();
                             showNotification(`Successfully imported ${result.filePaths.length} asset(s)`, 'success');
                             return;
                         }
                     }
-                    
+
                     // Fallback: simulate import
                     showNotification('File dialog not available - using simulation', 'warning');
                 }
-                
+
                 // Simulate asset import for demo purposes
                 showNotification('Opening file dialog...', 'info');
                 await new Promise(resolve => setTimeout(resolve, 1000));
-                
+
                 const simulatedFile = {
                     id: Date.now(),
                     name: `imported_file_${Date.now()}.png`,
@@ -1312,12 +1322,12 @@ self.add_sound("${assetPath}")`;
                     path: `~/.manim_studio/assets/imported_file_${Date.now()}.png`,
                     preview: null
                 };
-                
+
                 assets.push(simulatedFile);
                 updateAssetsCount();
                 renderAssets();
                 showNotification('Simulated: Asset imported successfully', 'success');
-                
+
             } catch (error) {
                 console.error('Import error:', error);
                 showNotification('Failed to import assets', 'error');
@@ -1325,10 +1335,29 @@ self.add_sound("${assetPath}")`;
             }
         }
 
-        function handleFileDrop(files) {
+        async function handleFileDrop(files) {
             const fileArray = Array.from(files);
             showNotification(`Processing ${fileArray.length} dropped file(s)...`, 'info');
-            
+
+            if (window.electronAPI && window.electronAPI.getAppPaths && window.electronAPI.copyFile) {
+                try {
+                    const pathsResult = await window.electronAPI.getAppPaths();
+                    if (pathsResult.success) {
+                        const assetsPath = `${pathsResult.paths.home}/.manim_studio/assets`;
+                        for (const file of fileArray) {
+                            const destPath = `${assetsPath}/${file.name}`;
+                            await window.electronAPI.copyFile(file.path, destPath);
+                        }
+                        await loadAssets();
+                        showNotification(`Added ${fileArray.length} assets from drop`, 'success');
+                        return;
+                    }
+                } catch (dropError) {
+                    addLog(`Drop copy error: ${dropError.message}`, 'error');
+                }
+            }
+
+            // Fallback: only update UI without saving files
             fileArray.forEach(file => {
                 const asset = {
                     id: Date.now() + Math.random(),
@@ -1340,7 +1369,7 @@ self.add_sound("${assetPath}")`;
                 };
                 assets.push(asset);
             });
-            
+
             loadAssets();
             showNotification(`Added ${fileArray.length} assets from drop`, 'success');
         }

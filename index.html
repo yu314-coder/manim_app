@@ -1130,7 +1130,7 @@ class MyAnimation(Scene):
                                 if (!saveResult.canceled && saveResult.filePath) {
                                     const copyResult = await window.electronAPI.copyFile(videoPath, saveResult.filePath);
                                     if (copyResult.success) {
-                                        await window.electronAPI.deleteFile(videoPath);
+                                        // Keep the original video in assets and only remove the temporary Python file
                                         showPreviewLoading('Render complete');
                                         const previewContent = document.getElementById('preview-content');
                                         if (previewContent) {
