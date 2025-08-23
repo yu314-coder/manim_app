@@ -381,6 +381,12 @@
             user-select: none;
         }
 
+        /* Disable text selection during resize to prevent terminal scrolling */
+        body.no-user-select,
+        body.no-user-select * {
+            user-select: none !important;
+        }
+
         .terminal-resize-handle:hover {
             background: #569cd6;
             box-shadow: 0 0 3px rgba(86, 156, 214, 0.5);
@@ -1842,15 +1848,17 @@ class MyAnimation(Scene):
                 isResizing = true;
                 startY = e.clientY;
                 startHeight = parseInt(getComputedStyle(terminalSection, null).getPropertyValue('height'));
+                document.body.classList.add('no-user-select');
                 document.addEventListener('mousemove', handleResize);
                 document.addEventListener('mouseup', stopResize);
                 document.addEventListener('mouseleave', stopResize);
                 e.preventDefault();
             });
-            
+
             function handleResize(e) {
                 if (!isResizing) return;
-                
+                e.preventDefault();
+
                 const delta = e.clientY - startY;
                 const container = terminalSection.parentElement;
                 const minHeight = 100;
@@ -1865,6 +1873,7 @@ class MyAnimation(Scene):
 
             function stopResize() {
                 isResizing = false;
+                document.body.classList.remove('no-user-select');
                 document.removeEventListener('mousemove', handleResize);
                 document.removeEventListener('mouseup', stopResize);
                 document.removeEventListener('mouseleave', stopResize);
