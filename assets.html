@@ -780,7 +780,7 @@
                         // Get the assets directory path
                         const pathsResult = await window.electronAPI.getAppPaths();
                         if (pathsResult.success) {
-                            const assetsPath = `${pathsResult.paths.home}/.manim_studio/assets`;
+                            const assetsPath = pathsResult.paths.assets;
                             
                             // Read files from assets directory
                             const result = await window.electronAPI.readWorkspaceFiles(assetsPath);
@@ -1256,9 +1256,9 @@ self.add_sound("${assetPath}")`;
         async function importAssets() {
             try {
                 if (window.electronAPI) {
-                    // Try to use the actual file dialog
-                    if (window.electronAPI.openFile) {
-                        const result = await window.electronAPI.openFile({
+                    // Use open dialog to select files
+                    if (window.electronAPI.showOpenDialog) {
+                        const result = await window.electronAPI.showOpenDialog({
                             properties: ['openFile', 'multiSelections'],
                             filters: [
                                 { name: 'All Assets', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'mp3', 'wav', 'ogg', 'm4a', 'mp4', 'avi', 'mov'] },
@@ -1267,17 +1267,29 @@ self.add_sound("${assetPath}")`;
                                 { name: 'Videos', extensions: ['mp4', 'avi', 'mov', 'mkv'] }
                             ]
                         });
-                        
-                        if (result.success && result.filePaths) {
+
+                        if (!result.canceled && result.filePaths?.length) {
                             showNotification(`Importing ${result.filePaths.length} file(s)...`, 'info');
-                            
+
+                            // Determine assets directory
+                            let assetsPath = null;
+                            if (window.electronAPI.getAppPaths) {
+                                const pathsResult = await window.electronAPI.getAppPaths();
+                                if (pathsResult.success) {
+                                    assetsPath = pathsResult.paths.assets;
+                                }
+                            }
+
+                            const sep = assetsPath && assetsPath.includes('\\') ? '\\' : '/';
+
                             // Copy files to assets directory
                             for (const filePath of result.filePaths) {
                                 try {
                                     const fileName = filePath.split(/[/\\]/).pop();
-                                    
-                                    if (window.electronAPI.copyFileToAssets) {
-                                        const copyResult = await window.electronAPI.copyFileToAssets(filePath, fileName);
+
+                                    if (assetsPath && window.electronAPI.copyFile) {
+                                        const destPath = assetsPath + sep + fileName;
+                                        const copyResult = await window.electronAPI.copyFile(filePath, destPath);
                                         if (copyResult.success) {
                                             addLog(`Imported: ${fileName}`, 'success');
                                         } else {
@@ -1288,22 +1300,22 @@ self.add_sound("${assetPath}")`;
                                     addLog(`Error importing file: ${importError.message}`, 'error');
                                 }
                             }
-                            
+
                             // Reload assets to show the new files
                             await loadAssets();
                             showNotification(`Successfully imported ${result.filePaths.length} asset(s)`, 'success');
                             return;
                         }
                     }
-                    
+
                     // Fallback: simulate import
                     showNotification('File dialog not available - using simulation', 'warning');
                 }
-                
+
                 // Simulate asset import for demo purposes
                 showNotification('Opening file dialog...', 'info');
                 await new Promise(resolve => setTimeout(resolve, 1000));
-                
+
                 const simulatedFile = {
                     id: Date.now(),
                     name: `imported_file_${Date.now()}.png`,
@@ -1312,12 +1324,12 @@ self.add_sound("${assetPath}")`;
                     path: `~/.manim_studio/assets/imported_file_${Date.now()}.png`,
                     preview: null
                 };
-                
+
                 assets.push(simulatedFile);
                 updateAssetsCount();
                 renderAssets();
                 showNotification('Simulated: Asset imported successfully', 'success');
-                
+
             } catch (error) {
                 console.error('Import error:', error);
                 showNotification('Failed to import assets', 'error');
@@ -1325,10 +1337,37 @@ self.add_sound("${assetPath}")`;
             }
         }
 
-        function handleFileDrop(files) {
+        async function handleFileDrop(files) {
             const fileArray = Array.from(files);
             showNotification(`Processing ${fileArray.length} dropped file(s)...`, 'info');
-            
+
+            if (window.electronAPI && window.electronAPI.getAppPaths && window.electronAPI.copyFile) {
+                try {
+                    const pathsResult = await window.electronAPI.getAppPaths();
+                    if (pathsResult.success) {
+                        const assetsPath = pathsResult.paths.assets;
+                        const sep = assetsPath.includes('\\') ? '\\' : '/';
+                        for (const file of fileArray) {
+                            if (file.path) {
+                                const destPath = assetsPath + sep + file.name;
+                                const copyResult = await window.electronAPI.copyFile(file.path, destPath);
+                                if (!copyResult.success) {
+                                    addLog(`Failed to import: ${file.name}`, 'error');
+                                }
+                            } else {
+                                addLog(`No path for dropped file: ${file.name}`, 'error');
+                            }
+                        }
+                        await loadAssets();
+                        showNotification(`Added ${fileArray.length} assets from drop`, 'success');
+                        return;
+                    }
+                } catch (dropError) {
+                    addLog(`Drop copy error: ${dropError.message}`, 'error');
+                }
+            }
+
+            // Fallback: only update UI without saving files
             fileArray.forEach(file => {
                 const asset = {
                     id: Date.now() + Math.random(),
@@ -1340,7 +1379,7 @@ self.add_sound("${assetPath}")`;
                 };
                 assets.push(asset);
             });
-            
+
             loadAssets();
             showNotification(`Added ${fileArray.length} assets from drop`, 'success');
         }
@@ -1379,49 +1418,43 @@ self.add_sound("${assetPath}")`;
             }
         }
 
-        function openAssetsFolder() {
+        async function openAssetsFolder() {
             try {
+                let assetsPath = '~/.manim_studio/assets';
+                if (window.electronAPI && window.electronAPI.getAppPaths) {
+                    const pathsResult = await window.electronAPI.getAppPaths();
+                    if (pathsResult.success) {
+                        assetsPath = pathsResult.paths.assets;
+                    }
+                }
+
                 if (window.electronAPI) {
-                    // Try to use the real folder opening functionality
                     if (window.electronAPI.openFolder) {
-                        window.electronAPI.openFolder('~/.manim_studio/assets');
+                        window.electronAPI.openFolder(assetsPath);
                         showNotification('Opening assets folder...', 'info');
                         return;
                     } else if (window.electronAPI.showInFolder) {
-                        // Alternative method
-                        window.electronAPI.showInFolder('~/.manim_studio/assets');
+                        window.electronAPI.showInFolder(assetsPath);
                         showNotification('Opening assets folder...', 'info');
                         return;
                     } else if (window.electronAPI.executeCommand) {
-                        // Use system command to open folder
-                        const userHome = '~'; // This would be resolved by the backend
-                        const assetsPath = `${userHome}/.manim_studio/assets`;
-                        
-                        // Try platform-specific commands
-                        if (navigator.platform.includes('Win')) {
-                            window.electronAPI.executeCommand(`explorer "${assetsPath}"`);
-                        } else if (navigator.platform.includes('Mac')) {
-                            window.electronAPI.executeCommand(`open "${assetsPath}"`);
-                        } else {
-                            window.electronAPI.executeCommand(`xdg-open "${assetsPath}"`);
-                        }
-                        
+                        const cmd = navigator.platform.includes('Win')
+                            ? `explorer "${assetsPath}"`
+                            : navigator.platform.includes('Mac')
+                                ? `open "${assetsPath}"`
+                                : `xdg-open "${assetsPath}"`;
+                        window.electronAPI.executeCommand(cmd);
                         showNotification('Opening assets folder...', 'info');
                         return;
                     }
                 }
-                
-                // Fallback: Just show the path
-                const assetsPath = '~/.manim_studio/assets';
+
                 showNotification(`Assets folder: ${assetsPath}`, 'info');
-                
-                // Try to copy path to clipboard
                 if (navigator.clipboard) {
                     navigator.clipboard.writeText(assetsPath).then(() => {
                         showNotification('Assets folder path copied to clipboard', 'success');
                     });
                 }
-                
             } catch (error) {
                 console.error('Error opening assets folder:', error);
                 showNotification('Cannot open assets folder automatically', 'error');
