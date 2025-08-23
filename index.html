@@ -42,6 +42,7 @@
             display: flex;
             flex-direction: column;
             position: relative;
+            flex-shrink: 0;
         }
 
         .sidebar-resize-handle {
@@ -364,7 +365,8 @@
             font-size: 14px;
             line-height: 1.6;
             padding: 20px;
-            resize: vertical;
+            /* Use the dedicated drag handle for resizing to keep layout stable */
+            resize: none;
             outline: none;
             min-height: 300px;
             display: block;
@@ -393,6 +395,7 @@
             background: #1e1e1e;
             display: flex;
             flex-direction: column;
+            flex-shrink: 0;
         }
 
         .terminal-header {
@@ -504,6 +507,7 @@
             position: relative;
             resize: horizontal;
             overflow: auto;
+            flex-shrink: 0;
         }
 
         .preview-resize-handle {
