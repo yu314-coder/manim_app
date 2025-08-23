@@ -378,6 +378,7 @@
             background: #3c3c3c;
             cursor: ns-resize;
             transition: background 0.2s;
+            user-select: none;
         }
 
         .terminal-resize-handle:hover {
@@ -1802,6 +1803,7 @@ class MyAnimation(Scene):
                 startWidth = parseInt(getComputedStyle(sidebar, null).getPropertyValue('width'));
                 document.addEventListener('mousemove', handleResize);
                 document.addEventListener('mouseup', stopResize);
+                document.addEventListener('mouseleave', stopResize);
                 e.preventDefault();
             });
             
@@ -1821,6 +1823,7 @@ class MyAnimation(Scene):
                 isResizing = false;
                 document.removeEventListener('mousemove', handleResize);
                 document.removeEventListener('mouseup', stopResize);
+                document.removeEventListener('mouseleave', stopResize);
             }
         }
 
@@ -1841,25 +1844,30 @@ class MyAnimation(Scene):
                 startHeight = parseInt(getComputedStyle(terminalSection, null).getPropertyValue('height'));
                 document.addEventListener('mousemove', handleResize);
                 document.addEventListener('mouseup', stopResize);
+                document.addEventListener('mouseleave', stopResize);
                 e.preventDefault();
             });
             
             function handleResize(e) {
                 if (!isResizing) return;
                 
-                const height = startHeight - (e.clientY - startY);
+                const delta = e.clientY - startY;
+                const container = terminalSection.parentElement;
                 const minHeight = 100;
-                const maxHeight = 400;
-                
-                if (height >= minHeight && height <= maxHeight) {
-                    terminalSection.style.height = height + 'px';
-                }
+                const maxHeight = container.clientHeight - 100;
+                let height = startHeight + delta;
+
+                if (height < minHeight) height = minHeight;
+                if (height > maxHeight) height = maxHeight;
+
+                terminalSection.style.height = height + 'px';
             }
-            
+
             function stopResize() {
                 isResizing = false;
                 document.removeEventListener('mousemove', handleResize);
                 document.removeEventListener('mouseup', stopResize);
+                document.removeEventListener('mouseleave', stopResize);
             }
         }
 
