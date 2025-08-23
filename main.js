@@ -13,6 +13,186 @@ let assetsWindow = null;
 // Global flag to prevent duplicate IPC setup
 global.ipcHandlersRegistered = global.ipcHandlersRegistered || false;
 
+// Internal helper to create the default virtual environment with progress output
+async function autoCreateEnvironmentInternal() {
+    const sendProgress = (message, type = 'info') => {
+        console.log(`[ENV-SETUP] ${message}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            const payload = {
+                type: 'stdout',
+                data: `[${new Date().toLocaleTimeString()}] ${message}\n`
+            };
+            // Send to both channels for backward compatibility
+            mainWindow.webContents.send('process-output', payload);
+            mainWindow.webContents.send('terminal-output', payload);
+        }
+    };
+
+    try {
+        const homeDir = os.homedir();
+        const manimStudioDir = path.join(homeDir, '.manim_studio');
+        const venvsDir = path.join(manimStudioDir, 'venvs');
+        const venvDir = path.join(venvsDir, 'manim_studio_default');
+
+        // Notify renderer that setup has started
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('process-started', { command: 'auto-create-environment' });
+        }
+
+        sendProgress('🏗️ Starting virtual environment setup...');
+        sendProgress(`📁 Target directory: ${venvDir}`);
+
+        // If environment already exists, skip creation
+        const existingPython = os.platform() === 'win32'
+            ? path.join(venvDir, 'Scripts', 'python.exe')
+            : path.join(venvDir, 'bin', 'python');
+        if (fs.existsSync(existingPython)) {
+            sendProgress('✅ Virtual environment already exists');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('process-complete', { success: true, code: 0 });
+            }
+            return { success: true, skipped: true };
+        }
+
+        // Create directories
+        sendProgress('📂 Creating directories...');
+        await fs.promises.mkdir(venvsDir, { recursive: true });
+        sendProgress('✅ Directories created successfully');
+
+        // Check if Python is available
+        sendProgress('🐍 Checking Python installation...');
+        try {
+            await new Promise((resolve, reject) => {
+                exec('python --version', (error, stdout) => {
+                    if (error) {
+                        reject(new Error('Python not found. Please install Python first.'));
+                    } else {
+                        sendProgress(`✅ Python found: ${stdout.trim()}`);
+                        resolve();
+                    }
+                });
+            });
+        } catch (pythonError) {
+            sendProgress(`❌ Python check failed: ${pythonError.message}`, 'error');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('process-complete', { success: false, code: 1, error: pythonError.message });
+            }
+            return { success: false, error: pythonError.message, step: 'python-check' };
+        }
+
+        // Create virtual environment using system Python
+        sendProgress('🔧 Creating virtual environment...');
+        sendProgress('⏳ This may take a moment...');
+        const createVenvCommand = `python -m venv "${venvDir}"`;
+        const createResult = await executeTerminalCommandDirect(createVenvCommand, homeDir, sendProgress);
+
+        if (!createResult.success) {
+            sendProgress(`❌ Virtual environment creation failed: ${createResult.error}`, 'error');
+            throw new Error(`Failed to create virtual environment: ${createResult.error}`);
+        }
+
+        sendProgress('✅ Virtual environment created successfully');
+
+        // Verify Python executable exists
+        const pythonPath = os.platform() === 'win32'
+            ? path.join(venvDir, 'Scripts', 'python.exe')
+            : path.join(venvDir, 'bin', 'python');
+
+        sendProgress(`🔍 Verifying Python executable at: ${pythonPath}`);
+        if (!fs.existsSync(pythonPath)) {
+            const errorMsg = `Python executable not found at: ${pythonPath}`;
+            sendProgress(`❌ ${errorMsg}`, 'error');
+            throw new Error(errorMsg);
+        }
+        sendProgress('✅ Python executable verified');
+
+        // Install essential packages step by step with detailed logging
+        sendProgress('📦 Starting package installation...');
+
+        // Step 1: Upgrade pip
+        sendProgress('⬆️ Upgrading pip...');
+        const upgradeCommand = `"${pythonPath}" -m pip install --upgrade pip`;
+        const upgradeResult = await executeTerminalCommandDirect(upgradeCommand, homeDir, sendProgress);
+        if (upgradeResult.success) {
+            sendProgress('✅ Pip upgraded successfully');
+        } else {
+            sendProgress('⚠️ Pip upgrade had issues, continuing anyway');
+        }
+
+        // Step 2: Install core packages one by one
+        const packages = [
+            { name: 'pillow', description: 'Image processing library' },
+            { name: 'numpy', description: 'Mathematical computing library' },
+            { name: 'matplotlib', description: 'Plotting library' },
+            { name: 'manim', description: 'Mathematical animation engine' }
+        ];
+
+        let installedCount = 0;
+        let failedPackages = [];
+
+        for (let i = 0; i < packages.length; i++) {
+            const pkg = packages[i];
+            sendProgress(`📦 Installing ${pkg.name} (${i + 1}/${packages.length}) - ${pkg.description}...`);
+
+            const installCommand = `"${pythonPath}" -m pip install ${pkg.name}`;
+            const installResult = await executeTerminalCommandDirect(installCommand, homeDir, sendProgress);
+
+            if (installResult.success) {
+                sendProgress(`✅ ${pkg.name} installed successfully`);
+                installedCount++;
+            } else {
+                sendProgress(`❌ Failed to install ${pkg.name}: ${installResult.error}`, 'error');
+                failedPackages.push(pkg.name);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Final summary
+        sendProgress('📊 Installation Summary:');
+        sendProgress(`✅ Successfully installed: ${installedCount}/${packages.length} packages`);
+        if (failedPackages.length > 0) {
+            sendProgress(`❌ Failed packages: ${failedPackages.join(', ')}`);
+        }
+
+        // Test manim installation
+        sendProgress('🧪 Testing manim installation...');
+        const testCommand = `"${pythonPath}" -c "import manim; print('Manim version:', manim.__version__)"`;
+        const testResult = await executeTerminalCommandDirect(testCommand, homeDir, sendProgress);
+        if (testResult.success) {
+            sendProgress('✅ Manim installation test passed');
+            sendProgress(testResult.output);
+        } else {
+            sendProgress('⚠️ Manim test failed, but environment was created');
+        }
+
+        sendProgress('🎉 Virtual environment setup completed!');
+        sendProgress('🚀 You can now start creating animations!');
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('process-complete', { success: true, code: 0 });
+        }
+
+        return {
+            success: true,
+            venvPath: venvDir,
+            pythonPath: pythonPath,
+            message: 'Virtual environment created successfully',
+            installedPackages: installedCount,
+            failedPackages: failedPackages,
+            totalPackages: packages.length
+        };
+
+    } catch (error) {
+        console.error('❌ Environment creation error:', error);
+        sendProgress(`❌ Setup failed: ${error.message}`, 'error');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('process-complete', { success: false, code: 1, error: error.message });
+        }
+        return { success: false, error: error.message, step: 'environment-creation' };
+    }
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1400,
@@ -31,9 +211,23 @@ function createWindow() {
         }
     });
 
+    // Ensure assets directory exists on startup
+    try {
+        const assetsDir = path.join(os.homedir(), '.manim_studio', 'assets');
+        fs.mkdirSync(assetsDir, { recursive: true });
+        console.log('📁 Assets directory ready:', assetsDir);
+    } catch (err) {
+        console.error('❌ Failed to create assets directory:', err);
+    }
+
     // Remote module removed for security
 
     mainWindow.loadFile('index.html');
+
+    // Automatically ensure virtual environment on startup
+    mainWindow.webContents.on('did-finish-load', () => {
+        autoCreateEnvironmentInternal();
+    });
 
     // Setup IPC handlers ONLY if not already registered
     if (!global.ipcHandlersRegistered) {
@@ -228,6 +422,7 @@ function setupIPCHandlers() {
     ipcMain.handle('save-file', async (event, filePath, content) => {
         try {
             console.log('💾 Saving file:', filePath);
+            await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
             await fs.promises.writeFile(filePath, content, 'utf8');
             return { success: true, filePath };
         } catch (error) {
@@ -243,6 +438,26 @@ function setupIPCHandlers() {
             return { success: true, content, filePath };
         } catch (error) {
             console.error('❌ File load error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('delete-file', async (event, filePath) => {
+        try {
+            await fs.promises.unlink(filePath);
+            return { success: true };
+        } catch (error) {
+            console.error('❌ File delete error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('copy-file', async (event, sourcePath, destPath) => {
+        try {
+            await fs.promises.copyFile(sourcePath, destPath);
+            return { success: true };
+        } catch (error) {
+            console.error('❌ File copy error:', error);
             return { success: false, error: error.message };
         }
     });
@@ -303,166 +518,7 @@ function setupIPCHandlers() {
     });
 
     // ENHANCED: Auto-create environment handler with detailed logging
-    ipcMain.handle('auto-create-environment', async () => {
-        // Helper function to send progress updates to renderer
-        const sendProgress = (message, type = 'info') => {
-            console.log(`[ENV-SETUP] ${message}`);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stdout',
-                    data: `[${new Date().toLocaleTimeString()}] ${message}\n`
-                });
-            }
-        };
-
-        try {
-            const homeDir = os.homedir();
-            const manimStudioDir = path.join(homeDir, '.manim_studio');
-            const venvsDir = path.join(manimStudioDir, 'venvs');
-            const venvDir = path.join(venvsDir, 'manim_studio_default');
-            
-            sendProgress('🏗️ Starting virtual environment setup...');
-            sendProgress(`📁 Target directory: ${venvDir}`);
-            
-            // Create directories
-            sendProgress('📂 Creating directories...');
-            await fs.promises.mkdir(venvsDir, { recursive: true });
-            sendProgress('✅ Directories created successfully');
-            
-            // Check if Python is available
-            sendProgress('🐍 Checking Python installation...');
-            try {
-                await new Promise((resolve, reject) => {
-                    exec('python --version', (error, stdout, stderr) => {
-                        if (error) {
-                            reject(new Error('Python not found. Please install Python first.'));
-                        } else {
-                            sendProgress(`✅ Python found: ${stdout.trim()}`);
-                            resolve();
-                        }
-                    });
-                });
-            } catch (pythonError) {
-                sendProgress(`❌ Python check failed: ${pythonError.message}`, 'error');
-                return { 
-                    success: false, 
-                    error: pythonError.message,
-                    step: 'python-check'
-                };
-            }
-            
-            // Create virtual environment using system Python
-            sendProgress('🔧 Creating virtual environment...');
-            sendProgress('⏳ This may take a moment...');
-            const createVenvCommand = `python -m venv "${venvDir}"`;
-            const createResult = await executeTerminalCommandDirect(createVenvCommand, homeDir, sendProgress);
-            
-            if (!createResult.success) {
-                sendProgress(`❌ Virtual environment creation failed: ${createResult.error}`, 'error');
-                throw new Error(`Failed to create virtual environment: ${createResult.error}`);
-            }
-            
-            sendProgress('✅ Virtual environment created successfully');
-            
-            // Verify Python executable exists
-            const pythonPath = os.platform() === 'win32' 
-                ? path.join(venvDir, 'Scripts', 'python.exe')
-                : path.join(venvDir, 'bin', 'python');
-                
-            sendProgress(`🔍 Verifying Python executable at: ${pythonPath}`);
-            if (!fs.existsSync(pythonPath)) {
-                const errorMsg = `Python executable not found at: ${pythonPath}`;
-                sendProgress(`❌ ${errorMsg}`, 'error');
-                throw new Error(errorMsg);
-            }
-            sendProgress('✅ Python executable verified');
-            
-            // Install essential packages step by step with detailed logging
-            sendProgress('📦 Starting package installation...');
-            
-            // Step 1: Upgrade pip
-            sendProgress('⬆️ Upgrading pip...');
-            const upgradeCommand = `"${pythonPath}" -m pip install --upgrade pip`;
-            const upgradeResult = await executeTerminalCommandDirect(upgradeCommand, homeDir, sendProgress);
-            
-            if (upgradeResult.success) {
-                sendProgress('✅ Pip upgraded successfully');
-            } else {
-                sendProgress('⚠️ Pip upgrade had issues, continuing anyway');
-            }
-            
-            // Step 2: Install core packages one by one
-            const packages = [
-                { name: 'pillow', description: 'Image processing library' },
-                { name: 'numpy', description: 'Mathematical computing library' },
-                { name: 'matplotlib', description: 'Plotting library' },
-                { name: 'manim', description: 'Mathematical animation engine' }
-            ];
-            
-            let installedCount = 0;
-            let failedPackages = [];
-            
-            for (let i = 0; i < packages.length; i++) {
-                const pkg = packages[i];
-                sendProgress(`📦 Installing ${pkg.name} (${i + 1}/${packages.length}) - ${pkg.description}...`);
-                
-                const installCommand = `"${pythonPath}" -m pip install ${pkg.name}`;
-                const installResult = await executeTerminalCommandDirect(installCommand, homeDir, sendProgress);
-                
-                if (installResult.success) {
-                    sendProgress(`✅ ${pkg.name} installed successfully`);
-                    installedCount++;
-                } else {
-                    sendProgress(`❌ Failed to install ${pkg.name}: ${installResult.error}`, 'error');
-                    failedPackages.push(pkg.name);
-                }
-                
-                // Add small delay between installations
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-            
-            // Final summary
-            sendProgress('📊 Installation Summary:');
-            sendProgress(`✅ Successfully installed: ${installedCount}/${packages.length} packages`);
-            if (failedPackages.length > 0) {
-                sendProgress(`❌ Failed packages: ${failedPackages.join(', ')}`);
-            }
-            
-            // Test manim installation
-            sendProgress('🧪 Testing manim installation...');
-            const testCommand = `"${pythonPath}" -c "import manim; print('Manim version:', manim.__version__)"`;
-            const testResult = await executeTerminalCommandDirect(testCommand, homeDir, sendProgress);
-            
-            if (testResult.success) {
-                sendProgress('✅ Manim installation test passed');
-                sendProgress(testResult.output);
-            } else {
-                sendProgress('⚠️ Manim test failed, but environment was created');
-            }
-            
-            sendProgress('🎉 Virtual environment setup completed!');
-            sendProgress('🚀 You can now start creating animations!');
-            
-            return { 
-                success: true, 
-                venvPath: venvDir,
-                pythonPath: pythonPath,
-                message: 'Virtual environment created successfully',
-                installedPackages: installedCount,
-                failedPackages: failedPackages,
-                totalPackages: packages.length
-            };
-            
-        } catch (error) {
-            console.error('❌ Environment creation error:', error);
-            sendProgress(`❌ Setup failed: ${error.message}`, 'error');
-            return { 
-                success: false, 
-                error: error.message,
-                step: 'environment-creation'
-            };
-        }
-    });
+    ipcMain.handle('auto-create-environment', autoCreateEnvironmentInternal);
 
     ipcMain.handle('setup-environment', async () => {
         try {
@@ -692,10 +748,9 @@ async function executeTerminalCommandDirect(command, cwd = process.cwd(), progre
             
             // Send real-time output to renderer
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stdout',
-                    data: text
-                });
+                const payload = { type: 'stdout', data: text };
+                mainWindow.webContents.send('process-output', payload);
+                mainWindow.webContents.send('terminal-output', payload);
             }
         });
 
@@ -712,10 +767,9 @@ async function executeTerminalCommandDirect(command, cwd = process.cwd(), progre
             
             // Send real-time output to renderer
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stderr', 
-                    data: text
-                });
+                const payload = { type: 'stderr', data: text };
+                mainWindow.webContents.send('process-output', payload);
+                mainWindow.webContents.send('terminal-output', payload);
             }
         });
 
@@ -778,53 +832,53 @@ async function executeTerminalCommandDirect(command, cwd = process.cwd(), progre
 
 // EXISTING: Enhanced terminal command execution with proper Windows path handling (for normal commands)
 async function executeTerminalCommand(command, cwd = process.cwd()) {
-    return new Promise((resolve) => {
-        console.log(`🚀 Executing (Forced VEnv): ${command} in ${cwd}`);
-        
-        let output = '';
-        let errorOutput = '';
-        
-        // FORCE manim_studio_default environment for Manim operations
-        const FORCED_VENV_PATH = path.join(os.homedir(), '.manim_studio', 'venvs', 'manim_studio_default');
-        const FORCED_PYTHON_EXE = path.join(FORCED_VENV_PATH, 'Scripts', 'python.exe');
-        
-        console.log('🎯 FORCING virtual environment usage');
-        console.log('📋 Original command:', command);
-        console.log('📁 Working directory:', cwd);
-        
-        // ENFORCE: ONLY use our specific virtual environment Python for Manim commands
-        if (!fs.existsSync(FORCED_PYTHON_EXE)) {
-            console.error('❌ CRITICAL: Virtual environment not found at:', FORCED_PYTHON_EXE);
-            const errorResult = {
+    const FORCED_VENV_PATH = path.join(os.homedir(), '.manim_studio', 'venvs', 'manim_studio_default');
+    const FORCED_PYTHON_EXE = os.platform() === 'win32'
+        ? path.join(FORCED_VENV_PATH, 'Scripts', 'python.exe')
+        : path.join(FORCED_VENV_PATH, 'bin', 'python');
+
+    console.log(`🚀 Executing (Forced VEnv): ${command} in ${cwd}`);
+    console.log('🎯 FORCING virtual environment usage');
+    console.log('📋 Original command:', command);
+    console.log('📁 Working directory:', cwd);
+
+    // Ensure virtual environment exists
+    if (!fs.existsSync(FORCED_PYTHON_EXE)) {
+        console.warn('⚠️ Virtual environment not found, attempting automatic setup...');
+        const setup = await autoCreateEnvironmentInternal();
+        if (!setup || !setup.success || !fs.existsSync(FORCED_PYTHON_EXE)) {
+            console.error('❌ Automatic environment setup failed');
+            return {
                 success: false,
                 output: '',
-                error: `Virtual environment not found at: ${FORCED_PYTHON_EXE}. Please run setup first.`,
+                error: `Virtual environment not found at: ${FORCED_PYTHON_EXE}. Automatic setup failed.`,
                 code: -1,
                 timestamp: new Date().toISOString()
             };
-            
-            resolve(errorResult);
-            return;
         }
-        
+        console.log('✅ Virtual environment created automatically');
+    }
+
+    return new Promise((resolve) => {
+        let output = '';
+        let errorOutput = '';
+
         // REPLACE any python/manim command with our specific virtual environment Python
         let modifiedCommand = command;
-        
-        // Handle various Python command patterns
-        if (command.includes('python') || command.includes('manim')) {
+
+        if (command.includes('python') || command.match(/\bmanim\b/i)) {
             console.log('🔧 Modifying Python/Manim command to use virtual environment');
-            
-            // Replace common patterns
-            modifiedCommand = modifiedCommand
-                .replace(/^python\s+/gi, `"${FORCED_PYTHON_EXE}" `)
-                .replace(/^python$/gi, `"${FORCED_PYTHON_EXE}"`)
-                .replace(/\spython\s+/gi, ` "${FORCED_PYTHON_EXE}" `)
-                .replace(/^manim\s+/gi, `"${FORCED_PYTHON_EXE}" -m manim `)
-                .replace(/^manim$/gi, `"${FORCED_PYTHON_EXE}" -m manim`)
-                .replace(/\smanim\s+/gi, ` "${FORCED_PYTHON_EXE}" -m manim `);
+
+            // Replace any python references with venv python
+            modifiedCommand = modifiedCommand.replace(/\bpython(\.exe)?\b/gi, `"${FORCED_PYTHON_EXE}"`);
+
+            // Replace standalone manim commands (avoid "-m manim" already using python)
+            if (!/-m\s+manim\b/i.test(command) && /\bmanim\b/i.test(command)) {
+                modifiedCommand = modifiedCommand.replace(/(^|\s)manim\b/i, `$1"${FORCED_PYTHON_EXE}" -m manim`);
+            }
+
+            console.log('🎯 Modified command:', modifiedCommand);
         }
-        
-        console.log('🎯 Modified command:', modifiedCommand);
         
         // Execute with proper environment
         const process = spawn(modifiedCommand, [], {
@@ -833,7 +887,9 @@ async function executeTerminalCommand(command, cwd = process.cwd()) {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: {
                 ...require('process').env,
-                PATH: path.join(FORCED_VENV_PATH, 'Scripts') + path.delimiter + require('process').env.PATH,
+                PATH: (os.platform() === 'win32'
+                    ? path.join(FORCED_VENV_PATH, 'Scripts')
+                    : path.join(FORCED_VENV_PATH, 'bin')) + path.delimiter + require('process').env.PATH,
                 VIRTUAL_ENV: FORCED_VENV_PATH,
                 PYTHONPATH: FORCED_VENV_PATH
             }
@@ -847,10 +903,9 @@ async function executeTerminalCommand(command, cwd = process.cwd()) {
             
             // Send real-time output to renderer
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stdout',
-                    data: text
-                });
+                const payload = { type: 'stdout', data: text };
+                mainWindow.webContents.send('process-output', payload);
+                mainWindow.webContents.send('terminal-output', payload);
             }
         });
 
@@ -862,10 +917,9 @@ async function executeTerminalCommand(command, cwd = process.cwd()) {
             
             // Send real-time output to renderer
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('terminal-output', {
-                    type: 'stderr', 
-                    data: text
-                });
+                const payload = { type: 'stderr', data: text };
+                mainWindow.webContents.send('process-output', payload);
+                mainWindow.webContents.send('terminal-output', payload);
             }
         });
 

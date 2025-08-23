@@ -1,0 +1,1552 @@
+2025-06-15 13:54:47,366 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-15 13:54:48,614 - INFO - VirtualEnvironmentManager initialized
+2025-06-15 13:54:48,614 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-15 13:54:48,615 - INFO - Is frozen (corrected): False
+2025-06-15 13:54:48,615 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-15 13:54:48,616 - INFO - Discovering Python installations...
+2025-06-15 13:54:48,643 - INFO - Valid Python found: C:\Python312\python.exe (Python 3.12.3)
+2025-06-15 13:54:48,869 - INFO - Valid Python found: C:\Users\euler\venv_windows\Scripts\python.EXE (Python 3.12.3)
+2025-06-15 13:54:48,870 - INFO - Found 2 valid Python installations
+2025-06-15 13:54:48,871 - INFO -   - C:\Python312\python.exe
+2025-06-15 13:54:48,871 - INFO -   - C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-15 13:54:48,871 - INFO - Detecting existing environments...
+2025-06-15 13:54:48,872 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-15 13:54:48,872 - INFO - Default environment structure is valid
+2025-06-15 13:54:48,922 - INFO - Valid Python found: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe (Python 3.12.3)
+2025-06-15 13:54:59,962 - WARNING - Package verification failed: [OK] manim
+[OK] numpy
+[FAIL] customtkinter
+[OK] PIL
+MISSING:customtkinter
+
+2025-06-15 13:54:59,963 - WARNING - Default environment missing required packages
+2025-06-15 13:55:07,372 - INFO - Using current virtual environment: venv_windows
+2025-06-15 13:55:07,372 - INFO - Using existing environment: current_venv_windows
+2025-06-15 20:31:31,677 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-15 20:31:32,698 - INFO - VirtualEnvironmentManager initialized
+2025-06-15 20:31:32,698 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-15 20:31:32,698 - INFO - Is frozen (corrected): False
+2025-06-15 20:31:32,698 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-15 20:31:32,699 - INFO - Discovering Python installations...
+2025-06-15 20:31:33,220 - INFO - Found 2 valid Python installations
+2025-06-15 20:31:33,221 - INFO -   - C:\Python312\python.exe
+2025-06-15 20:31:33,221 - INFO -   - C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-15 20:31:33,222 - INFO - Detecting existing environments...
+2025-06-15 20:31:33,222 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-15 20:31:33,223 - INFO - Default environment structure is valid
+2025-06-15 20:31:45,984 - INFO - All essential packages verified
+2025-06-15 20:31:45,984 - INFO - Default environment has all required packages
+2025-06-15 20:31:45,985 - INFO - Using existing environment: manim_studio_default
+2025-06-15 20:37:01,190 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-15 20:37:01,306 - INFO - VirtualEnvironmentManager initialized
+2025-06-15 20:37:01,306 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-15 20:37:01,306 - INFO - Is frozen (corrected): False
+2025-06-15 20:37:01,306 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-15 20:37:01,306 - INFO - Discovering Python installations...
+2025-06-15 20:37:01,375 - INFO - EXCELLENT: Python 3.12 found at C:\Python312\python.exe
+2025-06-15 20:37:01,631 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-15 20:37:01,631 - INFO - Found 2 valid Python installations
+2025-06-15 20:37:01,631 - INFO -   - C:\Python312\python.exe
+2025-06-15 20:37:01,631 - INFO -   - C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-15 20:37:01,631 - INFO - Detecting existing environments...
+2025-06-15 20:37:01,631 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-15 20:37:01,632 - INFO - Default environment structure is valid
+2025-06-15 20:37:01,681 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-15 20:37:03,881 - INFO - All essential packages verified
+2025-06-15 20:37:03,881 - INFO - Default environment has all required packages
+2025-06-15 20:37:03,881 - INFO - Using existing environment: manim_studio_default
+2025-06-16 05:14:10,615 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-16 05:14:11,574 - INFO - VirtualEnvironmentManager initialized
+2025-06-16 05:14:11,574 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-16 05:14:11,574 - INFO - Is frozen (corrected): False
+2025-06-16 05:14:11,574 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-16 05:14:11,575 - INFO - Discovering Python installations...
+2025-06-16 05:14:11,636 - INFO - EXCELLENT: Python 3.12 found at C:\Python312\python.exe
+2025-06-16 05:14:11,877 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 05:14:11,877 - INFO - Found 2 valid Python installations
+2025-06-16 05:14:11,877 - INFO -   - C:\Python312\python.exe
+2025-06-16 05:14:11,877 - INFO -   - C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 05:14:11,877 - INFO - Detecting existing environments...
+2025-06-16 05:14:11,878 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-16 05:14:11,879 - INFO - Default environment structure is valid
+2025-06-16 05:14:11,966 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-16 05:14:26,420 - INFO - All essential packages verified
+2025-06-16 05:14:26,421 - INFO - Default environment has all required packages
+2025-06-16 05:14:26,422 - INFO - Using existing environment: manim_studio_default
+2025-06-16 22:52:04,014 - INFO - ManimStudio starting up...
+2025-06-16 22:52:04,014 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-16 22:52:04,065 - INFO - Platform: Windows-11-10.0.26100-SP0
+2025-06-16 22:52:04,065 - INFO - Executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-16 22:52:04,065 - INFO - Frozen: False
+2025-06-16 22:52:04,065 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-16 22:52:04,065 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-16 22:52:04,593 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-16 22:52:04,706 - INFO - VirtualEnvironmentManager initialized
+2025-06-16 22:52:04,706 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-16 22:52:04,706 - INFO - Is frozen (corrected): False
+2025-06-16 22:52:04,706 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-16 22:52:04,706 - INFO - Discovering Python installations...
+2025-06-16 22:52:04,829 - INFO - EXCELLENT: Python 3.12 found at C:\Python312\python.exe
+2025-06-16 22:52:05,031 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 22:52:05,031 - INFO - Found 2 valid Python installations
+2025-06-16 22:52:05,031 - INFO -   - C:\Python312\python.exe
+2025-06-16 22:52:05,031 - INFO -   - C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 22:52:05,031 - INFO - Detecting existing environments...
+2025-06-16 22:52:05,031 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-16 22:52:05,031 - INFO - Default environment structure is valid
+2025-06-16 22:52:05,107 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-16 22:52:07,103 - INFO - All essential packages verified
+2025-06-16 22:52:07,103 - INFO - Default environment has all required packages
+2025-06-16 22:52:07,104 - INFO - Using existing environment: manim_studio_default
+2025-06-16 22:58:20,995 - INFO - === ManimStudio Starting ===
+2025-06-16 22:58:20,995 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-16 22:58:20,995 - INFO - Platform: win32
+2025-06-16 22:58:20,996 - INFO - Frozen: False
+2025-06-16 22:58:20,996 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-16 22:58:20,996 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-16 22:58:20,996 - INFO - Checking LaTeX installation...
+2025-06-16 22:58:21,316 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-16 22:58:21,317 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-16 22:58:21,317 - INFO - Creating main application...
+2025-06-16 22:58:21,403 - INFO - VirtualEnvironmentManager initialized
+2025-06-16 22:58:21,403 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-16 22:58:21,403 - INFO - Is frozen (corrected): False
+2025-06-16 22:58:21,404 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-16 22:58:21,405 - INFO - Discovering Python installations...
+2025-06-16 22:58:21,459 - INFO - EXCELLENT: Python 3.12 found at C:\Python312\python.exe
+2025-06-16 22:58:21,701 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 22:58:21,701 - INFO - Found 2 valid Python installations
+2025-06-16 22:58:21,702 - INFO -   - C:\Python312\python.exe
+2025-06-16 22:58:21,702 - INFO -   - C:\Users\euler\venv_windows\Scripts\python.EXE
+2025-06-16 22:58:21,702 - INFO - Detecting existing environments...
+2025-06-16 22:58:21,702 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-16 22:58:21,702 - INFO - Default environment structure is valid
+2025-06-16 22:58:21,755 - INFO - EXCELLENT: Python 3.12 found at C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-16 22:58:23,326 - INFO - All essential packages verified
+2025-06-16 22:58:23,327 - INFO - Default environment has all required packages
+2025-06-16 22:58:23,327 - INFO - Using existing environment: manim_studio_default
+2025-06-16 22:58:24,564 - INFO - Starting application main loop...
+2025-06-18 11:11:48,868 - INFO - === ManimStudio Starting ===
+2025-06-18 11:11:48,868 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-18 11:11:48,869 - INFO - Platform: win32
+2025-06-18 11:11:48,869 - INFO - Frozen: False
+2025-06-18 11:11:48,869 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-18 11:11:48,869 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-18 11:11:48,869 - INFO - Checking LaTeX installation...
+2025-06-18 11:11:49,497 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-18 11:11:49,498 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-18 11:11:49,498 - INFO - Creating main application...
+2025-06-18 11:11:50,549 - INFO - VirtualEnvironmentManager initialized
+2025-06-18 11:11:50,549 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:11:50,549 - INFO - Is frozen (corrected): False
+2025-06-18 11:11:50,551 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-18 11:11:50,551 - INFO - ============================================================
+2025-06-18 11:11:50,551 - INFO - COMPREHENSIVE PYTHON DISCOVERY
+2025-06-18 11:11:50,551 - INFO - ============================================================
+2025-06-18 11:11:50,551 - INFO - 1. Searching system PATH...
+2025-06-18 11:11:50,552 - DEBUG - PATH found: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:11:50,552 - DEBUG - PATH found: C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:11:50,552 - DEBUG - PATH found: C:\Python312\python.exe
+2025-06-18 11:11:50,553 - DEBUG - PATH found: C:\Python312\pythonw.exe
+2025-06-18 11:11:50,556 - DEBUG - PATH found: C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python.exe
+2025-06-18 11:11:50,556 - DEBUG - PATH found: C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python3.exe
+2025-06-18 11:11:50,556 - INFO - 2. Searching Windows Registry...
+2025-06-18 11:11:50,557 - DEBUG - Registry found: C:\Python312\python.exe
+2025-06-18 11:11:50,557 - DEBUG - Registry found: C:\Python312\pythonw.exe
+2025-06-18 11:11:50,557 - INFO - 3. Searching common directories...
+2025-06-18 11:11:50,558 - DEBUG - Common dir found: C:\Python312\python.exe
+2025-06-18 11:11:50,558 - DEBUG - Common dir found: C:\Python312\pythonw.exe
+2025-06-18 11:11:50,559 - DEBUG - Running subprocess: ['C:\\Users\\euler\\venv_windows\\Scripts\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:50,687 - INFO - Validated Python 3.12: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:11:50,687 - DEBUG - Running subprocess: ['C:\\Users\\euler\\venv_windows\\Scripts\\pythonw.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:51,586 - INFO - Validated Python 3.12: C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:11:51,587 - DEBUG - Running subprocess: ['C:\\Python312\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:51,790 - INFO - Validated Python 3.12: C:\Python312\python.exe
+2025-06-18 11:11:51,791 - DEBUG - Running subprocess: ['C:\\Python312\\pythonw.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:51,961 - INFO - Validated Python 3.12: C:\Python312\pythonw.exe
+2025-06-18 11:11:51,961 - DEBUG - Running subprocess: ['C:\\Users\\euler\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:52,149 - WARNING - Python validation failed for C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python.exe: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+2025-06-18 11:11:52,150 - DEBUG - Running subprocess: ['C:\\Users\\euler\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:11:52,277 - WARNING - Python validation failed for C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python3.exe: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+2025-06-18 11:11:52,277 - INFO - Found 4 valid Python installations:
+2025-06-18 11:11:52,277 - INFO -   1. C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:11:52,278 - INFO -   2. C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:11:52,278 - INFO -   3. C:\Python312\python.exe
+2025-06-18 11:11:52,278 - INFO -   4. C:\Python312\pythonw.exe
+2025-06-18 11:12:00,773 - INFO - Using current virtual environment: venv_windows
+2025-06-18 11:12:00,773 - INFO - Using existing environment: current_venv_windows
+2025-06-18 11:12:03,391 - INFO - Starting application main loop...
+2025-06-18 11:22:26,417 - INFO - === ManimStudio Starting ===
+2025-06-18 11:22:26,418 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-18 11:22:26,418 - INFO - Platform: win32
+2025-06-18 11:22:26,418 - INFO - Frozen: False
+2025-06-18 11:22:26,419 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-18 11:22:26,419 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-18 11:22:26,419 - INFO - Checking LaTeX installation...
+2025-06-18 11:22:27,135 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-18 11:22:27,136 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-18 11:22:27,136 - INFO - Creating main application...
+2025-06-18 11:22:27,294 - INFO - Debug logging enabled to: C:\Users\euler\.manim_studio\logs\venv_debug.log
+2025-06-18 11:22:27,294 - INFO - System: win32
+2025-06-18 11:22:27,294 - INFO - Python: C:\Users\euler\venv_windows\Scripts\python.exe 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-18 11:22:27,295 - INFO - Frozen executable (corrected): False
+2025-06-18 11:22:27,295 - INFO - VirtualEnvironmentManager initialized
+2025-06-18 11:22:27,295 - INFO - Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:22:27,295 - INFO - Is frozen (corrected): False
+2025-06-18 11:22:27,296 - INFO - Virtual environments directory: C:\Users\euler\.manim_studio\venvs
+2025-06-18 11:22:27,296 - INFO - ============================================================
+2025-06-18 11:22:27,296 - INFO - COMPREHENSIVE PYTHON DISCOVERY
+2025-06-18 11:22:27,296 - INFO - ============================================================
+2025-06-18 11:22:27,296 - INFO - 1. Searching system PATH...
+2025-06-18 11:22:27,296 - DEBUG - Searching for Python executables: ['python.exe', 'python3.exe', 'pythonw.exe', 'python3w.exe', 'python3.8.exe', 'python38.exe', 'pythonw3.8.exe', 'python3.9.exe', 'python39.exe', 'pythonw3.9.exe', 'python3.10.exe', 'python310.exe', 'pythonw3.10.exe', 'python3.11.exe', 'python311.exe', 'pythonw3.11.exe', 'python3.12.exe', 'python312.exe', 'pythonw3.12.exe', 'python3.13.exe', 'python313.exe', 'pythonw3.13.exe']
+2025-06-18 11:22:27,297 - DEBUG - PATH found: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:22:27,297 - DEBUG - PATH found: C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:22:27,297 - DEBUG - PATH found: C:\Python312\python.exe
+2025-06-18 11:22:27,297 - DEBUG - PATH found: C:\Python312\pythonw.exe
+2025-06-18 11:22:27,298 - DEBUG - PATH found: C:\ProgramData\chocolatey\bin\python3.12.exe
+2025-06-18 11:22:27,302 - DEBUG - PATH found: C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python.exe
+2025-06-18 11:22:27,303 - DEBUG - PATH found: C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python3.exe
+2025-06-18 11:22:27,303 - INFO - 2. Searching Windows Registry...
+2025-06-18 11:22:27,303 - DEBUG - Registry found: C:\Python312\python.exe
+2025-06-18 11:22:27,304 - DEBUG - Registry found: C:\Python312\pythonw.exe
+2025-06-18 11:22:27,304 - INFO - 3. Searching common directories...
+2025-06-18 11:22:27,304 - DEBUG - Common dir found: C:\Python312\python.exe
+2025-06-18 11:22:27,305 - DEBUG - Common dir found: C:\Python312\pythonw.exe
+2025-06-18 11:22:27,305 - INFO - 4. Searching package managers...
+2025-06-18 11:22:27,311 - DEBUG - Running subprocess: ['C:\\Users\\euler\\venv_windows\\Scripts\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,425 - INFO - Validated Python 3.12: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:22:27,425 - DEBUG - Running subprocess: ['C:\\Users\\euler\\venv_windows\\Scripts\\pythonw.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,546 - INFO - Validated Python 3.12: C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:22:27,546 - DEBUG - Running subprocess: ['C:\\Python312\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,649 - INFO - Validated Python 3.12: C:\Python312\python.exe
+2025-06-18 11:22:27,649 - DEBUG - Running subprocess: ['C:\\Python312\\pythonw.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,721 - INFO - Validated Python 3.12: C:\Python312\pythonw.exe
+2025-06-18 11:22:27,721 - DEBUG - Running subprocess: ['C:\\ProgramData\\chocolatey\\bin\\python3.12.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:27,960 - INFO - Validated Python 3.12: C:\ProgramData\chocolatey\bin\python3.12.exe
+2025-06-18 11:22:27,961 - DEBUG - Running subprocess: ['C:\\Users\\euler\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:28,103 - WARNING - Python validation failed for C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python.exe: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+2025-06-18 11:22:28,104 - DEBUG - Running subprocess: ['C:\\Users\\euler\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:28,238 - WARNING - Python validation failed for C:\Users\euler\AppData\Local\Microsoft\WindowsApps\python3.exe: Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+2025-06-18 11:22:28,239 - INFO - Found 5 valid Python installations:
+2025-06-18 11:22:28,239 - INFO -   1. C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-18 11:22:28,239 - INFO -   2. C:\Users\euler\venv_windows\Scripts\pythonw.exe
+2025-06-18 11:22:28,240 - INFO -   3. C:\Python312\python.exe
+2025-06-18 11:22:28,240 - INFO -   4. C:\Python312\pythonw.exe
+2025-06-18 11:22:28,240 - INFO -   5. C:\ProgramData\chocolatey\bin\python3.12.exe
+2025-06-18 11:22:28,241 - INFO - Detecting existing environments...
+2025-06-18 11:22:28,241 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-18 11:22:28,241 - INFO - Default environment structure is valid
+2025-06-18 11:22:28,241 - DEBUG - Running subprocess: ['C:\\Users\\euler\\.manim_studio\\venvs\\manim_studio_default\\Scripts\\python.exe', '-c', "\nimport sys\nmajor, minor = sys.version_info.major, sys.version_info.minor\nprint(f'{major}.{minor}')\nif major < 3 or (major == 3 and minor < 10):\n    print('VERSION_TOO_OLD')\n    exit(1)\ntry:\n    import venv\n    print('VENV_OK')\nexcept ImportError:\n    print('NO_VENV')\n    exit(1)\ntry:\n    import pip\n    print('PIP_OK')\nexcept ImportError:\n    print('NO_PIP')\n    exit(1)\nprint('ALL_OK')\n"]
+2025-06-18 11:22:28,416 - INFO - Validated Python 3.12: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-18 11:22:28,417 - DEBUG - Running subprocess: ['C:\\Users\\euler\\.manim_studio\\venvs\\manim_studio_default\\Scripts\\python.exe', '-c', '\nimport sys\nmissing = []\npackages = [\'manim\', \'numpy\', \'customtkinter\', \'PIL\']\nfor pkg in packages:\n    try:\n        if pkg == \'PIL\':\n            import PIL\n        else:\n            __import__(pkg)\n        print(f\'[OK] {pkg}\')\n    except ImportError:\n        missing.append(pkg)\n        print(f\'[FAIL] {pkg}\')\n\nif missing:\n    print(f\'MISSING:{",".join(missing)}\')\n    sys.exit(1)\nelse:\n    print(\'ALL_OK\')\n    sys.exit(0)\n']
+2025-06-18 11:22:42,612 - INFO - All essential packages verified
+2025-06-18 11:22:42,614 - INFO - Default environment has all required packages
+2025-06-18 11:22:42,615 - INFO - Using existing environment: manim_studio_default
+2025-06-18 11:22:44,886 - INFO - Starting application main loop...
+2025-06-19 15:58:15,770 - INFO - === ManimStudio Starting ===
+2025-06-19 15:58:15,771 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-19 15:58:15,771 - INFO - Platform: win32
+2025-06-19 15:58:15,772 - INFO - Frozen: False
+2025-06-19 15:58:15,772 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-19 15:58:15,772 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-19 15:58:15,773 - INFO - Checking LaTeX installation...
+2025-06-19 15:58:16,679 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-19 15:58:16,680 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-19 15:58:16,681 - INFO - Creating main application...
+2025-06-19 15:58:18,002 - INFO - Initializing environment detection...
+2025-06-19 15:58:18,003 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-19 15:58:18,004 - INFO - Default environment structure is valid
+2025-06-19 15:58:30,453 - INFO - All essential packages verified
+2025-06-19 15:58:30,453 - INFO - Default environment has all required packages
+2025-06-19 15:58:31,868 - INFO - Starting application main loop...
+2025-06-19 19:13:53,012 - INFO - === ManimStudio Starting ===
+2025-06-19 19:13:53,013 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-19 19:13:53,013 - INFO - Platform: win32
+2025-06-19 19:13:53,014 - INFO - Frozen: False
+2025-06-19 19:13:53,014 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-19 19:13:53,015 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-19 19:13:53,015 - INFO - Checking LaTeX installation...
+2025-06-19 19:13:53,528 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-19 19:13:53,528 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-19 19:13:53,528 - INFO - Creating main application...
+2025-06-19 19:13:53,729 - INFO - Initializing environment detection...
+2025-06-19 19:13:53,730 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-19 19:13:53,730 - INFO - Default environment structure is valid
+2025-06-19 19:13:54,181 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-19 19:13:54,182 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-19 19:13:57,067 - INFO - All essential packages verified
+2025-06-19 19:13:57,068 - INFO - Default environment has all required packages
+2025-06-19 19:13:59,178 - INFO - Starting application main loop...
+2025-06-20 00:29:58,081 - INFO - === ManimStudio Starting ===
+2025-06-20 00:29:58,082 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 00:29:58,082 - INFO - Platform: win32
+2025-06-20 00:29:58,083 - INFO - Frozen: False
+2025-06-20 00:29:58,083 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 00:29:58,083 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 00:29:58,084 - INFO - Checking LaTeX installation...
+2025-06-20 00:29:59,111 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 00:29:59,112 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 00:29:59,112 - INFO - Creating main application...
+2025-06-20 00:30:00,455 - INFO - Initializing environment detection...
+2025-06-20 00:30:00,455 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 00:30:00,456 - INFO - Default environment structure is valid
+2025-06-20 00:30:00,827 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 00:31:14,272 - INFO - === ManimStudio Starting ===
+2025-06-20 00:31:14,274 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 00:31:14,274 - INFO - Platform: win32
+2025-06-20 00:31:14,274 - INFO - Frozen: False
+2025-06-20 00:31:14,275 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 00:31:14,275 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 00:31:14,275 - INFO - Checking LaTeX installation...
+2025-06-20 00:31:14,895 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 00:31:14,896 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 00:31:14,898 - INFO - Creating main application...
+2025-06-20 00:31:15,024 - INFO - Initializing environment detection...
+2025-06-20 00:31:15,025 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 00:31:15,025 - INFO - Default environment structure is valid
+2025-06-20 00:31:15,274 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 00:31:17,629 - INFO - All essential packages verified
+2025-06-20 00:31:17,630 - INFO - Default environment has all required packages
+2025-06-20 00:31:21,036 - INFO - Starting application main loop...
+2025-06-20 08:19:39,073 - INFO - === ManimStudio Starting ===
+2025-06-20 08:19:39,074 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 08:19:39,074 - INFO - Platform: win32
+2025-06-20 08:19:39,074 - INFO - Frozen: False
+2025-06-20 08:19:39,074 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 08:19:39,075 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 08:19:39,075 - INFO - Checking LaTeX installation...
+2025-06-20 08:19:39,885 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 08:19:39,886 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 08:19:39,886 - INFO - Creating main application...
+2025-06-20 08:19:40,963 - INFO - Initializing environment detection...
+2025-06-20 08:19:40,964 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 08:19:40,965 - INFO - Default environment structure is valid
+2025-06-20 08:19:41,340 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 08:19:57,178 - INFO - === ManimStudio Starting ===
+2025-06-20 08:19:57,178 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 08:19:57,179 - INFO - Platform: win32
+2025-06-20 08:19:57,179 - INFO - Frozen: False
+2025-06-20 08:19:57,179 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 08:19:57,181 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 08:19:57,181 - INFO - Checking LaTeX installation...
+2025-06-20 08:19:57,797 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 08:19:57,797 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 08:19:57,798 - INFO - Creating main application...
+2025-06-20 08:19:57,898 - INFO - Initializing environment detection...
+2025-06-20 08:19:57,898 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 08:19:57,899 - INFO - Default environment structure is valid
+2025-06-20 08:19:58,241 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 08:20:01,087 - INFO - All essential packages verified
+2025-06-20 08:20:01,087 - INFO - Default environment has all required packages
+2025-06-20 08:20:02,559 - INFO - Starting application main loop...
+2025-06-20 08:21:57,292 - INFO - === ManimStudio Starting ===
+2025-06-20 08:21:57,293 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 08:21:57,293 - INFO - Platform: win32
+2025-06-20 08:21:57,294 - INFO - Frozen: False
+2025-06-20 08:21:57,294 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 08:21:57,294 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 08:21:57,294 - INFO - Checking LaTeX installation...
+2025-06-20 08:21:57,761 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 08:21:57,785 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 08:21:57,786 - INFO - Creating main application...
+2025-06-20 08:21:57,872 - INFO - Initializing environment detection...
+2025-06-20 08:21:57,872 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 08:21:57,872 - INFO - Default environment structure is valid
+2025-06-20 08:21:58,094 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 08:21:59,913 - INFO - All essential packages verified
+2025-06-20 08:21:59,914 - INFO - Default environment has all required packages
+2025-06-20 08:22:02,113 - INFO - Starting application main loop...
+2025-06-20 08:34:37,101 - INFO - === ManimStudio Starting ===
+2025-06-20 08:34:37,102 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 08:34:37,102 - INFO - Platform: win32
+2025-06-20 08:34:37,102 - INFO - Frozen: False
+2025-06-20 08:34:37,102 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 08:34:37,102 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 08:34:37,102 - INFO - Checking LaTeX installation...
+2025-06-20 08:34:37,734 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 08:34:37,735 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 08:34:37,735 - INFO - Creating main application...
+2025-06-20 08:34:37,939 - INFO - Initializing environment detection...
+2025-06-20 08:34:37,940 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 08:34:37,940 - INFO - Default environment structure is valid
+2025-06-20 08:34:38,276 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 08:34:41,774 - INFO - All essential packages verified
+2025-06-20 08:34:41,775 - INFO - Default environment has all required packages
+2025-06-20 08:34:44,108 - INFO - Starting application main loop...
+2025-06-20 08:38:35,941 - INFO - Starting Manim Animation Studio
+2025-06-20 08:38:36,025 - INFO - Applied runtime fixes
+2025-06-20 08:43:08,497 - INFO - Application interrupted by user
+2025-06-20 08:43:33,307 - INFO - Starting Manim Animation Studio
+2025-06-20 08:43:33,319 - INFO - Applied runtime fixes
+2025-06-20 08:43:58,246 - ERROR - Error starting main app: ManimStudioApp.__init__() got an unexpected keyword argument 'venv_manager'
+2025-06-20 08:43:58,247 - ERROR - Traceback: Traceback (most recent call last):
+  File "C:\Users\euler\github\manim_app\app.py", line 12119, in start_main_app
+    self.main_app = app.ManimStudioApp(venv_manager=self.venv_manager)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: ManimStudioApp.__init__() got an unexpected keyword argument 'venv_manager'
+
+2025-06-20 08:44:01,154 - INFO - Starting Manim Animation Studio
+2025-06-20 08:44:01,158 - INFO - Applied runtime fixes
+2025-06-20 08:44:06,882 - ERROR - Error starting main app: ManimStudioApp.__init__() got an unexpected keyword argument 'venv_manager'
+2025-06-20 08:44:06,885 - ERROR - Traceback: Traceback (most recent call last):
+  File "C:\Users\euler\github\manim_app\app.py", line 12119, in start_main_app
+    self.main_app = app.ManimStudioApp(venv_manager=self.venv_manager)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: ManimStudioApp.__init__() got an unexpected keyword argument 'venv_manager'
+
+2025-06-20 10:56:06,446 - INFO - === ManimStudio Starting ===
+2025-06-20 10:56:06,452 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 10:56:06,453 - INFO - Platform: win32
+2025-06-20 10:56:06,453 - INFO - Frozen: False
+2025-06-20 10:56:06,454 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 10:56:06,454 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 10:56:06,454 - INFO - Checking LaTeX installation...
+2025-06-20 10:56:07,191 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 10:56:07,192 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 10:56:07,192 - INFO - Creating main application...
+2025-06-20 10:56:07,351 - INFO - Initializing environment detection...
+2025-06-20 10:56:07,352 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 10:56:07,352 - INFO - Default environment structure is valid
+2025-06-20 10:56:07,578 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 10:56:07,578 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 10:56:11,101 - INFO - All essential packages verified
+2025-06-20 10:56:11,101 - INFO - Default environment has all required packages
+2025-06-20 10:56:13,231 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 10:56:13,231 - INFO - Starting application main loop...
+2025-06-20 11:03:24,614 - INFO - === ManimStudio Starting ===
+2025-06-20 11:03:24,615 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 11:03:24,615 - INFO - Platform: win32
+2025-06-20 11:03:24,615 - INFO - Frozen: False
+2025-06-20 11:03:24,615 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 11:03:24,617 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 11:03:24,617 - INFO - Checking LaTeX installation...
+2025-06-20 11:03:25,275 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:03:25,278 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:03:25,278 - INFO - Creating main application...
+2025-06-20 11:03:25,455 - INFO - Initializing environment detection...
+2025-06-20 11:03:25,455 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 11:03:25,456 - INFO - Default environment structure is valid
+2025-06-20 11:03:25,688 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 11:03:25,689 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 11:03:28,948 - INFO - All essential packages verified
+2025-06-20 11:03:28,948 - INFO - Default environment has all required packages
+2025-06-20 11:03:31,041 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 11:03:31,076 - ERROR - Startup error: 'ManimStudioApp' object has no attribute 'run_animation'
+2025-06-20 11:03:31,088 - ERROR - Traceback: Traceback (most recent call last):
+  File "C:\Users\euler\github\manim_app\app.py", line 11074, in main
+    dialog = GettingStartedDialog(app)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\euler\github\manim_app\app.py", line 10295, in __init__
+    self.setup_ui()
+  File "C:\Users\euler\github\manim_app\app.py", line 10394, in setup_ui
+    self.setup_editor_tab()
+  File "C:\Users\euler\github\manim_app\app.py", line 10456, in setup_editor_tab
+    command=self.run_animation,
+            ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\euler\github\manim_app\app.py", line 10300, in __getattr__
+    return getattr(self.app, name)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ManimStudioApp' object has no attribute 'run_animation'. Did you mean: 'render_animation'?
+
+2025-06-20 11:09:50,118 - INFO - === ManimStudio Starting ===
+2025-06-20 11:09:50,118 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 11:09:50,118 - INFO - Platform: win32
+2025-06-20 11:09:50,118 - INFO - Frozen: False
+2025-06-20 11:09:50,118 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 11:09:50,118 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 11:09:50,119 - INFO - Checking LaTeX installation...
+2025-06-20 11:09:50,556 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:09:50,557 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:09:50,557 - INFO - Creating main application...
+2025-06-20 11:09:50,662 - INFO - Initializing environment detection...
+2025-06-20 11:09:50,662 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 11:09:50,663 - INFO - Default environment structure is valid
+2025-06-20 11:09:50,884 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 11:09:50,885 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 11:09:53,492 - INFO - All essential packages verified
+2025-06-20 11:09:53,493 - INFO - Default environment has all required packages
+2025-06-20 11:09:56,359 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 11:09:56,422 - ERROR - Startup error: 'ManimStudioApp' object has no attribute 'generate_preview'
+2025-06-20 11:09:56,432 - ERROR - Traceback: Traceback (most recent call last):
+  File "C:\Users\euler\github\manim_app\app.py", line 11082, in main
+    dialog = GettingStartedDialog(app)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\euler\github\manim_app\app.py", line 10295, in __init__
+    self.setup_ui()
+  File "C:\Users\euler\github\manim_app\app.py", line 10406, in setup_ui
+    self.setup_preview_tab()
+  File "C:\Users\euler\github\manim_app\app.py", line 10525, in setup_preview_tab
+    command=self.generate_preview,
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\euler\github\manim_app\app.py", line 10300, in __getattr__
+    return getattr(self.app, name)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ManimStudioApp' object has no attribute 'generate_preview'
+
+2025-06-20 11:10:33,578 - INFO - === ManimStudio Starting ===
+2025-06-20 11:10:33,578 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 11:10:33,579 - INFO - Platform: win32
+2025-06-20 11:10:33,579 - INFO - Frozen: False
+2025-06-20 11:10:33,579 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 11:10:33,579 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 11:10:33,579 - INFO - Checking LaTeX installation...
+2025-06-20 11:10:34,018 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:10:34,019 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:10:34,019 - INFO - Creating main application...
+2025-06-20 11:10:34,149 - INFO - Initializing environment detection...
+2025-06-20 11:10:34,149 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 11:10:34,150 - INFO - Default environment structure is valid
+2025-06-20 11:10:34,351 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 11:10:34,351 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 11:10:36,189 - INFO - All essential packages verified
+2025-06-20 11:10:36,190 - INFO - Default environment has all required packages
+2025-06-20 11:10:37,602 - INFO - Starting application main loop...
+2025-06-20 11:17:42,579 - INFO - === ManimStudio Starting ===
+2025-06-20 11:17:42,580 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 11:17:42,580 - INFO - Platform: win32
+2025-06-20 11:17:42,580 - INFO - Frozen: False
+2025-06-20 11:17:42,580 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 11:17:42,580 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 11:17:42,581 - INFO - Checking LaTeX installation...
+2025-06-20 11:17:43,088 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:17:43,090 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:17:43,090 - INFO - Creating main application...
+2025-06-20 11:17:43,187 - INFO - Initializing environment detection...
+2025-06-20 11:17:43,187 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 11:17:43,188 - INFO - Default environment structure is valid
+2025-06-20 11:17:43,496 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 11:17:43,497 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 11:17:45,473 - INFO - All essential packages verified
+2025-06-20 11:17:45,473 - INFO - Default environment has all required packages
+2025-06-20 11:17:46,944 - INFO - Starting application main loop...
+2025-06-20 11:17:53,676 - INFO - === ManimStudio Starting ===
+2025-06-20 11:17:53,676 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 11:17:53,676 - INFO - Platform: win32
+2025-06-20 11:17:53,677 - INFO - Frozen: False
+2025-06-20 11:17:53,677 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 11:17:53,677 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 11:17:53,677 - INFO - Checking LaTeX installation...
+2025-06-20 11:17:54,055 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:17:54,056 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:17:54,056 - INFO - Creating main application...
+2025-06-20 11:17:54,148 - INFO - Initializing environment detection...
+2025-06-20 11:17:54,149 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 11:17:54,149 - INFO - Default environment structure is valid
+2025-06-20 11:17:54,421 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 11:17:54,422 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 11:17:56,473 - INFO - All essential packages verified
+2025-06-20 11:17:56,473 - INFO - Default environment has all required packages
+2025-06-20 11:17:57,925 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 11:17:57,982 - ERROR - Startup error: 'ManimStudioApp' object has no attribute 'clear_logs'
+2025-06-20 11:17:57,987 - ERROR - Traceback: Traceback (most recent call last):
+  File "C:\Users\euler\github\manim_app\app.py", line 11040, in main
+    dialog = GettingStartedDialog(app)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\euler\github\manim_app\app.py", line 10295, in __init__
+    self.setup_ui()
+  File "C:\Users\euler\github\manim_app\app.py", line 10410, in setup_ui
+    self.setup_log_tab()
+  File "C:\Users\euler\github\manim_app\app.py", line 10542, in setup_log_tab
+    command=self.clear_logs,
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\euler\github\manim_app\app.py", line 10300, in __getattr__
+    return getattr(self.app, name)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ManimStudioApp' object has no attribute 'clear_logs'
+
+2025-06-20 11:23:35,035 - INFO - === ManimStudio Starting ===
+2025-06-20 11:23:35,036 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 11:23:35,037 - INFO - Platform: win32
+2025-06-20 11:23:35,037 - INFO - Frozen: False
+2025-06-20 11:23:35,037 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 11:23:35,037 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 11:23:35,038 - INFO - Checking LaTeX installation...
+2025-06-20 11:23:35,787 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:23:35,788 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:23:35,788 - INFO - Creating main application...
+2025-06-20 11:23:35,971 - INFO - Initializing environment detection...
+2025-06-20 11:23:35,971 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 11:23:35,971 - INFO - Default environment structure is valid
+2025-06-20 11:23:36,177 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 11:23:36,177 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 11:23:39,688 - INFO - All essential packages verified
+2025-06-20 11:23:39,689 - INFO - Default environment has all required packages
+2025-06-20 11:23:41,973 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 11:24:23,638 - INFO - Starting application main loop...
+2025-06-20 11:43:59,590 - INFO - === ManimStudio Starting ===
+2025-06-20 11:43:59,591 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 11:43:59,591 - INFO - Platform: win32
+2025-06-20 11:43:59,591 - INFO - Frozen: False
+2025-06-20 11:43:59,591 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 11:43:59,592 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 11:43:59,592 - INFO - Checking LaTeX installation...
+2025-06-20 11:44:00,262 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:44:00,263 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:44:00,263 - INFO - Creating main application...
+2025-06-20 11:44:01,653 - INFO - Initializing environment detection...
+2025-06-20 11:44:01,653 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 11:44:01,654 - INFO - Default environment structure is valid
+2025-06-20 11:44:02,002 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 11:44:02,003 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 11:44:15,343 - INFO - All essential packages verified
+2025-06-20 11:44:15,344 - INFO - Default environment has all required packages
+2025-06-20 11:44:17,683 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 11:47:34,885 - INFO - Starting application main loop...
+2025-06-20 11:53:24,574 - INFO - === ManimStudio Starting ===
+2025-06-20 11:53:24,575 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 11:53:24,575 - INFO - Platform: win32
+2025-06-20 11:53:24,575 - INFO - Frozen: False
+2025-06-20 11:53:24,575 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 11:53:24,575 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 11:53:24,575 - INFO - Checking LaTeX installation...
+2025-06-20 11:53:25,235 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:53:25,236 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 11:53:25,236 - INFO - Creating main application...
+2025-06-20 11:53:25,395 - INFO - Initializing environment detection...
+2025-06-20 11:53:25,395 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 11:53:25,395 - INFO - Default environment structure is valid
+2025-06-20 11:53:25,676 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 11:53:25,676 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 11:53:28,954 - INFO - All essential packages verified
+2025-06-20 11:53:28,954 - INFO - Default environment has all required packages
+2025-06-20 11:53:31,390 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 12:02:54,088 - INFO - Starting application main loop...
+2025-06-20 12:03:02,294 - INFO - === ManimStudio Starting ===
+2025-06-20 12:03:02,297 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 12:03:02,309 - INFO - Platform: win32
+2025-06-20 12:03:02,309 - INFO - Frozen: False
+2025-06-20 12:03:02,310 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 12:03:02,310 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 12:03:02,313 - INFO - Checking LaTeX installation...
+2025-06-20 12:03:03,085 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 12:03:03,086 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 12:03:03,087 - INFO - Creating main application...
+2025-06-20 12:03:03,289 - INFO - Initializing environment detection...
+2025-06-20 12:03:03,290 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 12:03:03,290 - INFO - Default environment structure is valid
+2025-06-20 12:03:03,542 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 12:03:03,542 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 12:03:06,720 - INFO - All essential packages verified
+2025-06-20 12:03:06,721 - INFO - Default environment has all required packages
+2025-06-20 12:03:09,660 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 12:03:41,957 - INFO - Starting application main loop...
+2025-06-20 12:07:26,691 - INFO - === ManimStudio Starting ===
+2025-06-20 12:07:26,692 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 12:07:26,692 - INFO - Platform: win32
+2025-06-20 12:07:26,692 - INFO - Frozen: False
+2025-06-20 12:07:26,693 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 12:07:26,693 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 12:07:26,693 - INFO - Checking LaTeX installation...
+2025-06-20 12:07:27,373 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 12:07:27,373 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 12:07:27,373 - INFO - Creating main application...
+2025-06-20 12:07:27,523 - INFO - Initializing environment detection...
+2025-06-20 12:07:27,524 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 12:07:27,524 - INFO - Default environment structure is valid
+2025-06-20 12:07:27,784 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 12:07:27,784 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 12:07:30,475 - INFO - All essential packages verified
+2025-06-20 12:07:30,476 - INFO - Default environment has all required packages
+2025-06-20 12:07:32,559 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 12:08:18,351 - INFO - Starting application main loop...
+2025-06-20 16:50:41,462 - INFO - === ManimStudio Starting ===
+2025-06-20 16:50:41,463 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 16:50:41,463 - INFO - Platform: win32
+2025-06-20 16:50:41,463 - INFO - Frozen: False
+2025-06-20 16:50:41,464 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 16:50:41,464 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 16:50:41,464 - INFO - Checking LaTeX installation...
+2025-06-20 16:50:42,062 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 16:50:42,062 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 16:50:42,063 - INFO - Creating main application...
+2025-06-20 16:50:42,224 - INFO - Initializing environment detection...
+2025-06-20 16:50:42,224 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 16:50:42,224 - INFO - Default environment structure is valid
+2025-06-20 16:50:42,465 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 16:50:42,465 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 16:50:45,316 - INFO - All essential packages verified
+2025-06-20 16:50:45,317 - INFO - Default environment has all required packages
+2025-06-20 16:50:46,959 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 16:51:12,702 - INFO - Starting application main loop...
+2025-06-20 16:56:59,763 - INFO - === ManimStudio Starting ===
+2025-06-20 16:56:59,763 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 16:56:59,764 - INFO - Platform: win32
+2025-06-20 16:56:59,764 - INFO - Frozen: False
+2025-06-20 16:56:59,765 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 16:56:59,765 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 16:56:59,766 - INFO - Checking LaTeX installation...
+2025-06-20 16:57:00,294 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 16:57:00,294 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 16:57:00,295 - INFO - Creating main application...
+2025-06-20 16:57:00,440 - INFO - Initializing environment detection...
+2025-06-20 16:57:00,441 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 16:57:00,441 - INFO - Default environment structure is valid
+2025-06-20 16:57:00,650 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 16:57:00,651 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 16:57:03,976 - INFO - All essential packages verified
+2025-06-20 16:57:03,976 - INFO - Default environment has all required packages
+2025-06-20 16:57:06,904 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 16:57:18,629 - INFO - Starting application main loop...
+2025-06-20 16:58:11,233 - INFO - === ManimStudio Starting ===
+2025-06-20 16:58:11,234 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 16:58:11,235 - INFO - Platform: win32
+2025-06-20 16:58:11,235 - INFO - Frozen: False
+2025-06-20 16:58:11,236 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 16:58:11,236 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 16:58:11,237 - INFO - Checking LaTeX installation...
+2025-06-20 16:58:12,106 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 16:58:12,107 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 16:58:12,107 - INFO - Creating main application...
+2025-06-20 16:58:12,262 - INFO - Initializing environment detection...
+2025-06-20 16:58:12,262 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 16:58:12,263 - INFO - Default environment structure is valid
+2025-06-20 16:58:12,490 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 16:58:12,490 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 16:58:15,265 - INFO - All essential packages verified
+2025-06-20 16:58:15,265 - INFO - Default environment has all required packages
+2025-06-20 16:58:18,212 - INFO - Debug mode - showing Environment Setup dialog
+2025-06-20 16:58:37,474 - INFO - Starting application main loop...
+2025-06-20 17:11:04,302 - INFO - === ManimStudio Starting ===
+2025-06-20 17:11:04,302 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 17:11:04,303 - INFO - Platform: win32
+2025-06-20 17:11:04,303 - INFO - Frozen: False
+2025-06-20 17:11:04,303 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 17:11:04,304 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 17:11:04,304 - INFO - Checking LaTeX installation...
+2025-06-20 17:11:04,756 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 17:11:04,757 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 17:11:04,757 - INFO - Creating main application...
+2025-06-20 17:11:04,910 - INFO - Initializing environment detection...
+2025-06-20 17:11:04,910 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 17:11:04,911 - INFO - Default environment structure is valid
+2025-06-20 17:11:05,152 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 17:11:05,152 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 17:11:08,476 - INFO - All essential packages verified
+2025-06-20 17:11:08,478 - INFO - Default environment has all required packages
+2025-06-20 17:11:11,121 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 17:11:11,311 - INFO - Starting application main loop...
+2025-06-20 17:15:57,368 - INFO - === ManimStudio Starting ===
+2025-06-20 17:15:57,369 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 17:15:57,369 - INFO - Platform: win32
+2025-06-20 17:15:57,370 - INFO - Frozen: False
+2025-06-20 17:15:57,370 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 17:15:57,371 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 17:15:57,371 - INFO - Checking LaTeX installation...
+2025-06-20 17:15:57,995 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 17:15:57,995 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 17:15:57,996 - INFO - Creating main application...
+2025-06-20 17:15:58,179 - INFO - Initializing environment detection...
+2025-06-20 17:15:58,179 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 17:15:58,180 - INFO - Default environment structure is valid
+2025-06-20 17:15:58,408 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 17:15:58,408 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 17:16:01,510 - INFO - All essential packages verified
+2025-06-20 17:16:01,510 - INFO - Default environment has all required packages
+2025-06-20 17:16:03,931 - INFO - Debug mode - showing Environment Setup dialog
+2025-06-20 17:16:25,473 - INFO - Starting application main loop...
+2025-06-20 17:39:30,360 - INFO - === ManimStudio Starting ===
+2025-06-20 17:39:30,360 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 17:39:30,361 - INFO - Platform: win32
+2025-06-20 17:39:30,361 - INFO - Frozen: False
+2025-06-20 17:39:30,362 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 17:39:30,362 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 17:39:30,363 - INFO - Checking LaTeX installation...
+2025-06-20 17:39:31,049 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 17:39:31,049 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 17:39:31,050 - INFO - Creating main application...
+2025-06-20 17:39:31,225 - INFO - Initializing environment detection...
+2025-06-20 17:39:31,226 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 17:39:31,226 - INFO - Default environment structure is valid
+2025-06-20 17:39:31,438 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 17:39:31,438 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 17:39:34,350 - INFO - All essential packages verified
+2025-06-20 17:39:34,351 - INFO - Default environment has all required packages
+2025-06-20 17:39:36,259 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 17:40:03,458 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 17:40:03,458 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 17:40:05,831 - INFO - All essential packages verified
+2025-06-20 17:42:30,929 - INFO - Starting application main loop...
+2025-06-20 17:43:01,693 - INFO - === ManimStudio Starting ===
+2025-06-20 17:43:01,694 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 17:43:01,694 - INFO - Platform: win32
+2025-06-20 17:43:01,694 - INFO - Frozen: False
+2025-06-20 17:43:01,694 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 17:43:01,694 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 17:43:01,694 - INFO - Checking LaTeX installation...
+2025-06-20 17:43:02,433 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 17:43:02,434 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 17:43:02,434 - INFO - Creating main application...
+2025-06-20 17:43:02,742 - INFO - Initializing environment detection...
+2025-06-20 17:43:02,745 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 17:43:02,746 - INFO - Default environment structure is valid
+2025-06-20 17:43:03,135 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 17:43:03,135 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 17:43:06,507 - INFO - All essential packages verified
+2025-06-20 17:43:06,507 - INFO - Default environment has all required packages
+2025-06-20 17:43:11,833 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 17:44:03,555 - INFO - Starting application main loop...
+2025-06-20 18:12:59,178 - INFO - === ManimStudio Starting ===
+2025-06-20 18:12:59,178 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 18:12:59,179 - INFO - Platform: win32
+2025-06-20 18:12:59,179 - INFO - Frozen: False
+2025-06-20 18:12:59,180 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 18:12:59,180 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 18:12:59,180 - INFO - Checking LaTeX installation...
+2025-06-20 18:12:59,873 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 18:12:59,874 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 18:12:59,876 - INFO - Creating main application...
+2025-06-20 18:13:00,072 - INFO - Initializing environment detection...
+2025-06-20 18:13:00,072 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 18:13:00,072 - INFO - Default environment structure is valid
+2025-06-20 18:13:00,280 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 18:13:00,281 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 18:13:02,745 - INFO - All essential packages verified
+2025-06-20 18:13:02,745 - INFO - Default environment has all required packages
+2025-06-20 18:13:05,101 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 20:38:08,341 - INFO - Starting application main loop...
+2025-06-20 20:38:22,847 - INFO - === ManimStudio Starting ===
+2025-06-20 20:38:22,848 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 20:38:22,848 - INFO - Platform: win32
+2025-06-20 20:38:22,849 - INFO - Frozen: False
+2025-06-20 20:38:22,849 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 20:38:22,849 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 20:38:22,850 - INFO - Checking LaTeX installation...
+2025-06-20 20:38:23,483 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 20:38:23,484 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 20:38:23,484 - INFO - Creating main application...
+2025-06-20 20:38:23,661 - INFO - Initializing environment detection...
+2025-06-20 20:38:23,661 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 20:38:23,662 - INFO - Default environment structure is valid
+2025-06-20 20:38:24,025 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 20:38:24,025 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 20:38:27,208 - INFO - All essential packages verified
+2025-06-20 20:38:27,208 - INFO - Default environment has all required packages
+2025-06-20 20:38:29,882 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 20:38:46,621 - INFO - Starting environment setup...
+2025-06-20 20:38:47,713 - INFO - Found existing environment, checking what's missing...
+2025-06-20 20:38:49,048 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 20:38:50,143 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 20:38:56,750 - INFO - Missing packages: ['sympy', 'colour', 'pycairo']
+2025-06-20 20:38:57,839 - INFO - Upgrading pip in existing environment...
+2025-06-20 20:39:02,789 - INFO - Installing 3 missing packages...
+2025-06-20 20:39:03,886 - INFO - Installing missing package: sympy (1/3)...
+2025-06-20 20:39:04,974 - INFO - Attempt 1: Installing sympy
+2025-06-20 20:39:08,289 - WARNING - Attempt 1 failed for sympy
+2025-06-20 20:39:11,380 - INFO - Attempt 2: Installing sympy
+2025-06-20 20:39:14,726 - WARNING - Attempt 2 failed for sympy
+2025-06-20 20:39:17,815 - INFO - Attempt 3: Installing sympy
+2025-06-20 20:40:05,857 - INFO - Installing missing package: colour (2/3)...
+2025-06-20 20:40:06,948 - INFO - Attempt 1: Installing colour
+2025-06-20 20:40:09,861 - WARNING - Attempt 1 failed for colour
+2025-06-20 20:40:12,945 - INFO - Attempt 2: Installing colour
+2025-06-20 20:40:15,913 - WARNING - Attempt 2 failed for colour
+2025-06-20 20:40:19,005 - INFO - Attempt 3: Installing colour
+2025-06-20 20:40:23,905 - INFO - Installing missing package: pycairo (3/3)...
+2025-06-20 20:40:24,994 - INFO - Attempt 1: Installing pycairo
+2025-06-20 20:40:28,245 - WARNING - Attempt 1 failed for pycairo
+2025-06-20 20:40:31,334 - INFO - Attempt 2: Installing pycairo
+2025-06-20 20:40:34,673 - WARNING - Attempt 2 failed for pycairo
+2025-06-20 20:40:37,763 - INFO - Attempt 3: Installing pycairo
+2025-06-20 20:40:41,519 - WARNING - pycairo installed but cannot import
+2025-06-20 20:40:43,718 - INFO - Missing packages installation: 2/3 successful
+2025-06-20 20:40:44,807 - WARNING - Failed to install some packages, will recreate environment...
+2025-06-20 20:40:45,907 - INFO - Removing problematic environment for fresh install...
+2025-06-20 20:40:52,459 - INFO - Creating virtual environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-20 20:40:53,934 - INFO - Found Python: C:\Users\euler\venv_windows\Scripts\python.exe - Python 3.12.3 - Architecture: AMD64
+2025-06-20 20:41:08,533 - INFO - Upgrading pip...
+2025-06-20 20:41:20,554 - INFO - Installing all essential packages...
+2025-06-20 20:41:21,641 - INFO - Installing manim (1/22)...
+2025-06-20 20:41:22,735 - INFO - Attempt 1: Installing manim
+2025-06-20 20:41:26,620 - WARNING - Attempt 1 failed for manim
+2025-06-20 20:41:29,716 - INFO - Attempt 2: Installing manim
+2025-06-20 20:41:32,943 - WARNING - Attempt 2 failed for manim
+2025-06-20 20:41:36,025 - INFO - Attempt 3: Installing manim
+2025-06-20 20:41:46,974 - WARNING - Attempt 3 failed for manim
+2025-06-20 20:41:49,154 - INFO - Installing numpy>=1.22.0 (2/22)...
+2025-06-20 20:41:50,244 - INFO - Attempt 1: Installing numpy>=1.22.0
+2025-06-20 20:42:10,424 - INFO - Installing matplotlib>=3.5.0 (3/22)...
+2025-06-20 20:42:11,513 - INFO - Attempt 1: Installing matplotlib>=3.5.0
+2025-06-20 20:42:14,885 - WARNING - Attempt 1 failed for matplotlib>=3.5.0
+2025-06-20 20:42:17,968 - INFO - Attempt 2: Installing matplotlib>=3.5.0
+2025-06-20 20:42:20,800 - WARNING - Attempt 2 failed for matplotlib>=3.5.0
+2025-06-20 20:42:23,883 - INFO - Attempt 3: Installing matplotlib>=3.5.0
+2025-06-20 20:43:10,256 - INFO - Installing scipy>=1.8.0 (4/22)...
+2025-06-20 20:43:11,376 - INFO - Attempt 1: Installing scipy>=1.8.0
+2025-06-20 20:43:51,837 - INFO - Installing Pillow>=9.0.0 (5/22)...
+2025-06-20 20:43:52,952 - INFO - Attempt 1: Installing Pillow>=9.0.0
+2025-06-20 20:43:58,442 - INFO - Installing opencv-python>=4.6.0 (6/22)...
+2025-06-20 20:43:59,564 - INFO - Attempt 1: Installing opencv-python>=4.6.0
+2025-06-20 20:44:08,867 - WARNING - opencv-python>=4.6.0 installed but cannot import
+2025-06-20 20:44:11,986 - INFO - Attempt 2: Installing opencv-python>=4.6.0
+2025-06-20 20:44:14,680 - WARNING - Attempt 2 failed for opencv-python>=4.6.0
+2025-06-20 20:44:17,801 - INFO - Attempt 3: Installing opencv-python>=4.6.0
+2025-06-20 20:44:20,422 - WARNING - Attempt 3 failed for opencv-python>=4.6.0
+2025-06-20 20:44:22,656 - INFO - Installing imageio>=2.19.0 (7/22)...
+2025-06-20 20:44:23,771 - INFO - Attempt 1: Installing imageio>=2.19.0
+2025-06-20 20:44:26,354 - WARNING - Attempt 1 failed for imageio>=2.19.0
+2025-06-20 20:44:29,475 - INFO - Attempt 2: Installing imageio>=2.19.0
+2025-06-20 20:44:32,041 - WARNING - Attempt 2 failed for imageio>=2.19.0
+2025-06-20 20:44:35,162 - INFO - Attempt 3: Installing imageio>=2.19.0
+2025-06-20 20:44:56,385 - INFO - Installing moviepy>=1.0.3 (8/22)...
+2025-06-20 20:44:57,471 - INFO - Attempt 1: Installing moviepy>=1.0.3
+2025-06-20 20:45:00,659 - WARNING - Attempt 1 failed for moviepy>=1.0.3
+2025-06-20 20:45:03,753 - INFO - Attempt 2: Installing moviepy>=1.0.3
+2025-06-20 20:45:07,058 - WARNING - Attempt 2 failed for moviepy>=1.0.3
+2025-06-20 20:45:10,141 - INFO - Attempt 3: Installing moviepy>=1.0.3
+2025-06-20 20:45:37,382 - INFO - Installing imageio-ffmpeg (9/22)...
+2025-06-20 20:45:38,468 - INFO - Attempt 1: Installing imageio-ffmpeg
+2025-06-20 20:45:41,782 - WARNING - Attempt 1 failed for imageio-ffmpeg
+2025-06-20 20:45:44,870 - INFO - Attempt 2: Installing imageio-ffmpeg
+2025-06-20 20:45:48,112 - WARNING - Attempt 2 failed for imageio-ffmpeg
+2025-06-20 20:45:51,208 - INFO - Attempt 3: Installing imageio-ffmpeg
+2025-06-20 20:45:57,547 - WARNING - imageio-ffmpeg installed but cannot import
+2025-06-20 20:45:59,722 - INFO - Installing av (10/22)...
+2025-06-20 20:46:00,809 - INFO - Attempt 1: Installing av
+2025-06-20 20:46:03,511 - WARNING - Attempt 1 failed for av
+2025-06-20 20:46:06,609 - INFO - Attempt 2: Installing av
+2025-06-20 20:46:09,893 - WARNING - Attempt 2 failed for av
+2025-06-20 20:46:12,985 - INFO - Attempt 3: Installing av
+2025-06-20 20:46:24,874 - INFO - Installing jedi>=0.18.0 (11/22)...
+2025-06-20 20:46:25,962 - INFO - Attempt 1: Installing jedi>=0.18.0
+2025-06-20 20:46:28,594 - WARNING - Attempt 1 failed for jedi>=0.18.0
+2025-06-20 20:46:31,681 - INFO - Attempt 2: Installing jedi>=0.18.0
+2025-06-20 20:46:34,863 - WARNING - Attempt 2 failed for jedi>=0.18.0
+2025-06-20 20:46:37,956 - INFO - Attempt 3: Installing jedi>=0.18.0
+2025-06-20 20:46:47,179 - INFO - Installing customtkinter>=5.0.0 (12/22)...
+2025-06-20 20:46:48,266 - INFO - Attempt 1: Installing customtkinter>=5.0.0
+2025-06-20 20:46:52,021 - WARNING - Attempt 1 failed for customtkinter>=5.0.0
+2025-06-20 20:46:55,102 - INFO - Attempt 2: Installing customtkinter>=5.0.0
+2025-06-20 20:46:58,429 - WARNING - Attempt 2 failed for customtkinter>=5.0.0
+2025-06-20 20:47:01,527 - INFO - Attempt 3: Installing customtkinter>=5.0.0
+2025-06-20 20:47:09,007 - INFO - Installing requests (13/22)...
+2025-06-20 20:47:10,103 - INFO - Attempt 1: Installing requests
+2025-06-20 20:47:12,818 - WARNING - Attempt 1 failed for requests
+2025-06-20 20:47:15,914 - INFO - Attempt 2: Installing requests
+2025-06-20 20:47:19,225 - WARNING - Attempt 2 failed for requests
+2025-06-20 20:47:22,310 - INFO - Attempt 3: Installing requests
+2025-06-20 20:47:31,861 - INFO - Installing pydub (14/22)...
+2025-06-20 20:47:32,953 - INFO - Attempt 1: Installing pydub
+2025-06-20 20:47:36,144 - WARNING - Attempt 1 failed for pydub
+2025-06-20 20:47:39,239 - INFO - Attempt 2: Installing pydub
+2025-06-20 20:47:42,497 - WARNING - Attempt 2 failed for pydub
+2025-06-20 20:47:45,582 - INFO - Attempt 3: Installing pydub
+2025-06-20 20:47:52,091 - INFO - Installing rich (15/22)...
+2025-06-20 20:47:53,168 - INFO - Attempt 1: Installing rich
+2025-06-20 20:47:56,392 - WARNING - Attempt 1 failed for rich
+2025-06-20 20:47:59,489 - INFO - Attempt 2: Installing rich
+2025-06-20 20:48:02,742 - WARNING - Attempt 2 failed for rich
+2025-06-20 20:48:05,829 - INFO - Attempt 3: Installing rich
+2025-06-20 20:48:22,631 - INFO - Installing tqdm (16/22)...
+2025-06-20 20:48:23,719 - INFO - Attempt 1: Installing tqdm
+2025-06-20 20:48:26,817 - WARNING - Attempt 1 failed for tqdm
+2025-06-20 20:48:29,910 - INFO - Attempt 2: Installing tqdm
+2025-06-20 20:48:33,089 - WARNING - Attempt 2 failed for tqdm
+2025-06-20 20:48:36,181 - INFO - Attempt 3: Installing tqdm
+2025-06-20 20:48:43,189 - INFO - Installing sympy (17/22)...
+2025-06-20 20:48:44,277 - INFO - Attempt 1: Installing sympy
+2025-06-20 20:48:47,722 - WARNING - Attempt 1 failed for sympy
+2025-06-20 20:48:50,808 - INFO - Attempt 2: Installing sympy
+2025-06-20 20:48:54,468 - WARNING - Attempt 2 failed for sympy
+2025-06-20 20:48:57,556 - INFO - Attempt 3: Installing sympy
+2025-06-20 20:49:38,111 - INFO - Installing colour (18/22)...
+2025-06-20 20:49:39,198 - INFO - Attempt 1: Installing colour
+2025-06-20 20:49:42,429 - WARNING - Attempt 1 failed for colour
+2025-06-20 20:49:45,521 - INFO - Attempt 2: Installing colour
+2025-06-20 20:49:48,995 - WARNING - Attempt 2 failed for colour
+2025-06-20 20:49:52,092 - INFO - Attempt 3: Installing colour
+2025-06-20 20:49:56,919 - INFO - Installing moderngl (19/22)...
+2025-06-20 20:49:57,998 - INFO - Attempt 1: Installing moderngl
+2025-06-20 20:50:00,620 - WARNING - Attempt 1 failed for moderngl
+2025-06-20 20:50:03,706 - INFO - Attempt 2: Installing moderngl
+2025-06-20 20:50:06,934 - WARNING - Attempt 2 failed for moderngl
+2025-06-20 20:50:10,026 - INFO - Attempt 3: Installing moderngl
+2025-06-20 20:50:15,702 - INFO - Installing moderngl-window (20/22)...
+2025-06-20 20:50:16,788 - INFO - Attempt 1: Installing moderngl-window
+2025-06-20 20:50:19,868 - WARNING - Attempt 1 failed for moderngl-window
+2025-06-20 20:50:22,959 - INFO - Attempt 2: Installing moderngl-window
+2025-06-20 20:50:26,047 - WARNING - Attempt 2 failed for moderngl-window
+2025-06-20 20:50:29,143 - INFO - Attempt 3: Installing moderngl-window
+2025-06-20 20:50:56,842 - WARNING - moderngl-window installed but cannot import
+2025-06-20 20:50:59,026 - INFO - Installing pycairo (21/22)...
+2025-06-20 20:51:00,113 - INFO - Attempt 1: Installing pycairo
+2025-06-20 20:51:02,758 - WARNING - Attempt 1 failed for pycairo
+2025-06-20 20:51:05,846 - INFO - Attempt 2: Installing pycairo
+2025-06-20 20:51:09,129 - WARNING - Attempt 2 failed for pycairo
+2025-06-20 20:51:12,221 - INFO - Attempt 3: Installing pycairo
+2025-06-20 20:51:16,580 - WARNING - pycairo installed but cannot import
+2025-06-20 20:51:18,789 - INFO - Installing manimpango (22/22)...
+2025-06-20 20:51:19,881 - INFO - Attempt 1: Installing manimpango
+2025-06-20 20:51:23,178 - WARNING - Attempt 1 failed for manimpango
+2025-06-20 20:51:26,264 - INFO - Attempt 2: Installing manimpango
+2025-06-20 20:51:28,967 - WARNING - Attempt 2 failed for manimpango
+2025-06-20 20:51:32,060 - INFO - Attempt 3: Installing manimpango
+2025-06-20 20:51:38,433 - INFO - Installation complete: 17/22 packages installed
+2025-06-20 20:51:39,526 - INFO - Verifying installation...
+2025-06-20 20:51:42,918 - INFO - Activated environment: manim_studio_default
+2025-06-20 20:51:54,177 - ERROR - Command execution error: main thread is not in main loop
+
+2025-06-20 22:19:04,629 - INFO - Starting application main loop...
+2025-06-20 22:19:17,723 - INFO - === ManimStudio Starting ===
+2025-06-20 22:19:17,723 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 22:19:17,723 - INFO - Platform: win32
+2025-06-20 22:19:17,724 - INFO - Frozen: False
+2025-06-20 22:19:17,724 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 22:19:17,724 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 22:19:17,725 - INFO - Checking LaTeX installation...
+2025-06-20 22:19:18,273 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 22:19:18,273 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 22:19:18,274 - INFO - Creating main application...
+2025-06-20 22:19:32,682 - INFO - Starting environment setup...
+2025-06-20 22:19:33,768 - INFO - Found existing environment, checking what's missing...
+2025-06-20 22:19:35,081 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 22:19:36,170 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 22:49:20,082 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 22:49:34,536 - ERROR - Environment setup incomplete. Exiting.
+2025-06-20 22:55:24,565 - INFO - === ManimStudio Starting ===
+2025-06-20 22:55:24,565 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-20 22:55:24,566 - INFO - Platform: win32
+2025-06-20 22:55:24,566 - INFO - Frozen: False
+2025-06-20 22:55:24,567 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-20 22:55:24,567 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-20 22:55:24,567 - INFO - Checking LaTeX installation...
+2025-06-20 22:55:25,223 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 22:55:25,223 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-20 22:55:25,224 - INFO - Creating main application...
+2025-06-20 22:55:34,437 - INFO - Starting environment setup...
+2025-06-20 22:55:36,618 - INFO - Found existing environment, checking what's missing...
+2025-06-20 22:55:39,099 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-20 22:55:41,279 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-20 22:59:44,934 - INFO - Debug mode - showing Getting Started dialog
+2025-06-20 22:59:46,939 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 00:00:47,431 - INFO - === ManimStudio Starting ===
+2025-06-21 00:00:47,431 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 00:00:47,432 - INFO - Platform: win32
+2025-06-21 00:00:47,433 - INFO - Frozen: False
+2025-06-21 00:00:47,433 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 00:00:47,433 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 00:00:47,433 - INFO - Checking LaTeX installation...
+2025-06-21 00:00:48,141 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 00:00:48,141 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 00:00:48,141 - INFO - Creating main application...
+2025-06-21 00:01:01,233 - INFO - Starting environment setup...
+2025-06-21 00:01:03,406 - INFO - Found existing environment, checking what's missing...
+2025-06-21 00:01:06,018 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 00:01:08,202 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 00:04:04,801 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 00:04:07,399 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 00:13:39,592 - INFO - === ManimStudio Starting ===
+2025-06-21 00:13:39,593 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 00:13:39,594 - INFO - Platform: win32
+2025-06-21 00:13:39,594 - INFO - Frozen: False
+2025-06-21 00:13:39,595 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 00:13:39,596 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 00:13:39,596 - INFO - Checking LaTeX installation...
+2025-06-21 00:13:40,175 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 00:13:40,175 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 00:13:40,176 - INFO - Creating main application...
+2025-06-21 00:13:49,683 - INFO - Starting environment setup...
+2025-06-21 00:13:51,856 - INFO - Found existing environment, checking what's missing...
+2025-06-21 00:13:54,441 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 00:13:56,629 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 00:21:36,448 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 00:21:53,429 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 00:23:01,478 - INFO - === ManimStudio Starting ===
+2025-06-21 00:23:01,478 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 00:23:01,479 - INFO - Platform: win32
+2025-06-21 00:23:01,479 - INFO - Frozen: False
+2025-06-21 00:23:01,480 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 00:23:01,480 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 00:23:01,481 - INFO - Checking LaTeX installation...
+2025-06-21 00:23:02,127 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 00:23:02,132 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 00:23:02,132 - INFO - Creating main application...
+2025-06-21 00:23:09,766 - INFO - Starting environment setup...
+2025-06-21 00:23:11,943 - INFO - Found existing environment, checking what's missing...
+2025-06-21 00:23:14,560 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 00:23:16,745 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 00:56:51,413 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 00:56:54,177 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:19:22,865 - INFO - === ManimStudio Starting ===
+2025-06-21 01:19:22,866 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:19:22,867 - INFO - Platform: win32
+2025-06-21 01:19:22,867 - INFO - Frozen: False
+2025-06-21 01:19:22,867 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:19:22,868 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:19:22,868 - INFO - Checking LaTeX installation...
+2025-06-21 01:19:23,344 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:19:23,344 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:19:23,345 - INFO - Creating main application...
+2025-06-21 01:32:08,348 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:32:11,183 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:34:20,181 - INFO - === ManimStudio Starting ===
+2025-06-21 01:34:20,182 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:34:20,183 - INFO - Platform: win32
+2025-06-21 01:34:20,183 - INFO - Frozen: False
+2025-06-21 01:34:20,184 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:34:20,184 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:34:20,185 - INFO - Checking LaTeX installation...
+2025-06-21 01:34:20,833 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:34:20,834 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:34:20,834 - INFO - Creating main application...
+2025-06-21 01:34:56,450 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:35:07,442 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:39:16,645 - INFO - === ManimStudio Starting ===
+2025-06-21 01:39:16,646 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:39:16,646 - INFO - Platform: win32
+2025-06-21 01:39:16,646 - INFO - Frozen: False
+2025-06-21 01:39:16,647 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:39:16,647 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:39:16,647 - INFO - Checking LaTeX installation...
+2025-06-21 01:39:17,030 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:39:17,031 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:39:17,032 - INFO - Creating main application...
+2025-06-21 01:47:01,092 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:47:03,238 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:47:08,377 - INFO - === ManimStudio Starting ===
+2025-06-21 01:47:08,378 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:47:08,378 - INFO - Platform: win32
+2025-06-21 01:47:08,378 - INFO - Frozen: False
+2025-06-21 01:47:08,378 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:47:08,379 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:47:08,379 - INFO - Checking LaTeX installation...
+2025-06-21 01:47:09,043 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:47:09,044 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:47:09,044 - INFO - Creating main application...
+2025-06-21 01:47:32,490 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:47:34,592 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:47:56,338 - INFO - === ManimStudio Starting ===
+2025-06-21 01:47:56,338 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:47:56,338 - INFO - Platform: win32
+2025-06-21 01:47:56,339 - INFO - Frozen: False
+2025-06-21 01:47:56,339 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:47:56,339 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:47:56,339 - INFO - Checking LaTeX installation...
+2025-06-21 01:47:56,955 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:47:56,956 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:47:56,956 - INFO - Creating main application...
+2025-06-21 01:55:04,579 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:55:06,702 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 01:55:10,785 - INFO - === ManimStudio Starting ===
+2025-06-21 01:55:10,786 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 01:55:10,786 - INFO - Platform: win32
+2025-06-21 01:55:10,787 - INFO - Frozen: False
+2025-06-21 01:55:10,787 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 01:55:10,787 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 01:55:10,788 - INFO - Checking LaTeX installation...
+2025-06-21 01:55:11,453 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:55:11,453 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 01:55:11,454 - INFO - Creating main application...
+2025-06-21 01:55:27,061 - ERROR - Environment creation failed: 'VirtualEnvironmentManager' object has no attribute '_find_best_python'
+2025-06-21 01:55:49,940 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 01:55:52,195 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 02:06:51,074 - INFO - === ManimStudio Starting ===
+2025-06-21 02:06:51,075 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 02:06:51,075 - INFO - Platform: win32
+2025-06-21 02:06:51,075 - INFO - Frozen: False
+2025-06-21 02:06:51,075 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 02:06:51,075 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 02:06:51,075 - INFO - Checking LaTeX installation...
+2025-06-21 02:06:51,484 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 02:06:51,485 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 02:06:51,485 - INFO - Creating main application...
+2025-06-21 02:06:59,144 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 02:19:42,355 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 02:19:44,863 - ERROR - Environment setup incomplete. Exiting.
+2025-06-21 02:19:49,154 - INFO - === ManimStudio Starting ===
+2025-06-21 02:19:49,154 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 02:19:49,154 - INFO - Platform: win32
+2025-06-21 02:19:49,155 - INFO - Frozen: False
+2025-06-21 02:19:49,155 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 02:19:49,155 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 02:19:49,155 - INFO - Checking LaTeX installation...
+2025-06-21 02:19:49,557 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 02:19:49,558 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 02:19:49,558 - INFO - Creating main application...
+2025-06-21 02:19:58,048 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 02:26:56,688 - INFO - Debug mode - showing Getting Started dialog
+2025-06-21 02:28:00,257 - INFO - Starting application main loop...
+2025-06-21 09:21:17,254 - INFO - === ManimStudio Starting ===
+2025-06-21 09:21:17,254 - INFO - Python version: 3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)]
+2025-06-21 09:21:17,255 - INFO - Platform: win32
+2025-06-21 09:21:17,255 - INFO - Frozen: False
+2025-06-21 09:21:17,255 - INFO - Base directory: C:\Users\euler\github\manim_app
+2025-06-21 09:21:17,255 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:21:17,256 - INFO - Checking LaTeX installation...
+2025-06-21 09:21:17,710 - INFO - LaTeX found: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:21:17,711 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:21:17,711 - INFO - Creating main application...
+2025-06-21 09:21:29,374 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 09:27:14,913 - INFO - First run detected, showing Getting Started dialog
+2025-06-21 09:27:50,060 - INFO - Starting application main loop...
+2025-06-21 09:46:53,243 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:46:53,244 - INFO - Checking LaTeX installation...
+2025-06-21 09:46:54,205 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:46:54,205 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:46:54,206 - INFO - Creating main application...
+2025-06-21 09:47:07,915 - INFO - Environment manim_studio_default is properly configured
+2025-06-21 09:47:07,916 - INFO - Found existing configured environment, showing main UI
+2025-06-21 09:47:07,917 - ERROR - Startup error: 'ManimStudioApp' object has no attribute 'setup_main_ui'
+2025-06-21 09:47:07,934 - ERROR - Traceback: Traceback (most recent call last):
+  File "C:\Users\euler\github\manim_app\app.py", line 11542, in main
+    app = ManimStudioApp(latex_path=latex_path)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\euler\github\manim_app\app.py", line 8159, in __init__
+    self.show_main_ui_directly()
+  File "C:\Users\euler\github\manim_app\app.py", line 8178, in show_main_ui_directly
+    self.setup_main_ui()  # Your existing main UI setup method
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: 'ManimStudioApp' object has no attribute 'setup_main_ui'. Did you mean: 'show_main_ui'?
+
+2025-06-21 09:51:14,104 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:51:14,105 - INFO - Checking LaTeX installation...
+2025-06-21 09:51:15,126 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:51:15,127 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:51:15,133 - INFO - Creating main application...
+2025-06-21 09:51:15,356 - INFO - Checking for existing environment...
+2025-06-21 09:51:20,882 - INFO - Environment manim_studio_default is properly configured
+2025-06-21 09:51:20,883 - INFO - Found existing configured environment, showing main UI
+2025-06-21 09:51:20,884 - INFO - Initializing main application UI
+2025-06-21 09:51:22,074 - INFO - Main UI is now visible
+2025-06-21 09:51:22,075 - INFO - Starting application main loop
+2025-06-21 09:51:43,731 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:51:43,732 - INFO - Checking LaTeX installation...
+2025-06-21 09:51:44,149 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:51:44,150 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:51:44,153 - INFO - Creating main application...
+2025-06-21 09:51:44,240 - INFO - Checking for existing environment...
+2025-06-21 09:51:47,397 - INFO - Environment manim_studio_default is properly configured
+2025-06-21 09:51:47,398 - INFO - Found existing configured environment, showing main UI
+2025-06-21 09:51:47,398 - INFO - Initializing main application UI
+2025-06-21 09:51:49,182 - INFO - Main UI is now visible
+2025-06-21 09:51:49,183 - INFO - Starting application main loop
+2025-06-21 09:55:01,427 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:55:01,427 - INFO - Checking LaTeX installation...
+2025-06-21 09:55:02,071 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:55:02,071 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:55:02,072 - INFO - Creating main application...
+2025-06-21 09:55:02,204 - INFO - Checking for existing environment...
+2025-06-21 09:55:07,240 - INFO - Environment manim_studio_default is properly configured
+2025-06-21 09:55:07,241 - INFO - Found existing configured environment, showing main UI
+2025-06-21 09:55:07,241 - INFO - Initializing main application UI
+2025-06-21 09:55:07,887 - INFO - Main UI is now visible
+2025-06-21 09:55:07,888 - INFO - Starting application main loop
+2025-06-21 09:59:29,742 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 09:59:29,742 - INFO - Checking LaTeX installation...
+2025-06-21 09:59:30,280 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 09:59:30,280 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 09:59:30,280 - INFO - Creating main application...
+2025-06-21 09:59:30,389 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 09:59:30,392 - INFO - Showing environment setup dialog
+2025-06-21 09:59:53,634 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:05:17,961 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:05:17,961 - INFO - Initializing main application UI
+2025-06-21 10:05:17,962 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'setup_ui'
+2025-06-21 10:05:33,576 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:05:33,577 - INFO - Checking LaTeX installation...
+2025-06-21 10:05:34,241 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:05:34,241 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:05:34,242 - INFO - Creating main application...
+2025-06-21 10:05:34,400 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:05:34,400 - INFO - Showing environment setup dialog
+2025-06-21 10:06:02,977 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:11:36,495 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:11:36,495 - INFO - Initializing main application UI
+2025-06-21 10:11:36,495 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'setup_ui'
+2025-06-21 10:18:10,448 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:18:10,449 - INFO - Checking LaTeX installation...
+2025-06-21 10:18:10,851 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:18:10,852 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:18:10,853 - INFO - Creating main application...
+2025-06-21 10:18:10,957 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:18:10,957 - INFO - Showing environment setup dialog
+2025-06-21 10:18:30,410 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:25:17,236 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:25:17,236 - INFO - Initializing main application UI
+2025-06-21 10:25:17,237 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'show_main_ui'
+2025-06-21 10:26:04,473 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:26:04,474 - INFO - Checking LaTeX installation...
+2025-06-21 10:26:05,148 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:26:05,149 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:26:05,149 - INFO - Creating main application...
+2025-06-21 10:26:05,360 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:26:05,361 - INFO - Showing environment setup dialog
+2025-06-21 10:26:23,625 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:26:34,724 - INFO - Environment setup was skipped or cancelled
+2025-06-21 10:26:34,725 - INFO - Main UI is now visible
+2025-06-21 10:26:34,725 - INFO - Starting application main loop
+2025-06-21 10:26:43,073 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:26:43,074 - INFO - Checking LaTeX installation...
+2025-06-21 10:26:43,765 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:26:43,766 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:26:43,766 - INFO - Creating main application...
+2025-06-21 10:26:43,865 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:26:43,865 - INFO - Showing environment setup dialog
+2025-06-21 10:26:54,375 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:26:54,375 - INFO - Main UI is now visible
+2025-06-21 10:26:54,375 - INFO - Starting application main loop
+2025-06-21 10:29:04,367 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:29:04,367 - INFO - Checking LaTeX installation...
+2025-06-21 10:29:04,777 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:29:04,777 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:29:04,777 - INFO - Creating main application...
+2025-06-21 10:29:04,867 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:29:04,868 - INFO - Showing environment setup dialog
+2025-06-21 10:32:01,925 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:35:34,619 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:35:34,620 - INFO - Main UI is now visible
+2025-06-21 10:35:34,621 - INFO - Starting application main loop
+2025-06-21 10:35:46,516 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:35:46,516 - INFO - Checking LaTeX installation...
+2025-06-21 10:35:47,031 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:35:47,032 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:35:47,032 - INFO - Creating main application...
+2025-06-21 10:35:47,131 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:35:47,131 - INFO - Showing environment setup dialog
+2025-06-21 10:35:59,682 - INFO - Using current Python executable: C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 10:40:14,487 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:40:14,487 - INFO - Main UI is now visible
+2025-06-21 10:40:14,487 - INFO - Starting application main loop
+2025-06-21 10:52:16,406 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 10:52:16,407 - INFO - Checking LaTeX installation...
+2025-06-21 10:52:17,086 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 10:52:17,088 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 10:52:17,088 - INFO - Creating main application...
+2025-06-21 10:52:17,250 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 10:52:17,250 - INFO - Showing environment setup dialog
+2025-06-21 10:52:36,496 - INFO - Environment setup completed, showing main UI
+2025-06-21 10:52:36,496 - INFO - Main UI is now visible
+2025-06-21 10:52:36,497 - INFO - Starting application main loop
+2025-06-21 11:04:09,360 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:04:09,361 - INFO - Checking LaTeX installation...
+2025-06-21 11:04:09,906 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:04:09,907 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:04:09,907 - INFO - Creating main application...
+2025-06-21 11:04:10,018 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 11:04:10,021 - INFO - Showing environment setup dialog
+2025-06-21 11:04:17,238 - INFO - Environment setup was skipped or cancelled
+2025-06-21 11:04:17,238 - INFO - Main UI is now visible
+2025-06-21 11:04:17,239 - INFO - Starting application main loop
+2025-06-21 11:15:09,044 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:15:09,045 - INFO - Checking LaTeX installation...
+2025-06-21 11:15:09,796 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:15:09,796 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:15:09,797 - INFO - Creating main application...
+2025-06-21 11:15:09,916 - WARNING - Could not load icon: name 'resource_path' is not defined
+2025-06-21 11:15:09,916 - ERROR - Missing required dependency: name 'AsyncPackageSearchService' is not defined
+2025-06-21 11:18:51,449 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:18:51,449 - INFO - Checking LaTeX installation...
+2025-06-21 11:18:51,952 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:18:51,953 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:18:51,953 - INFO - Creating main application...
+2025-06-21 11:18:52,050 - ERROR - Missing required dependency: 'VirtualEnvironmentManager' object has no attribute 'discover_all_python_installations'
+2025-06-21 11:20:00,799 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:20:00,799 - INFO - Checking LaTeX installation...
+2025-06-21 11:20:01,439 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:20:01,440 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:20:01,440 - INFO - Creating main application...
+2025-06-21 11:20:01,524 - INFO - Discovering Python installations...
+2025-06-21 11:20:01,562 - INFO - Found current Python: Python 3.12.3 at C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 11:20:02,389 - INFO - Discovered 1 Python installations
+2025-06-21 11:20:02,390 - INFO - Detecting existing environments...
+2025-06-21 11:20:02,390 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-21 11:20:02,390 - INFO - Default environment structure is valid
+2025-06-21 11:20:02,613 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 11:20:02,614 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:20:05,935 - INFO - All essential packages verified
+2025-06-21 11:20:05,935 - INFO - Default environment has all required packages
+2025-06-21 11:20:05,936 - INFO - Activated environment: manim_studio_default
+2025-06-21 11:20:05,936 - INFO - Python path: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:20:05,936 - INFO - Pip path: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\pip.exe
+2025-06-21 11:20:06,177 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 11:20:06,177 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:20:08,945 - INFO - All essential packages verified
+2025-06-21 11:20:08,945 - INFO - Using existing environment: manim_studio_default
+2025-06-21 11:20:10,092 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'intellisense_var'
+2025-06-21 11:35:21,538 - INFO - App directory: C:\Users\euler\.manim_studio
+2025-06-21 11:35:21,539 - INFO - Checking LaTeX installation...
+2025-06-21 11:35:22,506 - INFO - LaTeX found at: C:\Program Files\MiKTeX\miktex\bin\x64\latex.EXE
+2025-06-21 11:35:22,506 - INFO - Jedi available - IntelliSense features enabled
+2025-06-21 11:35:22,506 - INFO - Creating main application...
+2025-06-21 11:35:22,647 - INFO - Discovering Python installations...
+2025-06-21 11:35:22,706 - INFO - Found current Python: Python 3.12.3 at C:\Users\euler\venv_windows\Scripts\python.exe
+2025-06-21 11:35:24,622 - INFO - Discovered 1 Python installations
+2025-06-21 11:35:24,623 - INFO - Detecting existing environments...
+2025-06-21 11:35:24,623 - INFO - Found default environment at: C:\Users\euler\.manim_studio\venvs\manim_studio_default
+2025-06-21 11:35:24,624 - INFO - Default environment structure is valid
+2025-06-21 11:35:25,267 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 11:35:25,267 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:35:30,844 - INFO - All essential packages verified
+2025-06-21 11:35:30,844 - INFO - Default environment has all required packages
+2025-06-21 11:35:30,845 - INFO - Activated environment: manim_studio_default
+2025-06-21 11:35:30,845 - INFO - Python path: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:35:30,846 - INFO - Pip path: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\pip.exe
+2025-06-21 11:35:31,308 - INFO - Python architecture info:
+Architecture: AMD64
+Platform: Windows-11-10.0.26100-SP0
+64bit: 64bit
+Pointer size: True
+
+2025-06-21 11:35:31,309 - INFO - 64-bit Python confirmed: C:\Users\euler\.manim_studio\venvs\manim_studio_default\Scripts\python.exe
+2025-06-21 11:35:36,798 - INFO - All essential packages verified
+2025-06-21 11:35:36,798 - INFO - Using existing environment: manim_studio_default
+2025-06-21 11:35:38,290 - INFO - Debug mode detected, showing setup dialog
+2025-06-21 11:35:38,290 - ERROR - Missing required dependency: 'ManimStudioApp' object has no attribute 'logger'

@@ -724,26 +724,17 @@
                 if (window.electronAPI && window.electronAPI.getPythonInfo) {
                     const result = await window.electronAPI.getPythonInfo();
                     if (result.success) {
-                        if (result.venvName && result.venvPath) {
-                            // Real virtual environment found
+                        if (result.venvExists && result.venvPath) {
+                            const venvName = result.venvPath.split(/[/\\]/).pop();
                             currentEnvironment = {
-                                name: result.venvName,
+                                name: venvName,
                                 path: result.venvPath,
                                 pythonPath: result.pythonPath,
                                 active: true
                             };
-                            addLog(`Found virtual environment: ${result.venvName}`, 'success');
-                        } else if (result.pythonPath) {
-                            // Python found but no virtual environment
-                            currentEnvironment = {
-                                name: 'system_python',
-                                path: 'System Python Installation',
-                                pythonPath: result.pythonPath,
-                                active: true
-                            };
-                            addLog('Using system Python - no virtual environment detected', 'warning');
+                            addLog(`Found virtual environment: ${venvName}`, 'success');
                         } else {
-                            addLog('No Python installation found', 'error');
+                            addLog('No virtual environment detected', 'warning');
                             currentEnvironment = null;
                         }
                         updateEnvironmentStatus();
@@ -877,11 +868,6 @@
 
             let statusIcon = '✅';
             let statusText = 'Virtual Environment';
-            
-            if (currentEnvironment.name === 'system_python') {
-                statusIcon = '🐍';
-                statusText = 'System Python (No VEnv)';
-            }
 
             container.innerHTML = `
                 <div class="env-item active">
