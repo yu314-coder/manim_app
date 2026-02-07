@@ -1,0 +1,553 @@
+<!-- ============================================================================
+     HELP MODAL - Enhanced with Better UI and More Information
+     ============================================================================ -->
+<div class="modal-overlay" id="helpModal">
+    <div class="modal-container" style="max-width: 900px; max-height: 90vh;">
+        <div class="modal-header">
+            <h2>
+                <i class="fas fa-question-circle"></i>
+                Help & Usage Guide
+                <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal; margin-left: 10px;">v1.0.8.0</span>
+            </h2>
+            <button class="modal-close-btn" id="helpModalClose">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="overflow-y: auto; max-height: calc(90vh - 140px);">
+            <!-- Quick Navigation Pills -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; padding: 12px; background: rgba(59, 130, 246, 0.05); border-radius: 8px;">
+                <a href="#getting-started" style="padding: 6px 12px; background: rgba(59, 130, 246, 0.15); border-radius: 6px; color: #3b82f6; text-decoration: none; font-size: 13px; font-weight: 600;">
+                    <i class="fas fa-rocket"></i> Getting Started
+                </a>
+                <a href="#shortcuts" style="padding: 6px 12px; background: rgba(16, 185, 129, 0.15); border-radius: 6px; color: #10b981; text-decoration: none; font-size: 13px; font-weight: 600;">
+                    <i class="fas fa-keyboard"></i> Shortcuts
+                </a>
+                <a href="#features" style="padding: 6px 12px; background: rgba(245, 158, 11, 0.15); border-radius: 6px; color: #f59e0b; text-decoration: none; font-size: 13px; font-weight: 600;">
+                    <i class="fas fa-star"></i> Features
+                </a>
+                <a href="#packages" style="padding: 6px 12px; background: rgba(168, 85, 247, 0.15); border-radius: 6px; color: #a855f7; text-decoration: none; font-size: 13px; font-weight: 600;">
+                    <i class="fas fa-box"></i> Packages
+                </a>
+                <a href="#troubleshooting" style="padding: 6px 12px; background: rgba(239, 68, 68, 0.15); border-radius: 6px; color: #ef4444; text-decoration: none; font-size: 13px; font-weight: 600;">
+                    <i class="fas fa-wrench"></i> Troubleshooting
+                </a>
+            </div>
+
+            <!-- Getting Started -->
+            <div class="help-section" id="getting-started">
+                <h3><i class="fas fa-rocket" style="color: #3b82f6;"></i> Getting Started</h3>
+                <p>Welcome to Manim Animation Studio! Here's how to create your first animation:</p>
+                <div style="display: grid; gap: 12px; margin-top: 12px;">
+                    <div style="display: flex; gap: 12px; padding: 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border-left: 3px solid #3b82f6;">
+                        <div style="flex-shrink: 0; width: 32px; height: 32px; background: rgba(59, 130, 246, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #3b82f6; font-weight: bold;">1</div>
+                        <div>
+                            <strong style="color: var(--text-primary);">Write Code</strong>
+                            <p style="margin: 4px 0 0 0; color: var(--text-secondary); font-size: 13px;">Write your Manim code in the Monaco editor (left panel) with full syntax highlighting and autocomplete</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; padding: 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border-left: 3px solid #10b981;">
+                        <div style="flex-shrink: 0; width: 32px; height: 32px; background: rgba(16, 185, 129, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #10b981; font-weight: bold;">2</div>
+                        <div>
+                            <strong style="color: var(--text-primary);">Quick Preview (F6)</strong>
+                            <p style="margin: 4px 0 0 0; color: var(--text-secondary); font-size: 13px;">Click Preview for fast, low-quality preview (480p 15fps) - perfect for quick iterations</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; padding: 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border-left: 3px solid #f59e0b;">
+                        <div style="flex-shrink: 0; width: 32px; height: 32px; background: rgba(245, 158, 11, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #f59e0b; font-weight: bold;">3</div>
+                        <div>
+                            <strong style="color: var(--text-primary);">Final Render (F5)</strong>
+                            <p style="margin: 4px 0 0 0; color: var(--text-secondary); font-size: 13px;">Click Render for high-quality final output (up to 4K 60fps)</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; padding: 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border-left: 3px solid #a855f7;">
+                        <div style="flex-shrink: 0; width: 32px; height: 32px; background: rgba(168, 85, 247, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #a855f7; font-weight: bold;">4</div>
+                        <div>
+                            <strong style="color: var(--text-primary);">Save & Export</strong>
+                            <p style="margin: 4px 0 0 0; color: var(--text-secondary); font-size: 13px;">Your video appears in the preview panel - save using Ctrl+S or the Save button</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Keyboard Shortcuts -->
+            <div class="help-section" id="shortcuts">
+                <h3><i class="fas fa-keyboard" style="color: #10b981;"></i> Keyboard Shortcuts</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px;">
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-play" style="color: #10b981; margin-right: 6px;"></i>Render Animation</span>
+                        <span class="help-shortcut-key">F5</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-eye" style="color: #3b82f6; margin-right: 6px;"></i>Quick Preview</span>
+                        <span class="help-shortcut-key">F6</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-save" style="color: #f59e0b; margin-right: 6px;"></i>Save File</span>
+                        <span class="help-shortcut-key">Ctrl + S</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-file" style="color: #8b5cf6; margin-right: 6px;"></i>New File</span>
+                        <span class="help-shortcut-key">Ctrl + N</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-folder-open" style="color: #ec4899; margin-right: 6px;"></i>Open File</span>
+                        <span class="help-shortcut-key">Ctrl + O</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-stop" style="color: #ef4444; margin-right: 6px;"></i>Stop Rendering</span>
+                        <span class="help-shortcut-key">Esc</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Features -->
+            <div class="help-section" id="features">
+                <h3><i class="fas fa-star" style="color: #f59e0b;"></i> Key Features</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">💻</div>
+                        <strong style="color: #3b82f6; display: block; margin-bottom: 6px;">Monaco Editor</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Professional code editor with syntax highlighting, autocomplete, and IntelliSense</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">⚡</div>
+                        <strong style="color: #10b981; display: block; margin-bottom: 6px;">Live Preview</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">See your animations instantly in the preview panel with video controls</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(245, 158, 11, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">📁</div>
+                        <strong style="color: #f59e0b; display: block; margin-bottom: 6px;">Assets Manager</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Drag & drop files, organize assets, preview media with built-in player</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(168, 85, 247, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">📦</div>
+                        <strong style="color: #a855f7; display: block; margin-bottom: 6px;">Package Manager</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Install, update, and manage Python packages with one click</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, rgba(236, 72, 153, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(236, 72, 153, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🖥️</div>
+                        <strong style="color: #ec4899; display: block; margin-bottom: 6px;">Integrated Terminal</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Full Windows terminal with auto-activated virtual environment</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(139, 92, 246, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🎨</div>
+                        <strong style="color: #8b5cf6; display: block; margin-bottom: 6px;">Theme Switcher</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Dark/Light themes with smooth transitions - toggle with moon/sun button</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Package Manager -->
+            <div class="help-section" id="packages">
+                <h3><i class="fas fa-box" style="color: #a855f7;"></i> Package Manager <span style="background: #10b981; color: white; font-size: 10px; padding: 2px 8px; border-radius: 12px; margin-left: 8px;">NEW</span></h3>
+                <p style="color: var(--text-secondary); margin-bottom: 12px;">Manage Python packages in your virtual environment without using the terminal:</p>
+                <div style="display: grid; gap: 10px;">
+                    <div style="padding: 12px; background: rgba(168, 85, 247, 0.1); border-left: 3px solid #a855f7; border-radius: 4px;">
+                        <strong style="color: #a855f7;"><i class="fas fa-download"></i> Install Packages</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">Type package name and click Install - supports all PyPI packages</p>
+                    </div>
+                    <div style="padding: 12px; background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; border-radius: 4px;">
+                        <strong style="color: #10b981;"><i class="fas fa-sync-alt"></i> Check Updates</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">See which packages have updates available and update with one click</p>
+                    </div>
+                    <div style="padding: 12px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; border-radius: 4px;">
+                        <strong style="color: #ef4444;"><i class="fas fa-trash"></i> Uninstall Packages</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">Remove packages you no longer need (critical packages are protected)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Assets Folder -->
+            <div class="help-section">
+                <h3><i class="fas fa-folder"></i> Assets & Media Files</h3>
+                <p>Add your own files to use in animations - now with drag & drop support! <span style="background: #10b981; color: white; font-size: 10px; padding: 2px 8px; border-radius: 12px; margin-left: 4px;">NEW</span></p>
+
+                <!-- Drag and Drop -->
+                <div style="margin: 12px 0; padding: 16px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%); border-radius: 8px; border: 2px dashed rgba(59, 130, 246, 0.5);">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                        <i class="fas fa-hand-pointer" style="font-size: 24px; color: #3b82f6;"></i>
+                        <strong style="color: var(--text-primary);">Drag & Drop Upload</strong>
+                    </div>
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 13px;">
+                        Simply drag files from your computer and drop them into the Assets tab dropzone - they'll be uploaded and available instantly!
+                    </p>
+                </div>
+
+                <ul style="color: var(--text-secondary); line-height: 1.8;">
+                    <li><strong>Supported file types:</strong>
+                        <ul style="margin-top: 4px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px;">
+                            <li><i class="fas fa-video" style="color: #3b82f6;"></i> Videos: MP4, MOV, AVI, WebM, MKV</li>
+                            <li><i class="fas fa-image" style="color: #10b981;"></i> Images: PNG, JPG, GIF, SVG, BMP</li>
+                            <li><i class="fas fa-font" style="color: #f59e0b;"></i> Fonts: TTF, OTF, WOFF, WOFF2</li>
+                            <li><i class="fas fa-music" style="color: #ec4899;"></i> Audio: MP3, WAV, OGG, M4A, AAC</li>
+                            <li><i class="fas fa-closed-captioning" style="color: #8b5cf6;"></i> Subtitles: SRT, VTT, ASS</li>
+                            <li><i class="fas fa-file-alt" style="color: #6b7280;"></i> Text: TXT, MD, JSON, CSV</li>
+                        </ul>
+                    </li>
+                </ul>
+
+                <div style="margin-top: 12px; padding: 12px; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 4px;">
+                    <strong style="color: #3b82f6;"><i class="fas fa-font"></i> Using Custom Fonts:</strong>
+                    <pre style="margin-top: 8px; background: var(--bg-primary); padding: 8px; border-radius: 4px; font-size: 12px; overflow-x: auto;"><code>from manim import *
+
+class CustomFontExample(Scene):
+    def construct(self):
+        # Fonts in assets are auto-found
+        register_font("YourFont.ttf")
+
+        text = Text("Hello!", font="YourFont")
+        self.play(Write(text))</code></pre>
+                </div>
+
+                <div style="margin-top: 12px; padding: 12px; background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; border-radius: 4px;">
+                    <strong style="color: #10b981;"><i class="fas fa-music"></i> Using Audio Files:</strong>
+                    <pre style="margin-top: 8px; background: var(--bg-primary); padding: 8px; border-radius: 4px; font-size: 12px; overflow-x: auto;"><code>from manim import *
+
+class AudioExample(Scene):
+    def construct(self):
+        self.add_sound("music.mp3")
+
+        circle = Circle()
+        self.play(Create(circle))
+        self.wait()</code></pre>
+                </div>
+            </div>
+
+            <!-- Preview vs Render -->
+            <div class="help-section" style="margin-top: 20px;">
+                <h3><i class="fas fa-file-video"></i> Preview vs Render</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="padding: 16px; background: rgba(59, 130, 246, 0.1); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.3);">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <i class="fas fa-eye" style="color: #3b82f6; font-size: 20px;"></i>
+                            <strong style="color: #3b82f6;">Quick Preview (F6)</strong>
+                        </div>
+                        <ul style="color: var(--text-secondary); font-size: 13px; margin: 0; line-height: 1.6;">
+                            <li>⚡ Fast rendering</li>
+                            <li>📺 Low quality (480p 15fps)</li>
+                            <li>📁 Temporary preview folder</li>
+                            <li>🗑️ Auto-deleted on close</li>
+                            <li>🔄 Perfect for iteration</li>
+                        </ul>
+                    </div>
+                    <div style="padding: 16px; background: rgba(16, 185, 129, 0.1); border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <i class="fas fa-play-circle" style="color: #10b981; font-size: 20px;"></i>
+                            <strong style="color: #10b981;">Final Render (F5)</strong>
+                        </div>
+                        <ul style="color: var(--text-secondary); font-size: 13px; margin: 0; line-height: 1.6;">
+                            <li>🎬 Longer rendering time</li>
+                            <li>✨ High quality (up to 4K 60fps)</li>
+                            <li>💾 Saved to chosen location</li>
+                            <li>🔒 Kept permanently</li>
+                            <li>📤 Ready for export/sharing</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminal Commands -->
+            <div class="help-section" style="margin-top: 20px;">
+                <h3><i class="fas fa-terminal"></i> Terminal Commands</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 12px;">
+                    The terminal runs a real cmd.exe with auto-activated virtual environment:
+                </p>
+                <div style="display: grid; gap: 8px;">
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 13px;"><i class="fas fa-list" style="color: #3b82f6; margin-right: 8px;"></i>List installed packages</span>
+                        <code style="background: rgba(59, 130, 246, 0.2); padding: 4px 12px; border-radius: 4px; color: #3b82f6; font-size: 12px;">pip list</code>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 13px;"><i class="fas fa-download" style="color: #10b981; margin-right: 8px;"></i>Install a package</span>
+                        <code style="background: rgba(16, 185, 129, 0.2); padding: 4px 12px; border-radius: 4px; color: #10b981; font-size: 12px;">pip install package-name</code>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 13px;"><i class="fas fa-eraser" style="color: #f59e0b; margin-right: 8px;"></i>Clear terminal</span>
+                        <code style="background: rgba(245, 158, 11, 0.2); padding: 4px 12px; border-radius: 4px; color: #f59e0b; font-size: 12px;">cls</code>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 13px;"><i class="fas fa-copy" style="color: #8b5cf6; margin-right: 8px;"></i>Copy from terminal</span>
+                        <code style="background: rgba(139, 92, 246, 0.2); padding: 4px 12px; border-radius: 4px; color: #8b5cf6; font-size: 12px;">Ctrl+Shift+C</code>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-secondary); font-size: 13px;"><i class="fas fa-paste" style="color: #ec4899; margin-right: 8px;"></i>Paste into terminal</span>
+                        <code style="background: rgba(236, 72, 153, 0.2); padding: 4px 12px; border-radius: 4px; color: #ec4899; font-size: 12px;">Ctrl+Shift+V</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Troubleshooting -->
+            <div class="help-section" style="margin-top: 20px;" id="troubleshooting">
+                <h3><i class="fas fa-wrench" style="color: #ef4444;"></i> Troubleshooting Tips</h3>
+                <div style="display: grid; gap: 10px;">
+                    <div style="padding: 12px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; border-radius: 4px;">
+                        <strong style="color: #ef4444;"><i class="fas fa-exclamation-triangle"></i> Rendering fails or shows errors</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">
+                            • Check the terminal output for detailed error messages<br>
+                            • Ensure your code has no syntax errors (check editor red underlines)<br>
+                            • Try Preview (F6) first to catch errors quickly
+                        </p>
+                    </div>
+                    <div style="padding: 12px; background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; border-radius: 4px;">
+                        <strong style="color: #f59e0b;"><i class="fas fa-font"></i> Custom fonts not working</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">
+                            • Make sure font files are in the assets folder<br>
+                            • Use <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">register_font("YourFont.ttf")</code> before using the font<br>
+                            • Reference by name without extension: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">font="YourFont"</code>
+                        </p>
+                    </div>
+                    <div style="padding: 12px; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 4px;">
+                        <strong style="color: #3b82f6;"><i class="fas fa-video"></i> Video won't play in preview</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">
+                            • Check that the render completed successfully in the terminal<br>
+                            • Try clicking the refresh button in the Assets tab<br>
+                            • Ensure the file path is correct and file exists
+                        </p>
+                    </div>
+                    <div style="padding: 12px; background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; border-radius: 4px;">
+                        <strong style="color: #10b981;"><i class="fas fa-box"></i> Package installation fails</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">
+                            • Check the terminal for error messages<br>
+                            • Ensure package name is spelled correctly<br>
+                            • Some packages may require system dependencies
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Locations -->
+            <div class="help-section" style="margin-top: 20px;">
+                <h3><i class="fas fa-folder-open"></i> Important File Locations</h3>
+                <div style="display: grid; gap: 8px;">
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <strong style="color: #3b82f6;"><i class="fas fa-images"></i> Assets:</strong>
+                        <code style="margin-left: 8px; color: var(--text-secondary); font-size: 12px;">C:\Users\&lt;you&gt;\.manim_studio\assets\</code>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <strong style="color: #10b981;"><i class="fas fa-photo-video"></i> Media:</strong>
+                        <code style="margin-left: 8px; color: var(--text-secondary); font-size: 12px;">C:\Users\&lt;you&gt;\.manim_studio\media\</code>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <strong style="color: #f59e0b;"><i class="fas fa-eye"></i> Preview:</strong>
+                        <code style="margin-left: 8px; color: var(--text-secondary); font-size: 12px;">C:\Users\&lt;you&gt;\.manim_studio\preview\</code>
+                        <span style="margin-left: 8px; color: #f59e0b; font-size: 11px;">(temporary)</span>
+                    </div>
+                    <div style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <strong style="color: #8b5cf6;"><i class="fas fa-box"></i> Virtual Env:</strong>
+                        <code style="margin-left: 8px; color: var(--text-secondary); font-size: 12px;">C:\Users\&lt;you&gt;\.manim_studio\venvs\manim_studio_default\</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pro Tips -->
+            <div class="help-tip" style="margin-top: 20px; background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(249, 115, 22, 0.15) 100%); border: 1px solid rgba(245, 158, 11, 0.3); padding: 16px; border-radius: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <i class="fas fa-lightbulb" style="font-size: 24px; color: #f59e0b;"></i>
+                    <strong style="font-size: 16px; color: var(--text-primary);">Pro Tips</strong>
+                </div>
+                <ul style="margin: 0; padding-left: 20px; color: var(--text-secondary); line-height: 1.8;">
+                    <li>Use <strong>Preview (F6)</strong> frequently while developing to catch errors early</li>
+                    <li>The <strong>Packages tab</strong> makes it easy to manage dependencies without touching the terminal</li>
+                    <li><strong>Drag & drop</strong> files directly into the Assets tab for instant uploads</li>
+                    <li>Save frequently with <strong>Ctrl+S</strong> - autosave creates backups automatically</li>
+                    <li>Check the <strong>System tab</strong> for Python and Manim version information</li>
+                </ul>
+            </div>
+
+            <!-- About -->
+            <div style="margin-top: 24px; padding: 20px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); border-radius: 12px; text-align: center; border: 1px solid rgba(59, 130, 246, 0.2);">
+                <div style="font-size: 48px; margin-bottom: 12px;">🎬</div>
+                <h4 style="margin: 0 0 8px 0; color: var(--text-primary); font-size: 20px;">
+                    Manim Animation Studio
+                </h4>
+                <p style="margin: 0; color: var(--text-secondary); font-size: 14px;">
+                    Professional Edition v1.0.8.0
+                </p>
+                <p style="margin: 8px 0 0 0; color: var(--text-secondary); font-size: 13px;">
+                    A professional desktop environment for creating<br>mathematical animations with Manim Community Edition
+                </p>
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">
+                        <i class="fas fa-rocket" style="color: #3b82f6;"></i> What's New in v1.0.8.0:
+                    </p>
+                    <p style="margin: 8px 0 0 0; color: var(--text-secondary); font-size: 12px;">
+                        📦 Package Manager • 🖱️ Drag & Drop Assets • 🔧 Bug Fixes
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="helpModalOk" style="padding: 12px 32px; font-size: 14px;">
+                <i class="fas fa-check"></i> Got it!
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================================
+     SETTINGS MODAL
+     ============================================================================ -->
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal-container">
+        <div class="modal-header">
+            <h2>
+                <i class="fas fa-cog"></i>
+                Settings
+            </h2>
+            <button class="modal-close-btn" id="settingsModalClose">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <!-- Output Settings -->
+            <div class="settings-group">
+                <h3><i class="fas fa-video"></i> Output Settings</h3>
+
+                <div class="settings-field">
+                    <label for="settingDefaultSaveLocation">
+                        Default Save Location
+                        <span class="settings-description">Where rendered files are saved by default</span>
+                    </label>
+                    <div class="settings-field-inline">
+                        <input type="text" id="settingDefaultSaveLocation" placeholder="Click Browse to select folder...">
+                        <button id="browseDefaultSaveLocation">
+                            <i class="fas fa-folder-open"></i> Browse
+                        </button>
+                    </div>
+                </div>
+
+                <div class="settings-field">
+                    <label for="settingRenderQuality">
+                        Render Quality (Resolution)
+                        <span class="settings-description">Higher quality = larger file size</span>
+                    </label>
+                    <select id="settingRenderQuality">
+                        <option value="480p">480p</option>
+                        <option value="720p" selected>720p</option>
+                        <option value="1080p">1080p</option>
+                        <option value="1440p">1440p</option>
+                        <option value="4K">4K</option>
+                        <option value="8K">8K</option>
+                    </select>
+                </div>
+
+                <div class="settings-field">
+                    <label for="settingFPS">
+                        Frame Rate (FPS)
+                        <span class="settings-description">Default frame rate for renders</span>
+                    </label>
+                    <select id="settingFPS">
+                        <option value="24">24 FPS</option>
+                        <option value="30" selected>30 FPS</option>
+                        <option value="60">60 FPS</option>
+                        <option value="120">120 FPS</option>
+                    </select>
+                </div>
+
+                <div class="settings-field">
+                    <label for="settingOutputFormat">
+                        Output Format
+                        <span class="settings-description">Default file format for rendered animations</span>
+                    </label>
+                    <select id="settingOutputFormat">
+                        <option value="mp4" selected>MP4 (Video)</option>
+                        <option value="mov">MOV (Video)</option>
+                        <option value="gif">GIF (Animated)</option>
+                        <option value="png">PNG (Image Sequence)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Workflow Settings -->
+            <div class="settings-group">
+                <h3><i class="fas fa-tasks"></i> Workflow Settings</h3>
+
+                <div class="settings-checkbox">
+                    <input type="checkbox" id="settingAutoSave" checked>
+                    <label for="settingAutoSave">
+                        Auto-save after render
+                        <div class="settings-description">Automatically show save dialog after rendering completes</div>
+                    </label>
+                </div>
+
+                <div class="settings-checkbox">
+                    <input type="checkbox" id="settingAutoOpenOutput">
+                    <label for="settingAutoOpenOutput">
+                        Auto-open output folder
+                        <div class="settings-description">Open the output folder in file explorer after saving</div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Editor Settings -->
+            <div class="settings-group">
+                <h3><i class="fas fa-code"></i> Editor Settings</h3>
+
+                <div class="settings-field">
+                    <label for="settingEditorFontSize">
+                        Font Size
+                        <span class="settings-description">Editor font size in pixels</span>
+                    </label>
+                    <select id="settingEditorFontSize">
+                        <option value="12">12px</option>
+                        <option value="14" selected>14px</option>
+                        <option value="16">16px</option>
+                        <option value="18">18px</option>
+                        <option value="20">20px</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Cache Settings -->
+            <div class="settings-group">
+                <h3><i class="fas fa-database"></i> Cache Settings</h3>
+
+                <div class="settings-checkbox">
+                    <input type="checkbox" id="settingDisableCache">
+                    <label for="settingDisableCache">
+                        Disable Manim Cache
+                        <div class="settings-description">Disables caching of partial movie files. Re-renders everything each time. Useful if you're having cache-related issues.</div>
+                    </label>
+                </div>
+
+                <div class="settings-field" style="margin-top: 12px;">
+                    <button id="clearCacheBtn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; padding: 10px 16px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600;">
+                        <i class="fas fa-trash"></i> Clear Manim Cache
+                    </button>
+                    <span class="settings-description" style="margin-top: 6px; display: block;">Deletes all cached partial movie files and Tex cache</span>
+                </div>
+            </div>
+
+            <!-- Autosave Backup Management -->
+            <div class="settings-group">
+                <h3><i class="fas fa-history"></i> Autosave Backups</h3>
+                <p class="settings-description" style="margin-bottom: 12px;">Manage your automatically saved code backups. The app keeps up to 5 recent backups.</p>
+
+                <div id="autosaveBackupsList" style="max-height: 200px; overflow-y: auto; background: var(--bg-primary); border-radius: 8px; padding: 8px;">
+                    <div style="text-align: center; color: var(--text-secondary); padding: 20px;">
+                        <i class="fas fa-spinner fa-spin"></i> Loading backups...
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <button id="refreshBackupsBtn" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #3b82f6; padding: 8px 14px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;">
+                        <i class="fas fa-sync"></i> Refresh
+                    </button>
+                    <button id="deleteAllBackupsBtn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; padding: 8px 14px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;">
+                        <i class="fas fa-trash"></i> Delete All
+                    </button>
+                    <button id="openBackupsFolderBtn" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; padding: 8px 14px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;">
+                        <i class="fas fa-folder-open"></i> Open Folder
+                    </button>
+                </div>
+            </div>
+
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="cancelSettingsBtn">Cancel</button>
+            <button class="btn btn-primary" id="applySettingsBtn">
+                <i class="fas fa-check"></i> Apply Settings
+            </button>
+        </div>
+    </div>
+</div>

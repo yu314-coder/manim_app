@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Studio - Flask Web Edition</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="ui-enhancements.css">
+    <link rel="stylesheet" href="monaco/vs/editor/editor.main.css">
+    <link rel="stylesheet" href="app_features.css?v=2025-01-26-v13">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="xterm/xterm.css">
+    <!-- Same styles as index.html -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Same body content as index.html - copy from line 340 to 1213 of index.html -->
+    <!-- For brevity, include the app_features_modals.html content -->
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer"></div>
+
+    <!-- Copy all body content from index.html here -->
+    <!-- ... (all the UI elements) ... -->
+
+    <!-- IMPORTANT: Load SocketIO before application scripts -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <!-- xterm.js Terminal Emulator -->
+    <script src="xterm/xterm.js"></script>
+
+    <!-- Monaco Editor - AMD Loader -->
+    <script src="monaco/vs/loader.js"></script>
+    <script>
+        // Configure AMD loader path
+        require.config({ paths: { 'vs': 'monaco/vs' } });
+
+        // Set up Monaco Environment for web workers
+        window.MonacoEnvironment = {
+            getWorkerUrl: function(workerId, label) {
+                return 'monaco/vs/base/worker/workerMain.js';
+            }
+        };
+
+        console.log('Monaco AMD loader configured');
+        console.log('require available:', typeof require !== 'undefined');
+    </script>
+
+    <!-- FLASK ADAPTER - MUST LOAD BEFORE renderer_desktop.js -->
+    <script src="renderer_flask.js"></script>
+
+    <!-- Main Application Script -->
+    <script src="renderer_desktop.js?v=2025-01-26-basic-monaco-no-lsp"></script>
+
+    <!-- New Features -->
+    <script src="new_features.js?v=2025-01-26-windows-details-view"></script>
+
+    <!-- App Features -->
+    <script src="app_features.js?v=2025-01-26-v14-pywebview-ready-fix"></script>
+
+    <!-- SIMPLE ASSETS -->
+    <script src="simple_assets.js?nocache"></script>
+</body>
+</html>

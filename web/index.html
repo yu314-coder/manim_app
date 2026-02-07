@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Studio - Professional Edition</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="ui-enhancements.css">
+    <link rel="stylesheet" href="monaco/vs/editor/editor.main.css">
+    <link rel="stylesheet" href="app_features.css?v=2025-01-26-v13">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="xterm/xterm.css">
+    <style>
+        /* Auto-save indicator */
+        .autosave-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            transition: all 0.3s ease;
+        }
+
+        .autosave-indicator i {
+            font-size: 14px;
+        }
+
+        .autosave-indicator.saved {
+            color: #10b981;
+        }
+
+        .autosave-indicator.saving {
+            color: #f59e0b;
+        }
+
+        .autosave-indicator.unsaved {
+            color: #ef4444;
+        }
+
+        .autosave-indicator.saving i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Code Errors Panel */
+        .code-errors-panel {
+            height: 120px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .errors-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .errors-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .errors-title i {
+            color: #f59e0b;
+        }
+
+        #errorCount {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        .errors-clear-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .errors-clear-btn:hover {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .errors-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .errors-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 100%;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .errors-empty i {
+            color: #10b981;
+            font-size: 16px;
+        }
+
+        .error-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px;
+            margin-bottom: 6px;
+            background: var(--bg-secondary);
+            border-left: 3px solid #ef4444;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .error-item:hover {
+            background: var(--bg-tertiary);
+            transform: translateX(2px);
+        }
+
+        .error-item.warning {
+            border-left-color: #f59e0b;
+        }
+
+        .error-item .error-icon {
+            color: #ef4444;
+            margin-top: 2px;
+        }
+
+        .error-item.warning .error-icon {
+            color: #f59e0b;
+        }
+
+        .error-content {
+            flex: 1;
+        }
+
+        .error-location {
+            font-size: 11px;
+            color: var(--accent-primary);
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .error-message {
+            font-size: 13px;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+
+        /* Monaco Editor Error Decorations */
+        .errorLine {
+            background: rgba(239, 68, 68, 0.1);
+            border-left: 3px solid #ef4444;
+        }
+
+        .warningLine {
+            background: rgba(245, 158, 11, 0.1);
+            border-left: 3px solid #f59e0b;
+        }
+
+        .errorGlyph {
+            background: #ef4444;
+            width: 4px !important;
+            margin-left: 3px;
+        }
+
+        .warningGlyph {
+            background: #f59e0b;
+            width: 4px !important;
+            margin-left: 3px;
+        }
+
+        /* Terminal auto-sizing - fills container like HTML */
+        #terminalContainer {
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+        }
+
+        #terminalContainer .xterm {
+            flex: 1;
+            height: 100% !important;
+            width: 100% !important;
+        }
+
+        #terminalContainer .xterm-viewport {
+            overflow-y: auto !important; /* Changed from scroll to auto for better UX */
+            overflow-x: hidden !important;
+            width: 100% !important;
+            scrollbar-width: thin; /* For Firefox */
+            scrollbar-color: #555 #222; /* For Firefox */
+        }
+
+        /* Custom scrollbar for webkit browsers */
+        #terminalContainer .xterm-viewport::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        #terminalContainer .xterm-viewport::-webkit-scrollbar-track {
+            background: #222;
+        }
+
+        #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 5px;
+        }
+
+        #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+
+        #terminalContainer .xterm-screen {
+            width: 100% !important;
+        }
+
+        /* Toast Container */
+        #toastContainer {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        /* Modern Toast Notification */
+        .toast {
+            pointer-events: auto;
+            background: white;
+            border-left: 4px solid #4299e1;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            padding: 12px 16px;
+            min-width: 200px;
+            max-width: 350px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            opacity: 0;
+            transform: translateX(400px);
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast.hiding {
+            opacity: 0;
+            transform: translateX(400px);
+        }
+
+        /* Toast Icon */
+        .toast-icon {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        /* Toast Message */
+        .toast-message {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+            color: #2d3748;
+            line-height: 1.4;
+        }
+
+        /* Toast Progress Bar */
+        .toast-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: currentColor;
+            opacity: 0.3;
+            animation: toast-progress 3s linear forwards;
+        }
+
+        @keyframes toast-progress {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+
+        .toast:hover .toast-progress {
+            animation-play-state: paused;
+        }
+
+        /* Toast Types */
+        .toast-success {
+            border-left-color: #48bb78;
+        }
+        .toast-success .toast-icon {
+            color: #48bb78;
+        }
+        .toast-success .toast-progress {
+            background: #48bb78;
+        }
+
+        .toast-error {
+            border-left-color: #f56565;
+        }
+        .toast-error .toast-icon {
+            color: #f56565;
+        }
+        .toast-error .toast-progress {
+            background: #f56565;
+        }
+
+        .toast-warning {
+            border-left-color: #ed8936;
+        }
+        .toast-warning .toast-icon {
+            color: #ed8936;
+        }
+        .toast-warning .toast-progress {
+            background: #ed8936;
+        }
+
+        .toast-info {
+            border-left-color: #4299e1;
+        }
+        .toast-info .toast-icon {
+            color: #4299e1;
+        }
+        .toast-info .toast-progress {
+            background: #4299e1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Notification Container -->
+    <div id="toastContainer"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">🎬</div>
+            <div class="title-section">
+                <h1 class="app-title">Manim Animation Studio</h1>
+                <span class="app-subtitle">Professional Edition v1.0.8.0</span>
+            </div>
+            <div class="autosave-indicator" id="autosaveIndicator">
+                <i class="fas fa-check-circle"></i>
+                <span id="autosaveStatus">Saved</span>
+            </div>
+        </div>
+
+        <div class="header-center">
+            <button class="action-btn" id="newFileBtn" title="New File">
+                <i class="fas fa-file"></i>
+                <span>New</span>
+            </button>
+            <button class="action-btn" id="openFileBtn" title="Open File">
+                <i class="fas fa-folder-open"></i>
+                <span>Open</span>
+            </button>
+            <button class="action-btn" id="saveFileBtn" title="Save File">
+                <i class="fas fa-save"></i>
+                <span>Save</span>
+            </button>
+            <div class="divider"></div>
+            <button class="action-btn primary" id="renderBtn" title="Render Animation (F5)">
+                <i class="fas fa-play"></i>
+                <span>Render</span>
+            </button>
+            <button class="action-btn" id="previewBtn" title="Quick Preview (F6)">
+                <i class="fas fa-eye"></i>
+                <span>Preview</span>
+            </button>
+            <button class="action-btn danger" id="stopBtn" title="Stop Render" style="display: none;">
+                <i class="fas fa-stop"></i>
+                <span>Stop</span>
+            </button>
+            <div class="divider"></div>
+            <button class="action-btn" id="gpuToggleBtn" title="Toggle GPU Acceleration (OpenGL Renderer)">
+                <i class="fas fa-microchip"></i>
+                <span id="gpuToggleText">GPU: OFF</span>
+            </button>
+        </div>
+
+        <div class="header-right">
+            <button class="status-btn" id="latexStatusBtn" title="LaTeX Status - Checking...">
+                <span class="status-dot checking"></span>
+                <span class="status-text">LaTeX</span>
+            </button>
+            <button class="icon-btn" id="settingsBtn" title="Settings">
+                <i class="fas fa-cog"></i>
+            </button>
+            <button class="icon-btn" id="themeBtn" title="Toggle Theme">
+                <i class="fas fa-moon"></i>
+            </button>
+            <button class="icon-btn" id="helpBtn" title="Help">
+                <i class="fas fa-question-circle"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <div class="layout">
+            <section class="content">
+                <div class="tab-header">
+                    <button class="tab-pill active" data-tab="workspace"><i class="fas fa-desktop"></i> Workspace</button>
+                    <button class="tab-pill" data-tab="system"><i class="fas fa-info-circle"></i> System</button>
+                    <button class="tab-pill" data-tab="assets"><i class="fas fa-images"></i> Assets</button>
+                    <button class="tab-pill" data-tab="venv"><i class="fas fa-box"></i> Packages</button>
+                </div>
+
+                <div class="tab-panel active" id="workspace-panel">
+                    <div class="workspace-container">
+                        <!-- Main Content Area -->
+                        <div class="workspace-main-content">
+                        <!-- Top Section: Editor and Preview Side by Side -->
+                        <div class="workspace-top" id="workspaceTop">
+                            <!-- Code Editor -->
+                            <div class="workspace-editor" id="workspaceEditor">
+                                <div class="workspace-header">
+                                    <h2><i class="fas fa-code"></i> Code Editor</h2>
+                                    <div class="workspace-tools">
+                                        <label class="workspace-control">
+                                            <span>Font Size</span>
+                                            <select id="fontSizeSelect">
+                                                <option value="12">12px</option>
+                                                <option value="14" selected>14px</option>
+                                                <option value="16">16px</option>
+                                                <option value="18">18px</option>
+                                                <option value="20">20px</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="workspace-body">
+                                    <div id="monacoEditor" style="width:100%;height:100%;"></div>
+                                    <!-- Live Code Errors Panel (hidden by default, shows when errors detected) -->
+                                    <div id="codeErrorsPanel" class="code-errors-panel" style="display: none;">
+                                        <div class="errors-header">
+                                            <span class="errors-title">
+                                                <i class="fas fa-exclamation-triangle"></i>
+                                                Code Issues (<span id="errorCount">0</span>)
+                                            </span>
+                                            <button id="clearErrorsBtn" class="errors-clear-btn" title="Clear errors">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                        <div id="errorsList" class="errors-list">
+                                            <div class="errors-empty">
+                                                <i class="fas fa-check-circle"></i>
+                                                No issues found
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Vertical Resize Handle -->
+                            <div class="workspace-divider-v" id="verticalResizeHandle"></div>
+
+                            <!-- Preview Panel -->
+                            <div class="workspace-preview" id="workspacePreview">
+                                <!-- Header -->
+                                <div class="workspace-header">
+                                    <h2><i class="fas fa-play-circle"></i> Preview</h2>
+                                </div>
+
+                                <!-- Preview Viewport Container -->
+                                <div class="workspace-body">
+                                    <!-- File Info Bar -->
+                                    <div class="preview-info-bar">
+                                        <div class="preview-file-details">
+                                            <i class="fas fa-file-video"></i>
+                                            <span id="previewFilename">No preview</span>
+                                            <span class="preview-file-size" id="previewFilesize"></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Video/Image Viewport -->
+                                    <div class="preview-viewport" id="previewContainer">
+                                        <div class="preview-media-container">
+                                            <video id="previewVideo" class="preview-media" controls style="display:none;"></video>
+                                            <img id="previewImage" class="preview-media" alt="Preview" style="display:none;">
+
+                                            <!-- Placeholder -->
+                                            <div class="preview-placeholder">
+                                                <div class="preview-placeholder-icon">
+                                                    <i class="fas fa-film"></i>
+                                                </div>
+                                                <h3>No Preview</h3>
+                                                <p>Render or preview an animation</p>
+                                                <div class="preview-placeholder-hint">
+                                                    <i class="fas fa-info-circle"></i>
+                                                    <span>Videos will auto-load here</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Horizontal Resize Handle -->
+                        <div class="workspace-divider-h" id="horizontalResizeHandle"></div>
+
+                        <!-- Bottom Section: Unified Console & Terminal -->
+                        <div class="workspace-bottom" id="workspaceBottom">
+                            <div class="workspace-header">
+                                <h2><i class="fas fa-terminal"></i> Console & Terminal</h2>
+                                <div class="workspace-tools">
+                                    <span class="terminal-status-label">Status: <span id="terminalStatus">Ready</span></span>
+                                    <button class="icon-btn small" id="copyOutputBtn" title="Copy Terminal Output">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="icon-btn small" id="clearOutputBtn" title="Clear Console">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="workspace-body" style="padding: 0;">
+                                <!-- xterm.js Terminal Container -->
+                                <div id="terminalContainer" style="width: 100%; height: 100%; background: #0c0c0c; padding: 8px; box-sizing: border-box;"></div>
+                            </div>
+                        </div>
+                        </div>
+                        <!-- End workspace-main-content -->
+
+                        <!-- Floating Sidebar Toggle Button (shows when sidebar is hidden) -->
+                        <button class="sidebar-float-toggle" id="sidebarOpenBtn" title="Open render controls">
+                            <i class="fas fa-sliders-h"></i>
+                        </button>
+
+                        <!-- Controls Sidebar -->
+                        <div class="workspace-controls-sidebar" id="controlsSidebar">
+                            <div class="sidebar-header">
+                                <i class="fas fa-sliders-h"></i>
+                                <h3>Render Controls</h3>
+                                <button class="sidebar-toggle-btn" id="sidebarCloseBtn" title="Close sidebar">
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                            </div>
+
+                            <!-- Preview Settings Section -->
+                            <div class="sidebar-section">
+                                <div class="sidebar-section-header">
+                                    <i class="fas fa-eye"></i>
+                                    <span>Quick Preview</span>
+                                </div>
+                                <div class="sidebar-section-body">
+                                    <div class="sidebar-control">
+                                        <label>Quality</label>
+                                        <select id="previewQualitySelect">
+                                            <option value="120p">120p</option>
+                                            <option value="240p">240p</option>
+                                            <option value="480p" selected>480p</option>
+                                            <option value="720p">720p</option>
+                                            <option value="1080p">1080p</option>
+                                            <option value="custom">Custom</option>
+                                        </select>
+                                    </div>
+                                    <div class="sidebar-control" id="previewCustomResolutionDiv" style="display: none;">
+                                        <label>Width</label>
+                                        <input type="text" id="previewCustomWidth" placeholder="1920" value="1920">
+                                        <label style="margin-top: 8px;">Height</label>
+                                        <input type="text" id="previewCustomHeight" placeholder="1080" value="1080">
+                                    </div>
+                                    <div class="sidebar-control">
+                                        <label>FPS</label>
+                                        <select id="previewFpsSelect">
+                                            <option value="15" selected>15</option>
+                                            <option value="24">24</option>
+                                            <option value="30">30</option>
+                                            <option value="60">60</option>
+                                            <option value="custom">Custom</option>
+                                        </select>
+                                    </div>
+                                    <div class="sidebar-control" id="previewCustomFpsDiv" style="display: none;">
+                                        <label>Custom FPS</label>
+                                        <input type="text" id="previewCustomFps" placeholder="30" value="30">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Render Settings Section -->
+                            <div class="sidebar-section">
+                                <div class="sidebar-section-header">
+                                    <i class="fas fa-film"></i>
+                                    <span>Final Render</span>
+                                </div>
+                                <div class="sidebar-section-body">
+                                    <div class="sidebar-control">
+                                        <label>Quality</label>
+                                        <select id="qualitySelect">
+                                            <option value="8K">8K</option>
+                                            <option value="4K">4K</option>
+                                            <option value="1440p">1440p</option>
+                                            <option value="1080p">1080p</option>
+                                            <option value="720p" selected>720p</option>
+                                            <option value="480p">480p</option>
+                                            <option value="custom">Custom</option>
+                                        </select>
+                                    </div>
+                                    <div class="sidebar-control" id="customResolutionDiv" style="display: none;">
+                                        <label>Width</label>
+                                        <input type="text" id="customWidth" placeholder="1920" value="1920">
+                                        <label style="margin-top: 8px;">Height</label>
+                                        <input type="text" id="customHeight" placeholder="1080" value="1080">
+                                    </div>
+                                    <div class="sidebar-control">
+                                        <label>FPS</label>
+                                        <select id="fpsSelect">
+                                            <option value="24">24</option>
+                                            <option value="30" selected>30</option>
+                                            <option value="60">60</option>
+                                            <option value="120">120</option>
+                                            <option value="custom">Custom</option>
+                                        </select>
+                                    </div>
+                                    <div class="sidebar-control" id="customFpsDiv" style="display: none;">
+                                        <label>Custom FPS</label>
+                                        <input type="text" id="customFps" placeholder="30" value="30">
+                                    </div>
+                                    <div class="sidebar-control">
+                                        <label>Format</label>
+                                        <select id="formatSelect">
+                                            <option value="mp4" selected>MP4</option>
+                                            <option value="mov">MOV</option>
+                                            <option value="gif">GIF</option>
+                                            <option value="png">PNG</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- End controls sidebar -->
+                    </div>
+                </div>
+
+                <div class="tab-panel" id="system-panel">
+                    <div class="panel-heading">
+                        <h2><i class="fas fa-info-circle"></i> System Overview</h2>
+                        <button class="small-btn" id="refreshSystemBtn">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="info-grid" id="systemInfo">
+                        <div class="info-card">
+                            <h4>Python Version</h4>
+                            <p id="pythonVersion">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Manim Version</h4>
+                            <p id="manimVersion">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Platform</h4>
+                            <p id="platform">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Virtual Environment</h4>
+                            <p id="venvPath">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Python Executable</h4>
+                            <p id="pythonExe">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Media Directory</h4>
+                            <p id="mediaDir">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Project Root</h4>
+                            <p id="baseDir">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Environment Status</h4>
+                            <p id="venvStatus">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4>Manim Status</h4>
+                            <p id="manimStatus">-</p>
+                        </div>
+                        <div class="info-card" id="latexStatusCard">
+                            <h4>📄 LaTeX Status</h4>
+                            <p id="latexStatus" style="display: flex; align-items: center; gap: 8px;">
+                                <span class="status-indicator checking"></span>
+                                <span>Checking...</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ASSETS TAB - Modern Design -->
+                <div class="tab-panel" id="assets-panel">
+                    <style>
+                        /* Assets Tab - Premium Glassmorphism Design */
+                        .assets-container {
+                            display: flex;
+                            flex-direction: column;
+                            height: 100%;
+                            background: linear-gradient(135deg, #0a0a0f 0%, #12121a 100%);
+                            padding: 20px;
+                            gap: 20px;
+                            overflow: hidden;
+                        }
+
+                        /* Header with actions */
+                        .assets-header {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            animation: slideInDown 0.4s ease-out;
+                        }
+
+                        .assets-title {
+                            font-size: 28px;
+                            font-weight: 600;
+                            color: var(--text-primary);
+                            display: flex;
+                            align-items: center;
+                            gap: 12px;
+                        }
+
+                        .assets-title i {
+                            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+                            -webkit-background-clip: text;
+                            -webkit-text-fill-color: transparent;
+                            background-clip: text;
+                            font-size: 32px;
+                        }
+
+                        .assets-actions {
+                            display: flex;
+                            gap: 12px;
+                        }
+
+                        .assets-btn {
+                            padding: 10px 20px;
+                            background: rgba(99, 102, 241, 0.12);
+                            border: 1px solid rgba(99, 102, 241, 0.25);
+                            border-radius: 8px;
+                            color: #6366f1;
+                            font-size: 14px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            transition: all 0.3s ease;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                        }
+
+                        .assets-btn:hover {
+                            background: rgba(99, 102, 241, 0.2);
+                            border-color: rgba(99, 102, 241, 0.45);
+                            transform: translateY(-2px);
+                            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);
+                        }
+
+                        /* Drag and Drop Upload Zone - Premium */
+                        .assets-dropzone {
+                            background: rgba(99, 102, 241, 0.03);
+                            backdrop-filter: blur(12px);
+                            border: 2px dashed rgba(99, 102, 241, 0.25);
+                            border-radius: 12px;
+                            padding: 16px 24px;
+                            display: flex;
+                            align-items: center;
+                            gap: 16px;
+                            cursor: pointer;
+                            transition: all 0.3s ease;
+                            position: relative;
+                            overflow: hidden;
+                        }
+
+                        .assets-dropzone::before {
+                            content: '';
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            right: 0;
+                            bottom: 0;
+                            background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.05) 100%);
+                            opacity: 0;
+                            transition: opacity 0.3s ease;
+                        }
+
+                        .assets-dropzone:hover::before {
+                            opacity: 1;
+                        }
+
+                        .assets-dropzone:hover {
+                            border-color: rgba(99, 102, 241, 0.5);
+                            background: rgba(99, 102, 241, 0.06);
+                        }
+
+                        .assets-dropzone.dragover {
+                            border-color: #6366f1;
+                            background: rgba(99, 102, 241, 0.1);
+                            box-shadow: 0 0 25px rgba(99, 102, 241, 0.25);
+                        }
+
+                        .assets-dropzone.dragover::before {
+                            opacity: 1;
+                        }
+
+                        .dropzone-icon {
+                            font-size: 32px;
+                            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+                            -webkit-background-clip: text;
+                            -webkit-text-fill-color: transparent;
+                            background-clip: text;
+                            flex-shrink: 0;
+                        }
+
+                        .dropzone-content {
+                            flex: 1;
+                            text-align: left;
+                        }
+
+                        .dropzone-text {
+                            font-size: 15px;
+                            font-weight: 600;
+                            color: var(--text-primary);
+                            margin-bottom: 4px;
+                        }
+
+                        .dropzone-hint {
+                            font-size: 12px;
+                            color: var(--text-secondary);
+                        }
+
+                        /* Main content area */
+                        .assets-content {
+                            display: flex;
+                            gap: 20px;
+                            flex: 1;
+                            min-height: 0;
+                        }
+
+                        /* Files table/column view */
+                        .assets-files {
+                            flex: 1;
+                            overflow-y: auto;
+                            background: rgba(255, 255, 255, 0.03);
+                            backdrop-filter: blur(10px);
+                            border: 1px solid rgba(255, 255, 255, 0.1);
+                            border-radius: 12px;
+                            padding: 0;
+                        }
+
+                        .assets-table {
+                            width: 100%;
+                        }
+
+                        /* Table header */
+                        .assets-table-header {
+                            display: flex;
+                            align-items: center;
+                            padding: 16px 20px;
+                            background: rgba(255, 255, 255, 0.05);
+                            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+                            position: sticky;
+                            top: 0;
+                            z-index: 10;
+                            backdrop-filter: blur(10px);
+                        }
+
+                        .assets-table-header > div {
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                            letter-spacing: 1px;
+                        }
+
+                        /* Table row */
+                        .asset-row {
+                            display: flex;
+                            align-items: center;
+                            padding: 12px 20px;
+                            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                            cursor: pointer;
+                            transition: all 0.2s ease;
+                            position: relative;
+                        }
+
+                        .asset-row::before {
+                            content: '';
+                            position: absolute;
+                            left: 0;
+                            top: 0;
+                            bottom: 0;
+                            width: 3px;
+                            background: var(--asset-color);
+                            opacity: 0;
+                            transition: opacity 0.2s ease;
+                        }
+
+                        .asset-row:hover {
+                            background: rgba(255, 255, 255, 0.05);
+                        }
+
+                        .asset-row:hover::before {
+                            opacity: 1;
+                        }
+
+                        .asset-row.video { --asset-color: #3b82f6; }
+                        .asset-row.image { --asset-color: #10b981; }
+                        .asset-row.audio { --asset-color: #8b5cf6; }
+                        .asset-row.font { --asset-color: #f59e0b; }
+
+                        /* Column widths */
+                        .asset-col-preview {
+                            width: 50px;
+                            flex-shrink: 0;
+                        }
+
+                        .asset-col-name {
+                            flex: 1;
+                            min-width: 200px;
+                            padding-right: 16px;
+                        }
+
+                        .asset-col-type {
+                            width: 140px;
+                            flex-shrink: 0;
+                        }
+
+                        .asset-col-size {
+                            width: 100px;
+                            flex-shrink: 0;
+                        }
+
+                        .asset-col-actions {
+                            width: 180px;
+                            flex-shrink: 0;
+                            text-align: right;
+                        }
+
+                        /* Preview thumbnail/icon */
+                        .asset-preview {
+                            width: 40px;
+                            height: 40px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            background: rgba(0, 0, 0, 0.3);
+                            border-radius: 6px;
+                            font-size: 20px;
+                            color: var(--asset-color);
+                        }
+
+                        .asset-thumbnail {
+                            width: 40px;
+                            height: 40px;
+                            object-fit: cover;
+                            border-radius: 6px;
+                        }
+
+                        /* Name column */
+                        .asset-name {
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: var(--text-primary);
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            white-space: nowrap;
+                        }
+
+                        /* Type column */
+                        .asset-type {
+                            font-size: 12px;
+                            color: var(--text-secondary);
+                        }
+
+                        /* Size column */
+                        .asset-size {
+                            font-size: 12px;
+                            color: var(--text-secondary);
+                        }
+
+                        /* Actions column */
+                        .asset-actions {
+                            display: flex;
+                            gap: 8px;
+                            justify-content: flex-end;
+                        }
+
+                        .asset-action-btn {
+                            padding: 6px 12px;
+                            background: rgba(255, 255, 255, 0.05);
+                            border: 1px solid rgba(255, 255, 255, 0.1);
+                            border-radius: 6px;
+                            color: var(--text-primary);
+                            font-size: 11px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            transition: all 0.2s ease;
+                            display: flex;
+                            align-items: center;
+                            gap: 4px;
+                        }
+
+                        .asset-action-btn:hover {
+                            background: rgba(255, 255, 255, 0.1);
+                            border-color: rgba(255, 255, 255, 0.2);
+                            transform: translateY(-1px);
+                        }
+
+                        .asset-action-btn.delete {
+                            color: #ef4444;
+                        }
+
+                        .asset-action-btn.delete:hover {
+                            background: rgba(239, 68, 68, 0.2);
+                            border-color: rgba(239, 68, 68, 0.5);
+                        }
+
+                        /* Preview panel */
+                        .assets-preview {
+                            flex: 0 0 400px;
+                            background: rgba(255, 255, 255, 0.03);
+                            backdrop-filter: blur(10px);
+                            border: 1px solid rgba(255, 255, 255, 0.1);
+                            border-radius: 12px;
+                            padding: 20px;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 16px;
+                        }
+
+                        .preview-header {
+                            display: flex;
+                            align-items: center;
+                            gap: 12px;
+                            padding-bottom: 16px;
+                            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                        }
+
+                        .preview-header i {
+                            font-size: 24px;
+                            color: #3b82f6;
+                        }
+
+                        .preview-header h3 {
+                            font-size: 18px;
+                            font-weight: 600;
+                            color: var(--text-primary);
+                            margin: 0;
+                        }
+
+                        .preview-content {
+                            flex: 1;
+                            background: rgba(0, 0, 0, 0.3);
+                            border-radius: 8px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            overflow: hidden;
+                            position: relative;
+                        }
+
+                        .preview-placeholder {
+                            text-align: center;
+                            color: var(--text-secondary);
+                        }
+
+                        .preview-placeholder i {
+                            font-size: 64px;
+                            margin-bottom: 16px;
+                            opacity: 0.3;
+                        }
+
+                        .preview-info {
+                            padding: 12px;
+                            background: rgba(255, 255, 255, 0.05);
+                            border-radius: 8px;
+                            font-size: 13px;
+                            color: var(--text-secondary);
+                            text-align: center;
+                            word-break: break-word;
+                        }
+
+                        /* Empty state */
+                        .assets-empty {
+                            text-align: center;
+                            padding: 60px 20px;
+                            color: var(--text-secondary);
+                        }
+
+                        .assets-empty i {
+                            font-size: 80px;
+                            margin-bottom: 20px;
+                            opacity: 0.2;
+                        }
+
+                        .assets-empty p {
+                            font-size: 16px;
+                            margin: 0;
+                        }
+
+                        /* Scrollbar styling */
+                        .assets-files::-webkit-scrollbar {
+                            width: 8px;
+                        }
+
+                        .assets-files::-webkit-scrollbar-track {
+                            background: rgba(255, 255, 255, 0.05);
+                            border-radius: 4px;
+                        }
+
+                        .assets-files::-webkit-scrollbar-thumb {
+                            background: rgba(255, 255, 255, 0.2);
+                            border-radius: 4px;
+                        }
+
+                        .assets-files::-webkit-scrollbar-thumb:hover {
+                            background: rgba(255, 255, 255, 0.3);
+                        }
+                    </style>
+
+                    <div class="assets-container">
+                        <!-- Header -->
+                        <div class="assets-header">
+                            <div class="assets-title">
+                                <i class="fas fa-images"></i>
+                                Assets Library
+                            </div>
+                            <div class="assets-actions">
+                                <button class="assets-btn" onclick="window.loadAssets()">
+                                    <i class="fas fa-sync"></i>
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Drag & Drop Upload Zone -->
+                        <div class="assets-dropzone" id="assetsDropzone" onclick="window.uploadAssets()">
+                            <div class="dropzone-icon">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <div class="dropzone-content">
+                                <div class="dropzone-text">Drag & Drop Files Here</div>
+                                <div class="dropzone-hint">or click to browse • Images, Videos, Audio, Fonts & More</div>
+                            </div>
+                        </div>
+
+                        <!-- Content Area -->
+                        <div class="assets-content">
+                            <!-- Files Table -->
+                            <div class="assets-files">
+                                <div class="assets-table">
+                                    <div class="assets-table-header">
+                                        <div class="asset-col-preview"></div>
+                                        <div class="asset-col-name">Name</div>
+                                        <div class="asset-col-type">Type</div>
+                                        <div class="asset-col-size">Size</div>
+                                        <div class="asset-col-actions">Actions</div>
+                                    </div>
+                                    <div id="simpleAssetsContainer"></div>
+                                </div>
+                            </div>
+
+                            <!-- Preview Panel -->
+                            <div class="assets-preview">
+                                <div class="preview-header">
+                                    <i class="fas fa-eye"></i>
+                                    <h3>Preview</h3>
+                                </div>
+                                <div class="preview-content" id="assetsPreviewContainer">
+                                    <div class="preview-placeholder">
+                                        <i class="fas fa-image"></i>
+                                        <p>Select a file to preview</p>
+                                    </div>
+                                </div>
+                                <div class="preview-info" id="assetsPreviewInfo"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Venv/Packages Tab -->
+                <div class="tab-panel" id="venv-panel">
+                    <div class="venv-container">
+                        <div class="venv-header">
+                            <h2><i class="fas fa-box"></i> Package Manager</h2>
+                            <div class="venv-header-actions">
+                                <button class="venv-btn" onclick="refreshPackages(true)" id="checkUpdatesBtn">
+                                    <i class="fas fa-download"></i> Check for Updates
+                                </button>
+                                <button class="venv-btn" onclick="refreshPackages(false)">
+                                    <i class="fas fa-sync-alt"></i> Refresh List
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Install Package Section -->
+                        <div class="venv-install-section">
+                            <h3>Install New Package</h3>
+                            <div class="venv-install-form">
+                                <input
+                                    type="text"
+                                    id="packageNameInput"
+                                    placeholder="Enter package name (e.g., numpy, matplotlib)"
+                                    onkeypress="if(event.key === 'Enter') installPackage()"
+                                />
+                                <button class="venv-btn-primary" onclick="installPackage()">
+                                    <i class="fas fa-download"></i> Install
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Installed Packages List -->
+                        <div class="venv-packages-section">
+                            <h3>Installed Packages</h3>
+                            <div class="venv-packages-list" id="packagesList">
+                                <div class="venv-loading">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading packages...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+    <!-- Status Bar -->
+    <footer class="status-bar">
+        <div class="status-left">
+            <span class="status-item">
+                <i class="fas fa-circle" id="statusIndicator"></i>
+                <span id="statusText">Ready</span>
+            </span>
+            <span class="status-item" id="currentFile">
+                <i class="fas fa-file"></i>
+                <span>Untitled</span>
+            </span>
+        </div>
+        <div class="status-right">
+            <span class="status-item" id="linesCount">Lines: 0</span>
+            <span class="status-item" id="cursorPosition">Ln 1, Col 1</span>
+            <span class="status-item" id="selectionInfo" style="display: none; color: #3b82f6;"></span>
+            <span class="status-item" id="zoomControl" style="cursor: pointer; user-select: none;" title="Click to reset zoom">
+                <i class="fas fa-search"></i>
+                <span id="zoomLevel">100%</span>
+            </span>
+        </div>
+    </footer>
+
+    <!-- Help and Settings Modals -->
+    <!-- Include the modal HTML -->
+    <script>
+        // Load and inject the modals HTML
+        fetch('app_features_modals.html?v=2025-01-26-v7')
+            .then(response => response.text())
+            .then(html => {
+                // Create temp div to parse HTML
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+
+                // Append each modal directly to body (not wrapped in div)
+                while (tempDiv.firstChild) {
+                    document.body.appendChild(tempDiv.firstChild);
+                }
+
+                console.log('[MODALS] Modals loaded and injected into DOM');
+
+                // Trigger event to signal modals are ready
+                window.dispatchEvent(new Event('modalsReady'));
+            })
+            .catch(err => console.error('Failed to load modals:', err));
+    </script>
+
+    <!-- xterm.js Terminal Emulator -->
+    <script>
+        console.log('[XTERM LOAD] About to load xterm.js...');
+        console.log('[XTERM LOAD] Document readyState:', document.readyState);
+    </script>
+    <script src="xterm/xterm.js" onload="console.log('[XTERM LOAD] xterm.js loaded successfully. Terminal available:', typeof Terminal !== 'undefined')" onerror="console.error('[XTERM LOAD] Failed to load xterm.js!')"></script>
+    <script>
+        console.log('[XTERM LOAD] After loading xterm.js - Terminal constructor:', typeof Terminal);
+        console.log('[XTERM LOAD] After loading xterm.js - window.Terminal:', typeof window.Terminal);
+    </script>
+
+    <!-- Monaco Editor - AMD Loader -->
+    <script src="monaco/vs/loader.js"></script>
+    <script>
+        // Configure AMD loader path
+        require.config({ paths: { 'vs': 'monaco/vs' } });
+
+        // Set up Monaco Environment for web workers
+        window.MonacoEnvironment = {
+            getWorkerUrl: function(workerId, label) {
+                return 'monaco/vs/base/worker/workerMain.js';
+            }
+        };
+
+        console.log('Monaco AMD loader configured');
+        console.log('require available:', typeof require !== 'undefined');
+    </script>
+
+    <!-- Main Application Script - Load renderer_desktop.js directly -->
+    <!-- Cache buster added to force reload after fixes - change version to force reload -->
+    <script src="renderer_desktop.js?v=2025-01-26-basic-monaco-no-lsp"></script>
+
+    <!-- New Features: File Upload via PyWebView Dialog -->
+    <script src="new_features.js?v=2025-01-26-windows-details-view"></script>
+
+    <!-- App Features: Theme Toggle, Help Modal, Settings Dialog -->
+    <script src="app_features.js?v=2025-01-26-v14-pywebview-ready-fix"></script>
+
+    <!-- SIMPLE ASSETS - NO CACHE -->
+    <script src="simple_assets.js?nocache"></script>
+
+    <!-- Responsive Scaling & DPI Detection -->
+    <script src="responsive_scaling.js?v=2025-02-05"></script>
+</body>
+</html>

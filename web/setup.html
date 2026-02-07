@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Studio - Setup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .setup-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 25px 70px rgba(0,0,0,0.4);
+            max-width: 900px;
+            width: 100%;
+            overflow: hidden;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .setup-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .setup-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .setup-header h1 {
+            font-size: 32px;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .setup-header p {
+            opacity: 0.95;
+            font-size: 15px;
+            position: relative;
+            z-index: 1;
+            font-weight: 300;
+        }
+
+        .setup-body {
+            padding: 30px;
+        }
+
+        .prerequisites-section {
+            background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 2px solid #fc8181;
+            box-shadow: 0 4px 12px rgba(252, 129, 129, 0.2);
+        }
+
+        .prerequisites-section.all-good {
+            background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
+            border: 2px solid #48bb78;
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.2);
+        }
+
+        .prerequisites-section h3 {
+            margin-bottom: 16px;
+            color: #2d3748;
+            font-size: 18px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .prereq-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            transition: all 0.3s ease;
+            border: 1px solid #e2e8f0;
+        }
+
+        .prereq-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .prereq-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+        }
+
+        .prereq-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .prereq-icon {
+            font-size: 24px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .prereq-details {
+            flex: 1;
+        }
+
+        .prereq-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #2d3748;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .prereq-version {
+            font-size: 12px;
+            color: #718096;
+            font-family: 'Courier New', monospace;
+        }
+
+        .prereq-status {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .prereq-status.found {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .prereq-status.missing {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .prereq-status.checking {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .warning-box {
+            margin-top: 16px;
+            padding: 16px;
+            background: #fff5f5;
+            border-left: 4px solid #f56565;
+            border-radius: 6px;
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .warning-box h4 {
+            margin: 0 0 12px 0;
+            color: #742a2a;
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .warning-box p {
+            margin: 0 0 8px 0;
+            color: #742a2a;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .warning-box a {
+            color: #c53030;
+            font-weight: 600;
+            text-decoration: none;
+            border-bottom: 1px solid #c53030;
+        }
+
+        .warning-box a:hover {
+            color: #9b2c2c;
+            border-bottom-color: #9b2c2c;
+        }
+
+        .warning-box ul {
+            margin: 8px 0 0 20px;
+            color: #742a2a;
+            font-size: 13px;
+        }
+
+        .warning-box li {
+            margin-bottom: 6px;
+        }
+
+        .recheck-btn {
+            margin-top: 16px;
+            padding: 10px 20px;
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .recheck-btn:hover {
+            background: #3182ce;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+        }
+
+        .recheck-btn:active {
+            transform: translateY(0);
+        }
+
+        .info-section {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .info-section h3 {
+            color: #2d3748;
+            margin-bottom: 16px;
+            font-size: 17px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-section h3::before {
+            content: '⚙️';
+            font-size: 20px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #718096;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .info-value {
+            color: #2d3748;
+            font-weight: 600;
+            font-size: 14px;
+            background: white;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .packages-section {
+            margin-bottom: 24px;
+        }
+
+        .packages-section h3 {
+            color: #2d3748;
+            margin-bottom: 14px;
+            font-size: 17px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .packages-section h3::before {
+            content: '📦';
+            font-size: 20px;
+        }
+
+        .package-list {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border-radius: 12px;
+            padding: 16px;
+            max-height: 220px;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+        }
+
+        .package-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .package-list::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 4px;
+        }
+
+        .package-list::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 4px;
+        }
+
+        .package-list::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0;
+        }
+
+        .package-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+            transition: all 0.2s;
+        }
+
+        .package-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+            transform: translateX(4px);
+        }
+
+        .package-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .package-item input[type="checkbox"] {
+            margin-right: 12px;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+
+        .package-name {
+            flex: 1;
+            color: #2d3748;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .package-required {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+        }
+
+        .custom-packages {
+            margin-top: 15px;
+        }
+
+        .custom-packages label {
+            display: block;
+            color: #2d3748;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .custom-packages textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .custom-packages textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .custom-packages small {
+            display: block;
+            color: #718096;
+            font-size: 12px;
+            margin-top: 6px;
+        }
+
+        .progress-section {
+            display: none;
+            margin-top: 24px;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .progress-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .progress-header h3 {
+            color: #2d3748;
+            font-size: 17px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .progress-spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e2e8f0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .progress-bar-container {
+            background: #e2e8f0;
+            border-radius: 8px;
+            height: 12px;
+            overflow: hidden;
+            margin-bottom: 16px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+        }
+
+        .progress-percentage {
+            text-align: center;
+            color: #667eea;
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 12px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .console-container {
+            background: #1a1d23;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #2d3748;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .console-header {
+            background: #2d3748;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid #4a5568;
+        }
+
+        .console-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .console-dot.red { background: #fc5c65; }
+        .console-dot.yellow { background: #fed330; }
+        .console-dot.green { background: #26de81; }
+
+        .console-title {
+            color: #a0aec0;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+            font-family: system-ui;
+        }
+
+        .progress-log {
+            background: #1a1d23;
+            color: #a8dadc;
+            padding: 16px;
+            max-height: 350px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .progress-log::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .progress-log::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+
+        .progress-log::-webkit-scrollbar-thumb {
+            background: #4a5568;
+            border-radius: 5px;
+        }
+
+        .progress-log::-webkit-scrollbar-thumb:hover {
+            background: #667eea;
+        }
+
+        .log-line {
+            margin-bottom: 4px;
+            animation: logSlideIn 0.3s ease-out;
+        }
+
+        @keyframes logSlideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .log-success {
+            color: #48bb78;
+            font-weight: 600;
+        }
+
+        .log-error {
+            color: #fc5c65;
+            font-weight: 600;
+        }
+
+        .log-info {
+            color: #4299e1;
+        }
+
+        .log-warning {
+            color: #ed8936;
+        }
+
+        .log-command {
+            color: #9f7aea;
+            font-weight: 600;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 16px;
+            margin-top: 30px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 16px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 24px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-primary:disabled {
+            background: #cbd5e0;
+            color: #a0aec0;
+            cursor: not-allowed;
+            opacity: 0.6;
+            box-shadow: none;
+        }
+
+        .btn-primary:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-primary:disabled::before {
+            display: none;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #2d3748;
+            border: 2px solid #cbd5e0;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+            border-color: #a0aec0;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .btn:disabled::before {
+            display: none;
+        }
+
+        .btn-text {
+            position: relative;
+            z-index: 1;
+        }
+
+        .status-message {
+            text-align: center;
+            padding: 20px;
+            font-size: 16px;
+            color: #2d3748;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e2e8f0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="setup-header">
+            <h1>🎬 Manim Animation Studio</h1>
+            <p>Virtual Environment Setup</p>
+        </div>
+
+        <div class="setup-body" id="setupBody">
+            <!-- Prerequisites Check -->
+            <div class="prerequisites-section" id="prerequisitesSection">
+                <h3>⚠️ Required Prerequisites</h3>
+
+                <!-- Python Check -->
+                <div class="prereq-item" id="pythonPrereq">
+                    <div class="prereq-info">
+                        <div class="prereq-icon">🐍</div>
+                        <div class="prereq-details">
+                            <span class="prereq-name">Python 3.8+</span>
+                            <span class="prereq-version" id="pythonDetected">Checking...</span>
+                        </div>
+                    </div>
+                    <div class="prereq-status checking" id="pythonStatus">
+                        <span>●</span> Checking
+                    </div>
+                </div>
+
+                <!-- LaTeX Check -->
+                <div class="prereq-item" id="latexPrereq">
+                    <div class="prereq-info">
+                        <div class="prereq-icon">📄</div>
+                        <div class="prereq-details">
+                            <span class="prereq-name">LaTeX (MiKTeX/TeXLive)</span>
+                            <span class="prereq-version" id="latexDetected">Checking...</span>
+                        </div>
+                    </div>
+                    <div class="prereq-status checking" id="latexStatus">
+                        <span>●</span> Checking
+                    </div>
+                </div>
+
+                <!-- Warning Box (hidden by default) -->
+                <div class="warning-box" id="warningBox" style="display: none;">
+                    <h4>⚠️ Missing Prerequisites</h4>
+                    <p>Manim Studio requires the following software to be installed before you can create animations:</p>
+                    <ul id="missingList"></ul>
+                    <p style="margin-top: 12px;"><strong>Please install the missing software and click "Recheck" below.</strong></p>
+                </div>
+
+                <!-- Recheck Button -->
+                <button class="recheck-btn" id="recheckBtn" onclick="checkPrerequisites()">
+                    <span>🔄</span> Recheck Prerequisites
+                </button>
+            </div>
+
+            <!-- Installation Info -->
+            <div class="info-section">
+                <h3>Installation Details</h3>
+                <div class="info-item">
+                    <span class="info-label">Install Location:</span>
+                    <span class="info-value" id="venvPath">Loading...</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Python Version:</span>
+                    <span class="info-value" id="pythonVersion">Detecting...</span>
+                </div>
+                <div style="margin-top: 12px; padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 6px;">
+                    <p style="margin: 0; color: #856404; font-size: 13px; line-height: 1.6;">
+                        <strong>ℹ️ Note:</strong> You can skip this setup and install the virtual environment later through the application console if needed.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Required Packages -->
+            <div class="packages-section">
+                <h3>Required Packages</h3>
+                <div class="package-list" id="requiredPackages">
+                    <div class="package-item">
+                        <input type="checkbox" checked disabled>
+                        <span class="package-name">manim</span>
+                        <span class="package-required">REQUIRED</span>
+                    </div>
+                    <div class="package-item">
+                        <input type="checkbox" checked disabled>
+                        <span class="package-name">pywebview</span>
+                        <span class="package-required">REQUIRED</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Optional Packages -->
+            <div class="packages-section">
+                <h3>Optional Packages (check to install)</h3>
+                <div class="package-list" id="optionalPackages">
+                    <div class="package-item">
+                        <input type="checkbox" id="pkg-pyopengl" checked>
+                        <span class="package-name">PyOpenGL - GPU acceleration & detection (~30MB)</span>
+                    </div>
+                    <div class="package-item">
+                        <input type="checkbox" id="pkg-pygame" checked>
+                        <span class="package-name">pygame - GPU detection support (~20MB)</span>
+                    </div>
+                    <div class="package-item">
+                        <input type="checkbox" id="pkg-numpy" checked>
+                        <span class="package-name">numpy - Scientific computing</span>
+                    </div>
+                    <div class="package-item">
+                        <input type="checkbox" id="pkg-scipy" checked>
+                        <span class="package-name">scipy - Advanced mathematics</span>
+                    </div>
+                    <div class="package-item">
+                        <input type="checkbox" id="pkg-matplotlib">
+                        <span class="package-name">matplotlib - Plotting library</span>
+                    </div>
+                    <div class="package-item">
+                        <input type="checkbox" id="pkg-pillow">
+                        <span class="package-name">pillow - Image processing</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Packages -->
+            <div class="custom-packages">
+                <label for="customPackages">Custom Packages (one per line):</label>
+                <textarea id="customPackages" placeholder="requests&#10;beautifulsoup4&#10;pandas"></textarea>
+                <small>Enter additional packages you want to install, one per line</small>
+            </div>
+
+            <!-- Progress Section (hidden initially) -->
+            <div class="progress-section" id="progressSection">
+                <div class="progress-header">
+                    <div class="progress-spinner" id="progressSpinner"></div>
+                    <h3>Installing Environment...</h3>
+                </div>
+                <div class="progress-percentage" id="progressPercentage">0%</div>
+                <div class="progress-bar-container">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="console-container">
+                    <div class="console-header">
+                        <span class="console-dot red"></span>
+                        <span class="console-dot yellow"></span>
+                        <span class="console-dot green"></span>
+                        <span class="console-title">Installation Console</span>
+                    </div>
+                    <div class="progress-log" id="progressLog"></div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group">
+                <button class="btn btn-secondary" id="cancelBtn">
+                    <span class="btn-text">Cancel</span>
+                </button>
+                <button class="btn btn-primary" id="installBtn">
+                    <span class="btn-text">🚀 Install & Continue</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let installing = false;
+        let prerequisitesOk = false;
+
+        // Check prerequisites
+        async function checkPrerequisites() {
+            try {
+                const result = await pywebview.api.check_prerequisites();
+
+                if (result.status === 'success') {
+                    const prereqs = result.results;
+                    let allGood = true;
+                    const missing = [];
+
+                    // Update Python status
+                    const pythonStatus = document.getElementById('pythonStatus');
+                    const pythonDetected = document.getElementById('pythonDetected');
+
+                    if (prereqs.python.installed) {
+                        pythonStatus.className = 'prereq-status found';
+                        pythonStatus.innerHTML = '<span>✓</span> Found';
+                        pythonDetected.textContent = prereqs.python.version || prereqs.python.path;
+                    } else {
+                        pythonStatus.className = 'prereq-status missing';
+                        pythonStatus.innerHTML = '<span>✗</span> Not Found';
+                        pythonDetected.textContent = 'Not installed';
+                        allGood = false;
+                        missing.push({
+                            name: 'Python 3.8+',
+                            url: 'https://python.org/downloads/',
+                            instruction: 'Download and install Python 3.8 or higher. <strong>Important:</strong> Check "Add Python to PATH" during installation.'
+                        });
+                    }
+
+                    // Update LaTeX status
+                    const latexStatus = document.getElementById('latexStatus');
+                    const latexDetected = document.getElementById('latexDetected');
+
+                    if (prereqs.latex.installed) {
+                        latexStatus.className = 'prereq-status found';
+                        latexStatus.innerHTML = '<span>✓</span> Found';
+                        latexDetected.textContent = prereqs.latex.variant || 'Installed';
+                    } else {
+                        latexStatus.className = 'prereq-status missing';
+                        latexStatus.innerHTML = '<span>✗</span> Not Found';
+                        latexDetected.textContent = 'Not installed';
+                        allGood = false;
+                        missing.push({
+                            name: 'LaTeX (MiKTeX or TeXLive)',
+                            url: 'https://miktex.org/download',
+                            instruction: 'Download and install MiKTeX for LaTeX support. Manim requires LaTeX to render mathematical formulas.'
+                        });
+                    }
+
+                    // Update overall section styling
+                    const prereqSection = document.getElementById('prerequisitesSection');
+                    const warningBox = document.getElementById('warningBox');
+                    const installBtn = document.getElementById('installBtn');
+                    const missingList = document.getElementById('missingList');
+
+                    if (allGood) {
+                        prereqSection.className = 'prerequisites-section all-good';
+                        prereqSection.querySelector('h3').innerHTML = '✓ All Prerequisites Found';
+                        warningBox.style.display = 'none';
+                        installBtn.disabled = false;
+                        prerequisitesOk = true;
+                    } else {
+                        prereqSection.className = 'prerequisites-section';
+                        prereqSection.querySelector('h3').innerHTML = '⚠️ Required Prerequisites';
+                        warningBox.style.display = 'block';
+                        installBtn.disabled = true;
+                        prerequisitesOk = false;
+
+                        // Build missing list
+                        missingList.innerHTML = '';
+                        missing.forEach(item => {
+                            const li = document.createElement('li');
+                            li.innerHTML = `<strong>${item.name}:</strong> ${item.instruction} <a href="#" onclick="window.open('${item.url}'); return false;">Download here</a>`;
+                            missingList.appendChild(li);
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to check prerequisites:', error);
+            }
+        }
+
+        // Load environment info
+        window.addEventListener('pywebviewready', async () => {
+            // Check prerequisites first
+            await checkPrerequisites();
+
+            // Load environment info
+            try {
+                const info = await pywebview.api.get_setup_info();
+                document.getElementById('venvPath').textContent = info.venv_path;
+                document.getElementById('pythonVersion').textContent = info.python_version;
+            } catch (error) {
+                console.error('Failed to load setup info:', error);
+            }
+        });
+
+        // Install button
+        document.getElementById('installBtn').addEventListener('click', async () => {
+            if (installing) return;
+            if (!prerequisitesOk) {
+                alert('Please install all required prerequisites (Python and LaTeX) before continuing.');
+                return;
+            }
+            installing = true;
+
+            // Gather selected packages
+            const customPackages = document.getElementById('customPackages').value
+                .split('\n')
+                .map(p => p.trim())
+                .filter(p => p.length > 0);
+
+            const optionalPackages = [];
+            if (document.getElementById('pkg-pyopengl').checked) optionalPackages.push('PyOpenGL');
+            if (document.getElementById('pkg-pygame').checked) optionalPackages.push('pygame');
+            if (document.getElementById('pkg-numpy').checked) optionalPackages.push('numpy');
+            if (document.getElementById('pkg-scipy').checked) optionalPackages.push('scipy');
+            if (document.getElementById('pkg-matplotlib').checked) optionalPackages.push('matplotlib');
+            if (document.getElementById('pkg-pillow').checked) optionalPackages.push('pillow');
+
+            // Show progress
+            document.getElementById('progressSection').style.display = 'block';
+            document.getElementById('installBtn').disabled = true;
+            document.getElementById('cancelBtn').disabled = true;
+
+            try {
+                // Start installation (runs in background thread, returns immediately)
+                const result = await pywebview.api.install_environment({
+                    optional_packages: optionalPackages,
+                    custom_packages: customPackages
+                });
+
+                console.log('[SETUP] Installation started:', result);
+                addLog('[INFO] Installation started in background...');
+
+                // Installation will continue in background
+                // Python will call window.onInstallationComplete() when done
+
+            } catch (error) {
+                addLog('[ERROR] Failed to start installation: ' + error.message);
+                document.getElementById('installBtn').disabled = false;
+                document.getElementById('cancelBtn').disabled = false;
+                installing = false;
+            }
+        });
+
+        // Cancel button
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+            if (confirm('Are you sure you want to cancel? The application requires a Python environment to run.')) {
+                window.close();
+            }
+        });
+
+        // Add log message with color coding
+        function addLog(message) {
+            const log = document.getElementById('progressLog');
+            const line = document.createElement('div');
+            line.className = 'log-line';
+
+            // Color code based on message type
+            if (message.includes('[SUCCESS]') || message.includes('successfully') || message.includes('complete')) {
+                line.className += ' log-success';
+            } else if (message.includes('[ERROR]') || message.includes('failed') || message.includes('error')) {
+                line.className += ' log-error';
+            } else if (message.includes('[WARNING]') || message.includes('warning')) {
+                line.className += ' log-warning';
+            } else if (message.includes('[INFO]') || message.includes('Installing') || message.includes('Creating')) {
+                line.className += ' log-info';
+            } else if (message.includes('pip install') || message.includes('python')) {
+                line.className += ' log-command';
+            }
+
+            // Add timestamp
+            const now = new Date();
+            const timestamp = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}]`;
+            line.textContent = `${timestamp} ${message}`;
+
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Update progress (called from Python)
+        window.updateProgress = function(percent, message) {
+            const progressFill = document.getElementById('progressFill');
+            const progressPercentage = document.getElementById('progressPercentage');
+
+            progressFill.style.width = percent + '%';
+            progressPercentage.textContent = Math.round(percent) + '%';
+
+            if (message) {
+                addLog(message);
+            }
+
+            // Hide spinner when complete
+            if (percent >= 100) {
+                const spinner = document.getElementById('progressSpinner');
+                if (spinner) {
+                    spinner.style.display = 'none';
+                }
+            }
+        };
+
+        // Installation complete callback (called from Python)
+        window.onInstallationComplete = function(success, message) {
+            console.log('[SETUP] Installation complete callback:', success, message);
+
+            if (success) {
+                addLog('[SUCCESS] Installation complete!');
+                addLog('[INFO] Launching application...');
+
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 2000);
+            } else {
+                addLog('[ERROR] Installation failed: ' + message);
+                document.getElementById('installBtn').disabled = false;
+                document.getElementById('cancelBtn').disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

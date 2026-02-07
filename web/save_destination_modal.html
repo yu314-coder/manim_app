@@ -1,0 +1,54 @@
+<!-- Modern Save Destination Modal -->
+
+<!-- Step 1: Choose Destination Type -->
+<div class="modal-overlay" id="saveDestinationModal" style="display: none;">
+    <div class="modal-container" style="max-width: 520px;">
+        <div class="modal-header">
+            <h2>
+                <i class="fas fa-save"></i>
+                Save Animation
+            </h2>
+            <button class="modal-close-btn" onclick="closeSaveDestinationModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 32px;">
+            <p style="margin: 0 0 24px 0; color: var(--text-secondary); font-size: 14px;">
+                Save your rendered animation to your computer
+            </p>
+
+            <!-- Destination Options -->
+            <div class="destination-options">
+                <div class="destination-card" onclick="showComputerSave()" style="cursor: pointer; padding: 24px; background: var(--bg-secondary); border-radius: 12px; border: 2px solid transparent; transition: all 0.2s;">
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <div style="width: 56px; height: 56px; background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <i class="fas fa-laptop" style="font-size: 28px; color: white;"></i>
+                        </div>
+                        <div style="flex: 1;">
+                            <h3 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 600;">
+                                This Computer
+                            </h3>
+                            <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">
+                                Save to a local folder
+                            </p>
+                        </div>
+                        <i class="fas fa-arrow-right" style="color: var(--text-secondary); font-size: 20px;"></i>
+                    </div>
+                </div>
+            </div>
+            <p style="margin: 12px 0 0 0; font-size: 13px; color: var(--text-secondary);">
+                Cloud upload has been removed; files stay on your device.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- CSS for hover effects -->
+<style>
+.destination-card:hover {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--accent-primary) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+</style>
