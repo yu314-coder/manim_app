@@ -116,8 +116,8 @@ Install and manage Python packages through an intuitive visual interface without
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/manim-studio.git
-cd manim-studio
+git clone https://github.com/yu314-coder/manim_app.git
+cd manim_app
 
 # Install host dependencies
 pip install pywebview
@@ -366,8 +366,8 @@ Contributions are welcome! Here's how you can help:
 
 ```bash
 # Clone and setup development environment
-git clone https://github.com/yourusername/manim-studio.git
-cd manim-studio
+git clone https://github.com/yu314-coder/manim_app.git
+cd manim_app
 
 # Install host dependencies
 pip install pywebview
@@ -398,8 +398,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 - **Documentation**: Check the built-in Help modal (? icon)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/manim-studio/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/manim-studio/discussions)
+- **Issues**: [GitHub Issues](https://github.com/yu314-coder/manim_app/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yu314-coder/manim_app/discussions)
 - **Manim Help**: [Manim Community Discord](https://discord.gg/manim)
 
 ---
