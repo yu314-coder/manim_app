@@ -15,8 +15,9 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 
 ### 🎨 **Professional Code Editor**
 - **Monaco Editor** (VS Code's editor) with full Python syntax highlighting
-- IntelliSense and autocomplete for Manim classes
-- Real-time error detection and linting
+- **basedpyright IntelliSense** — real-time type checking, completions, hover docs, and diagnostics
+- **VS Code-quality signature help** — live parameter hints for Python builtins and all Manim classes
+- **Static completions** for all Manim classes, animations, mobjects, colors, and constants (instant, no LSP required)
 - Line numbers, code folding, and multiple cursors
 - Customizable font size and themes
 
@@ -38,6 +39,7 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 - Check for package updates
 - Uninstall packages safely
 - View installed packages and versions
+- Auto-detection of missing required packages on startup
 - No terminal commands needed
 
 ### 🖥️ **Full-Featured Terminal**
@@ -49,6 +51,7 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 
 ### 🎯 **Smart Workflow Features**
 - **Auto-save backups**: Never lose your work
+- **Unsaved changes warning**: Prompted before opening a new file
 - **File recovery**: Restore from auto-saved versions
 - **Auto-open output folder**: Jump directly to saved renders
 - **Live preview**: See your animation immediately after render
@@ -105,7 +108,7 @@ Install and manage Python packages through an intuitive visual interface without
 
 4. **First-time setup** (automatic)
    - Virtual environment creation
-   - Manim installation
+   - Manim, manim-fonts, and basedpyright installation
    - LaTeX detection and setup
    - Assets folder initialization
 
@@ -116,8 +119,8 @@ Install and manage Python packages through an intuitive visual interface without
 git clone https://github.com/yourusername/manim-studio.git
 cd manim-studio
 
-# Install dependencies
-pip install -r requirements.txt
+# Install host dependencies
+pip install pywebview
 
 # Run the application
 python app.py
@@ -271,6 +274,7 @@ Access via Settings (⚙️ icon):
 ```
 C:\Users\<you>\.manim_studio\
 ├── assets\              # Your uploaded files (fonts, images, audio)
+├── lsp_workspace\       # basedpyright workspace (auto-managed)
 ├── media\               # Manim cache and temp files
 ├── render\              # High-quality render output (temporary)
 ├── preview\             # Quick preview output (temporary)
@@ -317,6 +321,16 @@ C:\Users\<you>\.manim_studio\
 3. Restart application after LaTeX installation
 4. Use raw strings for LaTeX: `r"$\frac{1}{2}$"`
 
+### IntelliSense Not Working
+
+**Problem:** No type checking or smart completions from basedpyright
+
+**Solutions:**
+1. Wait ~2 seconds after the editor loads — IntelliSense starts in the background
+2. Check that basedpyright is installed (Packages tab)
+3. If missing, the app will prompt you to install it on startup
+4. A "IntelliSense ready" toast appears when LSP is active
+
 ### Package Installation Fails
 
 **Problem:** Cannot install Python packages
@@ -335,45 +349,7 @@ C:\Users\<you>\.manim_studio\
 **Solutions:**
 1. Check that render completed successfully (terminal logs)
 2. Try refreshing Assets tab
-3. Check file path is correct
-4. Ensure video file exists and is not corrupted
-5. Try a different browser (if using web version)
-
----
-
-## 🔧 Advanced Usage
-
-### Command Line Arguments
-
-```bash
-# Run with custom window size
-python app.py --width 1920 --height 1080
-
-# Run in debug mode
-python app.py --debug
-
-# Specify custom user data directory
-python app.py --user-dir "D:\MyManimData"
-```
-
-### Environment Variables
-
-```bash
-# Use custom Python executable
-set MANIM_PYTHON_EXE=C:\Python39\python.exe
-
-# Custom media directory
-set MANIM_MEDIA_DIR=D:\ManimOutput
-```
-
-### Virtual Environment Management
-
-The app creates an isolated virtual environment at:
-```
-C:\Users\<you>\.manim_studio\venvs\manim_studio_default\
-```
-
-You can manage it via the integrated terminal or Packages tab.
+3. Ensure video file exists and is not corrupted
 
 ---
 
@@ -393,11 +369,11 @@ Contributions are welcome! Here's how you can help:
 git clone https://github.com/yourusername/manim-studio.git
 cd manim-studio
 
-# Install development dependencies
-pip install -r requirements-dev.txt
+# Install host dependencies
+pip install pywebview
 
 # Run in development mode
-python app.py --debug
+python app.py
 ```
 
 ---
@@ -412,6 +388,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **[Manim Community](https://www.manim.community/)** - The amazing animation engine
 - **[Monaco Editor](https://microsoft.github.io/monaco-editor/)** - VS Code's powerful editor
+- **[basedpyright](https://github.com/DetachHead/basedpyright)** - Python language server for IntelliSense
 - **[PyWebView](https://pywebview.flowrl.com/)** - Native Python desktop apps
 - **[xterm.js](https://xtermjs.org/)** - Terminal emulator for the web
 - **Font Awesome** - Beautiful icons
@@ -435,11 +412,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] **Scene Browser**: Visual navigation between multiple scenes
 - [ ] **Animation Templates**: Pre-built scenes for common use cases
 - [ ] **Export Presets**: Save and reuse render configurations
-- [ ] **Collaborative Editing**: Share projects with team members
-- [ ] **Plugin System**: Extend functionality with custom plugins
 - [ ] **macOS/Linux Support**: Cross-platform compatibility
-- [ ] **Cloud Sync**: Sync settings and projects across devices
-- [ ] **Mobile Companion**: Preview on mobile devices
 - [ ] **Timeline Editor**: Visual animation timeline
 
 ---
@@ -478,7 +451,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [Python Official Docs](https://docs.python.org/3/)
 - [Real Python](https://realpython.com/)
-- [Python for Data Science](https://www.python.org/about/gettingstarted/)
 
 ---
 
@@ -486,16 +458,21 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you find this project useful, please consider giving it a star on GitHub!
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/manim-studio&type=Date)](https://star-history.com/#yourusername/manim-studio&Date)
-
 ---
 
 ## 📝 Changelog
 
 ### v1.1.0.0 (Latest)
-- 🔧 Synced app/help/guide version labels to 1.1.0.0
-- 🖱️ Improved terminal scrollbar drag behavior
-- 📦 Added onefile build profiles to balance stability vs size
+- ✨ **basedpyright IntelliSense** — real-time type checking, diagnostics, hover docs, and completions powered by a full LSP server
+- ✨ **VS Code-quality signature help** — live parameter hints when typing `(` or `,` for all Python builtins and Manim classes
+- ✨ **Rich per-parameter documentation** — typed labels, descriptions, default values, and code examples for 80+ functions
+- ✨ **Missing packages auto-detection** — startup check notifies existing users of missing required packages with one-click install
+- ✨ **basedpyright added to required packages** — automatically installed in new and existing environments
+- 🐛 Fixed autosave messages incorrectly appearing in the terminal box
+- 🐛 Added unsaved changes warning before opening a new file
+- 🐛 Render status feedback ("Rendering...") shown immediately on render start
+- 🔧 LSP workspace uses real on-disk directory so basedpyright resolves Manim imports correctly
+- 🔧 Improved terminal polling rate for smoother output streaming
 
 ### v1.0.9.0
 - ✨ **Auto-open output folder** after saving rendered files
@@ -523,8 +500,6 @@ If you find this project useful, please consider giving it a star on GitHub!
 - 🎨 Professional UI with Monaco Editor
 - ⚡ Dual render modes (Preview/Final)
 - 📁 Asset management system
-
-[View Full Changelog](CHANGELOG.md)
 
 ---
 
