@@ -4,7 +4,7 @@
 
 A powerful, feature-rich desktop application for creating stunning mathematical animations using [Manim Community Edition](https://www.manim.community/). Built with Python, PyWebView, and modern web technologies.
 
-![Version](https://img.shields.io/badge/version-1.0.9.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8+-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-orange)
@@ -492,7 +492,12 @@ If you find this project useful, please consider giving it a star on GitHub!
 
 ## 📝 Changelog
 
-### v1.0.9.0 (Latest)
+### v1.1.0.0 (Latest)
+- 🔧 Synced app/help/guide version labels to 1.1.0.0
+- 🖱️ Improved terminal scrollbar drag behavior
+- 📦 Added onefile build profiles to balance stability vs size
+
+### v1.0.9.0
 - ✨ **Auto-open output folder** after saving rendered files
 - ✨ Improved render controls sidebar with chevron collapse icon
 - 🎨 Enhanced toast notifications with comprehensive logging

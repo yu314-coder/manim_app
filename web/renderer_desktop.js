@@ -46,6 +46,11 @@ function initializeEditor() {
         console.log('Monaco Editor module loaded');
         console.log('monaco object:', typeof monaco);
 
+        // Register Python + Manim completions & hover docs (zero-lag, client-side only)
+        if (typeof window.registerManimCompletions === 'function') {
+            window.registerManimCompletions(monaco);
+        }
+
         const container = document.getElementById('monacoEditor');
         if (!container) {
             console.error('Monaco editor container not found!');
@@ -156,6 +161,9 @@ class MyScene(Scene):
             errorCheckTimeout = setTimeout(() => {
                 checkCodeErrors();
             }, 500);
+
+            // Debounced scene selector update (wait 800ms after typing stops)
+            scheduleSceneUpdate(currentCode);
         });
 
         editor.onDidChangeCursorPosition(() => {
@@ -184,6 +192,11 @@ class MyScene(Scene):
         updateLineCount();
         updateCursor();
         updateSelection();
+
+        // Start LSP in background — zero lag, editor already works without it
+        if (typeof window.initializeLsp === 'function') {
+            window.initializeLsp(monaco, editor);
+        }
 
         console.log('Monaco Editor initialized successfully');
         console.log('Editor is editable:', !editor.getOption(monaco.editor.EditorOption.readOnly));
@@ -600,12 +613,19 @@ async function newFile() {
 }
 
 async function openFile() {
+    // Warn if there are unsaved changes in the editor
+    if (hasUnsavedChanges) {
+        const discard = confirm('You have unsaved changes. Discard and open a new file?');
+        if (!discard) return;
+    }
     try {
         const res = await pywebview.api.open_file_dialog();
         if (res.status === 'success') {
             setEditorValue(res.code);
             currentFile = res.path;
+            lastSavedCode = res.code;
             updateCurrentFile(res.filename);
+            updateSaveStatus('saved');
             updateLineCount();
             updateCursor();
             focusEditor();
@@ -1016,14 +1036,20 @@ async function renderAnimation() {
     const gpuEnabled = typeof getGPUAccelerationSetting === 'function' ? getGPUAccelerationSetting() : false;
     console.log(`[RENDER] GPU acceleration: ${gpuEnabled}`);
 
-    // Just run the command in terminal - no UI messages
+    const sceneName = document.getElementById('sceneSelect')?.value || null;
+    const format = document.getElementById('formatSelect')?.value || 'mp4';
+    saveRenderSidebarSettings();
+
+    setTerminalStatus('Rendering...', 'warning');
     try {
-        const res = await pywebview.api.render_animation(code, quality, fps, gpuEnabled);
+        const res = await pywebview.api.render_animation(code, quality, fps, gpuEnabled, format, null, null, sceneName || null);
 
         if (res.status === 'error') {
+            setTerminalStatus('Error', 'error');
             toast(`Render failed: ${res.message}`, 'error');
         }
     } catch (err) {
+        setTerminalStatus('Error', 'error');
         toast(`Render error: ${err.message}`, 'error');
     }
 }
@@ -1062,9 +1088,12 @@ async function quickPreview() {
     const gpuEnabled = typeof getGPUAccelerationSetting === 'function' ? getGPUAccelerationSetting() : false;
     console.log('[PREVIEW] Calling quick_preview with params:', { code: code.substring(0, 50) + '...', quality, fps, gpuEnabled });
 
+    const sceneName = document.getElementById('sceneSelect')?.value || null;
+    saveRenderSidebarSettings();
+
     // Just run the command in terminal - no UI messages
     try {
-        const res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled);
+        const res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled, 'mp4', sceneName || null);
 
         if (res.status === 'error') {
             toast(`Preview failed: ${res.message}`, 'error');
@@ -1983,13 +2012,59 @@ async function startTerminalPolling() {
 
     // Adaptive polling: faster when active, slower when idle
     let consecutiveEmptyPolls = 0;
-    let currentPollInterval = 20; // Start fast
-    const MIN_INTERVAL = 20;      // Fastest: 20ms when active
-    const MAX_INTERVAL = 100;     // Slowest: 100ms when idle
+    let currentPollInterval = 50; // Start at 50ms (20 calls/sec max)
+    const MIN_INTERVAL = 50;      // Fastest: 50ms when active
+    const MAX_INTERVAL = 500;     // Slowest: 500ms when idle
     const EMPTY_POLLS_THRESHOLD = 10; // After 10 empty polls, slow down
 
     // Throttle scroll operations using requestAnimationFrame
     let scrollPending = false;
+    let autoFollowOutput = true;
+    let viewportTrackingAttached = false;
+    let isDraggingScrollbar = false;
+    const getTerminalViewport = () => document.querySelector('#terminalContainer .xterm-viewport');
+    const isNearBottom = () => {
+        const viewport = getTerminalViewport();
+        if (!viewport) return true;
+        const distanceFromBottom = viewport.scrollHeight - (viewport.scrollTop + viewport.clientHeight);
+        return distanceFromBottom <= 24;
+    };
+    const attachViewportTracking = () => {
+        if (viewportTrackingAttached) return;
+
+        const viewport = getTerminalViewport();
+        if (!viewport) return;
+
+        const disableAutoFollow = () => {
+            autoFollowOutput = false;
+        };
+
+        // As soon as user interacts with scroll area, stop auto-follow.
+        viewport.addEventListener('wheel', disableAutoFollow, { passive: true });
+        viewport.addEventListener('touchstart', disableAutoFollow, { passive: true });
+        viewport.addEventListener('pointerdown', (event) => {
+            const rect = viewport.getBoundingClientRect();
+            const scrollbarHitArea = 24;
+            if (event.clientX >= rect.right - scrollbarHitArea) {
+                isDraggingScrollbar = true;
+                autoFollowOutput = false;
+            }
+        }, { passive: true });
+        window.addEventListener('pointerup', () => {
+            isDraggingScrollbar = false;
+        }, { passive: true });
+        window.addEventListener('pointercancel', () => {
+            isDraggingScrollbar = false;
+        }, { passive: true });
+
+        viewport.addEventListener('scroll', () => {
+            // Disable auto-follow when user scrolls up; restore when user returns to bottom.
+            autoFollowOutput = isNearBottom();
+        }, { passive: true });
+
+        viewportTrackingAttached = true;
+    };
+
     const scheduleScroll = () => {
         if (!scrollPending) {
             scrollPending = true;
@@ -1998,10 +2073,11 @@ async function startTerminalPolling() {
                     term.scrollToBottom();
                 }
                 // Fallback scroll method
-                const viewport = document.querySelector('.xterm-viewport');
+                const viewport = getTerminalViewport();
                 if (viewport) {
                     viewport.scrollTop = viewport.scrollHeight;
                 }
+                autoFollowOutput = true;
                 scrollPending = false;
             });
         }
@@ -2009,14 +2085,21 @@ async function startTerminalPolling() {
 
     const poll = async () => {
         try {
+            attachViewportTracking();
+
             const res = await pywebview.api.get_terminal_output();
             if (res.status === 'success' && res.output && term) {
                 if (res.output.length > 0) {
+                    // Preserve user scroll position if they scrolled up.
+                    const shouldAutoScroll = autoFollowOutput && !isDraggingScrollbar;
+
                     // Got output - write it
                     term.write(res.output);
 
-                    // Schedule scroll (throttled with RAF)
-                    scheduleScroll();
+                    // Schedule scroll (throttled with RAF) only when following output
+                    if (shouldAutoScroll) {
+                        scheduleScroll();
+                    }
 
                     // Reset to fast polling when we have output
                     consecutiveEmptyPolls = 0;
@@ -2226,7 +2309,11 @@ async function loadSettings() {
 
         document.getElementById('qualitySelect').value = settings.quality || '720p';
         document.getElementById('fpsSelect').value = settings.fps || 30;
-        document.getElementById('formatSelect').value = settings.format || 'MP4 Video';
+
+        const formatEl = document.getElementById('formatSelect');
+        formatEl.value = settings.format || 'mp4';
+        // Guard: if the saved value doesn't match any option the select goes blank — reset to default
+        if (!formatEl.value) formatEl.value = 'mp4';
 
         if (editor && settings.font_size) {
             editor.updateOptions({ fontSize: settings.font_size });
@@ -2249,6 +2336,121 @@ async function saveSettings() {
     } catch (err) {
         console.error('Failed to save settings:', err);
     }
+}
+
+// ─── Render sidebar settings persistence (Fix 9) ───────────────────────────
+
+const RENDER_SETTINGS_KEY = 'manim-render-sidebar';
+
+function saveRenderSidebarSettings() {
+    const s = {
+        renderQuality: document.getElementById('qualitySelect')?.value,
+        renderFps: document.getElementById('fpsSelect')?.value,
+        renderFormat: document.getElementById('formatSelect')?.value,
+        renderCustomWidth: document.getElementById('customWidth')?.value,
+        renderCustomHeight: document.getElementById('customHeight')?.value,
+        renderCustomFps: document.getElementById('customFps')?.value,
+        previewQuality: document.getElementById('previewQualitySelect')?.value,
+        previewFps: document.getElementById('previewFpsSelect')?.value,
+        previewCustomWidth: document.getElementById('previewCustomWidth')?.value,
+        previewCustomHeight: document.getElementById('previewCustomHeight')?.value,
+        previewCustomFps: document.getElementById('previewCustomFps')?.value,
+    };
+    try {
+        localStorage.setItem(RENDER_SETTINGS_KEY, JSON.stringify(s));
+    } catch (e) {
+        console.warn('[SETTINGS] localStorage write failed:', e);
+    }
+}
+
+function loadRenderSidebarSettings() {
+    try {
+        const raw = localStorage.getItem(RENDER_SETTINGS_KEY);
+        if (!raw) return;
+        const s = JSON.parse(raw);
+
+        const set = (id, val) => { if (val !== undefined && val !== null && document.getElementById(id)) document.getElementById(id).value = val; };
+
+        set('qualitySelect', s.renderQuality);
+        set('fpsSelect', s.renderFps);
+        set('formatSelect', s.renderFormat);
+        set('customWidth', s.renderCustomWidth);
+        set('customHeight', s.renderCustomHeight);
+        set('customFps', s.renderCustomFps);
+        set('previewQualitySelect', s.previewQuality);
+        set('previewFpsSelect', s.previewFps);
+        set('previewCustomWidth', s.previewCustomWidth);
+        set('previewCustomHeight', s.previewCustomHeight);
+        set('previewCustomFps', s.previewCustomFps);
+
+        // Show/hide custom resolution divs based on restored values
+        const q = document.getElementById('qualitySelect');
+        if (q) document.getElementById('customResolutionDiv').style.display = q.value === 'custom' ? 'block' : 'none';
+        const f = document.getElementById('fpsSelect');
+        if (f) document.getElementById('customFpsDiv').style.display = f.value === 'custom' ? 'block' : 'none';
+        const pq = document.getElementById('previewQualitySelect');
+        if (pq) document.getElementById('previewCustomResolutionDiv').style.display = pq.value === 'custom' ? 'block' : 'none';
+        const pf = document.getElementById('previewFpsSelect');
+        if (pf) document.getElementById('previewCustomFpsDiv').style.display = pf.value === 'custom' ? 'block' : 'none';
+    } catch (err) {
+        console.error('[SETTINGS] Failed to load render sidebar settings:', err);
+    }
+}
+
+// ─── App version (Fix 4) ────────────────────────────────────────────────────
+
+async function loadAppVersion() {
+    try {
+        const res = await pywebview.api.get_app_version();
+        const ver = `v${res.version}`;
+        const el = document.getElementById('appVersion');
+        if (el) el.textContent = ver;
+        // Update help modal version if it's already in the DOM
+        const helpVer = document.getElementById('helpModalVersion');
+        if (helpVer) helpVer.textContent = ver;
+        // Also update when modals are loaded later
+        window.addEventListener('modalsReady', () => {
+            const hv = document.getElementById('helpModalVersion');
+            if (hv) hv.textContent = ver;
+        }, { once: true });
+    } catch (err) {
+        console.error('[VERSION] Failed to load app version:', err);
+    }
+}
+
+// ─── Scene selector (Fix 7) ─────────────────────────────────────────────────
+
+let sceneUpdateTimer = null;
+
+async function updateSceneSelector(code) {
+    try {
+        const names = await pywebview.api.get_scene_names(code);
+        const sel = document.getElementById('sceneSelect');
+        if (!sel) return;
+
+        const current = sel.value;
+        sel.innerHTML = '<option value="">Auto-detect</option>';
+        (names || []).forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        });
+
+        // Restore previous selection if still valid
+        if (current && names && names.includes(current)) {
+            sel.value = current;
+        } else if (names && names.length === 1) {
+            sel.value = names[0];
+        }
+    } catch (err) {
+        // Silently fail — scene selector is non-critical
+    }
+}
+
+function scheduleSceneUpdate(code) {
+    clearTimeout(sceneUpdateTimer);
+    sceneUpdateTimer = setTimeout(() => updateSceneSelector(code), 800);
 }
 
 // Event listeners
@@ -2302,6 +2504,12 @@ window.addEventListener('pywebviewready', () => {
     console.log('Loading initial data...');
     console.log('============================================');
 
+    console.log('[INIT] 0. Loading app version...');
+    loadAppVersion();
+
+    console.log('[INIT] 0.5. Restoring render sidebar settings...');
+    loadRenderSidebarSettings();
+
     console.log('[INIT] 1. Loading settings...');
     loadSettings();
 
@@ -2314,6 +2522,10 @@ window.addEventListener('pywebviewready', () => {
     console.log('[INIT] 3. Refreshing assets...');
     refreshAssets();
 
+    console.log('[INIT] 3.5. Populating initial scene selector...');
+    const _initCode = getEditorValue();
+    if (_initCode) updateSceneSelector(_initCode);
+
     console.log('[INIT] 4. Starting auto-save...');
     startAutosave();
 
@@ -2322,6 +2534,11 @@ window.addEventListener('pywebviewready', () => {
     setTimeout(() => {
         checkForAutosaves();
     }, 2000);  // Wait 2 seconds for app to fully initialize
+
+    console.log('[INIT] 5.5. Checking for missing required packages (delayed)...');
+    setTimeout(() => {
+        checkMissingRequiredPackages();
+    }, 5000);  // Run after autosave check, non-blocking
 
     console.log('[INIT] 6. Will initialize terminal when ready...');
     // Terminal initialization happens below (after Terminal constructor is loaded)
@@ -2831,6 +3048,11 @@ window.addEventListener('pywebviewready', () => {
     document.getElementById('previewCustomWidth')?.addEventListener('change', saveSettings);
     document.getElementById('previewCustomHeight')?.addEventListener('change', saveSettings);
     document.getElementById('previewCustomFps')?.addEventListener('change', saveSettings);
+
+    // Persist sidebar settings to localStorage on every change
+    ['qualitySelect','fpsSelect','formatSelect','customWidth','customHeight','customFps',
+     'previewQualitySelect','previewFpsSelect','previewCustomWidth','previewCustomHeight','previewCustomFps'
+    ].forEach(id => document.getElementById(id)?.addEventListener('change', saveRenderSidebarSettings));
 
     // Font size control
     document.getElementById('fontSizeSelect')?.addEventListener('change', (event) => {
@@ -3404,3 +3626,194 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// ============================================================================
+// MISSING REQUIRED PACKAGES CHECK + INSTALL MODAL
+// ============================================================================
+
+async function checkMissingRequiredPackages() {
+    try {
+        const result = await pywebview.api.check_missing_required_packages();
+        if (result.status === 'success' && result.missing.length > 0) {
+            showMissingPackagesModal(result.missing);
+        }
+    } catch (e) {
+        console.warn('[VENV] check_missing_required_packages error:', e);
+    }
+}
+
+function showMissingPackagesModal(missingPackages) {
+    // Prevent duplicate modals
+    if (document.getElementById('missingPkgModal')) return;
+
+    const pkgList = missingPackages.map(p =>
+        `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#1e2433;border-radius:6px;margin-bottom:6px;">
+            <span style="color:#f87171;font-size:16px;">⚠</span>
+            <span style="color:#e2e8f0;font-family:monospace;font-size:13px;">${p}</span>
+        </div>`
+    ).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'missingPkgModal';
+    modal.style.cssText = `
+        position:fixed;top:0;left:0;width:100%;height:100%;
+        background:rgba(0,0,0,0.65);z-index:99999;
+        display:flex;align-items:center;justify-content:center;
+        animation:fadeIn 0.2s ease;
+    `;
+
+    modal.innerHTML = `
+        <div id="missingPkgBox" style="
+            background:#16191f;border:1px solid #2d3748;border-radius:14px;
+            width:520px;max-width:95vw;padding:28px;
+            box-shadow:0 24px 60px rgba(0,0,0,0.6);
+            animation:slideInUp 0.25s ease;
+        ">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                <span style="font-size:28px;">📦</span>
+                <div>
+                    <div style="color:#f1f5f9;font-size:17px;font-weight:700;">Missing Required Packages</div>
+                    <div style="color:#94a3b8;font-size:13px;margin-top:2px;">The following packages need to be installed:</div>
+                </div>
+            </div>
+
+            <div id="missingPkgList" style="margin-bottom:18px;">
+                ${pkgList}
+            </div>
+
+            <div style="color:#94a3b8;font-size:12px;margin-bottom:20px;line-height:1.6;">
+                These packages enable features like <strong style="color:#a78bfa;">IntelliSense / code intelligence</strong>
+                in the editor. You can install them now or later from the <strong style="color:#60a5fa;">Packages tab</strong>.
+            </div>
+
+            <!-- Terminal output box (hidden until install starts) -->
+            <div id="missingPkgTerminal" style="display:none;margin-bottom:16px;">
+                <div style="background:#0d1117;border:1px solid #2d3748;border-radius:8px;overflow:hidden;">
+                    <div style="background:#1e2433;padding:6px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #2d3748;">
+                        <span style="width:10px;height:10px;border-radius:50%;background:#fc5c65;display:inline-block;"></span>
+                        <span style="width:10px;height:10px;border-radius:50%;background:#fed330;display:inline-block;"></span>
+                        <span style="width:10px;height:10px;border-radius:50%;background:#26de81;display:inline-block;"></span>
+                        <span style="color:#718096;font-size:11px;margin-left:6px;font-family:system-ui;">Installation Console</span>
+                    </div>
+                    <div id="missingPkgLog" style="
+                        padding:12px;max-height:220px;overflow-y:auto;
+                        font-family:Consolas,Monaco,'Courier New',monospace;
+                        font-size:12px;line-height:1.7;color:#a8dadc;
+                        white-space:pre-wrap;word-break:break-all;
+                    "></div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div id="missingPkgBtns" style="display:flex;gap:12px;">
+                <button id="missingPkgSkip" style="
+                    flex:1;padding:11px;border:1px solid #374151;border-radius:8px;
+                    background:transparent;color:#94a3b8;font-size:14px;font-weight:600;
+                    cursor:pointer;transition:all 0.2s;
+                " onmouseover="this.style.background='#1e2433'" onmouseout="this.style.background='transparent'">
+                    Skip for now
+                </button>
+                <button id="missingPkgInstall" style="
+                    flex:2;padding:11px;border:none;border-radius:8px;
+                    background:linear-gradient(135deg,#667eea,#764ba2);
+                    color:white;font-size:14px;font-weight:700;
+                    cursor:pointer;transition:all 0.2s;
+                " onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                    Install Now
+                </button>
+            </div>
+
+            <!-- Close button (shown after install completes) -->
+            <div id="missingPkgClose" style="display:none;">
+                <button style="
+                    width:100%;padding:11px;border:none;border-radius:8px;
+                    background:linear-gradient(135deg,#48bb78,#38a169);
+                    color:white;font-size:14px;font-weight:700;cursor:pointer;
+                " onclick="document.getElementById('missingPkgModal').remove()">
+                    Close
+                </button>
+            </div>
+        </div>
+        <style>
+            @keyframes slideInUp {
+                from { opacity:0; transform:translateY(20px); }
+                to   { opacity:1; transform:translateY(0); }
+            }
+        </style>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Skip button
+    document.getElementById('missingPkgSkip').addEventListener('click', () => {
+        modal.remove();
+        // Pre-fill the package search in the venv tab so user can easily find & install
+        const pkgInput = document.getElementById('packageNameInput');
+        if (pkgInput) pkgInput.value = missingPackages[0];
+    });
+
+    // Install button
+    document.getElementById('missingPkgInstall').addEventListener('click', async () => {
+        const installBtn = document.getElementById('missingPkgInstall');
+        const skipBtn    = document.getElementById('missingPkgSkip');
+        const terminal   = document.getElementById('missingPkgTerminal');
+        const btns       = document.getElementById('missingPkgBtns');
+
+        // Swap UI to terminal mode
+        installBtn.disabled = true;
+        skipBtn.disabled    = true;
+        installBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;margin-right:8px;vertical-align:middle;"></span> Installing...';
+        terminal.style.display = 'block';
+
+        try {
+            await pywebview.api.install_missing_required_packages(missingPackages);
+            // Actual completion handled by window.onMissingPkgDone callback below
+        } catch (e) {
+            _appendMissingPkgLog('[ERROR] ' + e.message);
+            _finishMissingPkgInstall(false);
+        }
+    });
+}
+
+function _appendMissingPkgLog(line) {
+    const log = document.getElementById('missingPkgLog');
+    if (!log) return;
+    const el = document.createElement('div');
+    if (line.startsWith('[ERROR]') || line.startsWith('ERROR')) {
+        el.style.color = '#fc5c65';
+    } else if (line.startsWith('[SUCCESS]') || line.includes('Successfully installed')) {
+        el.style.color = '#48bb78';
+        el.style.fontWeight = '600';
+    } else if (line.startsWith('>>>')) {
+        el.style.color = '#a78bfa';
+        el.style.fontWeight = '600';
+    }
+    el.textContent = line;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+}
+
+function _finishMissingPkgInstall(success) {
+    const btns      = document.getElementById('missingPkgBtns');
+    const closeDiv  = document.getElementById('missingPkgClose');
+    const pkgList   = document.getElementById('missingPkgList');
+
+    if (btns)     btns.style.display     = 'none';
+    if (closeDiv) closeDiv.style.display = 'block';
+
+    if (success) {
+        if (pkgList) pkgList.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;
+                        background:#0d2a1a;border:1px solid #48bb78;border-radius:8px;">
+                <span style="color:#48bb78;font-size:20px;">✓</span>
+                <span style="color:#48bb78;font-weight:600;">All packages installed successfully!</span>
+            </div>`;
+        _appendMissingPkgLog('[SUCCESS] Installation complete. IntelliSense will activate shortly.');
+    } else {
+        _appendMissingPkgLog('[ERROR] Installation failed. You can retry from the Packages tab.');
+    }
+}
+
+// Python calls these via evaluate_js
+window.onMissingPkgLog  = (line) => _appendMissingPkgLog(line);
+window.onMissingPkgDone = (success) => _finishMissingPkgInstall(success);

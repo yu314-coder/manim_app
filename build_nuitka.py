@@ -9,6 +9,7 @@ import os
 import sys
 import shutil
 import subprocess
+import argparse
 from pathlib import Path
 
 # Configuration
@@ -19,6 +20,51 @@ BUILD_DIR = "build"
 
 # Get the directory where this script is located
 BASE_DIR = Path(__file__).parent.absolute()
+
+
+def parse_args():
+    """Parse build options."""
+    parser = argparse.ArgumentParser(
+        description="Build Manim Studio with Nuitka"
+    )
+    parser.add_argument(
+        "--onefile",
+        action="store_true",
+        default=True,
+        help=(
+            "Build a single-file executable (default). Note: this mode is more "
+            "likely to trigger antivirus false positives on Windows."
+        ),
+    )
+    parser.add_argument(
+        "--standalone-folder",
+        action="store_true",
+        help="Build folder-based standalone output instead of onefile.",
+    )
+    parser.add_argument(
+        "--onefile-profile",
+        choices=["stable", "compact"],
+        default="compact",
+        help=(
+            "Onefile tuning profile: 'stable' is larger but more robust against "
+            "startup/AV issues; 'compact' is smaller."
+        ),
+    )
+    parser.add_argument(
+        "--console-mode",
+        choices=["disable", "attach"],
+        default="disable",
+        help=(
+            "Windows console mode for the built app. Use 'attach' when "
+            "debugging startup failures."
+        ),
+    )
+    parser.add_argument(
+        "--no-lto",
+        action="store_true",
+        help="Disable link-time optimization (can reduce build complexity).",
+    )
+    return parser.parse_args()
 
 def check_nuitka():
     """Check if Nuitka is installed, install if not"""
@@ -87,11 +133,41 @@ def clean_temp_assets():
     else:
         print("  No temp_assets folder to clean")
 
-def build():
+def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="stable"):
     """Build the application with Nuitka"""
     print("=" * 60)
     print(f"Building {APP_NAME} with Nuitka")
     print("=" * 60)
+
+    if onefile:
+        print(
+            "[WARN] Onefile mode enabled. On Windows, antivirus can quarantine "
+            "temporary extraction files and prevent startup."
+        )
+        print(
+            "       If startup fails, rebuild without --onefile "
+            "(standalone folder mode)."
+        )
+        if onefile_profile == "stable":
+            print(
+                "       Onefile profile: stable (larger size)."
+            )
+            print(
+                "       Applying mitigation flags: stable tempdir cache path, "
+                "cached unpack mode, and no compression."
+            )
+        else:
+            print(
+                "       Onefile profile: compact (smaller size)."
+            )
+            print(
+                "       Applying compact flags: stable tempdir cache path with "
+                "cached unpack mode and compression enabled."
+            )
+            print(
+                "       If compact build breaks on your machine, re-run with "
+                "--onefile-profile stable."
+            )
 
     # Check Nuitka installation
     if not check_nuitka():
@@ -119,22 +195,21 @@ def build():
 
         # Basic options
         "--standalone",  # Create standalone distribution
-        "--onefile",  # Create single executable file
         "--assume-yes-for-downloads",  # Auto-accept downloads
 
         # Application info
         f"--output-filename={APP_NAME}.exe",
         "--company-name=ManimStudio",
         "--product-name=Manim Studio",
-        "--file-version=1.0.0.0",
-        "--product-version=1.0.0",
+        "--file-version=1.1.0.0",
+        "--product-version=1.1.0.0",
         "--file-description=Manim Animation Studio",
         "--copyright=Manim Studio 2025",
 
         # Windows-specific options
         # Use 'disable' for NO console flash (completely GUI-only application)
         # Combined with multiprocessing plugin and freeze_support() in code
-        "--windows-console-mode=disable",  # Disable console completely (no flash)
+        f"--windows-console-mode={console_mode}",
 
         # Enable multiprocessing plugin (REQUIRED for pywebview with disabled console)
         "--plugin-enable=multiprocessing",
@@ -174,9 +249,6 @@ def build():
         "--show-progress",
         "--show-memory",
 
-        # Optimization
-        "--lto=yes",  # Link Time Optimization for smaller size
-
         # Deployment flags (antivirus compatibility)
         "--no-deployment-flag=self-execution",  # Prevent app from calling itself
         "--no-deployment-flag=uninstall-on-shutdown",  # Don't auto-uninstall
@@ -187,6 +259,22 @@ def build():
         # Main script
         MAIN_SCRIPT
     ])
+
+    if onefile:
+        nuitka_cmd.insert(nuitka_cmd.index("--assume-yes-for-downloads"), "--onefile")
+        # Mitigations for onefile startup failures caused by AV/ML heuristics on Windows.
+        nuitka_cmd.extend([
+            "--onefile-tempdir-spec={CACHE_DIR}/{COMPANY}/{PRODUCT}/{VERSION}",
+            "--onefile-cache-mode=cached",
+            "--include-windows-runtime-dlls=yes",
+        ])
+        if onefile_profile == "stable":
+            nuitka_cmd.append("--onefile-no-compression")
+
+    if use_lto:
+        nuitka_cmd.append("--lto=yes")
+    else:
+        nuitka_cmd.append("--lto=no")
 
     print("\n[BUILD] Starting Nuitka compilation...")
     print(f"\nCommand options:")
@@ -209,11 +297,16 @@ def build():
 
         # Find and report the executable
         exe_path = None
-        if os.path.exists(OUTPUT_DIR):
-            for file in os.listdir(OUTPUT_DIR):
-                if file.endswith(".exe"):
-                    exe_path = os.path.join(OUTPUT_DIR, file)
+        output_path = Path(OUTPUT_DIR)
+        if output_path.exists():
+            preferred_name = f"{APP_NAME}.exe".lower()
+            candidates = [p for p in output_path.rglob("*.exe") if p.is_file()]
+            for candidate in candidates:
+                if candidate.name.lower() == preferred_name:
+                    exe_path = str(candidate)
                     break
+            if not exe_path and candidates:
+                exe_path = str(candidates[0])
 
         if exe_path:
             size_mb = os.path.getsize(exe_path) / (1024 * 1024)
@@ -239,8 +332,10 @@ def build():
         print("2. Make sure app.py runs correctly before building")
         print("3. Check that the web/ folder exists with all files")
         print("4. Try building with console enabled to see errors:")
-        print("   Change --windows-console-mode=disable to attach")
-        print("5. Check Nuitka documentation: https://nuitka.net/")
+        print("   Re-run with --console-mode attach")
+        print("5. If onefile fails on Windows, try standalone mode:")
+        print("   Re-run without --onefile")
+        print("6. Check Nuitka documentation: https://nuitka.net/")
         return 1
 
     except KeyboardInterrupt:
@@ -253,7 +348,14 @@ def build():
 
 if __name__ == "__main__":
     try:
-        exit_code = build()
+        args = parse_args()
+        onefile_mode = args.onefile and not args.standalone_folder
+        exit_code = build(
+            onefile=onefile_mode,
+            console_mode=args.console_mode,
+            use_lto=not args.no_lto,
+            onefile_profile=args.onefile_profile,
+        )
         print("\n" + "=" * 60)
         if exit_code == 0:
             print("Build script completed successfully")

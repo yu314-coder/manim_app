@@ -25,7 +25,7 @@ if sys.platform == 'win32':
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # App version
-APP_VERSION = "1.0.8.0"
+APP_VERSION = "1.1.0.0"
 
 # Terminal emulation with PTY support
 try:
@@ -861,7 +861,7 @@ def setup_venv(window=None):
 
         # Use python -m pip instead of pip.exe directly for better compatibility
         install_process = subprocess.Popen(
-            [venv_python_exe, '-m', 'pip', 'install', 'manim', 'manim-fonts'],
+            [venv_python_exe, '-m', 'pip', 'install', 'manim', 'manim-fonts', 'basedpyright'],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -1038,6 +1038,13 @@ app_state = {
     'terminal_thread': None,  # Thread for reading terminal output
     'terminal_output_buffer': [],  # Buffer for terminal output (gets cleared when sent to frontend)
     'terminal_error_buffer': [],  # Persistent buffer for error checking (keeps last 1000 lines)
+    'dependency_cache': None,  # Cached dependency check results (python/latex/etc)
+    'dependency_last_checked': 0.0,  # Unix timestamp of last completed check
+    'dependency_check_in_progress': False,  # Prevent overlapping checks
+    'dependency_check_error': None,  # Last dependency check error
+    'dependency_check_lock': threading.Lock(),  # Synchronize dependency checker state
+    'dependency_stop_event': threading.Event(),  # Stop signal for background checker
+    'dependency_checker_thread': None,  # Background checker thread handle
     'settings': {
         'quality': '720p',
         'format': 'MP4 Video',
@@ -1046,7 +1053,9 @@ app_state = {
         'theme': 'Dark+',
         'font_size': 14,
         'intellisense_enabled': True
-    }
+    },
+    'lsp_process': None,    # basedpyright-langserver subprocess
+    'lsp_running': False,   # LSP stdout reader thread active flag
 }
 
 # Quality presets
@@ -1231,7 +1240,7 @@ def clear_render_folder():
 
 def load_settings():
     """Load settings from file"""
-    settings_file = os.path.join(BASE_DIR, 'settings.json')
+    settings_file = os.path.join(USER_DATA_DIR, 'settings.json')
     try:
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:
@@ -1242,12 +1251,42 @@ def load_settings():
 
 def save_settings():
     """Save settings to file"""
-    settings_file = os.path.join(BASE_DIR, 'settings.json')
+    os.makedirs(USER_DATA_DIR, exist_ok=True)
+    settings_file = os.path.join(USER_DATA_DIR, 'settings.json')
     try:
         with open(settings_file, 'w') as f:
             json.dump(app_state['settings'], f, indent=2)
     except Exception as e:
         print(f"Error saving settings: {e}")
+
+def kill_process_tree(pid):
+    """
+    Kill a process AND all its children (ffmpeg, LaTeX, etc.).
+    On Windows, taskkill /F /T kills the full tree.
+    On Unix, SIGKILL is sent to the entire process group.
+    """
+    if os.name == 'nt':
+        try:
+            subprocess.run(
+                ['taskkill', '/F', '/T', '/PID', str(pid)],
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            print(f"[STOP] taskkill /F /T /PID {pid} completed")
+        except Exception as e:
+            print(f"[STOP] taskkill failed for PID {pid}: {e}")
+    else:
+        import signal
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+            print(f"[STOP] Killed process group for PID {pid}")
+        except Exception as e:
+            print(f"[STOP] killpg failed: {e}")
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except Exception:
+                pass
+
 
 def check_terminal_output_for_errors():
     """
@@ -1306,76 +1345,21 @@ def check_terminal_output_for_errors():
 
 def extract_scene_name(code):
     """
-    Extract the scene class name from code by dynamically importing it.
-    This approach matches manim's own scene detection using inspect module.
-    Works with any Scene subclass regardless of name or inheritance chain.
+    Extract the first Scene subclass name from code using regex only.
+    Avoids executing user code in the main process (which is unsafe and
+    fails anyway since Manim lives in the venv, not the host Python).
+    Handles all standard Manim scene types: Scene, ThreeDScene,
+    MovingCameraScene, ZoomedScene, VectorScene, etc.
     """
-    import inspect
-    import importlib.util
-    import sys
+    # Priority 1: class that inherits from anything containing 'Scene'
+    # Covers Scene, ThreeDScene, MovingCameraScene, ZoomedScene, etc.
+    match = re.search(r'class\s+(\w+)\s*\([^)]*Scene[^)]*\):', code)
+    if match:
+        return match.group(1)
 
-    temp_module_name = None
-    try:
-        # Create a temporary module from the code
-        temp_module_name = f"_temp_manim_scene_{int(time.time() * 1000000)}"
-        spec = importlib.util.spec_from_loader(temp_module_name, loader=None)
-        if spec is None:
-            # Fallback to regex if module creation fails
-            match = re.search(r'class\s+(\w+)\s*\([^)]*\):', code)
-            return match.group(1) if match else None
-
-        temp_module = importlib.util.module_from_spec(spec)
-        sys.modules[temp_module_name] = temp_module
-
-        # Execute the code in the module's namespace
-        exec(code, temp_module.__dict__)
-
-        # Find all Scene subclasses in the module
-        # Import Scene from manim to check inheritance
-        try:
-            from manim import Scene
-
-            scene_classes = []
-            for name, obj in inspect.getmembers(temp_module, inspect.isclass):
-                # Check if it's a Scene subclass but not Scene itself
-                try:
-                    if obj != Scene and issubclass(obj, Scene):
-                        # Check if it's defined in this module (not imported)
-                        if obj.__module__ == temp_module_name:
-                            scene_classes.append(name)
-                except TypeError:
-                    # issubclass can raise TypeError if obj is not a class
-                    continue
-
-            # Return the first scene class found
-            return scene_classes[0] if scene_classes else None
-
-        except ImportError:
-            # If manim is not available, fall back to regex
-            print("[WARNING] Manim not available for scene detection, using regex fallback")
-            match = re.search(r'class\s+(\w+)\s*\([^)]*\):', code)
-            return match.group(1) if match else None
-
-    except SyntaxError as e:
-        # Code has syntax errors - can't execute it
-        print(f"[WARNING] Syntax error in code, using regex fallback: {e}")
-        # Try regex as last resort
-        match = re.search(r'class\s+(\w+)\s*\([^)]*\):', code)
-        return match.group(1) if match else None
-
-    except Exception as e:
-        print(f"[WARNING] Scene detection via import failed: {e}")
-        # Fallback to simple regex that captures any class definition
-        match = re.search(r'class\s+(\w+)\s*\([^)]*\):', code)
-        return match.group(1) if match else None
-
-    finally:
-        # Always clean up temporary module
-        if temp_module_name and temp_module_name in sys.modules:
-            try:
-                del sys.modules[temp_module_name]
-            except:
-                pass
+    # Priority 2: first class definition in the file as a last resort
+    match = re.search(r'class\s+(\w+)\s*\([^)]*\):', code)
+    return match.group(1) if match else None
 
 class ManimAPI:
     """
@@ -1393,6 +1377,13 @@ class ManimAPI:
             self.start_persistent_terminal()
         except Exception as e:
             print(f"[API ERROR] Failed to auto-start terminal: {e}")
+
+        # Start dependency checker in background (non-blocking startup)
+        print("[API] Auto-starting dependency checker...")
+        try:
+            self.start_dependency_checker_background()
+        except Exception as e:
+            print(f"[API ERROR] Failed to start dependency checker: {e}")
 
     def get_code(self):
         """Get current code"""
@@ -1504,8 +1495,8 @@ class MyScene(Scene):
             # Create autosave directory
             os.makedirs(AUTOSAVE_DIR, exist_ok=True)
 
-            # Generate timestamp-based filename
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            # Generate timestamp-based filename (microseconds prevent same-second collisions)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
             autosave_file = os.path.join(AUTOSAVE_DIR, f'autosave_{timestamp}.py')
 
             # Save code
@@ -1526,37 +1517,12 @@ class MyScene(Scene):
             # Keep only last 5 autosaves
             self.cleanup_old_autosaves()
 
-            # Format timestamp for display
-            display_time = datetime.now().strftime('%H:%M:%S')
-
-            # Send message to terminal
-            terminal_msg = f"[{display_time}] Autosaved code\n"
             print(f"[AUTOSAVE] Saved to {autosave_file}")
-
-            # Write to terminal if available
-            if app_state.get('terminal_process'):
-                try:
-                    if WINPTY_AVAILABLE and hasattr(app_state['terminal_process'], 'write'):
-                        app_state['terminal_process'].write(terminal_msg)
-                    elif hasattr(app_state['terminal_process'], 'stdin'):
-                        # For subprocess mode, we can't easily write to terminal output
-                        # so we just skip terminal output in this case
-                        pass
-                except Exception as term_err:
-                    print(f"[AUTOSAVE] Could not write to terminal: {term_err}")
 
             return {'status': 'success', 'file': autosave_file, 'timestamp': timestamp}
 
         except Exception as e:
             print(f"[AUTOSAVE ERROR] {e}")
-            # Send error message to terminal
-            if app_state.get('terminal_process'):
-                try:
-                    error_msg = f"[AUTOSAVE ERROR] {str(e)}\n"
-                    if WINPTY_AVAILABLE and hasattr(app_state['terminal_process'], 'write'):
-                        app_state['terminal_process'].write(error_msg)
-                except:
-                    pass
             return {'status': 'error', 'message': str(e)}
 
     def cleanup_old_autosaves(self):
@@ -1702,7 +1668,7 @@ class MyScene(Scene):
                                 os.remove(filepath)
                                 deleted_count += 1
                                 deleted_size += file_size
-                            except:
+                            except OSError:
                                 pass
 
             # Clear Tex cache
@@ -1716,7 +1682,7 @@ class MyScene(Scene):
                             os.remove(filepath)
                             deleted_count += 1
                             deleted_size += file_size
-                        except:
+                        except OSError:
                             pass
 
             # Convert bytes to MB
@@ -1777,7 +1743,7 @@ class MyScene(Scene):
             print(f"[CODE CHECK ERROR] {e}")
             return {'status': 'error', 'message': str(e)}
 
-    def render_animation(self, code, quality='720p', fps=30, gpu_accelerate=False, format='mp4', width=None, height=None):
+    def render_animation(self, code, quality='720p', fps=30, gpu_accelerate=False, format='mp4', width=None, height=None, scene_name=None):
         """Render the animation - same as preview but uses RENDER_DIR"""
         global PYTHON_EXE
 
@@ -1804,7 +1770,7 @@ class MyScene(Scene):
                 try:
                     if hasattr(app_state['render_process'], 'poll'):
                         render_process_running = (app_state['render_process'].poll() is None)
-                except:
+                except OSError:
                     pass
 
             if not render_process_running:
@@ -1881,7 +1847,8 @@ class MyScene(Scene):
             # Create manim.cfg in the render directory
             create_manim_config(RENDER_DIR)
 
-            scene_name = extract_scene_name(code)
+            if not scene_name:
+                scene_name = extract_scene_name(code)
             if not scene_name:
                 return {'status': 'error', 'message': 'No scene class found'}
 
@@ -2439,7 +2406,7 @@ class MyScene(Scene):
                 print(f"[WARNING] Invalid quality '{quality}', using 720p fallback")
                 return QUALITY_PRESETS["720p"][0]
 
-    def quick_preview(self, code, quality='480p', fps=15, gpu_accelerate=False, format='mp4'):
+    def quick_preview(self, code, quality='480p', fps=15, gpu_accelerate=False, format='mp4', scene_name=None):
         """Quick preview the animation with customizable quality settings"""
         global PYTHON_EXE
 
@@ -2543,7 +2510,8 @@ class MyScene(Scene):
             # Create manim.cfg in the preview directory
             create_manim_config(PREVIEW_DIR)
 
-            scene_name = extract_scene_name(code)
+            if not scene_name:
+                scene_name = extract_scene_name(code)
             if not scene_name:
                 return {'status': 'error', 'message': 'No scene class found'}
 
@@ -3165,23 +3133,23 @@ class MyScene(Scene):
     def stop_render(self):
         """Stop current render or preview"""
         try:
-            # Stop render process if it exists
+            # Stop render process and its entire child tree (ffmpeg, LaTeX, etc.)
             if app_state['render_process']:
                 try:
-                    app_state['render_process'].terminate()
+                    kill_process_tree(app_state['render_process'].pid)
                     app_state['is_rendering'] = False
-                    print("[STOP] Render process terminated")
+                    print("[STOP] Render process tree killed")
                 except Exception as e:
-                    print(f"[STOP] Error terminating render: {e}")
+                    print(f"[STOP] Error killing render process tree: {e}")
 
-            # Stop preview process if it exists
+            # Stop preview process and its entire child tree
             if app_state['preview_process']:
                 try:
-                    app_state['preview_process'].terminate()
+                    kill_process_tree(app_state['preview_process'].pid)
                     app_state['is_previewing'] = False
-                    print("[STOP] Preview process terminated")
+                    print("[STOP] Preview process tree killed")
                 except Exception as e:
-                    print(f"[STOP] Error terminating preview: {e}")
+                    print(f"[STOP] Error killing preview process tree: {e}")
 
             # If using terminal mode, send Ctrl+C
             if app_state['terminal_process']:
@@ -4083,6 +4051,198 @@ class MyScene(Scene):
                 'message': str(e)
             }
 
+    def get_python_path(self):
+        """Return the venv Python executable path (used by the LSP client for type resolution)."""
+        if os.name == 'nt':
+            python = os.path.join(VENV_DIR, 'Scripts', 'python.exe')
+        else:
+            python = os.path.join(VENV_DIR, 'bin', 'python')
+        return python if os.path.exists(python) else None
+
+    # ── LSP (basedpyright / pyright) ─────────────────────────────────────────
+
+    def start_lsp(self):
+        """
+        Start basedpyright-langserver (or pyright-langserver) from the venv as a
+        stdio subprocess.  A background thread reads its stdout and pushes each
+        JSON-RPC message to the frontend via window.lspReceive(jsonString).
+        Returns immediately so the UI is never blocked.
+        """
+        import json as _json
+
+        if app_state['lsp_running']:
+            return {'status': 'already_running'}
+
+        # ── find the language-server executable ──────────────────────────────
+        candidates = []
+        if os.name == 'nt':
+            scripts = os.path.join(VENV_DIR, 'Scripts')
+            candidates = [
+                os.path.join(scripts, 'basedpyright-langserver.exe'),
+                os.path.join(scripts, 'pyright-langserver.exe'),
+            ]
+        else:
+            bin_dir = os.path.join(VENV_DIR, 'bin')
+            candidates = [
+                os.path.join(bin_dir, 'basedpyright-langserver'),
+                os.path.join(bin_dir, 'pyright-langserver'),
+            ]
+
+        lsp_exe = next((p for p in candidates if os.path.exists(p)), None)
+        if not lsp_exe:
+            print('[LSP] Neither basedpyright-langserver nor pyright-langserver found in venv.')
+            print('[LSP] Install with: pip install basedpyright')
+            return {'status': 'error', 'message': 'basedpyright not installed in venv'}
+
+        print(f'[LSP] Starting language server: {lsp_exe}')
+
+        try:
+            env = get_clean_environment()
+            proc = subprocess.Popen(
+                [lsp_exe, '--stdio'],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+            )
+            app_state['lsp_process'] = proc
+            app_state['lsp_running'] = True
+            print(f'[LSP] Language server PID: {proc.pid}')
+        except Exception as e:
+            print(f'[LSP] Failed to start language server: {e}')
+            return {'status': 'error', 'message': str(e)}
+
+        # ── background stdout reader ─────────────────────────────────────────
+        def _read_lsp():
+            buf = b''
+            while app_state['lsp_running']:
+                try:
+                    # Accumulate bytes until we have the full header block
+                    while b'\r\n\r\n' not in buf:
+                        byte = proc.stdout.read(1)
+                        if not byte:            # EOF — server exited
+                            app_state['lsp_running'] = False
+                            print('[LSP] Server stdout closed (EOF)')
+                            return
+                        buf += byte
+
+                    header_raw, buf = buf.split(b'\r\n\r\n', 1)
+                    content_length = 0
+                    for line in header_raw.decode('ascii', errors='replace').split('\r\n'):
+                        if line.lower().startswith('content-length:'):
+                            content_length = int(line.split(':', 1)[1].strip())
+
+                    # Read exactly content_length bytes (may arrive in chunks)
+                    while len(buf) < content_length:
+                        chunk = proc.stdout.read(content_length - len(buf))
+                        if not chunk:
+                            app_state['lsp_running'] = False
+                            return
+                        buf += chunk
+
+                    message_bytes = buf[:content_length]
+                    buf = buf[content_length:]
+
+                    message_str = message_bytes.decode('utf-8', errors='replace')
+
+                    # Push to JS — use json.dumps so the string is a valid JS string literal
+                    if app_state.get('window'):
+                        js_arg = _json.dumps(message_str)   # e.g. "\"...escaped...\""
+                        safe_evaluate_js(
+                            app_state['window'],
+                            f'window.lspReceive({js_arg})'
+                        )
+
+                except Exception as exc:
+                    if app_state['lsp_running']:
+                        print(f'[LSP] Reader error: {exc}')
+                    break
+
+            app_state['lsp_running'] = False
+            print('[LSP] Reader thread stopped')
+
+        threading.Thread(target=_read_lsp, daemon=True, name='lsp-reader').start()
+        return {'status': 'ok', 'exe': lsp_exe}
+
+    def lsp_send(self, message):
+        """
+        Write one JSON-RPC message (already serialised to a string) to the
+        language server's stdin, prefixed with the required Content-Length header.
+        """
+        proc = app_state.get('lsp_process')
+        if not proc or proc.poll() is not None:
+            return {'status': 'error', 'message': 'LSP not running'}
+        try:
+            encoded = message.encode('utf-8')
+            frame = (
+                f'Content-Length: {len(encoded)}\r\n\r\n'.encode('ascii')
+                + encoded
+            )
+            proc.stdin.write(frame)
+            proc.stdin.flush()
+            return {'status': 'ok'}
+        except Exception as e:
+            print(f'[LSP] lsp_send error: {e}')
+            return {'status': 'error', 'message': str(e)}
+
+    def lsp_is_running(self):
+        """Return whether the language server process is alive."""
+        proc = app_state.get('lsp_process')
+        running = bool(proc and proc.poll() is None)
+        return {'running': running}
+
+    def setup_lsp_workspace(self):
+        """
+        Create a real workspace directory for basedpyright and write a
+        pyrightconfig.json that points at the Manim venv.
+        Returns the workspace URI and scene-file URI so JS can use real paths.
+        """
+        import json as _json
+
+        workspace_dir = os.path.join(USER_DATA_DIR, 'lsp_workspace')
+        os.makedirs(workspace_dir, exist_ok=True)
+
+        # venvPath = parent of VENV_DIR, venv = name of the venv folder
+        venv_parent = os.path.dirname(VENV_DIR)
+        venv_name   = os.path.basename(VENV_DIR)
+
+        config = {
+            'venvPath':              venv_parent,
+            'venv':                  venv_name,
+            'typeCheckingMode':      'basic',
+            'useLibraryCodeForTypes': True,
+            # suppress noise for generated/dynamic Manim attributes
+            'reportAttributeAccessIssue':  'warning',
+            'reportMissingModuleSource':   'none',
+        }
+
+        python_path = self.get_python_path()
+        if python_path:
+            config['pythonPath'] = python_path
+
+        config_path = os.path.join(workspace_dir, 'pyrightconfig.json')
+        with open(config_path, 'w', encoding='utf-8') as f:
+            _json.dump(config, f, indent=2)
+
+        # Build a proper file:// URI (handles Windows drive letters)
+        ws_posix = workspace_dir.replace('\\', '/')
+        if not ws_posix.startswith('/'):
+            ws_posix = '/' + ws_posix          # e.g.  /C:/Users/...
+
+        workspace_uri = 'file://' + ws_posix
+        file_uri      = workspace_uri + '/scene.py'
+
+        print(f'[LSP] Workspace: {workspace_dir}')
+        print(f'[LSP] pyrightconfig.json written (venv={venv_name})')
+
+        return {
+            'status':        'success',
+            'workspace_uri': workspace_uri,
+            'file_uri':      file_uri,
+            'workspace_dir': workspace_dir,
+        }
+
     def list_assets(self):
         """List all assets in the assets directory"""
         try:
@@ -4631,82 +4791,205 @@ class MyScene(Scene):
             print(f"[ERROR] check_manim_installed() RESULT: {result}")
             return result
 
-    def check_prerequisites(self):
-        """Check if Python and LaTeX are installed and available"""
+    def _perform_prerequisite_check(self):
+        """Run dependency checks and return raw results."""
+        results = {
+            'python': {'installed': False, 'version': None, 'path': None},
+            'latex': {'installed': False, 'variant': None, 'path': None}
+        }
+
+        # Check Python
         try:
-            results = {
-                'python': {'installed': False, 'version': None, 'path': None},
-                'latex': {'installed': False, 'variant': None, 'path': None}
-            }
+            system_python = find_system_python()
+            if system_python:
+                results['python']['installed'] = True
+                results['python']['path'] = system_python
 
-            # Check Python
+                env = get_clean_environment()
+                version_result = subprocess.run(
+                    [system_python, '--version'],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    env=env,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                )
+                version_output = (version_result.stdout + version_result.stderr).strip()
+                if 'python' in version_output.lower():
+                    results['python']['version'] = version_output.replace('Python ', '')
+        except Exception as e:
+            print(f"[WARNING] Python check failed: {e}")
+
+        # Check LaTeX (try multiple variants)
+        latex_commands = [
+            ('pdflatex', 'pdfLaTeX (MiKTeX)'),
+            ('xelatex', 'XeLaTeX'),
+            ('lualatex', 'LuaLaTeX'),
+            ('latex', 'LaTeX')
+        ]
+
+        for cmd, variant_name in latex_commands:
             try:
-                system_python = find_system_python()
-                if system_python:
-                    results['python']['installed'] = True
-                    results['python']['path'] = system_python
+                env = get_clean_environment()
+                latex_result = subprocess.run(
+                    [cmd, '--version'],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    env=env,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                )
+                if latex_result.returncode == 0:
+                    results['latex']['installed'] = True
+                    results['latex']['variant'] = variant_name
 
-                    # Get Python version
-                    env = get_clean_environment()
-                    version_result = subprocess.run(
-                        [system_python, '--version'],
-                        stdin=subprocess.DEVNULL,
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                        env=env,
-                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                    )
-                    version_output = (version_result.stdout + version_result.stderr).strip()
-                    if 'python' in version_output.lower():
-                        results['python']['version'] = version_output.replace('Python ', '')
-            except Exception as e:
-                print(f"[WARNING] Python check failed: {e}")
+                    if os.name == 'nt':
+                        where_result = subprocess.run(
+                            ['where', cmd],
+                            stdin=subprocess.DEVNULL,
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                            env=env,
+                            creationflags=subprocess.CREATE_NO_WINDOW
+                        )
+                        if where_result.returncode == 0:
+                            results['latex']['path'] = where_result.stdout.strip().split('\n')[0]
+                    break
+            except Exception:
+                continue
 
-            # Check LaTeX (try multiple variants)
-            latex_commands = [
-                ('pdflatex', 'pdfLaTeX (MiKTeX)'),
-                ('xelatex', 'XeLaTeX'),
-                ('lualatex', 'LuaLaTeX'),
-                ('latex', 'LaTeX')
-            ]
+        return results
 
-            for cmd, variant_name in latex_commands:
-                try:
-                    env = get_clean_environment()
-                    latex_result = subprocess.run(
-                        [cmd, '--version'],
-                        stdin=subprocess.DEVNULL,
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                        env=env,
-                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                    )
-                    if latex_result.returncode == 0:
-                        results['latex']['installed'] = True
-                        results['latex']['variant'] = variant_name
+    def _refresh_dependency_cache(self, reason='manual'):
+        """
+        Refresh cached dependency status.
+        Returns True if this call performed a check, False if another check is already in progress.
+        """
+        lock = app_state['dependency_check_lock']
+        with lock:
+            if app_state['dependency_check_in_progress']:
+                return False
+            app_state['dependency_check_in_progress'] = True
 
-                        # Try to get the full path
-                        if os.name == 'nt':
-                            where_result = subprocess.run(
-                                ['where', cmd],
-                                stdin=subprocess.DEVNULL,
-                                capture_output=True,
-                                text=True,
-                                timeout=5,
-                                env=env,
-                                creationflags=subprocess.CREATE_NO_WINDOW
-                            )
-                            if where_result.returncode == 0:
-                                results['latex']['path'] = where_result.stdout.strip().split('\n')[0]
-                        break
-                except Exception as e:
-                    continue
+        try:
+            print(f"[DEPENDENCY] Running dependency check ({reason})...")
+            results = self._perform_prerequisite_check()
+            now = time.time()
+            with lock:
+                app_state['dependency_cache'] = results
+                app_state['dependency_last_checked'] = now
+                app_state['dependency_check_error'] = None
+            print(f"[DEPENDENCY] Dependency check complete ({reason})")
+            return True
+        except Exception as e:
+            print(f"[DEPENDENCY] Dependency check failed ({reason}): {e}")
+            with lock:
+                app_state['dependency_check_error'] = str(e)
+            return False
+        finally:
+            with lock:
+                app_state['dependency_check_in_progress'] = False
+
+    def _start_dependency_refresh_async(self, reason='async'):
+        """Start a non-blocking dependency refresh if one isn't already running."""
+        lock = app_state['dependency_check_lock']
+        with lock:
+            if app_state['dependency_check_in_progress']:
+                return False
+
+        refresh_thread = threading.Thread(
+            target=self._refresh_dependency_cache,
+            kwargs={'reason': reason},
+            daemon=True
+        )
+        refresh_thread.start()
+        return True
+
+    def start_dependency_checker_background(self):
+        """Start periodic dependency checks in the background."""
+        lock = app_state['dependency_check_lock']
+        with lock:
+            existing = app_state.get('dependency_checker_thread')
+            if existing and existing.is_alive():
+                return {'status': 'already_running'}
+            app_state['dependency_stop_event'].clear()
+
+        def run_checker():
+            # Initial short delay so startup remains responsive.
+            if app_state['dependency_stop_event'].wait(3):
+                return
+
+            self._refresh_dependency_cache(reason='startup')
+
+            # Periodic refresh every 5 minutes.
+            while not app_state['dependency_stop_event'].wait(300):
+                self._refresh_dependency_cache(reason='periodic')
+
+        checker_thread = threading.Thread(target=run_checker, daemon=True)
+        checker_thread.start()
+
+        with lock:
+            app_state['dependency_checker_thread'] = checker_thread
+
+        return {'status': 'started'}
+
+    def check_prerequisites(self, force_refresh=False):
+        """Check prerequisites using cached background results when available."""
+        try:
+            force_refresh = bool(force_refresh)
+            cache_ttl_seconds = 300
+            now = time.time()
+
+            lock = app_state['dependency_check_lock']
+            with lock:
+                cached_results = app_state['dependency_cache']
+                last_checked = app_state['dependency_last_checked']
+                in_progress = app_state['dependency_check_in_progress']
+                last_error = app_state['dependency_check_error']
+
+            cache_age = (now - last_checked) if last_checked else None
+            cache_is_fresh = (
+                cached_results is not None and
+                cache_age is not None and
+                cache_age <= cache_ttl_seconds
+            )
+
+            # Force refresh or first call without cache performs a synchronous check.
+            if force_refresh or cached_results is None:
+                self._refresh_dependency_cache(reason='api_forced' if force_refresh else 'api_initial')
+                with lock:
+                    cached_results = app_state['dependency_cache']
+                    last_checked = app_state['dependency_last_checked']
+                    in_progress = app_state['dependency_check_in_progress']
+                    last_error = app_state['dependency_check_error']
+                cache_age = (now - last_checked) if last_checked else None
+                cache_is_fresh = (
+                    cached_results is not None and
+                    cache_age is not None and
+                    cache_age <= cache_ttl_seconds
+                )
+
+            # If we have cache but it's stale, refresh in background without blocking caller.
+            if cached_results is not None and not cache_is_fresh and not in_progress:
+                self._start_dependency_refresh_async(reason='api_stale')
+
+            if cached_results is not None:
+                return {
+                    'status': 'success',
+                    'results': cached_results,
+                    'cached': True,
+                    'stale': not cache_is_fresh,
+                    'in_progress': in_progress,
+                    'last_checked': last_checked,
+                    'last_error': last_error
+                }
 
             return {
-                'status': 'success',
-                'results': results
+                'status': 'error',
+                'message': last_error or 'Dependency check did not return results'
             }
 
         except Exception as e:
@@ -4883,7 +5166,7 @@ class MyScene(Scene):
                     return True
 
             # Install required packages
-            required_packages = ['manim', 'manim-fonts', 'pywebview']
+            required_packages = ['manim', 'manim-fonts', 'pywebview', 'basedpyright']
             progress = 40
 
             for pkg in required_packages:
@@ -5240,7 +5523,7 @@ class MyScene(Scene):
                 python_version = (result.stdout + result.stderr).strip()
             else:
                 python_version = "Unknown - Python not found"
-        except:
+        except Exception:
             python_version = sys.version if not getattr(sys, 'frozen', False) else "Unable to determine"
 
         info = {
@@ -5321,6 +5604,50 @@ class MyScene(Scene):
         print(f"[SYSTEM INFO]   manim_version: {info.get('manim_version', 'NOT SET')}")
         print("=" * 80)
         return info
+
+    def get_app_version(self):
+        """Return the application version string"""
+        return {'version': APP_VERSION}
+
+    def get_scene_names(self, code):
+        """Extract all scene class names from the provided code"""
+        import inspect
+        import importlib.util
+
+        temp_module_name = None
+        try:
+            temp_module_name = f"_temp_manim_scenes_{int(time.time() * 1000000)}"
+            spec = importlib.util.spec_from_loader(temp_module_name, loader=None)
+            if spec is None:
+                matches = re.findall(r'class\s+(\w+)\s*\([^)]*\):', code)
+                return matches
+
+            temp_module = importlib.util.module_from_spec(spec)
+            import sys as _sys
+            _sys.modules[temp_module_name] = temp_module
+            exec(code, temp_module.__dict__)
+
+            try:
+                from manim import Scene
+                scene_classes = []
+                for name, obj in inspect.getmembers(temp_module, inspect.isclass):
+                    try:
+                        if obj != Scene and issubclass(obj, Scene) and obj.__module__ == temp_module_name:
+                            scene_classes.append(name)
+                    except TypeError:
+                        continue
+                return scene_classes
+            except ImportError:
+                matches = re.findall(r'class\s+(\w+)\s*\([^)]*\):', code)
+                return matches
+
+        except Exception:
+            matches = re.findall(r'class\s+(\w+)\s*\([^)]*\):', code)
+            return matches
+        finally:
+            if temp_module_name:
+                import sys as _sys
+                _sys.modules.pop(temp_module_name, None)
 
     def get_gpu_info(self):
         """Get GPU information and availability for OpenGL rendering"""
@@ -5419,7 +5746,7 @@ class MyScene(Scene):
             if result.returncode == 0 and result.stdout.strip():
                 return float(result.stdout.strip())
             return 0
-        except:
+        except Exception:
             return 0
 
     def trim_video(self, video_path, start_time, end_time, output_name):
@@ -5618,6 +5945,78 @@ class MyScene(Scene):
                 'message': str(e),
                 'packages': []
             }
+
+    def check_missing_required_packages(self):
+        """Check which required packages are missing from the venv."""
+        required = ['basedpyright']
+        try:
+            if os.name == 'nt':
+                venv_python = os.path.join(VENV_DIR, 'Scripts', 'python.exe')
+            else:
+                venv_python = os.path.join(VENV_DIR, 'bin', 'python')
+
+            if not os.path.exists(venv_python):
+                return {'status': 'no_venv', 'missing': []}
+
+            result = subprocess.run(
+                [venv_python, '-m', 'pip', 'list', '--format=json'],
+                capture_output=True, text=True, timeout=30,
+                env=get_clean_environment()
+            )
+            if result.returncode != 0:
+                return {'status': 'error', 'missing': []}
+
+            import json as _json
+            installed = {p['name'].lower() for p in _json.loads(result.stdout)}
+            missing = [p for p in required if p.lower() not in installed]
+            return {'status': 'success', 'missing': missing}
+        except Exception as e:
+            print(f'[VENV] check_missing_required_packages error: {e}')
+            return {'status': 'error', 'missing': []}
+
+    def install_missing_required_packages(self, packages):
+        """Install missing required packages, streaming pip output to JS."""
+        import json as _json
+
+        def _run():
+            try:
+                if os.name == 'nt':
+                    venv_python = os.path.join(VENV_DIR, 'Scripts', 'python.exe')
+                    flags = subprocess.CREATE_NO_WINDOW
+                else:
+                    venv_python = os.path.join(VENV_DIR, 'bin', 'python')
+                    flags = 0
+
+                env = get_clean_environment()
+                win = app_state.get('window')
+
+                for pkg in packages:
+                    safe_evaluate_js(win, f'window.onMissingPkgLog({_json.dumps(f">>> pip install {pkg}")})')
+                    proc = subprocess.Popen(
+                        [venv_python, '-m', 'pip', 'install', pkg],
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        text=True, encoding='utf-8', errors='replace',
+                        env=env, creationflags=flags
+                    )
+                    for line in iter(proc.stdout.readline, ''):
+                        line = line.rstrip()
+                        if line:
+                            safe_evaluate_js(win, f'window.onMissingPkgLog({_json.dumps(line)})')
+                    proc.wait()
+                    if proc.returncode != 0:
+                        safe_evaluate_js(win, f'window.onMissingPkgLog({_json.dumps(f"[ERROR] Failed to install {pkg}")})')
+                        safe_evaluate_js(win, 'window.onMissingPkgDone(false)')
+                        return
+
+                safe_evaluate_js(win, 'window.onMissingPkgDone(true)')
+            except Exception as exc:
+                import json as _j
+                safe_evaluate_js(app_state.get('window'),
+                    f'window.onMissingPkgLog({_j.dumps(f"[ERROR] {exc}")})')
+                safe_evaluate_js(app_state.get('window'), 'window.onMissingPkgDone(false)')
+
+        threading.Thread(target=_run, daemon=True, name='install-missing-req').start()
+        return {'status': 'started'}
 
     def check_package_dependencies(self, package_name):
         """Check package dependencies and potential conflicts before installation"""
@@ -6171,6 +6570,27 @@ def cleanup_on_exit():
     print("\n[CLEANUP] App is closing, cleaning up...")
 
     import shutil
+
+    # Stop LSP language server process
+    try:
+        lsp_proc = app_state.get('lsp_process')
+        if lsp_proc and lsp_proc.poll() is None:
+            app_state['lsp_running'] = False
+            lsp_proc.terminate()
+            lsp_proc.wait(timeout=2)
+            print("[CLEANUP] LSP language server stopped")
+    except Exception as e:
+        print(f"[CLEANUP] Failed to stop LSP cleanly: {e}")
+
+    # Stop background dependency checker thread.
+    try:
+        app_state['dependency_stop_event'].set()
+        checker_thread = app_state.get('dependency_checker_thread')
+        if checker_thread and checker_thread.is_alive():
+            checker_thread.join(timeout=1.0)
+            print("[CLEANUP] Dependency checker stopped")
+    except Exception as e:
+        print(f"[CLEANUP] Failed to stop dependency checker cleanly: {e}")
 
     # Keep preview files in assets folder (don't delete them)
     # Preview files stay in ASSETS_DIR for user access even after app closes

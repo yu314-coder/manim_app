@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="ui-enhancements.css">
     <link rel="stylesheet" href="monaco/vs/editor/editor.main.css">
     <link rel="stylesheet" href="app_features.css?v=2025-01-26-v13">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="fontawesome/css/all.min.css">
     <link rel="stylesheet" href="xterm/xterm.css">
     <style>
         /* Auto-save indicator */
@@ -204,33 +204,37 @@
         }
 
         #terminalContainer .xterm-viewport {
-            overflow-y: auto !important; /* Changed from scroll to auto for better UX */
+            overflow-y: scroll !important; /* Keep scrollbar visible and stable */
             overflow-x: hidden !important;
             width: 100% !important;
-            scrollbar-width: thin; /* For Firefox */
-            scrollbar-color: #555 #222; /* For Firefox */
+            scrollbar-gutter: stable both-edges;
+            scrollbar-width: auto; /* For Firefox */
+            scrollbar-color: #8c939c #1a1d22; /* For Firefox */
         }
 
         /* Custom scrollbar for webkit browsers */
         #terminalContainer .xterm-viewport::-webkit-scrollbar {
-            width: 10px;
+            width: 14px;
         }
 
         #terminalContainer .xterm-viewport::-webkit-scrollbar-track {
-            background: #222;
+            background: #1a1d22;
+            border-left: 1px solid #2a2f36;
         }
 
         #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb {
-            background: #555;
-            border-radius: 5px;
+            background: #8c939c;
+            border-radius: 8px;
+            border: 2px solid #1a1d22;
+            min-height: 48px;
         }
 
         #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb:hover {
-            background: #777;
+            background: #aeb4bb;
         }
 
-        #terminalContainer .xterm-screen {
-            width: 100% !important;
+        #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb:active {
+            background: #c2c8cf;
         }
 
         /* Toast Container */
@@ -248,10 +252,10 @@
         /* Modern Toast Notification */
         .toast {
             pointer-events: auto;
-            background: white;
+            background: var(--bg-secondary);
             border-left: 4px solid #4299e1;
             border-radius: 4px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
             padding: 12px 16px;
             min-width: 200px;
             max-width: 350px;
@@ -291,7 +295,7 @@
             flex: 1;
             font-size: 13px;
             font-weight: 500;
-            color: #2d3748;
+            color: var(--text-primary);
             line-height: 1.4;
         }
 
@@ -367,7 +371,7 @@
             <div class="logo">🎬</div>
             <div class="title-section">
                 <h1 class="app-title">Manim Animation Studio</h1>
-                <span class="app-subtitle">Professional Edition v1.0.8.0</span>
+                <span class="app-subtitle">Professional Edition <span id="appVersion">v1.0.9.1</span></span>
             </div>
             <div class="autosave-indicator" id="autosaveIndicator">
                 <i class="fas fa-check-circle"></i>
@@ -564,6 +568,22 @@
                                 <button class="sidebar-toggle-btn" id="sidebarCloseBtn" title="Close sidebar">
                                     <i class="fas fa-chevron-right"></i>
                                 </button>
+                            </div>
+
+                            <!-- Scene Selector Section -->
+                            <div class="sidebar-section">
+                                <div class="sidebar-section-header">
+                                    <i class="fas fa-film"></i>
+                                    <span>Scene</span>
+                                </div>
+                                <div class="sidebar-section-body">
+                                    <div class="sidebar-control">
+                                        <label>Scene Class</label>
+                                        <select id="sceneSelect">
+                                            <option value="">Auto-detect</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Preview Settings Section -->
@@ -1325,9 +1345,15 @@
         console.log('require available:', typeof require !== 'undefined');
     </script>
 
+    <!-- Python + Manim completions provider (zero-lag, client-side IntelliSense) -->
+    <script src="python-completions.js"></script>
+
+    <!-- LSP client — connects Monaco to basedpyright running in Python host -->
+    <script src="lsp-client.js"></script>
+
     <!-- Main Application Script - Load renderer_desktop.js directly -->
     <!-- Cache buster added to force reload after fixes - change version to force reload -->
-    <script src="renderer_desktop.js?v=2025-01-26-basic-monaco-no-lsp"></script>
+    <script src="renderer_desktop.js?v=2025-02-19-completions"></script>
 
     <!-- New Features: File Upload via PyWebView Dialog -->
     <script src="new_features.js?v=2025-01-26-windows-details-view"></script>
