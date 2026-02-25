@@ -16,16 +16,29 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 ### 🎨 **Professional Code Editor**
 - **Monaco Editor** (VS Code's editor) with full Python syntax highlighting
 - **basedpyright IntelliSense** — real-time type checking, completions, hover docs, and diagnostics
+- **Go-to-Definition** (F12), **Type Definition**, and **Find All References** (Shift+F12) via LSP
 - **VS Code-quality signature help** — live parameter hints for Python builtins and all Manim classes
 - **Static completions** for all Manim classes, animations, mobjects, colors, and constants (instant, no LSP required)
+- **Scene Outline Panel** — tree view of all classes and methods with click-to-navigate
+- **Editor Bookmarks** (Ctrl+Shift+K) — bookmark lines for quick navigation
+- **Zen Mode** (F11) — distraction-free fullscreen editing
+- **Drag-and-drop** .py files onto the editor to open them
 - Line numbers, code folding, and multiple cursors
 - Customizable font size and themes
+
+### 🤖 **AI Edit Panel**
+- **Claude Code CLI integration** for AI-assisted code editing
+- Send your code with a prompt to Claude for intelligent edits
+- Side-by-side diff review — Accept or Reject changes
+- Model selector with auto-detection of available models
+- Fix code errors with one click from the diagnostics panel
 
 ### ⚡ **Dual Render Modes**
 - **Quick Preview (F6)**: Fast, low-quality preview (480p, 15fps) for rapid iteration
 - **Final Render (F5)**: High-quality output up to 8K resolution at 120fps
 - GPU acceleration support (OpenGL renderer)
 - Real-time progress tracking with live terminal output
+- **Render History** — persistent log of all renders with replay, open, and delete
 
 ### 📁 **Integrated Asset Management**
 - Drag & drop file uploads
@@ -55,10 +68,14 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 - **File recovery**: Restore from auto-saved versions
 - **Auto-open output folder**: Jump directly to saved renders
 - **Live preview**: See your animation immediately after render
+- **Screenshot save**: Save preview frames with a native Save As dialog
 - **Settings persistence**: Your preferences are remembered
+- **Command Palette** (Ctrl+Shift+P) — quick launcher for all actions
 
 ### 🌓 **Modern UI/UX**
 - Dark/Light theme toggle
+- **Manim Color Picker** — visual palette of all Manim color constants with one-click insert
+- **Keyboard Shortcuts Modal** (Ctrl+/) — searchable reference of all shortcuts
 - Responsive design with DPI awareness
 - Glassmorphic design elements
 - Smooth animations and transitions
@@ -182,6 +199,14 @@ python build_nuitka.py
 | Save File | `Ctrl + S` |
 | New File | `Ctrl + N` |
 | Open File | `Ctrl + O` |
+| Command Palette | `Ctrl + Shift + P` |
+| Keyboard Shortcuts | `Ctrl + /` |
+| Zen Mode | `F11` |
+| Toggle Bookmark | `Ctrl + Shift + K` |
+| AI Edit Panel | `Ctrl + Shift + E` |
+| Go to Definition | `F12` |
+| Find All References | `Shift + F12` |
+| Screenshot Preview | `Ctrl + Shift + S` |
 
 ---
 
