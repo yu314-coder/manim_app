@@ -981,4 +981,132 @@ window.addEventListener('pywebviewready', () => {
 // Export settings for use in other modules
 window.getAppSettings = () => appSettings;
 
+// ============================================================================
+// MANIM COLOR PICKER
+// ============================================================================
+
+/** Complete Manim color palette grouped by hue family. */
+const MANIM_COLORS = {
+    'Blue': [
+        ['BLUE_A','#C7E9F1'],['BLUE_B','#9CDCEB'],['BLUE_C','#58C4DD'],['BLUE_D','#29ABCA'],['BLUE_E','#236B8E'],['BLUE','#58C4DD'],['DARK_BLUE','#236B8E'],['PURE_BLUE','#0000FF'],
+    ],
+    'Teal / Green': [
+        ['TEAL_A','#ACEAD7'],['TEAL_B','#76DDC0'],['TEAL_C','#5CD0B3'],['TEAL_D','#55C1A7'],['TEAL_E','#49A88F'],['TEAL','#5CD0B3'],
+        ['GREEN_A','#C9E2AE'],['GREEN_B','#A6CF8C'],['GREEN_C','#83C167'],['GREEN_D','#77B05D'],['GREEN_E','#699C52'],['GREEN','#83C167'],['PURE_GREEN','#00FF00'],
+    ],
+    'Yellow / Gold': [
+        ['YELLOW_A','#FFF1B6'],['YELLOW_B','#FFEA94'],['YELLOW_C','#FFFF00'],['YELLOW_D','#F4D345'],['YELLOW_E','#E8C11C'],['YELLOW','#FFFF00'],
+        ['GOLD_A','#F7C797'],['GOLD_B','#F9B775'],['GOLD_C','#F0AC5F'],['GOLD_D','#E1A158'],['GOLD_E','#C78D46'],['GOLD','#F0AC5F'],
+    ],
+    'Red / Pink': [
+        ['RED_A','#F7A1A3'],['RED_B','#FF8080'],['RED_C','#FC6255'],['RED_D','#E65A4C'],['RED_E','#CF5044'],['RED','#FC6255'],['PURE_RED','#FF0000'],
+        ['MAROON_A','#ECABC1'],['MAROON_B','#EC92AB'],['MAROON_C','#C55F73'],['MAROON_D','#A24D61'],['MAROON_E','#94424F'],['MAROON','#C55F73'],
+        ['PINK','#D147BD'],['LIGHT_PINK','#DC75CD'],
+    ],
+    'Purple': [
+        ['PURPLE_A','#CAA3E8'],['PURPLE_B','#B189C6'],['PURPLE_C','#9A72AC'],['PURPLE_D','#715582'],['PURPLE_E','#644172'],['PURPLE','#9A72AC'],
+    ],
+    'Orange': [
+        ['ORANGE','#FF862F'],['LIGHT_BROWN','#CD853F'],
+    ],
+    'Grayscale': [
+        ['WHITE','#FFFFFF'],['GRAY_A','#DDDDDD'],['GRAY_B','#BBBBBB'],['GRAY_C','#888888'],['GRAY_D','#444444'],['GRAY_E','#222222'],
+        ['GREY_A','#DDDDDD'],['GREY_B','#BBBBBB'],['GREY_C','#888888'],['GREY_D','#444444'],['GREY_E','#222222'],
+        ['LIGHTER_GRAY','#DDDDDD'],['LIGHT_GRAY','#BBBBBB'],['LIGHT_GREY','#BBBBBB'],['GRAY','#888888'],['GREY','#888888'],['DARK_GRAY','#444444'],['DARK_GREY','#444444'],['DARKER_GREY','#222222'],
+        ['BLACK','#000000'],
+    ],
+};
+
+let _colorPickerOpen = false;
+
+function toggleColorPicker() {
+    const panel = document.getElementById('colorPickerPanel');
+    if (!panel) return;
+    _colorPickerOpen = !_colorPickerOpen;
+    panel.style.display = _colorPickerOpen ? 'flex' : 'none';
+    if (_colorPickerOpen) {
+        _renderColorGrid();
+        document.getElementById('colorSearchInput')?.focus();
+    }
+}
+
+function _renderColorGrid(filter) {
+    const body = document.getElementById('colorPickerBody');
+    if (!body) return;
+    body.innerHTML = '';
+    const lc = (filter || '').toLowerCase();
+    let anyMatch = false;
+
+    for (const [group, colors] of Object.entries(MANIM_COLORS)) {
+        const matches = colors.filter(([name]) => !lc || name.toLowerCase().includes(lc));
+        if (matches.length === 0) continue;
+        anyMatch = true;
+
+        const label = document.createElement('div');
+        label.className = 'color-group-label';
+        label.textContent = group;
+        body.appendChild(label);
+
+        const grid = document.createElement('div');
+        grid.className = 'color-grid';
+        for (const [name, hex] of matches) {
+            const sw = document.createElement('div');
+            sw.className = 'color-swatch';
+            sw.style.background = hex;
+            // add a subtle inner border for very light/dark colors
+            if (hex === '#FFFFFF' || hex === '#FFFF00' || hex.startsWith('#FFF')) {
+                sw.style.borderColor = 'rgba(0,0,0,0.15)';
+            } else if (hex === '#000000') {
+                sw.style.borderColor = 'rgba(255,255,255,0.15)';
+            }
+            sw.innerHTML = '<span class="tooltip">' + name + '  ' + hex + '</span>';
+            sw.title = name;
+            sw.addEventListener('click', () => _insertColorAtCursor(name));
+            grid.appendChild(sw);
+        }
+        body.appendChild(grid);
+    }
+
+    if (!anyMatch) {
+        body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-secondary);">No matching colors</div>';
+    }
+}
+
+function filterManimColors(query) { _renderColorGrid(query); }
+
+function _insertColorAtCursor(colorName) {
+    // Insert the Manim color constant at the current cursor position in the editor
+    if (typeof editor !== 'undefined' && editor) {
+        const selection = editor.getSelection();
+        const range = new monaco.Range(
+            selection.startLineNumber, selection.startColumn,
+            selection.endLineNumber, selection.endColumn
+        );
+        editor.executeEdits('color-picker', [{ range, text: colorName }]);
+        editor.focus();
+        if (typeof toast === 'function') toast('Inserted ' + colorName, 'success', 1500);
+    }
+}
+
+// Wire up button
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('colorPickerBtn')?.addEventListener('click', toggleColorPicker);
+});
+
+// Close on Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _colorPickerOpen) toggleColorPicker();
+});
+
+// Close when clicking outside
+document.addEventListener('mousedown', (e) => {
+    if (_colorPickerOpen) {
+        const panel = document.getElementById('colorPickerPanel');
+        const btn = document.getElementById('colorPickerBtn');
+        if (panel && !panel.contains(e.target) && btn && !btn.contains(e.target)) {
+            toggleColorPicker();
+        }
+    }
+});
+
 console.log('[APP_FEATURES] Loaded app_features.js successfully');

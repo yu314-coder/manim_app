@@ -4,7 +4,7 @@
 
 A powerful, feature-rich desktop application for creating stunning mathematical animations using [Manim Community Edition](https://www.manim.community/). Built with Python, PyWebView, and modern web technologies.
 
-![Version](https://img.shields.io/badge/version-1.1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.1.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8+-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-orange)
@@ -462,7 +462,24 @@ If you find this project useful, please consider giving it a star on GitHub!
 
 ## 📝 Changelog
 
-### v1.1.0.0 (Latest)
+### v1.1.1.0 (Latest)
+- ✨ **Scene Outline Panel** — tree view of all classes and methods in your code with click-to-navigate
+- ✨ **Command Palette** (Ctrl+Shift+P) — VS Code-style quick launcher for all actions
+- ✨ **Keyboard Shortcuts Modal** (Ctrl+/) — searchable reference of all shortcuts
+- ✨ **Zen Mode** (F11) — distraction-free fullscreen editing
+- ✨ **Editor Bookmarks** (Ctrl+Shift+K) — bookmark lines for quick navigation
+- ✨ **Drag-and-drop file opening** — drop .py files onto the editor to open them
+- ✨ **AI Edit Panel** — Claude Code CLI integration for AI-assisted code editing with diff review
+- ✨ **Manim Color Picker** — visual palette of all Manim color constants with one-click insert
+- ✨ **Go-to-Definition** (F12), **Type Definition**, and **Find All References** (Shift+F12) via LSP
+- ✨ **Render History** — persistent log of all renders with replay, open, and delete
+- ✨ **Screenshot Save** — save preview frames with a native Save As dialog
+- 🐛 Fixed version mismatch between backend and UI display
+- 🐛 Video preview now served via HTTP instead of base64 (no size limits)
+- 🔧 Replaced hardcoded `C:\Windows` paths with `%SystemRoot%` environment variable
+- 🔧 Cleaned up excessive debug logging in file save/open operations
+
+### v1.1.0.0
 - ✨ **basedpyright IntelliSense** — real-time type checking, diagnostics, hover docs, and completions powered by a full LSP server
 - ✨ **VS Code-quality signature help** — live parameter hints when typing `(` or `,` for all Python builtins and Manim classes
 - ✨ **Rich per-parameter documentation** — typed labels, descriptions, default values, and code examples for 80+ functions

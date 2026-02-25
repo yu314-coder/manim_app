@@ -28,8 +28,10 @@ const AUTOSAVE_INTERVAL = 30000; // 30 seconds
 
 // Preview blob URL tracking to prevent premature revocation
 let currentPreviewBlobUrl = null;
-let currentPreviewPath = null; // Track current preview path to avoid unnecessary reloads
 
+// Render history tracking — records metadata when a render/preview starts
+let _renderMeta = { startTime: 0, mode: '', quality: '', fps: 0, sceneName: '', format: '' };
+let currentPreviewPath = null; // Track current preview path to avoid unnecessary reloads
 
 // Initialize Monaco Editor using AMD require
 function initializeEditor() {
@@ -162,8 +164,6 @@ class MyScene(Scene):
                 checkCodeErrors();
             }, 500);
 
-            // Debounced scene selector update (wait 800ms after typing stops)
-            scheduleSceneUpdate(currentCode);
         });
 
         editor.onDidChangeCursorPosition(() => {
@@ -601,11 +601,13 @@ async function newFile() {
     try {
         const res = await pywebview.api.new_file();
         if (res.status === 'success') {
-            setEditorValue(res.code);
+            editor.setValue(res.code);
             currentFile = null;
             updateCurrentFile('Untitled');
+            lastSavedCode = res.code;
+            hasUnsavedChanges = false;
+            updateSaveStatus('saved');
             toast('New file created', 'success');
-            focusEditor();
         }
     } catch (err) {
         toast(`Error: ${err.message}`, 'error');
@@ -613,22 +615,15 @@ async function newFile() {
 }
 
 async function openFile() {
-    // Warn if there are unsaved changes in the editor
-    if (hasUnsavedChanges) {
-        const discard = confirm('You have unsaved changes. Discard and open a new file?');
-        if (!discard) return;
-    }
     try {
         const res = await pywebview.api.open_file_dialog();
         if (res.status === 'success') {
-            setEditorValue(res.code);
+            editor.setValue(res.code);
             currentFile = res.path;
-            lastSavedCode = res.code;
             updateCurrentFile(res.filename);
+            lastSavedCode = res.code;
+            hasUnsavedChanges = false;
             updateSaveStatus('saved');
-            updateLineCount();
-            updateCursor();
-            focusEditor();
             toast(`Opened ${res.filename}`, 'success');
         }
     } catch (err) {
@@ -638,29 +633,22 @@ async function openFile() {
 
 async function saveFile() {
     try {
-        console.log('[SAVE] saveFile() called');
         const code = getEditorValue();
-        console.log(`[SAVE] Current file path: ${currentFile}`);
-        console.log(`[SAVE] Calling pywebview.api.save_file()`);
         const res = await pywebview.api.save_file(code, currentFile);
-        console.log('[SAVE] API response:', res);
 
         if (res.status === 'success') {
             currentFile = res.path;
             updateCurrentFile(res.filename);
             toast('File saved', 'success');
-            // Update save status
             lastSavedCode = code;
+            hasUnsavedChanges = false;
             updateSaveStatus('saved');
         } else if (res.status === 'cancelled') {
-            console.log('[SAVE] Save cancelled by user');
             toast('Save cancelled', 'info');
         } else {
-            console.log('[SAVE] Save failed:', res.message);
             toast(`Save failed: ${res.message}`, 'error');
         }
     } catch (err) {
-        console.error('[SAVE] Exception:', err);
         toast(`Save failed: ${err.message}`, 'error');
     }
 }
@@ -674,8 +662,8 @@ async function saveFileAs() {
             currentFile = res.path;
             updateCurrentFile(res.filename);
             toast('File saved', 'success');
-            // Update save status
             lastSavedCode = code;
+            hasUnsavedChanges = false;
             updateSaveStatus('saved');
         }
     } catch (err) {
@@ -1036,13 +1024,15 @@ async function renderAnimation() {
     const gpuEnabled = typeof getGPUAccelerationSetting === 'function' ? getGPUAccelerationSetting() : false;
     console.log(`[RENDER] GPU acceleration: ${gpuEnabled}`);
 
-    const sceneName = document.getElementById('sceneSelect')?.value || null;
     const format = document.getElementById('formatSelect')?.value || 'mp4';
     saveRenderSidebarSettings();
 
+    // Track render metadata for history
+    _renderMeta = { startTime: Date.now(), mode: 'render', quality: String(quality), fps, sceneName: '', format };
+
     setTerminalStatus('Rendering...', 'warning');
     try {
-        const res = await pywebview.api.render_animation(code, quality, fps, gpuEnabled, format, null, null, sceneName || null);
+        const res = await pywebview.api.render_animation(code, quality, fps, gpuEnabled, format, null, null, null);
 
         if (res.status === 'error') {
             setTerminalStatus('Error', 'error');
@@ -1088,12 +1078,14 @@ async function quickPreview() {
     const gpuEnabled = typeof getGPUAccelerationSetting === 'function' ? getGPUAccelerationSetting() : false;
     console.log('[PREVIEW] Calling quick_preview with params:', { code: code.substring(0, 50) + '...', quality, fps, gpuEnabled });
 
-    const sceneName = document.getElementById('sceneSelect')?.value || null;
     saveRenderSidebarSettings();
+
+    // Track preview metadata for history
+    _renderMeta = { startTime: Date.now(), mode: 'preview', quality: String(quality), fps, sceneName: '', format: 'mp4' };
 
     // Just run the command in terminal - no UI messages
     try {
-        const res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled, 'mp4', sceneName || null);
+        const res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled, 'mp4', null);
 
         if (res.status === 'error') {
             toast(`Preview failed: ${res.message}`, 'error');
@@ -1134,8 +1126,8 @@ window.updateRenderOutput = function(line) {
 };
 
 // Function to display media in preview panel - OPTIMIZED
-async function showPreview(filePath) {
-    console.log('[PREVIEW] showPreview called with path:', filePath);
+async function showPreview(filePath, forceReload = false) {
+    console.log('[PREVIEW] showPreview called with path:', filePath, 'forceReload:', forceReload);
 
     const previewVideo = document.getElementById('previewVideo');
     const previewImage = document.getElementById('previewImage');
@@ -1150,8 +1142,9 @@ async function showPreview(filePath) {
         return;
     }
 
-    // If we're already showing this exact file, don't reload it (prevents vanishing)
-    if (currentPreviewPath === filePath) {
+    // If we're already showing this exact file, skip reload to prevent flickering
+    // UNLESS forceReload is true (e.g. after a new render with the same output path)
+    if (currentPreviewPath === filePath && !forceReload) {
         console.log('[PREVIEW] Already showing this file, skipping reload to prevent vanishing');
         return;
     }
@@ -1195,65 +1188,76 @@ async function showPreview(filePath) {
     console.log('[PREVIEW] File type:', ext);
 
     try {
-        // Get file as bytes from backend and convert to Blob
-        console.log('[PREVIEW] Requesting file bytes from backend...');
-        const result = await pywebview.api.get_asset_as_bytes(filePath);
+        // For videos: use temp_assets HTTP path (no size limits, works in new windows)
+        // For images: use base64 blob (small files, fast)
+        const isVideo = ['mp4', 'mov', 'webm', 'avi'].includes(ext);
 
-        console.log('[PREVIEW] Backend response:', result.status);
+        let videoHttpUrl = null;  // HTTP-servable URL for videos
+        let blobUrl = null;       // Blob URL for images
+        let fileSize = 0;
 
-        if (result.status !== 'success' || !result.data) {
-            filenameSpan.textContent = `Error: ${result.message || 'Failed to load'}`;
-            if (placeholder) placeholder.style.display = 'flex';
-            return;
+        if (isVideo) {
+            // Copy video to web/temp_assets and get a relative HTTP path
+            console.log('[PREVIEW] Requesting HTTP-served path for video...');
+            const result = await pywebview.api.get_asset_as_data_url(filePath);
+
+            if (result.status !== 'success' || !result.dataUrl) {
+                filenameSpan.textContent = `Error: ${result.message || 'Failed to load'}`;
+                if (placeholder) placeholder.style.display = 'flex';
+                return;
+            }
+
+            videoHttpUrl = result.dataUrl;  // e.g. "temp_assets/MyScene.mp4"
+            fileSize = result.size || 0;
+            console.log('[PREVIEW] Video HTTP path:', videoHttpUrl);
+            console.log('[PREVIEW] File size:', fileSize, 'bytes');
+        } else {
+            // Images: use base64 → blob (small, fast)
+            console.log('[PREVIEW] Requesting file bytes from backend...');
+            const result = await pywebview.api.get_asset_as_bytes(filePath);
+
+            console.log('[PREVIEW] Backend response:', result.status);
+
+            if (result.status !== 'success' || !result.data) {
+                filenameSpan.textContent = `Error: ${result.message || 'Failed to load'}`;
+                if (placeholder) placeholder.style.display = 'flex';
+                return;
+            }
+
+            console.log('[PREVIEW] Converting base64 to Blob...');
+            const binaryString = atob(result.data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            const blob = new Blob([bytes], { type: result.mimeType });
+            fileSize = blob.size;
+
+            // Revoke old blob URL if it exists
+            if (currentPreviewBlobUrl) {
+                URL.revokeObjectURL(currentPreviewBlobUrl);
+                currentPreviewBlobUrl = null;
+            }
+
+            blobUrl = URL.createObjectURL(blob);
+            currentPreviewBlobUrl = blobUrl;
+            console.log('[PREVIEW] Created Blob URL:', blobUrl, 'size:', blob.size);
         }
-
-        // Convert base64 to Blob
-        console.log('[PREVIEW] Converting base64 to Blob...');
-        console.log('[PREVIEW] Base64 data length:', result.data.length, 'chars');
-        console.log('[PREVIEW] Expected file size:', result.size, 'bytes');
-
-        const binaryString = atob(result.data);
-        console.log('[PREVIEW] Decoded binary string length:', binaryString.length, 'bytes');
-
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        console.log('[PREVIEW] Created byte array length:', bytes.length);
-
-        const blob = new Blob([bytes], { type: result.mimeType });
-
-        // Revoke old blob URL if it exists (before creating new one)
-        if (currentPreviewBlobUrl) {
-            console.log('[PREVIEW] Revoking old blob URL:', currentPreviewBlobUrl);
-            URL.revokeObjectURL(currentPreviewBlobUrl);
-            currentPreviewBlobUrl = null;
-        }
-
-        const blobUrl = URL.createObjectURL(blob);
-        currentPreviewBlobUrl = blobUrl; // Track the new blob URL
-
-        console.log('[PREVIEW] Created Blob, size:', blob.size, 'bytes');
-        console.log('[PREVIEW] Created Blob URL:', blobUrl);
-        console.log('[PREVIEW] Blob type:', blob.type);
 
         // Video formats
         if (ext === 'mp4' || ext === 'mov' || ext === 'webm' || ext === 'avi') {
-            console.log('[PREVIEW] Displaying NEW video with Blob URL:', blobUrl);
+            console.log('[PREVIEW] Displaying NEW video with HTTP URL:', videoHttpUrl);
 
             // Set up event handlers before setting src
             previewVideo.onerror = (e) => {
                 console.error('========== VIDEO LOAD ERROR ==========');
                 console.error('[PREVIEW] Error loading video:', filename);
-                console.error('[PREVIEW] Error event:', e);
                 console.error('[PREVIEW] Video src that failed:', previewVideo.src);
-                console.error('[PREVIEW] Video currentSrc:', previewVideo.currentSrc);
                 console.error('[PREVIEW] Video error code:', previewVideo.error ? previewVideo.error.code : 'unknown');
                 console.error('[PREVIEW] Video error message:', previewVideo.error ? previewVideo.error.message : 'unknown');
                 console.error('[PREVIEW] Video networkState:', previewVideo.networkState);
                 console.error('[PREVIEW] Video readyState:', previewVideo.readyState);
 
-                // Error codes: 1=ABORTED, 2=NETWORK, 3=DECODE, 4=SRC_NOT_SUPPORTED
                 const errorMessages = {
                     1: 'MEDIA_ERR_ABORTED - Fetching aborted by user',
                     2: 'MEDIA_ERR_NETWORK - Network error',
@@ -1268,35 +1272,29 @@ async function showPreview(filePath) {
             };
 
             previewVideo.onloadeddata = () => {
-                console.log('========== VIDEO LOADED SUCCESSFULLY ==========');
-                console.log('[PREVIEW] ✅ Video loaded:', filename);
+                console.log('[PREVIEW] Video loaded:', filename);
                 console.log('[PREVIEW] Video duration:', previewVideo.duration, 'seconds');
                 console.log('[PREVIEW] Video dimensions:', previewVideo.videoWidth, 'x', previewVideo.videoHeight);
-                console.log('[PREVIEW] Video readyState:', previewVideo.readyState);
-                console.log('==============================================');
-            };
-
-            previewVideo.onloadstart = () => {
-                console.log('[PREVIEW] 🔄 Video load started:', filename);
-            };
-
-            previewVideo.onprogress = () => {
-                console.log('[PREVIEW] 📊 Video loading progress...');
             };
 
             previewVideo.oncanplay = () => {
-                console.log('[PREVIEW] ▶️ Video can play:', filename);
+                console.log('[PREVIEW] Video can play:', filename);
             };
 
-            // Use Blob URL from converted bytes
+            // Use HTTP URL served from temp_assets (no size limits, works in fullscreen windows)
             console.log('[PREVIEW] ========== SETTING VIDEO SOURCE ==========');
-            console.log('[PREVIEW] Source type: Blob URL');
-            console.log('[PREVIEW] Blob URL:', blobUrl);
-            console.log('[PREVIEW] File size:', result.size, 'bytes');
-            console.log('[PREVIEW] MIME type:', result.mimeType);
+            console.log('[PREVIEW] Source type: HTTP URL (temp_assets)');
+            console.log('[PREVIEW] HTTP URL:', videoHttpUrl);
+            console.log('[PREVIEW] File size:', fileSize, 'bytes');
             console.log('[PREVIEW] =======================================');
 
-            previewVideo.src = blobUrl;
+            // Add cache-busting parameter to force reload
+            const cacheBuster = Date.now();
+            const videoUrl = videoHttpUrl.includes('?')
+                ? `${videoHttpUrl}&_=${cacheBuster}`
+                : `${videoHttpUrl}?_=${cacheBuster}`;
+
+            previewVideo.src = videoUrl;
 
             // Show video element
             previewVideo.style.display = 'block';
@@ -1309,15 +1307,15 @@ async function showPreview(filePath) {
                 console.log('[PREVIEW] Autoplay prevented (user interaction required)');
             });
 
-            console.log('[PREVIEW] ✅ Preview box updated with new video');
+            console.log('[PREVIEW] Preview box updated with new video');
         }
         // Image formats
         else if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'gif' || ext === 'webp') {
-            console.log('[PREVIEW] Displaying NEW image with HTTP URL:', result.dataUrl.substring(0, 50) + '...');
+            console.log('[PREVIEW] Displaying NEW image with Blob URL');
 
             // Set up event handlers before setting src
             previewImage.onload = () => {
-                console.log('[PREVIEW] ✅ NEW image loaded successfully:', filename);
+                console.log('[PREVIEW] Image loaded successfully:', filename);
                 filenameSpan.textContent = filename;
             };
 
@@ -1326,22 +1324,13 @@ async function showPreview(filePath) {
                 filenameSpan.textContent = `Error loading ${filename}`;
             };
 
-            // Use relative path directly (PyWebView can access web directory files)
-            console.log('[PREVIEW] Setting image source:', result.dataUrl);
-
-            // Add cache-busting parameter
-            const cacheBuster = Date.now();
-            const imageUrl = result.dataUrl.includes('?')
-                ? `${result.dataUrl}&_=${cacheBuster}`
-                : `${result.dataUrl}?_=${cacheBuster}`;
-
-            console.log('[PREVIEW] Final image URL:', imageUrl);
-            previewImage.src = imageUrl;
+            console.log('[PREVIEW] Setting image source from Blob URL, size:', fileSize, 'bytes');
+            previewImage.src = blobUrl;
 
             // Show image element
             previewImage.style.display = 'block';
 
-            console.log('[PREVIEW] ✅ Preview box updated with new image');
+            console.log('[PREVIEW] Preview box updated with new image');
         }
         else {
             filenameSpan.textContent = `Unsupported: ${ext}`;
@@ -1459,10 +1448,13 @@ window.renderCompleted = function(outputPath, autoSave = false, suggestedName = 
     setTerminalStatus('Ready', 'success');
     toast('Render completed!', 'success');
 
+    // Record in render history
+    _recordRenderHistory(outputPath, 'render');
+
     // Auto-show in main preview box and switch to workspace tab
     if (outputPath) {
         console.log('🎬 Auto-loading preview...');
-        showPreview(outputPath);
+        showPreview(outputPath, true);  // forceReload=true — new render, same path, new content
 
         // Auto-switch to workspace tab to show the preview
         const workspaceTab = document.querySelector('.tab-pill[data-tab="workspace"]');
@@ -1513,13 +1505,16 @@ window.previewCompleted = function(outputPath) {
     job.running = false;
     setTerminalStatus('Ready', 'success');
 
+    // Record in render history
+    _recordRenderHistory(outputPath, 'preview');
+
     // Auto-show in main preview box and switch to workspace tab
     if (outputPath) {
         console.log('🎬 Auto-loading preview from assets folder...');
         console.log('   Path:', outputPath);
 
         // Load preview using get_asset_as_data_url for HTTP URL
-        showPreview(outputPath);
+        showPreview(outputPath, true);  // forceReload=true — new preview, same path, new content
 
         // Auto-switch to workspace tab to show the preview
         const workspaceTab = document.querySelector('.tab-pill[data-tab="workspace"]');
@@ -1547,10 +1542,238 @@ window.previewFailed = function(error) {
     setTerminalStatus('Error', 'error');
 };
 
+// ── Render History helpers ──────────────────────────────────────────────────
+
+/** Save a completed render/preview to the persistent history via the backend. */
+function _recordRenderHistory(outputPath, mode) {
+    if (!outputPath) return;
+    const durationMs = _renderMeta.startTime ? Date.now() - _renderMeta.startTime : 0;
+    const filename = outputPath.split(/[/\\]/).pop();
+    const entry = {
+        scene_name:       _renderMeta.sceneName || filename.replace(/\.[^.]+$/, ''),
+        quality:          _renderMeta.quality || '?',
+        fps:              _renderMeta.fps || 0,
+        format:           _renderMeta.format || 'mp4',
+        mode:             mode || _renderMeta.mode || 'render',
+        output_path:      outputPath,
+        filename:         filename,
+        timestamp:        new Date().toISOString(),
+        duration_seconds: Math.round(durationMs / 1000),
+    };
+    pywebview.api.add_render_history(entry).catch(e => console.warn('[HISTORY]', e));
+}
+
+/** Play a video in the history tab's own embedded player. */
+let _historyPlayerId = 0;  // Monotonic counter to cancel stale loads
+async function playInHistoryPlayer(filePath, displayName) {
+    const player   = document.getElementById('historyPlayer');
+    const video    = document.getElementById('historyPlayerVideo');
+    const nameSpan = document.getElementById('historyPlayerName');
+    const closeBtn = document.getElementById('historyPlayerClose');
+    if (!player || !video) return;
+
+    // Bump request ID — any older in-flight loads become stale
+    const thisId = ++_historyPlayerId;
+
+    // Show the player and update title immediately
+    player.classList.add('visible');
+    nameSpan.textContent = displayName || filePath.split(/[/\\]/).pop();
+
+    // Clear active highlight on all rows (caller will re-add to the clicked row)
+    document.querySelectorAll('.history-entry.active').forEach(el => el.classList.remove('active'));
+
+    // Pause + clear previous video
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+
+    // Get an HTTP-served path for the video (copies to web/temp_assets/)
+    try {
+        const result = await pywebview.api.get_asset_as_data_url(filePath);
+
+        // If the user clicked a different entry while we were loading, bail out
+        if (thisId !== _historyPlayerId) return;
+
+        if (result.status !== 'success' || !result.dataUrl) {
+            nameSpan.textContent = 'Error loading video';
+            return;
+        }
+
+        const cacheBuster = Date.now();
+        const videoUrl = result.dataUrl.includes('?')
+            ? `${result.dataUrl}&_=${cacheBuster}`
+            : `${result.dataUrl}?_=${cacheBuster}`;
+
+        video.src = videoUrl;
+        video.load();
+        video.play().catch(() => {});
+    } catch (err) {
+        if (thisId !== _historyPlayerId) return;  // stale
+        console.error('[HISTORY PLAYER] Error:', err);
+        nameSpan.textContent = 'Error: ' + err.message;
+    }
+
+    // Wire close button (only once)
+    if (!closeBtn._wired) {
+        closeBtn.addEventListener('click', () => {
+            _historyPlayerId++;  // Cancel any in-flight load
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            player.classList.remove('visible');
+            document.querySelectorAll('.history-entry.active').forEach(el => el.classList.remove('active'));
+        });
+        closeBtn._wired = true;
+    }
+}
+
+/** Refresh the render history list UI. Called when the History tab is opened. */
+async function refreshRenderHistory() {
+    const list = document.getElementById('historyList');
+    if (!list) return;
+
+    list.innerHTML = '<div class="history-empty"><i class="fas fa-spinner fa-spin"></i><div>Loading...</div></div>';
+
+    try {
+        const res = await pywebview.api.get_render_history();
+        const entries = (res && res.entries) || [];
+
+        if (entries.length === 0) {
+            list.innerHTML =
+                '<div class="history-empty">' +
+                    '<i class="fas fa-clock-rotate-left"></i>' +
+                    '<div>No render history yet</div>' +
+                    '<div style="font-size:13px;opacity:0.7">Completed renders and previews will appear here</div>' +
+                '</div>';
+            return;
+        }
+
+        list.innerHTML = '';
+        for (const entry of entries) {
+            list.appendChild(_buildHistoryRow(entry));
+        }
+    } catch (e) {
+        console.warn('[HISTORY] Failed to load:', e);
+        list.innerHTML = '<div class="history-empty"><i class="fas fa-exclamation-triangle"></i><div>Failed to load history</div></div>';
+    }
+}
+
+/** Build a single history row DOM element. */
+function _buildHistoryRow(entry) {
+    const row = document.createElement('div');
+    row.className = 'history-entry' + (entry.file_exists === false ? ' missing-file' : '');
+
+    const isRender = entry.mode === 'render';
+    const iconClass = isRender ? 'render' : 'preview';
+    const iconFa    = isRender ? 'fa-film' : 'fa-eye';
+
+    // Format timestamp
+    let timeStr = '';
+    try {
+        const d = new Date(entry.timestamp);
+        timeStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+                  ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    } catch (_) { timeStr = entry.timestamp || ''; }
+
+    // Duration
+    const dur = entry.duration_seconds;
+    const durStr = dur >= 60 ? Math.floor(dur / 60) + 'm ' + (dur % 60) + 's' : dur + 's';
+
+    row.innerHTML =
+        '<div class="history-icon ' + iconClass + '"><i class="fas ' + iconFa + '"></i></div>' +
+        '<div class="history-info">' +
+            '<div class="history-scene">' + _escHtml(entry.scene_name || entry.filename || '?') + '</div>' +
+            '<div class="history-meta">' +
+                '<span><i class="fas fa-tag"></i> ' + _escHtml(entry.mode) + '</span>' +
+                '<span><i class="fas fa-expand"></i> ' + _escHtml(entry.quality) + '</span>' +
+                '<span><i class="fas fa-gauge-high"></i> ' + entry.fps + ' fps</span>' +
+                (dur ? '<span><i class="fas fa-stopwatch"></i> ' + durStr + '</span>' : '') +
+                '<span><i class="fas fa-calendar"></i> ' + timeStr + '</span>' +
+                (entry.file_exists === false ? '<span style="color:#ef4444"><i class="fas fa-triangle-exclamation"></i> file missing</span>' : '') +
+            '</div>' +
+        '</div>' +
+        '<div class="history-entry-actions">' +
+            (entry.file_exists !== false
+                ? '<button class="history-entry-btn" title="Open in preview"><i class="fas fa-play"></i></button>'
+                : '') +
+            '<button class="history-entry-btn delete" title="Remove from history"><i class="fas fa-xmark"></i></button>' +
+        '</div>';
+
+    // Wire up buttons — use specific selectors to avoid index confusion
+    const playBtn = entry.file_exists !== false
+        ? row.querySelector('.history-entry-btn:not(.delete)')
+        : null;
+    const deleteBtn = row.querySelector('.history-entry-btn.delete');
+
+    const entryName = entry.scene_name || entry.filename || 'Video';
+
+    if (playBtn) {
+        playBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Play in the history tab's own player (not workspace preview)
+            playInHistoryPlayer(entry.output_path, entryName);
+            row.classList.add('active');
+        });
+    }
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            _deleteHistoryEntry(entry.timestamp, row);
+        });
+    }
+
+    // Clicking the row itself also plays in history player
+    if (entry.file_exists !== false) {
+        row.addEventListener('click', () => {
+            document.querySelectorAll('.history-entry.active').forEach(el => el.classList.remove('active'));
+            playInHistoryPlayer(entry.output_path, entryName);
+            row.classList.add('active');
+        });
+    }
+
+    return row;
+}
+
+async function _deleteHistoryEntry(timestamp, rowEl) {
+    try {
+        await pywebview.api.delete_render_history_entry(timestamp);
+        rowEl.style.transition = 'opacity 0.25s, transform 0.25s';
+        rowEl.style.opacity = '0';
+        rowEl.style.transform = 'translateX(30px)';
+        setTimeout(() => { rowEl.remove(); _checkHistoryEmpty(); }, 260);
+    } catch (e) { console.warn('[HISTORY]', e); }
+}
+
+async function clearRenderHistory() {
+    if (!confirm('Clear all render history?')) return;
+    try {
+        await pywebview.api.clear_render_history();
+        refreshRenderHistory();
+    } catch (e) { console.warn('[HISTORY]', e); }
+}
+
+function _checkHistoryEmpty() {
+    const list = document.getElementById('historyList');
+    if (list && list.children.length === 0) {
+        list.innerHTML =
+            '<div class="history-empty">' +
+                '<i class="fas fa-clock-rotate-left"></i>' +
+                '<div>No render history yet</div>' +
+                '<div style="font-size:13px;opacity:0.7">Completed renders and previews will appear here</div>' +
+            '</div>';
+    }
+}
+
+function _escHtml(s) {
+    const el = document.createElement('span');
+    el.textContent = s;
+    return el.innerHTML;
+}
+
 // CACHE BUSTER - Version 2025-01-25-v9
 // ASSETS WORKFLOW: Render → Move to assets → Auto-save dialog → User chooses location
 console.log('[RENDERER] Loaded renderer_desktop.js - Version 2025-01-25-v9 - ASSETS WORKFLOW');
-console.log('[RENDERER] ✅ Render: Move to assets → Auto-save dialog → User saves to location');
+console.log('[RENDERER] Render: Move to assets -> Auto-save dialog -> User saves to location');
 
 // Assets management
 // Helper function to get file type icon
@@ -2418,40 +2641,6 @@ async function loadAppVersion() {
     }
 }
 
-// ─── Scene selector (Fix 7) ─────────────────────────────────────────────────
-
-let sceneUpdateTimer = null;
-
-async function updateSceneSelector(code) {
-    try {
-        const names = await pywebview.api.get_scene_names(code);
-        const sel = document.getElementById('sceneSelect');
-        if (!sel) return;
-
-        const current = sel.value;
-        sel.innerHTML = '<option value="">Auto-detect</option>';
-        (names || []).forEach(name => {
-            const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = name;
-            sel.appendChild(opt);
-        });
-
-        // Restore previous selection if still valid
-        if (current && names && names.includes(current)) {
-            sel.value = current;
-        } else if (names && names.length === 1) {
-            sel.value = names[0];
-        }
-    } catch (err) {
-        // Silently fail — scene selector is non-critical
-    }
-}
-
-function scheduleSceneUpdate(code) {
-    clearTimeout(sceneUpdateTimer);
-    sceneUpdateTimer = setTimeout(() => updateSceneSelector(code), 800);
-}
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
@@ -2522,10 +2711,6 @@ window.addEventListener('pywebviewready', () => {
     console.log('[INIT] 3. Refreshing assets...');
     refreshAssets();
 
-    console.log('[INIT] 3.5. Populating initial scene selector...');
-    const _initCode = getEditorValue();
-    if (_initCode) updateSceneSelector(_initCode);
-
     console.log('[INIT] 4. Starting auto-save...');
     startAutosave();
 
@@ -2579,6 +2764,11 @@ window.addEventListener('pywebviewready', () => {
             if (tabName === 'assets') {
                 console.log('[TAB] Assets tab selected, refreshing assets...');
                 refreshAssets();
+            }
+
+            // Refresh history when history tab is clicked
+            if (tabName === 'history') {
+                refreshRenderHistory();
             }
 
             // Handle performance monitoring based on active tab
@@ -3817,3 +4007,1443 @@ function _finishMissingPkgInstall(success) {
 // Python calls these via evaluate_js
 window.onMissingPkgLog  = (line) => _appendMissingPkgLog(line);
 window.onMissingPkgDone = (success) => _finishMissingPkgInstall(success);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Find & Replace Button
+// ═══════════════════════════════════════════════════════════════════════
+document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
+    if (editor) {
+        editor.getAction('editor.action.startFindReplaceAction').run();
+        editor.focus();
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Keyboard Shortcuts Map
+// ═══════════════════════════════════════════════════════════════════════
+(function initShortcutMap() {
+    const modal = document.getElementById('shortcutMapModal');
+    const closeBtn = document.getElementById('closeShortcutMap');
+    const searchInput = document.getElementById('shortcutSearch');
+    const openBtn = document.getElementById('shortcutMapBtn');
+
+    function openShortcutMap() {
+        if (!modal) return;
+        modal.style.display = 'flex';
+        setTimeout(() => searchInput?.focus(), 50);
+    }
+    function closeShortcutMap() {
+        if (!modal) return;
+        modal.style.display = 'none';
+        if (searchInput) searchInput.value = '';
+        filterShortcuts('');
+    }
+
+    openBtn?.addEventListener('click', openShortcutMap);
+    closeBtn?.addEventListener('click', closeShortcutMap);
+    modal?.addEventListener('click', (e) => {
+        if (e.target === modal) closeShortcutMap();
+    });
+
+    // Search/filter
+    function filterShortcuts(query) {
+        const rows = document.querySelectorAll('.shortcut-row');
+        const groups = document.querySelectorAll('.shortcut-group');
+        const q = query.toLowerCase().trim();
+
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.classList.toggle('hidden', q && !text.includes(q));
+        });
+
+        // Hide groups with no visible rows
+        groups.forEach(group => {
+            const visibleRows = group.querySelectorAll('.shortcut-row:not(.hidden)');
+            group.style.display = visibleRows.length === 0 ? 'none' : '';
+        });
+    }
+
+    searchInput?.addEventListener('input', (e) => filterShortcuts(e.target.value));
+
+    // Global keyboard shortcut: Ctrl+/ (outside Monaco to avoid conflict with toggle comment)
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+/ when not focused in editor
+        if (e.ctrlKey && e.key === '/' && document.activeElement?.id !== 'monacoEditor') {
+            // If modal is open, close it; otherwise open it
+            if (modal && modal.style.display === 'flex') {
+                closeShortcutMap();
+            } else {
+                openShortcutMap();
+            }
+        }
+        // ESC to close
+        if (e.key === 'Escape' && modal && modal.style.display === 'flex') {
+            closeShortcutMap();
+        }
+    });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Scene Outline
+// ═══════════════════════════════════════════════════════════════════════
+(function initSceneOutline() {
+    const panel = document.getElementById('sceneOutlinePanel');
+    const tree = document.getElementById('outlineTree');
+    const openBtn = document.getElementById('sceneOutlineBtn');
+    const closeBtn = document.getElementById('closeOutlineBtn');
+
+    let outlineVisible = false;
+    let outlineDebounce = null;
+
+    function toggleOutline() {
+        outlineVisible = !outlineVisible;
+        if (panel) panel.style.display = outlineVisible ? 'flex' : 'none';
+        if (outlineVisible) refreshOutline();
+        // Re-layout Monaco editor
+        if (editor) setTimeout(() => editor.layout(), 50);
+    }
+
+    openBtn?.addEventListener('click', toggleOutline);
+    closeBtn?.addEventListener('click', () => {
+        outlineVisible = false;
+        if (panel) panel.style.display = 'none';
+        if (editor) setTimeout(() => editor.layout(), 50);
+    });
+
+    // Ctrl+Shift+O to toggle outline
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.shiftKey && e.key === 'O') {
+            e.preventDefault();
+            toggleOutline();
+        }
+    });
+
+    // Parse code to build outline tree
+    function parseOutline(code) {
+        const lines = code.split('\n');
+        const scenes = [];
+        let currentScene = null;
+        let currentMethod = null;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Detect class definitions (Scene subclasses)
+            const classMatch = line.match(/^class\s+(\w+)\s*\(([^)]*)\)\s*:/);
+            if (classMatch) {
+                currentScene = {
+                    name: classMatch[1],
+                    parent: classMatch[2].trim(),
+                    line: i + 1,
+                    methods: []
+                };
+                scenes.push(currentScene);
+                currentMethod = null;
+                continue;
+            }
+
+            if (!currentScene) continue;
+
+            // Detect method definitions (indented under class)
+            const methodMatch = line.match(/^    def\s+(\w+)\s*\(/);
+            if (methodMatch) {
+                currentMethod = {
+                    name: methodMatch[1],
+                    line: i + 1,
+                    mobjects: []
+                };
+                currentScene.methods.push(currentMethod);
+                continue;
+            }
+
+            // Detect Mobject assignments within methods
+            if (currentMethod) {
+                const mobjectMatch = line.match(/^\s{8}(\w+)\s*=\s*([\w.]+)\s*\(/);
+                if (mobjectMatch) {
+                    currentMethod.mobjects.push({
+                        name: mobjectMatch[1],
+                        type: mobjectMatch[2],
+                        line: i + 1
+                    });
+                }
+            }
+        }
+        return scenes;
+    }
+
+    function renderOutline(scenes) {
+        if (!tree) return;
+
+        if (scenes.length === 0) {
+            tree.innerHTML = '<div class="outline-empty"><i class="fas fa-code"></i> No scenes found</div>';
+            return;
+        }
+
+        let html = '';
+        for (const scene of scenes) {
+            html += `<div class="outline-scene">`;
+            html += `<div class="outline-scene-header" data-line="${scene.line}">
+                        <i class="fas fa-chevron-down"></i>
+                        <span class="outline-scene-icon"><i class="fas fa-cube"></i></span>
+                        ${escapeHtml(scene.name)}
+                        <span style="color:var(--text-secondary);font-size:10px;margin-left:auto;">${escapeHtml(scene.parent)}</span>
+                     </div>`;
+            html += `<div class="outline-children">`;
+
+            for (const method of scene.methods) {
+                html += `<div class="outline-method" data-line="${method.line}">
+                            <i class="fas fa-cogs"></i>
+                            ${escapeHtml(method.name)}()
+                         </div>`;
+                for (const mob of method.mobjects) {
+                    html += `<div class="outline-mobject" data-line="${mob.line}">
+                                <i class="fas fa-circle"></i>
+                                ${escapeHtml(mob.name)} <span style="color:var(--text-secondary)">${escapeHtml(mob.type)}</span>
+                             </div>`;
+                }
+            }
+
+            html += `</div></div>`;
+        }
+        tree.innerHTML = html;
+
+        // Click handlers for navigation
+        tree.querySelectorAll('[data-line]').forEach(el => {
+            el.addEventListener('click', (e) => {
+                const line = parseInt(el.dataset.line);
+                if (editor && line) {
+                    editor.revealLineInCenter(line);
+                    editor.setPosition({ lineNumber: line, column: 1 });
+                    editor.focus();
+                }
+            });
+        });
+
+        // Collapsible scene headers
+        tree.querySelectorAll('.outline-scene-header').forEach(header => {
+            header.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                header.classList.toggle('collapsed');
+                const children = header.nextElementSibling;
+                if (children) children.classList.toggle('hidden');
+            });
+        });
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function refreshOutline() {
+        if (!outlineVisible || !editor) return;
+        const code = editor.getValue();
+        const scenes = parseOutline(code);
+        renderOutline(scenes);
+    }
+
+    // Refresh outline when code changes (debounced)
+    function scheduleOutlineRefresh() {
+        if (!outlineVisible) return;
+        if (outlineDebounce) clearTimeout(outlineDebounce);
+        outlineDebounce = setTimeout(refreshOutline, 1000);
+    }
+
+    // Hook into editor content changes
+    const origInit = window.initializeEditor;
+    const hookEditorChanges = setInterval(() => {
+        if (editor) {
+            clearInterval(hookEditorChanges);
+            editor.onDidChangeModelContent(() => {
+                scheduleOutlineRefresh();
+            });
+        }
+    }, 500);
+
+    // Expose for external use
+    window.refreshSceneOutline = refreshOutline;
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Bracket Pair Colorizer
+// ═══════════════════════════════════════════════════════════════════════
+(function initBracketColorizer() {
+    // Monaco 0.33+ has built-in bracket pair colorization
+    const hookEditor = setInterval(() => {
+        if (editor && monaco) {
+            clearInterval(hookEditor);
+            // Enable bracket pair colorization and guides
+            editor.updateOptions({
+                'bracketPairColorization.enabled': true,
+                bracketPairColorization: { enabled: true, independentColorPoolPerBracketType: true },
+                guides: {
+                    bracketPairs: true,
+                    bracketPairsHorizontal: 'active',
+                    highlightActiveBracketPair: true,
+                    indentation: true,
+                    highlightActiveIndentation: true
+                },
+                matchBrackets: 'always'
+            });
+
+            // Define custom bracket colors via CSS injection
+            const style = document.createElement('style');
+            style.textContent = `
+                .bracket-highlighting-0 { color: #ffd700 !important; }
+                .bracket-highlighting-1 { color: #da70d6 !important; }
+                .bracket-highlighting-2 { color: #179fff !important; }
+                .bracket-highlighting-3 { color: #00c853 !important; }
+                .bracket-highlighting-4 { color: #ff6b6b !important; }
+                .bracket-highlighting-5 { color: #ff9100 !important; }
+            `;
+            document.head.appendChild(style);
+            console.log('[BRACKETS] Bracket pair colorization enabled');
+        }
+    }, 500);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Auto-Import Fixer for Manim classes
+// ═══════════════════════════════════════════════════════════════════════
+(function initAutoImportFixer() {
+    const MANIM_CLASSES = new Set([
+        // Mobjects
+        'Circle', 'Square', 'Rectangle', 'Triangle', 'Polygon', 'RegularPolygon',
+        'Line', 'Arrow', 'DoubleArrow', 'DashedLine', 'TangentLine', 'Vector',
+        'Dot', 'SmallDot', 'Point', 'Annulus', 'AnnularSector', 'Sector', 'Arc',
+        'Ellipse', 'Star', 'RoundedRectangle',
+        'Text', 'Tex', 'MathTex', 'Title', 'BulletedList', 'Paragraph',
+        'MarkupText', 'Code',
+        'Axes', 'NumberPlane', 'ComplexPlane', 'NumberLine', 'BarChart',
+        'Table', 'MobjectTable', 'IntegerTable', 'DecimalTable',
+        'VGroup', 'Group', 'SurroundingRectangle', 'BackgroundRectangle',
+        'Brace', 'BraceBetweenPoints', 'BraceLabel',
+        'ImageMobject', 'SVGMobject',
+        'ThreeDScene', 'Surface', 'Sphere', 'Cube', 'Cylinder', 'Cone',
+        'Torus', 'Prism', 'Arrow3D', 'Line3D', 'Dot3D',
+        'ThreeDAxes',
+        // Animations
+        'Create', 'Write', 'DrawBorderThenFill', 'FadeIn', 'FadeOut',
+        'GrowFromCenter', 'GrowFromEdge', 'GrowFromPoint', 'GrowArrow',
+        'Transform', 'ReplacementTransform', 'TransformFromCopy',
+        'MoveToTarget', 'ApplyMethod',
+        'Rotate', 'SpinInFromNothing', 'ShrinkToCenter',
+        'Indicate', 'Flash', 'ShowPassingFlash', 'Wiggle', 'Circumscribe',
+        'FocusOn', 'ApplyWave',
+        'AnimationGroup', 'Succession', 'LaggedStart', 'LaggedStartMap',
+        'Uncreate', 'Unwrite', 'ShowCreation',
+        // Camera / Scenes
+        'Scene', 'MovingCameraScene', 'ZoomedScene', 'VectorScene',
+        'LinearTransformationScene',
+        // Constants/Utils
+        'UP', 'DOWN', 'LEFT', 'RIGHT', 'ORIGIN', 'UL', 'UR', 'DL', 'DR',
+        'PI', 'TAU', 'DEGREES',
+        'RED', 'BLUE', 'GREEN', 'YELLOW', 'WHITE', 'BLACK', 'ORANGE', 'PURPLE',
+        'PINK', 'TEAL', 'GOLD', 'MAROON', 'GREY', 'GRAY',
+        'rate_functions', 'linear', 'smooth', 'rush_into', 'rush_from',
+        'ValueTracker', 'DecimalNumber', 'Integer', 'Variable',
+        'always_redraw', 'always',
+    ]);
+
+    let autoImportDebounce = null;
+
+    const hookEditor = setInterval(() => {
+        if (editor && monaco) {
+            clearInterval(hookEditor);
+
+            // Register a code action provider for quick fixes
+            monaco.languages.registerCodeActionProvider('python', {
+                provideCodeActions(model, range, context) {
+                    const code = model.getValue();
+                    const lines = code.split('\n');
+
+                    // Check if 'from manim import *' already exists
+                    const hasWildcardImport = lines.some(l => /^\s*from\s+manim\s+import\s+\*/.test(l));
+                    if (hasWildcardImport) return { actions: [], dispose() {} };
+
+                    // Collect existing specific imports
+                    const existingImports = new Set();
+                    lines.forEach(l => {
+                        const m = l.match(/^\s*from\s+manim(?:\.\w+)*\s+import\s+(.+)/);
+                        if (m) m[1].split(',').forEach(name => existingImports.add(name.trim()));
+                    });
+
+                    // Scan code for used Manim classes that aren't imported
+                    const missingImports = new Set();
+                    for (let i = 0; i < lines.length; i++) {
+                        // Skip import lines and comments
+                        if (/^\s*(from|import)\s/.test(lines[i]) || /^\s*#/.test(lines[i])) continue;
+                        const words = lines[i].match(/\b[A-Z]\w+\b/g);
+                        if (words) {
+                            words.forEach(w => {
+                                if (MANIM_CLASSES.has(w) && !existingImports.has(w)) {
+                                    missingImports.add(w);
+                                }
+                            });
+                        }
+                    }
+
+                    if (missingImports.size === 0) return { actions: [], dispose() {} };
+
+                    const actions = [];
+
+                    // Option 1: Add wildcard import
+                    actions.push({
+                        title: `Add 'from manim import *'`,
+                        kind: 'quickfix',
+                        diagnostics: [],
+                        edit: {
+                            edits: [{
+                                resource: model.uri,
+                                textEdit: {
+                                    range: new monaco.Range(1, 1, 1, 1),
+                                    text: 'from manim import *\n'
+                                },
+                                versionId: model.getVersionId()
+                            }]
+                        },
+                        isPreferred: true
+                    });
+
+                    // Option 2: Add specific imports
+                    const sortedMissing = [...missingImports].sort();
+                    actions.push({
+                        title: `Import: ${sortedMissing.join(', ')} from manim`,
+                        kind: 'quickfix',
+                        diagnostics: [],
+                        edit: {
+                            edits: [{
+                                resource: model.uri,
+                                textEdit: {
+                                    range: new monaco.Range(1, 1, 1, 1),
+                                    text: `from manim import ${sortedMissing.join(', ')}\n`
+                                },
+                                versionId: model.getVersionId()
+                            }]
+                        }
+                    });
+
+                    return { actions, dispose() {} };
+                }
+            });
+
+            // Also show a toast notification when missing imports detected
+            editor.onDidChangeModelContent(() => {
+                if (autoImportDebounce) clearTimeout(autoImportDebounce);
+                autoImportDebounce = setTimeout(() => {
+                    const code = editor.getValue();
+                    const lines = code.split('\n');
+                    const hasImport = lines.some(l => /^\s*from\s+manim\s+import/.test(l));
+                    if (hasImport) return;
+
+                    // Check if any Manim class is used
+                    const usesManim = lines.some(l => {
+                        if (/^\s*(from|import|#)/.test(l)) return false;
+                        const words = l.match(/\b[A-Z]\w+\b/g);
+                        return words && words.some(w => MANIM_CLASSES.has(w));
+                    });
+
+                    if (usesManim && !document.getElementById('autoImportToast')) {
+                        const toastEl = document.createElement('div');
+                        toastEl.id = 'autoImportToast';
+                        toastEl.style.cssText = `
+                            position:fixed; bottom:60px; right:20px; z-index:10000;
+                            background:var(--bg-secondary); border:1px solid var(--border-color);
+                            border-left:4px solid #f59e0b; border-radius:8px;
+                            padding:10px 14px; box-shadow:0 4px 12px rgba(0,0,0,0.3);
+                            display:flex; align-items:center; gap:10px; font-size:13px;
+                            color:var(--text-primary); max-width:380px;
+                        `;
+                        toastEl.innerHTML = `
+                            <i class="fas fa-lightbulb" style="color:#f59e0b;font-size:16px;"></i>
+                            <span>Missing Manim import detected</span>
+                            <button id="autoImportFixBtn" style="
+                                background:#f59e0b;color:#000;border:none;border-radius:4px;
+                                padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;
+                                white-space:nowrap;
+                            ">Fix</button>
+                            <button onclick="this.parentElement.remove()" style="
+                                background:none;border:none;color:var(--text-secondary);
+                                cursor:pointer;font-size:14px;padding:2px 6px;
+                            "><i class='fas fa-times'></i></button>
+                        `;
+                        document.body.appendChild(toastEl);
+                        document.getElementById('autoImportFixBtn').addEventListener('click', () => {
+                            const model = editor.getModel();
+                            model.pushEditOperations([], [{
+                                range: new monaco.Range(1, 1, 1, 1),
+                                text: 'from manim import *\n'
+                            }], () => null);
+                            toastEl.remove();
+                            toast('Added: from manim import *', 'success');
+                        });
+                        // Auto-dismiss after 8 seconds
+                        setTimeout(() => toastEl?.remove(), 8000);
+                    }
+                }, 2000);
+            });
+
+            console.log('[AUTO-IMPORT] Auto-import fixer initialized');
+        }
+    }, 500);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Zen Mode (F11)
+// ═══════════════════════════════════════════════════════════════════════
+(function initZenMode() {
+    let zenActive = false;
+
+    function toggleZen() {
+        zenActive = !zenActive;
+        document.body.classList.toggle('zen-mode', zenActive);
+        if (editor) {
+            setTimeout(() => editor.layout(), 100);
+            editor.focus();
+        }
+        if (zenActive) {
+            toast('Zen Mode — press F11 or Esc to exit', 'info');
+        }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'F11') {
+            e.preventDefault();
+            toggleZen();
+        }
+        if (e.key === 'Escape' && zenActive) {
+            toggleZen();
+        }
+    });
+
+    window.toggleZenMode = toggleZen;
+    console.log('[ZEN] Zen mode initialized (F11)');
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Quick Screenshot (Preview Frame Capture)
+// ═══════════════════════════════════════════════════════════════════════
+(function initScreenshot() {
+    document.getElementById('screenshotBtn')?.addEventListener('click', async () => {
+        const video = document.getElementById('previewVideo');
+        const img = document.getElementById('previewImage');
+
+        let canvas, suggestedName;
+
+        if (video && video.style.display !== 'none' && video.src) {
+            // Capture current video frame
+            canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || video.clientWidth;
+            canvas.height = video.videoHeight || video.clientHeight;
+            if (canvas.width === 0 || canvas.height === 0) {
+                toast('Video not ready — wait for it to load', 'warning');
+                return;
+            }
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            suggestedName = 'manim_frame_' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.png';
+        } else if (img && img.style.display !== 'none' && img.src) {
+            // Capture displayed image
+            canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.clientWidth;
+            canvas.height = img.naturalHeight || img.clientHeight;
+            if (canvas.width === 0 || canvas.height === 0) {
+                toast('Image not loaded yet', 'warning');
+                return;
+            }
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            suggestedName = 'manim_screenshot_' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.png';
+        } else {
+            toast('No preview to screenshot', 'warning');
+            return;
+        }
+
+        // Convert canvas to base64 PNG (strip data:image/png;base64, prefix)
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64Data = dataUrl.split(',')[1];
+
+        if (!base64Data) {
+            toast('Failed to capture frame', 'error');
+            return;
+        }
+
+        // Call Python backend to show native Save As dialog
+        try {
+            const res = await pywebview.api.save_screenshot(base64Data, suggestedName);
+            if (res.status === 'success') {
+                toast(`Screenshot saved: ${res.filename}`, 'success');
+            } else if (res.status === 'cancelled') {
+                toast('Screenshot save cancelled', 'info');
+            } else {
+                toast(`Screenshot failed: ${res.message}`, 'error');
+            }
+        } catch (err) {
+            toast(`Screenshot failed: ${err.message}`, 'error');
+        }
+    });
+    console.log('[SCREENSHOT] Quick screenshot initialized (native Save As dialog)');
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Editor Bookmarks (Ctrl+B toggle, Ctrl+Up/Down navigate)
+// ═══════════════════════════════════════════════════════════════════════
+(function initBookmarks() {
+    let bookmarks = []; // Array of line numbers
+    let bookmarkDecorations = [];
+
+    function refreshDecorations() {
+        if (!editor) return;
+        const decorations = bookmarks.map(line => ({
+            range: new monaco.Range(line, 1, line, 1),
+            options: {
+                isWholeLine: true,
+                className: 'bookmark-line',
+                glyphMarginClassName: 'bookmark-glyph',
+                glyphMarginHoverMessage: { value: '**Bookmark** — Ctrl+Up/Down to navigate' }
+            }
+        }));
+        bookmarkDecorations = editor.deltaDecorations(bookmarkDecorations, decorations);
+    }
+
+    function toggleBookmark() {
+        if (!editor) return;
+        const line = editor.getPosition().lineNumber;
+        const idx = bookmarks.indexOf(line);
+        if (idx >= 0) {
+            bookmarks.splice(idx, 1);
+        } else {
+            bookmarks.push(line);
+            bookmarks.sort((a, b) => a - b);
+        }
+        refreshDecorations();
+    }
+
+    function jumpToBookmark(direction) {
+        if (!editor || bookmarks.length === 0) return;
+        const currentLine = editor.getPosition().lineNumber;
+
+        let target;
+        if (direction === 'next') {
+            target = bookmarks.find(b => b > currentLine) || bookmarks[0];
+        } else {
+            target = [...bookmarks].reverse().find(b => b < currentLine) || bookmarks[bookmarks.length - 1];
+        }
+
+        if (target) {
+            editor.revealLineInCenter(target);
+            editor.setPosition({ lineNumber: target, column: 1 });
+            editor.focus();
+        }
+    }
+
+    const hookEditor = setInterval(() => {
+        if (editor && monaco) {
+            clearInterval(hookEditor);
+
+            // Ctrl+B: Toggle bookmark
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, toggleBookmark);
+
+            // Ctrl+Up: Previous bookmark
+            editor.addCommand(
+                monaco.KeyMod.CtrlCmd | monaco.KeyCode.UpArrow,
+                () => jumpToBookmark('prev')
+            );
+
+            // Ctrl+Down: Next bookmark
+            editor.addCommand(
+                monaco.KeyMod.CtrlCmd | monaco.KeyCode.DownArrow,
+                () => jumpToBookmark('next')
+            );
+
+            // Clean up bookmarks when lines are deleted
+            editor.onDidChangeModelContent((e) => {
+                if (bookmarks.length === 0) return;
+                const lineCount = editor.getModel().getLineCount();
+                bookmarks = bookmarks.filter(b => b <= lineCount);
+                refreshDecorations();
+            });
+
+            console.log('[BOOKMARKS] Editor bookmarks initialized (Ctrl+B, Ctrl+Up/Down)');
+        }
+    }, 500);
+
+    window.toggleBookmark = toggleBookmark;
+    window.getBookmarks = () => [...bookmarks];
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Drag & Drop File Open
+// ═══════════════════════════════════════════════════════════════════════
+(function initDragDrop() {
+    const editorContainer = document.getElementById('monacoEditor');
+    if (!editorContainer) return;
+
+    const parentBody = editorContainer.closest('.workspace-body');
+
+    let overlay = null;
+
+    function showOverlay() {
+        if (overlay) return;
+        overlay = document.createElement('div');
+        overlay.className = 'dragdrop-overlay';
+        overlay.innerHTML = '<span><i class="fas fa-file-import"></i> Drop .py file to open</span>';
+        (parentBody || editorContainer).appendChild(overlay);
+    }
+
+    function hideOverlay() {
+        if (overlay) {
+            overlay.remove();
+            overlay = null;
+        }
+    }
+
+    // Use the workspace-body or body as drag target
+    const dropTarget = parentBody || document.body;
+
+    dropTarget.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer.types.includes('Files')) showOverlay();
+    });
+
+    dropTarget.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    });
+
+    dropTarget.addEventListener('dragleave', (e) => {
+        // Only hide if leaving the container entirely
+        if (!dropTarget.contains(e.relatedTarget)) hideOverlay();
+    });
+
+    dropTarget.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        hideOverlay();
+
+        const files = e.dataTransfer.files;
+        if (!files || files.length === 0) return;
+
+        const file = files[0];
+        if (!file.name.endsWith('.py') && !file.name.endsWith('.pyw') && !file.name.endsWith('.txt')) {
+            toast('Only .py files can be opened in the editor', 'warning');
+            return;
+        }
+
+        // Read file content using FileReader
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const content = ev.target.result;
+            if (editor) {
+                editor.setValue(content);
+                currentFile = null; // Dropped file doesn't have a persistent path via pywebview
+                updateCurrentFile(file.name);
+                lastSavedCode = content;
+                hasUnsavedChanges = false;
+                updateSaveStatus('saved');
+                toast(`Opened ${file.name} (drag & drop)`, 'success');
+            }
+        };
+        reader.onerror = () => toast('Failed to read dropped file', 'error');
+        reader.readAsText(file);
+    });
+
+    console.log('[DRAGDROP] Drag-and-drop file open initialized');
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Command Palette (Ctrl+Shift+P)
+// ═══════════════════════════════════════════════════════════════════════
+(function initCommandPalette() {
+    const overlay = document.getElementById('commandPalette');
+    const input = document.getElementById('commandPaletteInput');
+    const results = document.getElementById('commandPaletteResults');
+    if (!overlay || !input || !results) return;
+
+    let activeIndex = 0;
+
+    // Command registry
+    const commands = [
+        { id: 'new-file',        icon: 'fa-file',            label: 'New File',              shortcut: 'Ctrl+N',          action: () => typeof newFile === 'function' && newFile() },
+        { id: 'open-file',       icon: 'fa-folder-open',     label: 'Open File',             shortcut: 'Ctrl+O',          action: () => typeof openFile === 'function' && openFile() },
+        { id: 'save-file',       icon: 'fa-save',            label: 'Save File',             shortcut: 'Ctrl+S',          action: () => typeof saveFile === 'function' && saveFile() },
+        { id: 'save-as',         icon: 'fa-save',            label: 'Save File As...',       shortcut: 'Ctrl+Shift+S',    action: () => typeof saveFileAs === 'function' && saveFileAs() },
+        { id: 'render',          icon: 'fa-play',            label: 'Render Animation',      shortcut: 'F5',              action: () => typeof renderAnimation === 'function' && renderAnimation() },
+        { id: 'preview',         icon: 'fa-eye',             label: 'Quick Preview',         shortcut: 'F6',              action: () => typeof quickPreview === 'function' && quickPreview() },
+        { id: 'stop',            icon: 'fa-stop',            label: 'Stop Render',           shortcut: 'Esc',             action: () => typeof stopRender === 'function' && stopRender() },
+        { id: 'find',            icon: 'fa-search',          label: 'Find',                  shortcut: 'Ctrl+F',          action: () => editor?.getAction('editor.action.startFindReplaceAction')?.run() },
+        { id: 'find-replace',    icon: 'fa-exchange-alt',    label: 'Find & Replace',        shortcut: 'Ctrl+H',          action: () => editor?.getAction('editor.action.startFindReplaceAction')?.run() },
+        { id: 'goto-line',       icon: 'fa-hashtag',         label: 'Go to Line...',         shortcut: 'Ctrl+G',          action: () => editor?.getAction('editor.action.gotoLine')?.run() },
+        { id: 'zen-mode',        icon: 'fa-expand',          label: 'Toggle Zen Mode',       shortcut: 'F11',             action: () => typeof toggleZenMode === 'function' && toggleZenMode() },
+        { id: 'toggle-comment',  icon: 'fa-comment',         label: 'Toggle Line Comment',   shortcut: 'Ctrl+/',          action: () => editor?.getAction('editor.action.commentLine')?.run() },
+        { id: 'format-doc',      icon: 'fa-indent',          label: 'Format Document',       shortcut: 'Shift+Alt+F',     action: () => editor?.getAction('editor.action.formatDocument')?.run() },
+        { id: 'shortcuts',       icon: 'fa-keyboard',        label: 'Keyboard Shortcuts',    shortcut: '',                action: () => { const m = document.getElementById('shortcutMapModal'); if (m) m.style.display = 'flex'; } },
+        { id: 'outline',         icon: 'fa-sitemap',         label: 'Toggle Scene Outline',  shortcut: 'Ctrl+Shift+O',    action: () => document.getElementById('sceneOutlineBtn')?.click() },
+        { id: 'bookmark',        icon: 'fa-bookmark',        label: 'Toggle Bookmark',       shortcut: 'Ctrl+B',          action: () => typeof toggleBookmark === 'function' && toggleBookmark() },
+        { id: 'select-all',      icon: 'fa-object-group',    label: 'Select All',            shortcut: 'Ctrl+A',          action: () => editor?.getAction('editor.action.selectAll')?.run() },
+        { id: 'toggle-minimap',  icon: 'fa-map',             label: 'Toggle Minimap',        shortcut: '',                action: () => { if (editor) { const cur = editor.getOption(monaco.editor.EditorOption.minimap); editor.updateOptions({ minimap: { enabled: !cur.enabled } }); } } },
+        { id: 'toggle-wordwrap', icon: 'fa-align-left',      label: 'Toggle Word Wrap',      shortcut: '',                action: () => { if (editor) { const cur = editor.getOption(monaco.editor.EditorOption.wordWrap); editor.updateOptions({ wordWrap: cur === 'on' ? 'off' : 'on' }); } } },
+        { id: 'screenshot',      icon: 'fa-camera',          label: 'Screenshot Preview',    shortcut: '',                action: () => document.getElementById('screenshotBtn')?.click() },
+        { id: 'theme',           icon: 'fa-moon',            label: 'Toggle Theme',          shortcut: '',                action: () => document.getElementById('themeBtn')?.click() },
+        { id: 'settings',        icon: 'fa-cog',             label: 'Open Settings',         shortcut: '',                action: () => document.getElementById('settingsBtn')?.click() },
+        { id: 'colors',          icon: 'fa-palette',         label: 'Open Color Picker',     shortcut: '',                action: () => document.querySelector('.action-btn[onclick*="color" i], #colorPickerBtn, .action-btn:has(.fa-palette)')?.click() },
+        { id: 'clear-terminal',  icon: 'fa-eraser',          label: 'Clear Terminal',        shortcut: '',                action: () => document.getElementById('clearTermBtn')?.click() },
+        { id: 'ai-edit',         icon: 'fa-wand-magic-sparkles', label: 'Edit with AI (Claude)', shortcut: 'Ctrl+Shift+E', action: () => typeof openAIEdit === 'function' && openAIEdit() },
+        { id: 'manim-docs',      icon: 'fa-book',            label: 'Manim Docs Lookup',     shortcut: 'Ctrl+Shift+D',    action: () => typeof openManimDocs === 'function' && openManimDocs() },
+    ];
+
+    function openPalette() {
+        overlay.style.display = 'flex';
+        input.value = '';
+        activeIndex = 0;
+        renderCommands('');
+        setTimeout(() => input.focus(), 50);
+    }
+
+    function closePalette() {
+        overlay.style.display = 'none';
+        input.value = '';
+        if (editor) editor.focus();
+    }
+
+    function renderCommands(query) {
+        const q = query.toLowerCase().trim();
+        const filtered = q
+            ? commands.filter(c => c.label.toLowerCase().includes(q) || c.id.includes(q))
+            : commands;
+
+        if (filtered.length === 0) {
+            results.innerHTML = '<div class="cmd-empty">No matching commands</div>';
+            return;
+        }
+
+        activeIndex = Math.min(activeIndex, filtered.length - 1);
+
+        results.innerHTML = filtered.map((cmd, i) => `
+            <div class="cmd-item ${i === activeIndex ? 'active' : ''}" data-idx="${i}">
+                <i class="fas ${cmd.icon}"></i>
+                <span class="cmd-label">${highlight(cmd.label, q)}</span>
+                ${cmd.shortcut ? `<span class="cmd-shortcut">${cmd.shortcut}</span>` : ''}
+            </div>
+        `).join('');
+
+        // Click handlers
+        results.querySelectorAll('.cmd-item').forEach((el, i) => {
+            el.addEventListener('click', () => {
+                closePalette();
+                filtered[i].action();
+            });
+            el.addEventListener('mouseenter', () => {
+                activeIndex = i;
+                results.querySelectorAll('.cmd-item').forEach((e, j) =>
+                    e.classList.toggle('active', j === i));
+            });
+        });
+    }
+
+    function highlight(text, query) {
+        if (!query) return text;
+        const idx = text.toLowerCase().indexOf(query);
+        if (idx < 0) return text;
+        return text.slice(0, idx) + '<b style="color:var(--accent-primary)">' + text.slice(idx, idx + query.length) + '</b>' + text.slice(idx + query.length);
+    }
+
+    // Input handling
+    input.addEventListener('input', () => {
+        activeIndex = 0;
+        renderCommands(input.value);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        const items = results.querySelectorAll('.cmd-item');
+        const q = input.value.toLowerCase().trim();
+        const filtered = q
+            ? commands.filter(c => c.label.toLowerCase().includes(q) || c.id.includes(q))
+            : commands;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = (activeIndex + 1) % Math.max(filtered.length, 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+            items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = (activeIndex - 1 + filtered.length) % Math.max(filtered.length, 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+            items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (filtered[activeIndex]) {
+                closePalette();
+                filtered[activeIndex].action();
+            }
+        } else if (e.key === 'Escape') {
+            closePalette();
+        }
+    });
+
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closePalette();
+    });
+
+    // Global shortcut: Ctrl+Shift+P
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.shiftKey && e.key === 'P') {
+            e.preventDefault();
+            if (overlay.style.display === 'flex') closePalette();
+            else openPalette();
+        }
+    });
+
+    window.openCommandPalette = openPalette;
+    console.log('[CMD PALETTE] Command palette initialized (Ctrl+Shift+P)');
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: AI Code Edit — Side Panel (like Scene Outline)
+// ═══════════════════════════════════════════════════════════════════════
+(function initAIEdit() {
+    const panel       = document.getElementById('aiEditPanel');
+    const panelBtn    = document.getElementById('aiEditPanelBtn');
+    const panelClose  = document.getElementById('aiEditPanelClose');
+    const promptInput = document.getElementById('aiEditPrompt');
+    const sendBtn     = document.getElementById('aiEditSendBtn');
+    const modelSelect = document.getElementById('aiEditModelSelect');
+    const statusText  = document.getElementById('aiEditStatusText');
+    const statusMsg   = document.getElementById('aiEditStatusMsg');
+    const diffActions = document.getElementById('aiDiffActions');
+    const diffStats   = document.getElementById('aiDiffStats');
+    const acceptBtn   = document.getElementById('aiDiffAccept');
+    const rejectBtn   = document.getElementById('aiDiffReject');
+    const streamBox   = document.getElementById('aiEditStreamBox');
+    const streamOutput= document.getElementById('aiEditStreamOutput');
+    const contextDiv  = document.getElementById('aiEditContext');
+    const contextText = document.getElementById('aiEditContextText');
+    const editorEl    = document.getElementById('monacoEditor');
+    if (!panel || !editorEl) return;
+
+    let originalCode = '';
+    let editedCode = '';
+    let diffEditorInstance = null;
+    let pollTimer = null;
+    let panelVisible = false;
+    let isStreaming = false;
+
+    // ── Fetch available models ──
+    (async function loadModels() {
+        try {
+            if (typeof pywebview === 'undefined' || !pywebview.api) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+            if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.get_claude_models) {
+                const result = await pywebview.api.get_claude_models();
+                const models = result.models || [];
+                const currentModel = result.current_model || '';
+                if (models.length > 0 && modelSelect) {
+                    while (modelSelect.options.length > 1) modelSelect.remove(1);
+                    for (const m of models) {
+                        const opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.textContent = m.display_name;
+                        modelSelect.appendChild(opt);
+                    }
+                }
+                if (currentModel && modelSelect) {
+                    for (const opt of modelSelect.options) {
+                        if (opt.value === currentModel || opt.value.includes(currentModel) || currentModel.includes(opt.value)) {
+                            opt.selected = true; break;
+                        }
+                    }
+                }
+            }
+        } catch (e) { console.log('[AI EDIT] Model load:', e); }
+    })();
+
+    // ── Toggle the AI Edit panel (like outline toggle) ──
+    function togglePanel() {
+        panelVisible = !panelVisible;
+        panel.style.display = panelVisible ? 'flex' : 'none';
+        if (panelVisible) setTimeout(() => promptInput.focus(), 50);
+        // Re-layout Monaco editor after panel toggle
+        if (editor) setTimeout(() => editor.layout(), 50);
+    }
+
+    // ── Update context indicator based on editor selection ──
+    function updateContextHint() {
+        if (!editor || !contextDiv || !contextText) return;
+        const sel = editor.getSelection();
+        if (sel && !sel.isEmpty()) {
+            const lines = sel.endLineNumber - sel.startLineNumber + 1;
+            contextText.textContent = `Selected: lines ${sel.startLineNumber}-${sel.endLineNumber} (${lines} lines)`;
+            contextDiv.classList.add('has-selection');
+        } else {
+            contextText.textContent = 'Editing whole file';
+            contextDiv.classList.remove('has-selection');
+        }
+    }
+
+    // ── Open panel (with optional prefill prompt) ──
+    function openAIEdit(prefillPrompt) {
+        if (!editor) return;
+        originalCode = editor.getModel().getValue();
+        if (typeof prefillPrompt === 'string') promptInput.value = prefillPrompt;
+        statusText.style.display = 'none';
+        diffActions.style.display = 'none';
+        if (streamBox) streamBox.style.display = 'none';
+        if (!panelVisible) {
+            panelVisible = true;
+            panel.style.display = 'flex';
+            if (editor) setTimeout(() => editor.layout(), 50);
+        }
+        updateContextHint();
+        setTimeout(() => promptInput.focus(), 50);
+    }
+
+    // ── Close panel completely ──
+    function closePanel() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        isStreaming = false;
+        try { pywebview?.api?.ai_edit_cancel(); } catch(e) {}
+        destroyDiffEditor();
+        resetSendBtn();
+        diffActions.style.display = 'none';
+        if (streamBox) streamBox.style.display = 'none';
+        panelVisible = false;
+        panel.style.display = 'none';
+        // Re-layout Monaco editor
+        if (editor) { editor.focus(); setTimeout(() => editor.layout(), 50); }
+    }
+
+    // ── Button handlers for open/close ──
+    panelBtn?.addEventListener('click', togglePanel);
+    panelClose?.addEventListener('click', closePanel);
+
+    // ── Create Monaco DiffEditor over the normal editor ──
+    function showDiffEditor(original, modified) {
+        let container = document.getElementById('aiDiffContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'aiDiffContainer';
+            container.style.cssText = 'position:absolute;inset:0;z-index:50;';
+            editorEl.style.position = 'relative';
+            editorEl.appendChild(container);
+        }
+        container.style.display = 'block';
+        editor.getDomNode().style.visibility = 'hidden';
+
+        const origModel = monaco.editor.createModel(original, 'python');
+        const modModel  = monaco.editor.createModel(modified, 'python');
+
+        diffEditorInstance = monaco.editor.createDiffEditor(container, {
+            theme: 'vs-dark',
+            readOnly: false,
+            originalEditable: false,
+            renderSideBySide: true,
+            automaticLayout: true,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            fontSize: editor.getOption(monaco.editor.EditorOption.fontSize),
+        });
+        diffEditorInstance.setModel({ original: origModel, modified: modModel });
+
+        // Count changes for stats
+        setTimeout(() => {
+            try {
+                const changes = diffEditorInstance.getLineChanges() || [];
+                let added = 0, removed = 0;
+                for (const c of changes) {
+                    removed += Math.max(0, c.originalEndLineNumber - c.originalStartLineNumber + 1);
+                    added   += Math.max(0, c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1);
+                }
+                if (diffStats) diffStats.textContent = `+${added} / -${removed} lines`;
+            } catch(e) {}
+        }, 300);
+
+        // Show diff review actions in panel
+        diffActions.style.display = 'flex';
+    }
+
+    function destroyDiffEditor() {
+        if (diffEditorInstance) {
+            try {
+                const origModel = diffEditorInstance.getModel()?.original;
+                const modModel  = diffEditorInstance.getModel()?.modified;
+                diffEditorInstance.dispose();
+                if (origModel) origModel.dispose();
+                if (modModel) modModel.dispose();
+            } catch(e) {}
+            diffEditorInstance = null;
+        }
+        const container = document.getElementById('aiDiffContainer');
+        if (container) container.style.display = 'none';
+        if (editor) editor.getDomNode().style.visibility = 'visible';
+    }
+
+    // ── Reset send button to default state ──
+    function resetSendBtn() {
+        isStreaming = false;
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to Claude';
+        sendBtn.classList.remove('cancel-mode');
+        statusText.style.display = 'none';
+    }
+
+    // ── Send / Cancel button (toggles based on isStreaming) ──
+    sendBtn?.addEventListener('click', async () => {
+        if (isStreaming) {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            try { await pywebview.api.ai_edit_cancel(); } catch(e) {}
+            resetSendBtn();
+            if (streamBox) streamBox.style.display = 'none';
+            toast('Cancelled', 'info');
+            return;
+        }
+
+        const prompt = promptInput.value.trim();
+        if (!prompt) { toast('Enter a prompt', 'warning'); promptInput.focus(); return; }
+
+        originalCode = editor.getModel().getValue();
+        isStreaming = true;
+        sendBtn.innerHTML = '<i class="fas fa-stop"></i> Cancel';
+        sendBtn.classList.add('cancel-mode');
+        statusText.style.display = 'flex';
+        statusMsg.textContent = 'Starting Claude Code...';
+        diffActions.style.display = 'none';
+        // Show streaming output box and clear it
+        if (streamBox) streamBox.style.display = 'flex';
+        if (streamOutput) streamOutput.textContent = '';
+
+        try {
+            const chosenModel = modelSelect ? modelSelect.value : '';
+
+            // Get selection info (VS Code Copilot style — selected code vs whole file)
+            const selection = editor.getSelection();
+            let selectedCode = '';
+            let selStart = 0, selEnd = 0;
+            if (selection && !selection.isEmpty()) {
+                selectedCode = editor.getModel().getValueInRange(selection);
+                selStart = selection.startLineNumber;
+                selEnd   = selection.endLineNumber;
+            }
+
+            const res = await pywebview.api.ai_edit_code(
+                originalCode, prompt, chosenModel,
+                selectedCode, selStart, selEnd
+            );
+
+            if (res.status === 'error') {
+                statusMsg.textContent = res.message || 'Failed';
+                toast(res.message || 'AI edit failed', 'error');
+                resetSendBtn();
+                return;
+            }
+
+            statusMsg.textContent = 'Claude is generating...';
+
+            pollTimer = setInterval(async () => {
+                try {
+                    const poll = await pywebview.api.ai_edit_poll();
+                    // Update streaming output live
+                    if (poll.output && streamOutput) {
+                        streamOutput.textContent = poll.output;
+                        // Auto-scroll to bottom
+                        streamOutput.scrollTop = streamOutput.scrollHeight;
+                    }
+                    if (poll.status === 'streaming') {
+                        statusMsg.textContent = `Generating... (${poll.chars || 0} chars)`;
+                    }
+                    if (poll.done) {
+                        clearInterval(pollTimer); pollTimer = null;
+                        if (poll.status === 'success' && poll.edited_code) {
+                            editedCode = poll.edited_code;
+                            if (streamBox) streamBox.style.display = 'none';
+                            showDiffEditor(originalCode, editedCode);
+                            toast('Review the diff — Accept or Reject', 'info');
+                        } else {
+                            statusMsg.textContent = poll.message || 'Failed';
+                            toast(poll.message || 'AI edit failed', 'error');
+                            // Keep stream output visible so user can see what went wrong
+                        }
+                        resetSendBtn();
+                    }
+                } catch (e) { console.error('[AI EDIT] Poll:', e); }
+            }, 300);
+
+        } catch (err) {
+            statusMsg.textContent = 'Error: ' + err.message;
+            toast('AI edit failed', 'error');
+            resetSendBtn();
+        }
+    });
+
+    // ── Accept: apply modified code from diff editor, then auto-save ──
+    acceptBtn?.addEventListener('click', () => {
+        if (!editor) return;
+        let finalCode = editedCode;
+        if (diffEditorInstance) {
+            try {
+                finalCode = diffEditorInstance.getModel().modified.getValue();
+            } catch(e) {}
+        }
+        destroyDiffEditor();
+        diffActions.style.display = 'none';
+        editor.setValue(finalCode);
+        toast('Changes applied & saving...', 'success');
+        editor.focus();
+        // Auto-save immediately so the AI-edited code is persisted
+        if (typeof performAutosave === 'function') {
+            performAutosave();
+        }
+    });
+
+    // ── Reject: discard changes, keep panel open for retry ──
+    rejectBtn?.addEventListener('click', () => {
+        destroyDiffEditor();
+        diffActions.style.display = 'none';
+        toast('Changes discarded', 'info');
+        promptInput.focus();
+    });
+
+    // ── Keyboard shortcuts ──
+    promptInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn?.click(); }
+        if (e.key === 'Escape') closePanel();
+    });
+
+    // Global Escape to close panel
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && panelVisible) closePanel();
+    });
+
+    // ── Register Monaco context menu action + keybinding + selection listener ──
+    const hookEditor = setInterval(() => {
+        if (editor && monaco) {
+            clearInterval(hookEditor);
+            editor.addAction({
+                id: 'ai-edit-code',
+                label: 'Edit with AI (Claude)',
+                keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
+                contextMenuGroupId: '9_ai',
+                contextMenuOrder: 1,
+                run: openAIEdit
+            });
+            // Update context hint when selection changes (only when panel is visible)
+            editor.onDidChangeCursorSelection(() => {
+                if (panelVisible) updateContextHint();
+            });
+            console.log('[AI EDIT] Panel registered');
+        }
+    }, 500);
+
+    // ── "Fix with AI" button in error panel ──
+    const fixWithAIBtn = document.getElementById('fixWithAIBtn');
+    fixWithAIBtn?.addEventListener('click', () => {
+        if (!editor) return;
+        const errorItems = document.querySelectorAll('#errorsList .error-item');
+        if (!errorItems || errorItems.length === 0) { toast('No errors to fix', 'info'); return; }
+        const msgs = [];
+        errorItems.forEach(item => {
+            const loc = item.querySelector('.error-location')?.textContent || '';
+            const msg = item.querySelector('.error-message')?.textContent || '';
+            if (msg) msgs.push(`${loc}: ${msg}`);
+        });
+        openAIEdit('Fix the following code errors:\n' + msgs.join('\n'));
+    });
+
+    window.openAIEdit = openAIEdit;
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Feature: Manim Docs Lookup Panel
+// ═══════════════════════════════════════════════════════════════════════
+(function initManimDocs() {
+    const panel     = document.getElementById('manimDocsPanel');
+    const closeBtn  = document.getElementById('docsCloseBtn');
+    const searchInp = document.getElementById('docsSearchInput');
+    const body      = document.getElementById('docsBody');
+    if (!panel) return;
+
+    // Comprehensive Manim docs database
+    const MANIM_DOCS = {
+        // ── Mobjects ──
+        Circle:       { cat: 'Mobject', sig: 'Circle(radius=1.0, color=WHITE, fill_opacity=0, **kwargs)', desc: 'A circle. Set fill_opacity=1 for a solid disc.', params: [{n:'radius',d:'float, default 1.0 — Radius in scene units'},{n:'color',d:'Color, default WHITE — Stroke/fill color'},{n:'fill_opacity',d:'float, default 0 — 0=outline, 1=solid'}], ex: 'Circle(radius=2, color=BLUE)\nCircle(fill_color=RED, fill_opacity=1)' },
+        Square:       { cat: 'Mobject', sig: 'Square(side_length=2.0, color=WHITE, **kwargs)', desc: 'A square with equal side lengths.', params: [{n:'side_length',d:'float, default 2.0 — Length of each side'}], ex: 'Square(side_length=3, color=GREEN)\nSquare().set_fill(BLUE, opacity=0.5)' },
+        Rectangle:    { cat: 'Mobject', sig: 'Rectangle(width=4.0, height=2.0, color=WHITE, **kwargs)', desc: 'A rectangle with configurable dimensions.', params: [{n:'width',d:'float, default 4.0'},{n:'height',d:'float, default 2.0'},{n:'color',d:'Color, default WHITE'}], ex: 'Rectangle(width=6, height=3, color=YELLOW)' },
+        Triangle:     { cat: 'Mobject', sig: 'Triangle(**kwargs)', desc: 'An equilateral triangle pointing upward.', params: [], ex: 'Triangle(color=RED, fill_opacity=1)' },
+        Line:         { cat: 'Mobject', sig: 'Line(start=LEFT, end=RIGHT, **kwargs)', desc: 'A straight line between two points.', params: [{n:'start',d:'point — Starting position'},{n:'end',d:'point — Ending position'}], ex: 'Line(LEFT, RIGHT, color=BLUE)\nLine(ORIGIN, UP*2)' },
+        Arrow:        { cat: 'Mobject', sig: 'Arrow(start=LEFT, end=RIGHT, **kwargs)', desc: 'A line with an arrowhead at the end.', params: [{n:'start',d:'point — Tail position'},{n:'end',d:'point — Head position'},{n:'buff',d:'float — Gap from endpoints'}], ex: 'Arrow(LEFT, RIGHT, color=YELLOW)\nArrow(ORIGIN, UP*2, buff=0)' },
+        Dot:          { cat: 'Mobject', sig: 'Dot(point=ORIGIN, radius=0.08, color=WHITE, **kwargs)', desc: 'A small solid dot placed at a point.', params: [{n:'point',d:'np.array — Center position'},{n:'radius',d:'float, default 0.08'}], ex: 'Dot(RIGHT*2, color=RED)\nDot(ORIGIN, radius=0.15)' },
+        Text:         { cat: 'Mobject', sig: 'Text(text, font_size=48, color=WHITE, font="")', desc: 'Pango-rendered text (no LaTeX). Supports font selection.', params: [{n:'text',d:'str — The text to display'},{n:'font_size',d:'int, default 48'},{n:'color',d:'Color, default WHITE'},{n:'font',d:'str — Font family name'}], ex: 'Text("Hello!", font_size=72, color=BLUE)\nText("Code", font="Consolas")' },
+        MathTex:      { cat: 'Mobject', sig: 'MathTex(*strings, **kwargs)', desc: 'LaTeX math mode. Strings are joined and wrapped in $$.', params: [{n:'*strings',d:'str — LaTeX expressions'}], ex: 'MathTex(r"E = mc^2")\nMathTex(r"\\int_0^1 x^2 dx")' },
+        Tex:          { cat: 'Mobject', sig: 'Tex(*strings, **kwargs)', desc: 'LaTeX text mode for prose with occasional math.', params: [{n:'*strings',d:'str — LaTeX text strings'}], ex: 'Tex("Hello ", "$x^2$", " World")' },
+        Axes:         { cat: 'Mobject', sig: 'Axes(x_range=[-1,1,1], y_range=[-1,1,1], x_length=12, y_length=6)', desc: 'A pair of axes for plotting functions.', params: [{n:'x_range',d:'[min, max, step]'},{n:'y_range',d:'[min, max, step]'},{n:'x_length',d:'float — Width in scene units'},{n:'y_length',d:'float — Height in scene units'}], ex: 'ax = Axes(x_range=[-3,3,1], y_range=[-2,2,1])\ngraph = ax.plot(lambda x: x**2, color=BLUE)' },
+        NumberPlane:  { cat: 'Mobject', sig: 'NumberPlane(**kwargs)', desc: 'Full coordinate plane with labeled axes and grid.', params: [{n:'x_range',d:'[min, max, step]'},{n:'y_range',d:'[min, max, step]'}], ex: 'plane = NumberPlane()\nself.add(plane)' },
+        VGroup:       { cat: 'Mobject', sig: 'VGroup(*mobjects)', desc: 'Group of VMobjects that can be transformed together.', params: [{n:'*mobjects',d:'VMobject — Objects to group'}], ex: 'g = VGroup(Circle(), Square()).arrange(RIGHT)\nself.play(Create(g))' },
+        SurroundingRectangle: { cat: 'Mobject', sig: 'SurroundingRectangle(mobject, buff=0.2, color=YELLOW)', desc: 'A tight rectangle that fits around a mobject.', params: [{n:'mobject',d:'Mobject — Target to surround'},{n:'buff',d:'float — Padding around target'},{n:'color',d:'Color'}], ex: 'rect = SurroundingRectangle(text, color=RED)' },
+        Brace:        { cat: 'Mobject', sig: 'Brace(mobject, direction=DOWN)', desc: 'A curly brace. Use get_tip() to position a label.', params: [{n:'mobject',d:'Mobject — Target'},{n:'direction',d:'vector — Direction brace points'}], ex: 'brace = Brace(square, DOWN)\nlabel = brace.get_tex("x^2")' },
+        ValueTracker: { cat: 'Mobject', sig: 'ValueTracker(value=0)', desc: 'Holds a numeric value. Use for smooth value animations.', params: [{n:'value',d:'float — Initial value'}], ex: 't = ValueTracker(0)\nnum = always_redraw(lambda: DecimalNumber(t.get_value()))\nself.play(t.animate.set_value(10), run_time=3)' },
+        // ── Animations ──
+        Create:       { cat: 'Animation', sig: 'Create(mobject)', desc: 'Animate drawing the outline and fill of a mobject.', params: [{n:'mobject',d:'Mobject — Object to create'}], ex: 'self.play(Create(circle))' },
+        Write:        { cat: 'Animation', sig: 'Write(mobject)', desc: 'Animate writing text or path stroke by stroke.', params: [{n:'mobject',d:'Mobject — Text or path to write'}], ex: 'self.play(Write(Text("Hello")))' },
+        FadeIn:       { cat: 'Animation', sig: 'FadeIn(mobject, shift=ORIGIN, scale=1)', desc: 'Fade into view with optional directional shift.', params: [{n:'mobject',d:'Mobject'},{n:'shift',d:'vector — Direction to slide from'},{n:'scale',d:'float — Starting scale'}], ex: 'self.play(FadeIn(text, shift=UP))\nself.play(FadeIn(circle, scale=0.5))' },
+        FadeOut:      { cat: 'Animation', sig: 'FadeOut(mobject, shift=ORIGIN)', desc: 'Fade out with optional directional shift.', params: [{n:'mobject',d:'Mobject'},{n:'shift',d:'vector — Direction to slide out'}], ex: 'self.play(FadeOut(text, shift=DOWN))' },
+        Transform:    { cat: 'Animation', sig: 'Transform(source, target)', desc: 'Morph source into target. Source object stays in scene.', params: [{n:'source',d:'Mobject — Original'},{n:'target',d:'Mobject — Target shape'}], ex: 'self.play(Transform(circle, square))' },
+        ReplacementTransform: { cat: 'Animation', sig: 'ReplacementTransform(source, target)', desc: 'Morph source into target, replacing source in scene.', params: [{n:'source',d:'Mobject'},{n:'target',d:'Mobject'}], ex: 'self.play(ReplacementTransform(circle, square))' },
+        Indicate:     { cat: 'Animation', sig: 'Indicate(mobject, color=YELLOW, scale_factor=1.2)', desc: 'Briefly scale up and change color to draw attention.', params: [{n:'mobject',d:'Mobject'},{n:'color',d:'Color, default YELLOW'},{n:'scale_factor',d:'float, default 1.2'}], ex: 'self.play(Indicate(text))' },
+        Flash:        { cat: 'Animation', sig: 'Flash(point, color=YELLOW, num_lines=12)', desc: 'Radial flash lines at a point.', params: [{n:'point',d:'point or Mobject'},{n:'color',d:'Color'},{n:'num_lines',d:'int — Number of rays'}], ex: 'self.play(Flash(ORIGIN, color=RED))' },
+        Circumscribe: { cat: 'Animation', sig: 'Circumscribe(mobject, shape=Rectangle)', desc: 'Draw a shape around the mobject then fade it.', params: [{n:'mobject',d:'Mobject'},{n:'shape',d:'class — Rectangle or Circle'}], ex: 'self.play(Circumscribe(equation))' },
+        GrowFromCenter: { cat: 'Animation', sig: 'GrowFromCenter(mobject)', desc: 'Scale up from zero at the center.', params: [{n:'mobject',d:'Mobject'}], ex: 'self.play(GrowFromCenter(circle))' },
+        Rotate:       { cat: 'Animation', sig: 'Rotate(mobject, angle=TAU, axis=OUT)', desc: 'Rotate a mobject by the given angle.', params: [{n:'mobject',d:'Mobject'},{n:'angle',d:'float — Radians (TAU=full rotation)'},{n:'axis',d:'vector — Rotation axis'}], ex: 'self.play(Rotate(square, angle=PI/2))\nself.play(Rotate(cube, angle=TAU, axis=UP))' },
+        AnimationGroup: { cat: 'Animation', sig: 'AnimationGroup(*animations, lag_ratio=0)', desc: 'Run multiple animations simultaneously.', params: [{n:'*animations',d:'Animation'},{n:'lag_ratio',d:'float — Stagger between 0 and 1'}], ex: 'self.play(AnimationGroup(\n    Create(c1), Create(c2), lag_ratio=0.3\n))' },
+        LaggedStart:  { cat: 'Animation', sig: 'LaggedStart(*animations, lag_ratio=0.05)', desc: 'Start each animation slightly after the previous.', params: [{n:'*animations',d:'Animation'},{n:'lag_ratio',d:'float — Delay between starts'}], ex: 'circles = [Circle() for _ in range(5)]\nself.play(LaggedStart(*[Create(c) for c in circles]))' },
+        Succession:   { cat: 'Animation', sig: 'Succession(*animations)', desc: 'Run animations one after another in sequence.', params: [{n:'*animations',d:'Animation'}], ex: 'self.play(Succession(\n    Create(circle), FadeOut(circle)\n))' },
+        // ── Scene Methods ──
+        play:         { cat: 'Scene Method', sig: 'self.play(*animations, run_time=1, rate_func=smooth)', desc: 'Play one or more animations.', params: [{n:'*animations',d:'Animation — Animations to play'},{n:'run_time',d:'float — Duration in seconds'},{n:'rate_func',d:'function — Easing (smooth, linear, rush_into)'}], ex: 'self.play(Create(circle), run_time=2)\nself.play(Transform(a, b), rate_func=linear)' },
+        wait:         { cat: 'Scene Method', sig: 'self.wait(duration=1)', desc: 'Pause the animation for a duration.', params: [{n:'duration',d:'float — Seconds to wait'}], ex: 'self.wait(2)' },
+        add:          { cat: 'Scene Method', sig: 'self.add(*mobjects)', desc: 'Add mobjects to the scene without animation.', params: [{n:'*mobjects',d:'Mobject'}], ex: 'self.add(circle, text)' },
+        remove:       { cat: 'Scene Method', sig: 'self.remove(*mobjects)', desc: 'Remove mobjects from the scene without animation.', params: [{n:'*mobjects',d:'Mobject'}], ex: 'self.remove(circle)' },
+    };
+
+    const allNames = Object.keys(MANIM_DOCS).sort();
+
+    function openDocsPanel() { panel.classList.add('open'); }
+    function closeDocsPanel() { panel.classList.remove('open'); if (editor) editor.focus(); }
+
+    closeBtn?.addEventListener('click', closeDocsPanel);
+
+    function showDocFor(name) {
+        // Case-insensitive lookup: try exact, then Title Case, then scan all keys
+        let doc = MANIM_DOCS[name];
+        let resolvedName = name;
+        if (!doc) {
+            const titleCase = name.charAt(0).toUpperCase() + name.slice(1);
+            if (MANIM_DOCS[titleCase]) { doc = MANIM_DOCS[titleCase]; resolvedName = titleCase; }
+        }
+        if (!doc) {
+            const lower = name.toLowerCase();
+            const found = allNames.find(n => n.toLowerCase() === lower);
+            if (found) { doc = MANIM_DOCS[found]; resolvedName = found; }
+        }
+        if (!doc) {
+            // No exact match — show browse list filtered by the query
+            body.innerHTML = `<div style="color:var(--text-secondary);font-size:13px;padding:8px 0;margin-bottom:8px;">No exact match for <b>${escapeH(name)}</b>. Showing related results:</div>`;
+            const q = name.toLowerCase();
+            const matches = allNames.filter(n => n.toLowerCase().includes(q) || (MANIM_DOCS[n]?.cat || '').toLowerCase().includes(q));
+            if (matches.length > 0) {
+                body.innerHTML += matches.map(n => {
+                    const d = MANIM_DOCS[n];
+                    return `<div class="docs-browse-item" data-name="${escapeAttr(n)}"><span class="item-name">${escapeH(n)}</span><span class="item-type">${escapeH(d?.cat || '')}</span></div>`;
+                }).join('');
+                body.querySelectorAll('.docs-browse-item').forEach(el => {
+                    el.addEventListener('click', () => showDocFor(el.dataset.name));
+                });
+            } else {
+                showBrowseList('');
+            }
+            openDocsPanel();
+            return;
+        }
+        name = resolvedName;
+
+        let html = '';
+        html += `<div class="docs-class-name">${escapeH(name)}</div>`;
+        html += `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">${escapeH(doc.cat)}</div>`;
+        html += `<div class="docs-signature">${escapeH(doc.sig)}</div>`;
+        html += `<div class="docs-description">${escapeH(doc.desc)}</div>`;
+
+        if (doc.params && doc.params.length > 0) {
+            html += `<div class="docs-params-title">Parameters</div>`;
+            for (const p of doc.params) {
+                html += `<div class="docs-param"><span class="docs-param-name">${escapeH(p.n)}</span><div class="docs-param-desc">${escapeH(p.d)}</div></div>`;
+            }
+        }
+
+        if (doc.ex) {
+            html += `<div class="docs-example-title">Example</div>`;
+            html += `<div class="docs-example" data-code="${escapeAttr(doc.ex)}">${escapeH(doc.ex)}</div>`;
+        }
+
+        body.innerHTML = html;
+
+        // Click example to insert into editor
+        body.querySelectorAll('.docs-example').forEach(el => {
+            el.addEventListener('click', () => {
+                if (!editor) return;
+                const code = el.dataset.code;
+                editor.trigger('docs', 'type', { text: code });
+                editor.focus();
+                toast('Code inserted', 'success');
+            });
+        });
+
+        openDocsPanel();
+    }
+
+    function showBrowseList(query) {
+        const q = query.toLowerCase().trim();
+        const matches = q
+            ? allNames.filter(n => n.toLowerCase().includes(q) || (MANIM_DOCS[n]?.cat || '').toLowerCase().includes(q))
+            : allNames;
+
+        if (matches.length === 0) {
+            body.innerHTML = '<div class="docs-empty">No results</div>';
+            return;
+        }
+
+        body.innerHTML = matches.map(name => {
+            const doc = MANIM_DOCS[name];
+            return `<div class="docs-browse-item" data-name="${escapeAttr(name)}">
+                <span class="item-name">${escapeH(name)}</span>
+                <span class="item-type">${escapeH(doc?.cat || '')}</span>
+            </div>`;
+        }).join('');
+
+        body.querySelectorAll('.docs-browse-item').forEach(el => {
+            el.addEventListener('click', () => showDocFor(el.dataset.name));
+        });
+    }
+
+    // Search input
+    searchInp?.addEventListener('input', (e) => {
+        const q = e.target.value.trim();
+        if (q.length > 0) {
+            showBrowseList(q);
+        } else {
+            body.innerHTML = '<div class="docs-empty"><i class="fas fa-book-open"></i>Right-click a Manim class in the editor<br>and select <b>Lookup Manim Docs</b><br><br>Or search above to browse</div>';
+        }
+    });
+
+    // If input is focused and empty, show full list
+    searchInp?.addEventListener('focus', () => {
+        if (!searchInp.value.trim()) showBrowseList('');
+    });
+
+    function escapeH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escapeAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // Register Monaco context menu action
+    const hookEditor = setInterval(() => {
+        if (editor && monaco) {
+            clearInterval(hookEditor);
+            editor.addAction({
+                id: 'lookup-manim-docs',
+                label: 'Lookup Manim Docs',
+                keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyD],
+                contextMenuGroupId: '9_ai',
+                contextMenuOrder: 2,
+                run: () => {
+                    const word = editor.getModel().getWordAtPosition(editor.getPosition());
+                    if (word && word.word) {
+                        searchInp.value = word.word;
+                        showDocFor(word.word);
+                    } else {
+                        openDocsPanel();
+                        searchInp.focus();
+                    }
+                }
+            });
+            console.log('[DOCS] Manim docs context menu action registered');
+        }
+    }, 500);
+
+    window.openManimDocs = (name) => { if (name) showDocFor(name); else openDocsPanel(); };
+})();

@@ -502,7 +502,8 @@ div[style*="font-family"] {
 }
 
 #system-panel,
-#assets-panel {
+#assets-panel,
+#history-panel {
     overflow: auto;
 }
 
@@ -3343,9 +3344,19 @@ div[style*="font-family"] {
 
 .workspace-editor .workspace-body {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     padding: 0;
     overflow: hidden;
+}
+
+/* Editor + errors stacked vertically inside the row layout */
+.workspace-editor .workspace-body .editor-main-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
 }
 
 /* Venv/Package Manager Tab Styles */

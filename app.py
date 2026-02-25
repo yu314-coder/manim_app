@@ -25,7 +25,7 @@ if sys.platform == 'win32':
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # App version
-APP_VERSION = "1.1.0.0"
+APP_VERSION = "1.1.1.0"
 
 # Terminal emulation with PTY support
 try:
@@ -91,8 +91,9 @@ def get_clean_environment():
     # DO NOT set these to empty strings - it breaks font rendering
     # Instead, ensure Windows font directory is accessible
     if os.name == 'nt':
-        # Windows font directory
-        windows_fonts = r'C:\Windows\Fonts'
+        # Windows font directory (derived from system root, not hardcoded)
+        windir = os.environ.get('SystemRoot', os.environ.get('WINDIR', r'C:\Windows'))
+        windows_fonts = os.path.join(windir, 'Fonts')
         if os.path.exists(windows_fonts):
             # Set font config paths for Pango/fontconfig
             env['FONTCONFIG_PATH'] = windows_fonts
@@ -161,11 +162,12 @@ def get_clean_environment():
 
         # Ensure system Python paths are available
         # This helps the venv Python find system DLLs
+        windir = os.environ.get('SystemRoot', os.environ.get('WINDIR', r'C:\Windows'))
         system_paths = [
-            r'C:\Windows\System32',
-            r'C:\Windows',
-            r'C:\Windows\System32\Wbem',
-            r'C:\Windows\System32\WindowsPowerShell\v1.0'
+            os.path.join(windir, 'System32'),
+            windir,
+            os.path.join(windir, 'System32', 'Wbem'),
+            os.path.join(windir, 'System32', 'WindowsPowerShell', 'v1.0'),
         ]
 
         current_paths = env.get('PATH', '').split(os.pathsep)
@@ -659,11 +661,11 @@ def find_system_python():
         programfiles = os.getenv('ProgramFiles', 'C:\\Program Files')
 
         # Python.org installer locations
+        sysdrive = os.environ.get('SystemDrive', 'C:')
         for version in ['312', '311', '310', '39', '38', '37']:
             common_paths.extend([
-                f"C:\\Python{version}\\python.exe",
-                f"C:\\Users\\{username}\\AppData\\Local\\Programs\\Python\\Python{version}\\python.exe",
-                f"{localappdata}\\Programs\\Python\\Python{version}\\python.exe",
+                os.path.join(sysdrive + os.sep, f'Python{version}', 'python.exe'),
+                os.path.join(localappdata, 'Programs', 'Python', f'Python{version}', 'python.exe'),
             ])
 
         # Microsoft Store Python
@@ -1408,12 +1410,68 @@ class MyScene(Scene):
         app_state['current_file_path'] = None
         return {'status': 'success', 'code': app_state['current_code']}
 
+    def save_screenshot(self, base64_data, suggested_name):
+        """Save a screenshot from base64 PNG data using a native Save As dialog."""
+        try:
+            import base64
+
+            print(f"[SCREENSHOT] Showing save dialog for: {suggested_name}")
+
+            # Show native Save As dialog
+            result = app_state['window'].create_file_dialog(
+                dialog_type=webview.FileDialog.SAVE,
+                save_filename=suggested_name,
+                file_types=('PNG Image (*.png)', 'JPEG Image (*.jpg)', 'All Files (*.*)')
+            )
+
+            if not result:
+                print("[SCREENSHOT] User cancelled save dialog")
+                return {'status': 'cancelled'}
+
+            # Extract path from result
+            if isinstance(result, (list, tuple)) and len(result) > 0:
+                save_path = result[0]
+            else:
+                save_path = result
+
+            # Decode base64 and write to file
+            image_data = base64.b64decode(base64_data)
+            with open(save_path, 'wb') as f:
+                f.write(image_data)
+
+            print(f"[SCREENSHOT] Saved to: {save_path} ({len(image_data)} bytes)")
+            return {
+                'status': 'success',
+                'path': save_path,
+                'filename': os.path.basename(save_path),
+                'size': len(image_data)
+            }
+        except Exception as e:
+            print(f"[SCREENSHOT] Error: {e}")
+            return {'status': 'error', 'message': str(e)}
+
+    def open_file_by_path(self, file_path):
+        """Open a file by its absolute path (for drag-drop support)"""
+        try:
+            if not os.path.exists(file_path):
+                return {'status': 'error', 'message': 'File not found'}
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext not in ('.py', '.txt', '.pyw'):
+                return {'status': 'error', 'message': f'Unsupported file type: {ext}'}
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            app_state['current_code'] = content
+            app_state['current_file_path'] = file_path
+            return {'status': 'success', 'code': content, 'path': file_path, 'filename': os.path.basename(file_path)}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
     def open_file_dialog(self):
         """Open file dialog and return file path"""
         result = app_state['window'].create_file_dialog(
             FileDialog.OPEN,
             allow_multiple=False,
-            file_types=('Python Files (*.py)',)
+            file_types=('Python Files (*.py)', 'All Files (*.*)')
         )
 
         if result and len(result) > 0:
@@ -1431,8 +1489,8 @@ class MyScene(Scene):
         return {'status': 'cancelled'}
 
     def save_file_dialog(self, code):
-        """Save file dialog for Python code files"""
-        print("[SAVE] save_file_dialog() called - showing Python file dialog")
+        """Save file dialog for code files"""
+        print("[SAVE] save_file_dialog() called - showing file dialog")
         result = app_state['window'].create_file_dialog(
             dialog_type=webview.FileDialog.SAVE,
             save_filename='scene.py',
@@ -1648,6 +1706,88 @@ class MyScene(Scene):
             return {'status': 'success', 'path': AUTOSAVE_DIR}
         except Exception as e:
             print(f"[AUTOSAVE ERROR] {e}")
+            return {'status': 'error', 'message': str(e)}
+
+    # ── Render History ─────────────────────────────────────────────────────
+
+    def _render_history_file(self):
+        """Path to the render history JSON file."""
+        return os.path.join(USER_DATA_DIR, 'render_history.json')
+
+    def get_render_history(self):
+        """Return the list of render history entries (newest first)."""
+        try:
+            path = self._render_history_file()
+            if not os.path.exists(path):
+                return {'status': 'success', 'entries': []}
+            with open(path, 'r', encoding='utf-8') as f:
+                entries = json.load(f)
+            # Mark entries whose output file no longer exists
+            for entry in entries:
+                entry['file_exists'] = os.path.exists(entry.get('output_path', ''))
+            return {'status': 'success', 'entries': entries}
+        except Exception as e:
+            print(f"[HISTORY ERROR] {e}")
+            return {'status': 'error', 'message': str(e), 'entries': []}
+
+    def add_render_history(self, entry):
+        """Append a render history entry and persist to disk.
+        entry should be a dict with keys like:
+            scene_name, quality, fps, format, mode (render|preview),
+            output_path, timestamp, duration_seconds
+        """
+        try:
+            path = self._render_history_file()
+            entries = []
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    entries = json.load(f)
+
+            # Deduplicate: remove older entries with the same output_path
+            # since the file gets overwritten and only the latest content exists
+            new_path = entry.get('output_path', '')
+            if new_path:
+                entries = [e for e in entries if e.get('output_path') != new_path]
+
+            entries.insert(0, entry)
+            # Keep at most 100 entries
+            entries = entries[:100]
+
+            os.makedirs(USER_DATA_DIR, exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(entries, f, indent=2)
+
+            print(f"[HISTORY] Added entry: {entry.get('scene_name', '?')} ({entry.get('mode', '?')})")
+            return {'status': 'success'}
+        except Exception as e:
+            print(f"[HISTORY ERROR] {e}")
+            return {'status': 'error', 'message': str(e)}
+
+    def clear_render_history(self):
+        """Delete all render history entries."""
+        try:
+            path = self._render_history_file()
+            if os.path.exists(path):
+                os.remove(path)
+            return {'status': 'success'}
+        except Exception as e:
+            print(f"[HISTORY ERROR] {e}")
+            return {'status': 'error', 'message': str(e)}
+
+    def delete_render_history_entry(self, timestamp):
+        """Delete a single render history entry by its timestamp."""
+        try:
+            path = self._render_history_file()
+            if not os.path.exists(path):
+                return {'status': 'success'}
+            with open(path, 'r', encoding='utf-8') as f:
+                entries = json.load(f)
+            entries = [e for e in entries if e.get('timestamp') != timestamp]
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(entries, f, indent=2)
+            return {'status': 'success'}
+        except Exception as e:
+            print(f"[HISTORY ERROR] {e}")
             return {'status': 'error', 'message': str(e)}
 
     def clear_manim_cache(self):
@@ -3982,10 +4122,175 @@ class MyScene(Scene):
                 'installed': False
             }
 
-    def ai_edit_code(self, code, prompt):
-        """Send code to Claude Code for AI editing"""
+    # ── Cached model list ──
+    _cached_models = None
+
+    @staticmethod
+    def _model_id_to_display(model_id):
+        """Convert a model ID like 'claude-sonnet-4-6' → 'Sonnet 4.6'."""
+        import re
+        s = model_id.strip()
+        # Remove 'claude-' prefix
+        s = re.sub(r'^claude-', '', s)
+        # Remove dated suffix like -20250514 or -20251001
+        s = re.sub(r'-\d{8}$', '', s)
+        # Parse family-major-minor  e.g. 'sonnet-4-6', 'opus-4-6', 'haiku-4-5'
+        m = re.match(r'([a-z]+)-(\d+)-(\d+)', s)
+        if m:
+            family = m.group(1).capitalize()
+            return f"{family} {m.group(2)}.{m.group(3)}"
+        # Alias like 'sonnet', 'opus', 'haiku'
+        m2 = re.match(r'([a-z]+)-(\d+)-(\d+)', s)
+        if not m2:
+            return s.capitalize()
+        return s
+
+    def get_claude_models(self):
+        """Return {current_model, models: [{id, display_name}]}.
+
+        Fetches available models from:
+          1. Anthropic API  (if ANTHROPIC_API_KEY is set)
+          2. ~/.claude.json  usage history (models the user actually used)
+          3. Known current model aliases as fallback
+
+        Also returns the currently configured model from settings.
+        """
+        import json as _json
+        import re
+
+        home_dir = os.path.expanduser('~')
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # ── 1. Detect current configured model from settings ──
+        current_model = ''
+        if os.name == 'nt':
+            managed = os.path.join(os.environ.get('PROGRAMFILES', r'C:\Program Files'),
+                                   'ClaudeCode', 'managed-settings.json')
+        else:
+            managed = '/etc/claude-code/managed-settings.json'
+
+        settings_paths = [
+            managed,
+            os.path.join(project_dir, '.claude', 'settings.local.json'),
+            os.path.join(project_dir, '.claude', 'settings.json'),
+            os.path.join(home_dir, '.claude', 'settings.json'),
+        ]
+        for path in settings_paths:
+            if os.path.isfile(path):
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = _json.load(f)
+                    val = data.get('model')
+                    if val:
+                        current_model = str(val)
+                        break
+                except Exception:
+                    pass
+        if not current_model:
+            current_model = os.environ.get('ANTHROPIC_MODEL', '')
+
+        # ── 2. Return cache if available ──
+        if ManimAPI._cached_models is not None:
+            return {'current_model': current_model, 'models': ManimAPI._cached_models}
+
+        fetched_models = []
+
+        # ── 3. Read usage history from ~/.claude.json ──
+        usage_model_ids = set()
+        claude_json = os.path.join(home_dir, '.claude.json')
+        if os.path.isfile(claude_json):
+            try:
+                with open(claude_json, 'r', encoding='utf-8') as f:
+                    cj = _json.load(f)
+                projects = cj.get('projects', {})
+                for pkey, pval in projects.items():
+                    if isinstance(pval, dict):
+                        usage = pval.get('lastModelUsage', {})
+                        if isinstance(usage, dict):
+                            for mid in usage.keys():
+                                if mid and 'claude' in mid:
+                                    usage_model_ids.add(mid)
+            except Exception as e:
+                print(f"[AI MODELS] Failed to read .claude.json: {e}")
+
+        # ── 4. Merge: API results + usage history ──
+        seen_ids = {m['id'] for m in fetched_models}
+        for mid in usage_model_ids:
+            if mid not in seen_ids:
+                fetched_models.append({
+                    'id': mid,
+                    'display_name': self._model_id_to_display(mid)
+                })
+                seen_ids.add(mid)
+
+        # ── 5. Deduplicate: keep only the latest version per family ──
+        # Group by family (sonnet, opus, haiku)
+        family_map = {}  # family → {version_tuple: model_info}
+        other_models = []
+        for m in fetched_models:
+            mid = m['id']
+            match = re.match(r'claude-([a-z]+)-(\d+)-(\d+)', mid)
+            if match:
+                family = match.group(1)
+                ver = (int(match.group(2)), int(match.group(3)))
+                if family not in family_map or ver > family_map[family][0]:
+                    family_map[family] = (ver, m)
+            else:
+                other_models.append(m)
+
+        # Build final list: latest per family, sorted by relevance
+        final_models = []
+        family_order = ['sonnet', 'opus', 'haiku']
+        for fam in family_order:
+            if fam in family_map:
+                final_models.append(family_map[fam][1])
+        # Add any families not in the default order
+        for fam, (ver, m) in family_map.items():
+            if fam not in family_order:
+                final_models.append(m)
+
+        # If nothing was found at all, provide known defaults
+        if not final_models:
+            final_models = [
+                {'id': 'sonnet', 'display_name': 'Sonnet (latest)'},
+                {'id': 'opus', 'display_name': 'Opus (latest)'},
+                {'id': 'haiku', 'display_name': 'Haiku (latest)'},
+            ]
+
+        ManimAPI._cached_models = final_models
+        return {'current_model': current_model, 'models': final_models}
+
+    # ── Streaming AI edit state ──
+    _ai_proc = None           # subprocess.Popen
+    _ai_output_buf = ''       # accumulated stdout+stderr (merged)
+    _ai_done = False
+    _ai_returncode = None
+    _ai_workspace = None      # isolated temp workspace directory
+    _ai_code_file = None      # path to scene.py inside workspace
+    _ai_prompt_file = None    # path to instruction file inside workspace
+    _ai_original_code = ''    # original code for comparison
+
+    def ai_edit_code(self, code, prompt, model='', selected_code='',
+                     selection_start=0, selection_end=0):
+        """Start a real Claude Code agent edit in an isolated workspace.
+        Claude Code runs with Read/Write/Edit tools and up to 10 turns,
+        working in a temp directory with a copy of the code.
+        Use ai_edit_poll() to read live output and the final result.
+
+        Args:
+            code:            The full source code.
+            prompt:          The instruction for Claude.
+            model:           Optional model alias (e.g. 'sonnet', 'opus', 'haiku').
+            selected_code:   If non-empty, only this portion should be edited.
+            selection_start: 1-based start line of the selection.
+            selection_end:   1-based end line of the selection.
+        """
+        import threading
+
+        # If a previous process is still running, kill it
+        self.ai_edit_cancel()
+
         try:
-            # Check if Claude Code is installed
             check_result = self.check_claude_code_installed()
             if not check_result.get('installed', False):
                 return {
@@ -3993,63 +4298,350 @@ class MyScene(Scene):
                     'message': 'Claude Code not installed. Install it with: npm install -g @anthropic-ai/claude-code'
                 }
 
-            print(f"[AI EDIT] Sending code to Claude Code...")
-            print(f"[AI EDIT] Prompt: {prompt}")
+            has_selection = bool(selected_code and selected_code.strip())
 
-            # Create temporary file with code
-            temp_file = os.path.join(PREVIEW_DIR, f'temp_ai_edit_{int(time.time())}.py')
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            print(f"[AI EDIT] Starting Claude Code agent edit...")
+            print(f"[AI EDIT] Prompt: {prompt}")
+            print(f"[AI EDIT] Selection: {'lines ' + str(selection_start) + '-' + str(selection_end) if has_selection else 'whole file'}")
+            if model:
+                print(f"[AI EDIT] Model: {model}")
+
+            # ── Create isolated workspace (acts as a lightweight sandbox) ──
+            ts = int(time.time())
+            workspace = os.path.join(PREVIEW_DIR, f'ai_workspace_{ts}')
+            os.makedirs(workspace, exist_ok=True)
+
+            # Copy code into the workspace as scene.py
+            code_file = os.path.join(workspace, 'scene.py')
+            with open(code_file, 'w', encoding='utf-8') as f:
                 f.write(code)
 
-            # Use Claude Code to edit the file
-            # Command: claude -p "prompt" --output-format text < file
-            command = f'type "{temp_file}" | claude -p "{prompt}" --output-format text'
+            # ── Create CLAUDE.md — Claude Code auto-reads this on startup ──
+            claude_md = os.path.join(workspace, 'CLAUDE.md')
+            with open(claude_md, 'w', encoding='utf-8') as f:
+                f.write(
+                    "# Workspace Rules\n\n"
+                    "You are a **code editor**. Your only job is to edit `scene.py`.\n\n"
+                    "## Workflow\n"
+                    "1. Read `scene.py` with the Read tool\n"
+                    "2. Apply the requested changes using the Edit or Write tool\n"
+                    "3. Done — do NOT explain, do NOT create new files\n\n"
+                    "## Important\n"
+                    "- Always modify `scene.py` directly — never just describe changes\n"
+                    "- Use the Edit tool for targeted changes or Write tool for full rewrites\n"
+                    "- Keep all existing code that wasn't asked to change\n"
+                    "- This is a Manim (animation library) Python file\n"
+                )
 
-            result = subprocess.run(
+            print(f"[AI EDIT] Workspace: {workspace}")
+            print(f"[AI EDIT] Code file: {code_file} ({len(code)} chars)")
+
+            # ── Build the instruction prompt ──
+            if has_selection:
+                instruction = (
+                    f"Edit scene.py — ONLY lines {selection_start}-{selection_end}.\n\n"
+                    f"Selected code (lines {selection_start}-{selection_end}):\n"
+                    f"```\n{selected_code}\n```\n\n"
+                    f"Instruction: {prompt}"
+                )
+            else:
+                instruction = (
+                    f"Edit scene.py according to this instruction: {prompt}"
+                )
+
+            # Write instruction to a file (avoids Windows cmd.exe quoting issues)
+            prompt_file = os.path.join(workspace, 'instruction.txt')
+            with open(prompt_file, 'w', encoding='utf-8') as f:
+                f.write(instruction)
+
+            # ── Write system prompt file (avoids cmd.exe quoting issues) ──
+            sys_prompt_file = os.path.join(workspace, 'system_prompt.txt')
+            with open(sys_prompt_file, 'w', encoding='utf-8') as f:
+                f.write(
+                    "You are a code editor. Your ONLY task is to edit scene.py.\n"
+                    "ALWAYS use the Edit or Write tool to modify scene.py directly.\n"
+                    "Never just describe changes - apply them to the file.\n"
+                    "Do not create new files. Do not run commands.\n"
+                    "After editing, you are done."
+                )
+
+            # ── Build command — real Claude Code with full tool access ──
+            # No --max-turns: lets Claude finish complex edits without hitting limits
+            # --dangerously-skip-permissions: needed for non-interactive tool use
+            # --no-session-persistence:       don't save sessions to disk
+            # --append-system-prompt-file:    reinforces editing behavior
+            # stderr=STDOUT merges streams (Claude CLI on Windows writes to stderr)
+            model_flag = f' --model "{model}"' if model else ''
+            command = (
+                f'type "{prompt_file}" | claude -p'
+                f' --dangerously-skip-permissions'
+                f' --no-session-persistence'
+                f'{model_flag}'
+                f' --output-format text'
+                f' --append-system-prompt-file "{sys_prompt_file}"'
+            )
+
+            # Reset state
+            ManimAPI._ai_output_buf = ''
+            ManimAPI._ai_done = False
+            ManimAPI._ai_returncode = None
+            ManimAPI._ai_workspace = workspace
+            ManimAPI._ai_code_file = code_file
+            ManimAPI._ai_prompt_file = prompt_file
+            ManimAPI._ai_original_code = code
+
+            # Start the subprocess
+            env = get_clean_environment()
+            # Remove CLAUDECODE env var so claude CLI doesn't reject nested launch
+            env.pop('CLAUDECODE', None)
+            env.pop('CLAUDE_CODE_ENTRYPOINT', None)
+
+            print(f"[AI EDIT] Command: {command}")
+            ManimAPI._ai_proc = subprocess.Popen(
                 command,
                 shell=True,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Merge stderr → stdout
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=60,  # 60 second timeout for AI
-                cwd=BASE_DIR,
-                env=get_clean_environment()
+                bufsize=1,   # line-buffered for better streaming
+                cwd=workspace,  # Run in isolated workspace
+                env=env
             )
 
-            # Clean up temp file
-            try:
-                os.remove(temp_file)
-            except:
-                pass
+            # Background thread reads combined stdout+stderr for live streaming display
+            def _reader():
+                proc = ManimAPI._ai_proc
+                try:
+                    while True:
+                        ch = proc.stdout.read(1)
+                        if ch == '':
+                            break  # EOF
+                        ManimAPI._ai_output_buf += ch
+                except Exception as e:
+                    print(f"[AI EDIT] Reader error: {e}")
 
-            if result.returncode == 0:
-                edited_code = result.stdout.strip()
-                print(f"[AI EDIT] Success! Received {len(edited_code)} characters")
-                return {
-                    'status': 'success',
-                    'edited_code': edited_code,
-                    'message': 'Code edited successfully by Claude Code'
-                }
-            else:
-                error_msg = result.stderr or result.stdout or 'Unknown error'
-                print(f"[AI EDIT ERROR] {error_msg}")
-                return {
-                    'status': 'error',
-                    'message': f'Claude Code error: {error_msg}'
-                }
+                proc.wait()
+                ManimAPI._ai_returncode = proc.returncode
+                ManimAPI._ai_done = True
+                print(f"[AI EDIT] Process finished, code={proc.returncode}, {len(ManimAPI._ai_output_buf)} chars")
 
-        except subprocess.TimeoutExpired:
-            return {
-                'status': 'error',
-                'message': 'Claude Code timed out after 60 seconds. Try a simpler prompt.'
-            }
+            t = threading.Thread(target=_reader, daemon=True)
+            t.start()
+
+            return {'status': 'started', 'message': 'Claude is editing...'}
+
         except Exception as e:
             print(f"[AI EDIT ERROR] {e}")
-            return {
-                'status': 'error',
-                'message': str(e)
-            }
+            return {'status': 'error', 'message': str(e)}
+
+    def ai_edit_poll(self):
+        """Poll the streaming AI edit.  Returns current output and status.
+        Call repeatedly from JS (e.g. every 300ms) to update the UI live.
+
+        When done, reads the modified file from the workspace (Claude Code
+        edits the file directly using its Write/Edit tools).  Falls back to
+        extracting code from text output if the file wasn't modified.
+        """
+        import shutil
+
+        if ManimAPI._ai_proc is None:
+            return {'status': 'idle', 'output': '', 'done': True}
+
+        output = ManimAPI._ai_output_buf
+
+        if ManimAPI._ai_done:
+            code_file = ManimAPI._ai_code_file
+            workspace = ManimAPI._ai_workspace
+            original  = ManimAPI._ai_original_code
+
+            edited_code = None
+
+            # Log workspace contents for debugging
+            if workspace and os.path.exists(workspace):
+                try:
+                    ws_files = os.listdir(workspace)
+                    print(f"[AI EDIT] Workspace files after edit: {ws_files}")
+                except Exception:
+                    pass
+
+            # ── Strategy 1: Read the modified file from workspace ──
+            # Claude Code uses Write/Edit tools to modify scene.py directly
+            if code_file and os.path.exists(code_file):
+                try:
+                    with open(code_file, 'r', encoding='utf-8') as f:
+                        file_content = f.read()
+                    # Only use if the file was actually changed
+                    if file_content.strip() and file_content != original:
+                        edited_code = file_content
+                        print(f"[AI EDIT] Strategy 1: Got modified scene.py ({len(edited_code)} chars)")
+                    else:
+                        print(f"[AI EDIT] Strategy 1: scene.py unchanged ({len(file_content)} chars)")
+                except Exception as e:
+                    print(f"[AI EDIT] Strategy 1 failed: {e}")
+
+            # ── Strategy 2: Extract code from text output (fallback) ──
+            if not edited_code and output.strip():
+                extracted = self._extract_code_from_ai_response(output.strip())
+                if extracted:
+                    edited_code = extracted
+                    print(f"[AI EDIT] Strategy 2: Extracted code from text output ({len(edited_code)} chars)")
+                else:
+                    print(f"[AI EDIT] Strategy 2: Text output is not code ({len(output)} chars): {output[:200]}")
+
+            # ── Clean up workspace ──
+            if workspace and os.path.exists(workspace):
+                try:
+                    shutil.rmtree(workspace, ignore_errors=True)
+                    print(f"[AI EDIT] Cleaned up workspace: {workspace}")
+                except Exception:
+                    pass
+
+            if edited_code:
+                return {
+                    'status': 'success',
+                    'output': output,
+                    'edited_code': edited_code,
+                    'done': True,
+                    'message': 'Done!'
+                }
+            else:
+                err = output or 'Unknown error (no output from Claude)'
+                return {
+                    'status': 'error',
+                    'output': output,
+                    'done': True,
+                    'message': f'Claude Code error: {err[:500]}'
+                }
+
+        # Still running — return partial output
+        return {
+            'status': 'streaming',
+            'output': output,
+            'done': False,
+            'chars': len(output)
+        }
+
+    def ai_edit_cancel(self):
+        """Cancel a running AI edit process and clean up workspace."""
+        import shutil
+
+        if ManimAPI._ai_proc and not ManimAPI._ai_done:
+            try:
+                ManimAPI._ai_proc.kill()
+                print("[AI EDIT] Process cancelled by user")
+            except Exception:
+                pass
+        ManimAPI._ai_proc = None
+        ManimAPI._ai_done = False
+        ManimAPI._ai_output_buf = ''
+        ManimAPI._ai_returncode = None
+        ManimAPI._ai_original_code = ''
+        # Clean up workspace directory
+        workspace = ManimAPI._ai_workspace
+        if workspace and os.path.exists(workspace):
+            try:
+                shutil.rmtree(workspace, ignore_errors=True)
+                print(f"[AI EDIT] Cleaned up workspace: {workspace}")
+            except Exception:
+                pass
+        ManimAPI._ai_workspace = None
+        ManimAPI._ai_code_file = None
+        ManimAPI._ai_prompt_file = None
+        return {'status': 'cancelled'}
+
+    @staticmethod
+    def _extract_code_from_ai_response(raw):
+        """Strip markdown fences, 'Here is...' preamble, trailing explanations.
+        Returns only the Python code, or None if response is not code."""
+        import re
+        text = raw.strip()
+
+        if not text:
+            return None
+
+        # 1) If wrapped in ```python ... ``` or ``` ... ```, extract the content
+        fence_match = re.search(r'```(?:python)?\s*\n(.*?)```', text, re.DOTALL)
+        if fence_match:
+            text = fence_match.group(1).strip()
+            return text if text else None
+
+        # 2) Quick sanity check: does the response look like code at all?
+        #    If it has common Python patterns it's likely code
+        code_indicators = [
+            r'^\s*(from|import)\s+',
+            r'^\s*class\s+\w+',
+            r'^\s*def\s+\w+',
+            r'^\s*self\.',
+            r'^\s*#',
+        ]
+        has_code = any(
+            re.search(pat, text, re.MULTILINE)
+            for pat in code_indicators
+        )
+        if not has_code:
+            # Response doesn't contain any Python code — likely conversational text
+            print(f"[AI EDIT] Response doesn't look like code, raw length={len(text)}")
+            return None
+
+        # 3) Strip common preamble lines
+        lines = text.split('\n')
+        start = 0
+        preamble_patterns = [
+            r'^here\s+(is|are)',
+            r'^sure[,!.]',
+            r'^i\'ve\s+(updated|modified|edited|fixed|changed)',
+            r'^the\s+(updated|modified|edited|fixed|new)',
+            r'^below\s+is',
+            r'^this\s+(code|version|script)',
+            r'^certainly',
+            r'^of\s+course',
+            r'^it\s+looks\s+like',
+            r'^i\s+need',
+            r'^please\s+',
+            r'^in\s+the\s+meantime',
+            r'^could\s+you',
+        ]
+        for i, line in enumerate(lines):
+            stripped = line.strip().lower()
+            if not stripped:
+                continue
+            if any(re.match(p, stripped) for p in preamble_patterns):
+                start = i + 1
+                # Skip blank lines after preamble
+                while start < len(lines) and not lines[start].strip():
+                    start += 1
+                continue
+            break
+
+        # 4) Strip common postamble from the end
+        end = len(lines)
+        postamble_patterns = [
+            r'^(this|the|i|note|key|these)\s+(code|change|modif|update|add|version|script|fix)',
+            r'^let\s+me\s+know',
+            r'^i\s+(hope|made|also|added)',
+            r'^explanation',
+            r'^changes?\s*(made|:)',
+            r'^what\s+(i|this)',
+            r'^\*\*',
+            r'^\d+\.\s+\*\*',
+            r'^please\s+approve',
+        ]
+        for i in range(len(lines) - 1, start - 1, -1):
+            stripped = lines[i].strip().lower()
+            if not stripped:
+                continue
+            if any(re.match(p, stripped) for p in postamble_patterns):
+                end = i
+                # Also skip blank lines before postamble
+                while end > start and not lines[end - 1].strip():
+                    end -= 1
+                continue
+            break
+
+        cleaned = '\n'.join(lines[start:end]).strip()
+        return cleaned if cleaned else None
 
     def get_python_path(self):
         """Return the venv Python executable path (used by the LSP client for type resolution)."""

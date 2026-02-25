@@ -219,6 +219,81 @@
             },
         });
 
+        // ─ go-to-definition (F12) ────────────────────────────────────────────
+        monaco.languages.registerDefinitionProvider('python', {
+            async provideDefinition(model, position) {
+                if (!client._initialized) return null;
+
+                let result;
+                try {
+                    result = await client.request('textDocument/definition', {
+                        textDocument: { uri: LSP_FILE_URI },
+                        position: { line: position.lineNumber - 1, character: position.column - 1 },
+                    }, 5000);
+                } catch (e) { return null; }
+
+                if (!result) return null;
+                const locations = Array.isArray(result) ? result : [result];
+
+                return locations
+                    .filter(loc => loc.uri === LSP_FILE_URI)
+                    .map(loc => ({
+                        uri:   model.uri,
+                        range: lspRangeToMonaco(loc.range),
+                    }));
+            },
+        });
+
+        // ─ peek / type definition (triggered by "Go to Type Definition") ─────
+        monaco.languages.registerTypeDefinitionProvider('python', {
+            async provideTypeDefinition(model, position) {
+                if (!client._initialized) return null;
+
+                let result;
+                try {
+                    result = await client.request('textDocument/typeDefinition', {
+                        textDocument: { uri: LSP_FILE_URI },
+                        position: { line: position.lineNumber - 1, character: position.column - 1 },
+                    }, 5000);
+                } catch (e) { return null; }
+
+                if (!result) return null;
+                const locations = Array.isArray(result) ? result : [result];
+
+                return locations
+                    .filter(loc => loc.uri === LSP_FILE_URI)
+                    .map(loc => ({
+                        uri:   model.uri,
+                        range: lspRangeToMonaco(loc.range),
+                    }));
+            },
+        });
+
+        // ─ find references (Shift+F12) ───────────────────────────────────────
+        monaco.languages.registerReferenceProvider('python', {
+            async provideReferences(model, position, context) {
+                if (!client._initialized) return null;
+
+                let result;
+                try {
+                    result = await client.request('textDocument/references', {
+                        textDocument: { uri: LSP_FILE_URI },
+                        position: { line: position.lineNumber - 1, character: position.column - 1 },
+                        context:  { includeDeclaration: context.includeDeclaration },
+                    }, 6000);
+                } catch (e) { return null; }
+
+                if (!result) return null;
+
+                return result
+                    .filter(loc => loc.uri === LSP_FILE_URI)
+                    .map(loc => ({
+                        uri:   model.uri,
+                        range: lspRangeToMonaco(loc.range),
+                    }));
+            },
+        });
+
         // ─ diagnostics (errors / warnings) ───────────────────────────────────
         client.on('textDocument/publishDiagnostics', (params) => {
             if (params.uri !== LSP_FILE_URI) return;
@@ -326,6 +401,15 @@
                                 parameterInformation: { labelOffsetSupport: true },
                             },
                             contextSupport: true,
+                        },
+                        definition: {
+                            dynamicRegistration: false,
+                        },
+                        typeDefinition: {
+                            dynamicRegistration: false,
+                        },
+                        references: {
+                            dynamicRegistration: false,
                         },
                         publishDiagnostics: {
                             relatedInformation: true,
