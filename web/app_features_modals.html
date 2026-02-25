@@ -7,7 +7,7 @@
             <h2>
                 <i class="fas fa-question-circle"></i>
                 Help & Usage Guide
-                <span id="helpModalVersion" style="font-size: 12px; color: var(--text-secondary); font-weight: normal; margin-left: 10px;">v1.1.0.0</span>
+                <span id="helpModalVersion" style="font-size: 12px; color: var(--text-secondary); font-weight: normal; margin-left: 10px;">v1.1.1.0</span>
             </h2>
             <button class="modal-close-btn" id="helpModalClose">
                 <i class="fas fa-times"></i>
@@ -27,6 +27,9 @@
                 </a>
                 <a href="#packages" style="padding: 6px 12px; background: rgba(168, 85, 247, 0.15); border-radius: 6px; color: #a855f7; text-decoration: none; font-size: 13px; font-weight: 600;">
                     <i class="fas fa-box"></i> Packages
+                </a>
+                <a href="#ai-edit" style="padding: 6px 12px; background: rgba(217, 70, 239, 0.15); border-radius: 6px; color: #d946ef; text-decoration: none; font-size: 13px; font-weight: 600;">
+                    <i class="fas fa-wand-magic-sparkles"></i> AI Edit
                 </a>
                 <a href="#troubleshooting" style="padding: 6px 12px; background: rgba(239, 68, 68, 0.15); border-radius: 6px; color: #ef4444; text-decoration: none; font-size: 13px; font-weight: 600;">
                     <i class="fas fa-wrench"></i> Troubleshooting
@@ -97,6 +100,38 @@
                         <span class="help-shortcut-name"><i class="fas fa-stop" style="color: #ef4444; margin-right: 6px;"></i>Stop Rendering</span>
                         <span class="help-shortcut-key">Esc</span>
                     </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-terminal" style="color: #a855f7; margin-right: 6px;"></i>Command Palette</span>
+                        <span class="help-shortcut-key">Ctrl+Shift+P</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-keyboard" style="color: #14b8a6; margin-right: 6px;"></i>Shortcuts Reference</span>
+                        <span class="help-shortcut-key">Ctrl+/</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-expand" style="color: #6366f1; margin-right: 6px;"></i>Zen Mode</span>
+                        <span class="help-shortcut-key">F11</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-bookmark" style="color: #f97316; margin-right: 6px;"></i>Toggle Bookmark</span>
+                        <span class="help-shortcut-key">Ctrl+Shift+K</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-wand-magic-sparkles" style="color: #d946ef; margin-right: 6px;"></i>AI Edit Panel</span>
+                        <span class="help-shortcut-key">Ctrl+Shift+E</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-arrow-right" style="color: #0ea5e9; margin-right: 6px;"></i>Go to Definition</span>
+                        <span class="help-shortcut-key">F12</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-search" style="color: #84cc16; margin-right: 6px;"></i>Find References</span>
+                        <span class="help-shortcut-key">Shift+F12</span>
+                    </div>
+                    <div class="help-shortcut-item" style="padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px;">
+                        <span class="help-shortcut-name"><i class="fas fa-camera" style="color: #06b6d4; margin-right: 6px;"></i>Screenshot Preview</span>
+                        <span class="help-shortcut-key">Ctrl+Shift+S</span>
+                    </div>
                 </div>
             </div>
 
@@ -134,6 +169,61 @@
                         <strong style="color: #8b5cf6; display: block; margin-bottom: 6px;">Theme Switcher</strong>
                         <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Dark/Light themes with smooth transitions - toggle with moon/sun button</p>
                     </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(217, 70, 239, 0.1) 0%, rgba(217, 70, 239, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(217, 70, 239, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🤖</div>
+                        <strong style="color: #d946ef; display: block; margin-bottom: 6px;">AI Edit Panel</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Claude Code CLI integration - send prompts, review diffs, accept or reject AI edits</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(249, 115, 22, 0.1) 0%, rgba(249, 115, 22, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(249, 115, 22, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🎨</div>
+                        <strong style="color: #f97316; display: block; margin-bottom: 6px;">Color Picker</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Visual palette of all Manim color constants - click to insert at cursor</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(14, 165, 233, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(14, 165, 233, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🗂️</div>
+                        <strong style="color: #0ea5e9; display: block; margin-bottom: 6px;">Scene Outline</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Tree view of all classes and methods in your code with click-to-navigate</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, rgba(20, 184, 166, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(20, 184, 166, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">📜</div>
+                        <strong style="color: #14b8a6; display: block; margin-bottom: 6px;">Render History</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Persistent log of all renders with replay, open file location, and delete</p>
+                    </div>
+                    <div style="padding: 16px; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%); border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🧘</div>
+                        <strong style="color: #6366f1; display: block; margin-bottom: 6px;">Zen Mode</strong>
+                        <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">Distraction-free fullscreen editing (F11) - hides all panels except the editor</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Edit Panel -->
+            <div class="help-section" id="ai-edit">
+                <h3><i class="fas fa-wand-magic-sparkles" style="color: #d946ef;"></i> AI Edit Panel <span style="background: #d946ef; color: white; font-size: 10px; padding: 2px 8px; border-radius: 12px; margin-left: 8px;">NEW</span></h3>
+                <p style="color: var(--text-secondary); margin-bottom: 12px;">Use Claude Code CLI to intelligently edit your Manim code with natural language prompts:</p>
+                <div style="display: grid; gap: 10px;">
+                    <div style="padding: 12px; background: rgba(217, 70, 239, 0.1); border-left: 3px solid #d946ef; border-radius: 4px;">
+                        <strong style="color: #d946ef;"><i class="fas fa-paper-plane"></i> Send a Prompt</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">Open the panel with <strong>Ctrl+Shift+E</strong>, type what you want changed, and press Enter. Claude generates the edits.</p>
+                    </div>
+                    <div style="padding: 12px; background: rgba(99, 102, 241, 0.1); border-left: 3px solid #6366f1; border-radius: 4px;">
+                        <strong style="color: #6366f1;"><i class="fas fa-code-compare"></i> Review the Diff</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">A side-by-side diff editor shows exactly what changed. You can edit the result before accepting.</p>
+                    </div>
+                    <div style="padding: 12px; background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; border-radius: 4px;">
+                        <strong style="color: #10b981;"><i class="fas fa-check"></i> Accept or Reject</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">Click Accept to apply changes to the editor (auto-saved), or Reject to discard and try again.</p>
+                    </div>
+                    <div style="padding: 12px; background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; border-radius: 4px;">
+                        <strong style="color: #f59e0b;"><i class="fas fa-bug"></i> Quick Fix Errors</strong>
+                        <p style="margin: 6px 0 0 0; color: var(--text-secondary); font-size: 13px;">Click the AI fix button in the Code Errors panel to send diagnostics directly to Claude for fixing.</p>
+                    </div>
+                </div>
+                <div style="margin-top: 12px; padding: 10px; background: rgba(217, 70, 239, 0.08); border-radius: 6px;">
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">
+                        <i class="fas fa-info-circle" style="color: #d946ef;"></i>
+                        Requires <strong>Claude Code CLI</strong> installed on your system. The panel will show a setup message if not found.
+                    </p>
                 </div>
             </div>
 
@@ -347,10 +437,13 @@ class AudioExample(Scene):
                 </div>
                 <ul style="margin: 0; padding-left: 20px; color: var(--text-secondary); line-height: 1.8;">
                     <li>Use <strong>Preview (F6)</strong> frequently while developing to catch errors early</li>
-                    <li>The <strong>Packages tab</strong> makes it easy to manage dependencies without touching the terminal</li>
-                    <li><strong>Drag & drop</strong> files directly into the Assets tab for instant uploads</li>
+                    <li>Press <strong>Ctrl+Shift+P</strong> to open the Command Palette for quick access to any action</li>
+                    <li>Use <strong>Ctrl+Shift+E</strong> to open the AI Edit panel and let Claude help fix or improve your code</li>
+                    <li>Press <strong>F12</strong> on any symbol to jump to its definition, or <strong>Shift+F12</strong> to find all references</li>
+                    <li>Toggle <strong>Zen Mode (F11)</strong> for distraction-free coding sessions</li>
+                    <li>Use the <strong>Color Picker</strong> button to browse and insert Manim color constants</li>
+                    <li><strong>Drag & drop</strong> .py files directly onto the editor to open them</li>
                     <li>Save frequently with <strong>Ctrl+S</strong> - autosave creates backups automatically</li>
-                    <li>Check the <strong>System tab</strong> for Python and Manim version information</li>
                 </ul>
             </div>
 
@@ -361,17 +454,17 @@ class AudioExample(Scene):
                     Manim Animation Studio
                 </h4>
                 <p style="margin: 0; color: var(--text-secondary); font-size: 14px;">
-                    Professional Edition v1.1.0.0
+                    Professional Edition v1.1.1.0
                 </p>
                 <p style="margin: 8px 0 0 0; color: var(--text-secondary); font-size: 13px;">
                     A professional desktop environment for creating<br>mathematical animations with Manim Community Edition
                 </p>
                 <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
                     <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">
-                        <i class="fas fa-rocket" style="color: #3b82f6;"></i> What's New in v1.1.0.0:
+                        <i class="fas fa-rocket" style="color: #3b82f6;"></i> What's New in v1.1.1.0:
                     </p>
                     <p style="margin: 8px 0 0 0; color: var(--text-secondary); font-size: 12px;">
-                        🎯 Help/usage guide version sync • 🧭 Terminal scrollbar behavior improvements • 🔧 Build stability and size profile tuning
+                        🤖 AI Edit Panel (Claude Code) • 🎨 Manim Color Picker • 🗂️ Scene Outline • 📜 Render History • 🧘 Zen Mode • 🔖 Bookmarks • 🔍 Go-to-Definition & References • ⌨️ Command Palette & Shortcuts Modal
                     </p>
                 </div>
             </div>
