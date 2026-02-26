@@ -27,11 +27,13 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 - Customizable font size and themes
 
 ### 🤖 **AI Edit Panel**
-- **Claude Code CLI integration** for AI-assisted code editing
-- Send your code with a prompt to Claude for intelligent edits
-- Side-by-side diff review — Accept or Reject changes
-- Model selector with auto-detection of available models
-- Fix code errors with one click from the diagnostics panel
+- **Dual AI Provider** — choose between **Claude Code** and **OpenAI Codex** CLI for AI-assisted editing
+- Send your code with a natural language prompt for intelligent edits
+- **Web Search** toggle — let AI reference live web results while editing (both providers)
+- **Model selector** — pick from multiple models per provider (Opus 4.6, Sonnet 4.6, GPT-5.3 Codex, and more)
+- Side-by-side diff review — Accept or Reject changes with one click
+- Fix code errors directly from the diagnostics panel
+- **Premium glass-morphism UI** with animated toggle switch, gradient buttons, and slide-in panel
 
 ### ⚡ **Dual Render Modes**
 - **Quick Preview (F6)**: Fast, low-quality preview (480p, 15fps) for rapid iteration
@@ -414,6 +416,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **[Manim Community](https://www.manim.community/)** - The amazing animation engine
 - **[Monaco Editor](https://microsoft.github.io/monaco-editor/)** - VS Code's powerful editor
 - **[basedpyright](https://github.com/DetachHead/basedpyright)** - Python language server for IntelliSense
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's AI coding assistant CLI
+- **[OpenAI Codex CLI](https://github.com/openai/codex)** - OpenAI's AI coding agent
 - **[PyWebView](https://pywebview.flowrl.com/)** - Native Python desktop apps
 - **[xterm.js](https://xtermjs.org/)** - Terminal emulator for the web
 - **Font Awesome** - Beautiful icons
@@ -494,15 +498,22 @@ If you find this project useful, please consider giving it a star on GitHub!
 - ✨ **Zen Mode** (F11) — distraction-free fullscreen editing
 - ✨ **Editor Bookmarks** (Ctrl+Shift+K) — bookmark lines for quick navigation
 - ✨ **Drag-and-drop file opening** — drop .py files onto the editor to open them
-- ✨ **AI Edit Panel** — Claude Code CLI integration for AI-assisted code editing with diff review
+- ✨ **AI Edit Panel** — dual provider support with Claude Code and OpenAI Codex CLI
+- ✨ **AI Web Search** — let Claude Code or Codex reference live web results while editing your code
+- ✨ **AI Model Selector** — choose from Opus 4.6, Sonnet 4.6, GPT-5.3 Codex, GPT-5.2 Codex, and more
+- ✨ **Premium AI Edit UI** — glass-morphism panel, modern toggle switch, gradient buttons, slide-in animation
 - ✨ **Manim Color Picker** — visual palette of all Manim color constants with one-click insert
 - ✨ **Go-to-Definition** (F12), **Type Definition**, and **Find All References** (Shift+F12) via LSP
 - ✨ **Render History** — persistent log of all renders with replay, open, and delete
 - ✨ **Screenshot Save** — save preview frames with a native Save As dialog
 - 🐛 Fixed version mismatch between backend and UI display
 - 🐛 Video preview now served via HTTP instead of base64 (no size limits)
+- 🐛 Fixed CLI detection for Claude Code and Codex on Windows (`.cmd` wrapper support)
+- 🐛 Fixed subprocess piping for both AI providers on Windows
+- 🐛 Fixed ANSI escape code stripping in AI streaming output
 - 🔧 Replaced hardcoded `C:\Windows` paths with `%SystemRoot%` environment variable
 - 🔧 Cleaned up excessive debug logging in file save/open operations
+- 🔧 Added workspace instruction files (CLAUDE.md / AGENTS.md) for reliable AI file editing
 
 ### v1.1.0.0
 - ✨ **basedpyright IntelliSense** — real-time type checking, diagnostics, hover docs, and completions powered by a full LSP server

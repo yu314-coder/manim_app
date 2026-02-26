@@ -4908,6 +4908,9 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
     const promptInput = document.getElementById('aiEditPrompt');
     const sendBtn     = document.getElementById('aiEditSendBtn');
     const modelSelect = document.getElementById('aiEditModelSelect');
+    const providerSel = document.getElementById('aiEditProviderSelect');
+    const searchSection = document.getElementById('aiEditSearchSection');
+    const searchToggle  = document.getElementById('aiEditSearchToggle');
     const statusText  = document.getElementById('aiEditStatusText');
     const statusMsg   = document.getElementById('aiEditStatusMsg');
     const diffActions = document.getElementById('aiDiffActions');
@@ -4927,35 +4930,79 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
     let pollTimer = null;
     let panelVisible = false;
     let isStreaming = false;
+    let currentProvider = 'claude';  // 'claude' or 'codex'
 
-    // ── Fetch available models ──
-    (async function loadModels() {
+    // ── Provider switch logic ──
+    function getProvider() { return providerSel ? providerSel.value : 'claude'; }
+
+    function onProviderChange() {
+        currentProvider = getProvider();
+        const isCodex = currentProvider === 'codex';
+        // Update web search hint per provider
+        const searchHint = document.getElementById('aiEditSearchHint');
+        if (searchHint) searchHint.textContent = isCodex ? '(live results)' : '(WebSearch tool)';
+        // Reload models for the new provider
+        loadModelsForProvider(currentProvider);
+        // Persist choice
+        try { localStorage.setItem('ai_edit_provider', currentProvider); } catch(e) {}
+    }
+
+    // Restore saved provider
+    try {
+        const saved = localStorage.getItem('ai_edit_provider');
+        if (saved && providerSel) {
+            providerSel.value = saved;
+            currentProvider = saved;
+        }
+    } catch(e) {}
+    providerSel?.addEventListener('change', onProviderChange);
+
+    // ── Fetch available models per provider ──
+    async function loadModelsForProvider(provider) {
         try {
             if (typeof pywebview === 'undefined' || !pywebview.api) {
                 await new Promise(r => setTimeout(r, 2000));
             }
-            if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.get_claude_models) {
-                const result = await pywebview.api.get_claude_models();
-                const models = result.models || [];
-                const currentModel = result.current_model || '';
-                if (models.length > 0 && modelSelect) {
-                    while (modelSelect.options.length > 1) modelSelect.remove(1);
-                    for (const m of models) {
-                        const opt = document.createElement('option');
-                        opt.value = m.id;
-                        opt.textContent = m.display_name;
-                        modelSelect.appendChild(opt);
-                    }
+            if (typeof pywebview === 'undefined' || !pywebview.api) return;
+
+            let models = [];
+            let currentModel = '';
+
+            if (provider === 'codex') {
+                if (pywebview.api.get_codex_models) {
+                    const result = await pywebview.api.get_codex_models();
+                    models = result.models || [];
                 }
-                if (currentModel && modelSelect) {
-                    for (const opt of modelSelect.options) {
-                        if (opt.value === currentModel || opt.value.includes(currentModel) || currentModel.includes(opt.value)) {
-                            opt.selected = true; break;
-                        }
+            } else {
+                if (pywebview.api.get_claude_models) {
+                    const result = await pywebview.api.get_claude_models();
+                    models = result.models || [];
+                    currentModel = result.current_model || '';
+                }
+            }
+
+            if (modelSelect) {
+                while (modelSelect.options.length > 1) modelSelect.remove(1);
+                for (const m of models) {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.textContent = m.display_name;
+                    modelSelect.appendChild(opt);
+                }
+            }
+            if (currentModel && modelSelect) {
+                for (const opt of modelSelect.options) {
+                    if (opt.value === currentModel || opt.value.includes(currentModel) || currentModel.includes(opt.value)) {
+                        opt.selected = true; break;
                     }
                 }
             }
         } catch (e) { console.log('[AI EDIT] Model load:', e); }
+    }
+
+    // Initial load
+    (async function() {
+        onProviderChange();  // sets API key visibility + loads models
     })();
 
     // ── Toggle the AI Edit panel (like outline toggle) ──
@@ -5082,7 +5129,8 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
     function resetSendBtn() {
         isStreaming = false;
         sendBtn.disabled = false;
-        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to Claude';
+        const label = getProvider() === 'codex' ? 'Send to Codex' : 'Send to Claude';
+        sendBtn.innerHTML = `<i class="fas fa-paper-plane"></i> ${label}`;
         sendBtn.classList.remove('cancel-mode');
         statusText.style.display = 'none';
     }
@@ -5106,11 +5154,13 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
         sendBtn.innerHTML = '<i class="fas fa-stop"></i> Cancel';
         sendBtn.classList.add('cancel-mode');
         statusText.style.display = 'flex';
-        statusMsg.textContent = 'Starting Claude Code...';
         diffActions.style.display = 'none';
-        // Show streaming output box and clear it
         if (streamBox) streamBox.style.display = 'flex';
         if (streamOutput) streamOutput.textContent = '';
+
+        const provider = getProvider();
+        const providerLabel = provider === 'codex' ? 'Codex' : 'Claude Code';
+        statusMsg.textContent = `Starting ${providerLabel}...`;
 
         try {
             const chosenModel = modelSelect ? modelSelect.value : '';
@@ -5125,10 +5175,19 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
                 selEnd   = selection.endLineNumber;
             }
 
-            const res = await pywebview.api.ai_edit_code(
-                originalCode, prompt, chosenModel,
-                selectedCode, selStart, selEnd
-            );
+            let res;
+            const useSearch = searchToggle ? searchToggle.checked : false;
+            if (provider === 'codex') {
+                res = await pywebview.api.ai_edit_codex(
+                    originalCode, prompt, chosenModel, useSearch,
+                    selectedCode, selStart, selEnd
+                );
+            } else {
+                res = await pywebview.api.ai_edit_code(
+                    originalCode, prompt, chosenModel, useSearch,
+                    selectedCode, selStart, selEnd
+                );
+            }
 
             if (res.status === 'error') {
                 statusMsg.textContent = res.message || 'Failed';
@@ -5137,15 +5196,16 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
                 return;
             }
 
-            statusMsg.textContent = 'Claude is generating...';
+            statusMsg.textContent = `${providerLabel} is generating...`;
+
+            // Both providers use the same poll — Codex CLI also edits files in workspace
+            const pollFn = pywebview.api.ai_edit_poll;
 
             pollTimer = setInterval(async () => {
                 try {
-                    const poll = await pywebview.api.ai_edit_poll();
-                    // Update streaming output live
+                    const poll = await pollFn();
                     if (poll.output && streamOutput) {
                         streamOutput.textContent = poll.output;
-                        // Auto-scroll to bottom
                         streamOutput.scrollTop = streamOutput.scrollHeight;
                     }
                     if (poll.status === 'streaming') {
@@ -5161,7 +5221,6 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
                         } else {
                             statusMsg.textContent = poll.message || 'Failed';
                             toast(poll.message || 'AI edit failed', 'error');
-                            // Keep stream output visible so user can see what went wrong
                         }
                         resetSendBtn();
                     }
@@ -5220,7 +5279,7 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
             clearInterval(hookEditor);
             editor.addAction({
                 id: 'ai-edit-code',
-                label: 'Edit with AI (Claude)',
+                label: 'Edit with AI',
                 keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
                 contextMenuGroupId: '9_ai',
                 contextMenuOrder: 1,

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manim Studio - Professional Edition</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="ui-enhancements.css">
+    <link rel="stylesheet" href="ui-enhancements.css?v=2025-02-25-ai-edit">
     <link rel="stylesheet" href="monaco/vs/editor/editor.main.css">
     <link rel="stylesheet" href="app_features.css?v=2025-01-26-v13">
     <link rel="stylesheet" href="fontawesome/css/all.min.css">
@@ -728,6 +728,26 @@
             outline: none;
             cursor: pointer;
         }
+        .ai-edit-checkbox-label {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            gap: 2px;
+        }
+        .ai-edit-checkbox-label input[type="checkbox"] {
+            accent-color: #7c3aed;
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+        .ai-edit-checkbox-label:hover { color: var(--text-primary); }
+        .ai-edit-hint {
+            font-size: 10px;
+            opacity: 0.6;
+            margin-left: 4px;
+        }
         .ai-edit-send-btn {
             background: linear-gradient(135deg, #a78bfa, #7c3aed);
             color: #fff;
@@ -1099,6 +1119,14 @@
                                                 <label class="ai-edit-label">Prompt</label>
                                                 <textarea id="aiEditPrompt" class="ai-edit-textarea" rows="4" placeholder="Describe the edit you want Claude to make..."></textarea>
                                             </div>
+                                            <!-- Provider Selector -->
+                                            <div class="ai-edit-section">
+                                                <label class="ai-edit-label">Provider</label>
+                                                <select id="aiEditProviderSelect" class="ai-edit-select">
+                                                    <option value="claude">Claude Code</option>
+                                                    <option value="codex">OpenAI Codex</option>
+                                                </select>
+                                            </div>
                                             <!-- Model Selector -->
                                             <div class="ai-edit-section">
                                                 <label class="ai-edit-label">Model</label>
@@ -1106,9 +1134,23 @@
                                                     <option value="">Default</option>
                                                 </select>
                                             </div>
+                                            <!-- Web Search Toggle (both providers) -->
+                                            <div id="aiEditSearchSection" class="ai-edit-section">
+                                                <label class="ai-edit-toggle-label">
+                                                    <span class="ai-edit-toggle-text">
+                                                        <i class="fas fa-globe" style="color: var(--accent-info); margin-right: 6px;"></i>
+                                                        Web Search
+                                                    </span>
+                                                    <div class="ai-edit-toggle-switch">
+                                                        <input type="checkbox" id="aiEditSearchToggle">
+                                                        <span class="ai-edit-toggle-track"></span>
+                                                    </div>
+                                                    <span id="aiEditSearchHint" class="ai-edit-hint">(live results)</span>
+                                                </label>
+                                            </div>
                                             <!-- Send / Cancel -->
                                             <button id="aiEditSendBtn" class="ai-edit-send-btn">
-                                                <i class="fas fa-paper-plane"></i> Send to Claude
+                                                <i class="fas fa-paper-plane"></i> Send to AI
                                             </button>
                                             <!-- Status -->
                                             <div id="aiEditStatusText" class="ai-edit-status" style="display:none;">

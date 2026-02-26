@@ -4079,34 +4079,37 @@ class MyScene(Scene):
             }
 
     def check_claude_code_installed(self):
-        """Check if Claude Code CLI is installed"""
+        """Check if Claude Code CLI is installed.
+        Uses 'claude --help' with shell=True so Windows can find .cmd wrappers.
+        """
         try:
-            # Try to run claude --version
             result = subprocess.run(
-                ['claude', '--version'],
+                'claude --help',
                 capture_output=True,
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=5,
+                timeout=10,
+                shell=True,
                 env=get_clean_environment()
             )
-
-            if result.returncode == 0:
-                version = result.stdout.strip()
-                print(f"[CLAUDE CODE] Found: {version}")
+            output = (result.stdout or '').strip() + (result.stderr or '').strip()
+            # If we got any meaningful output, the CLI is installed
+            if output and ('claude' in output.lower() or 'usage' in output.lower()
+                          or 'anthropic' in output.lower() or len(output) > 20):
+                print(f"[CLAUDE CODE] Found (help output: {len(output)} chars)")
                 return {
                     'status': 'success',
                     'installed': True,
-                    'version': version
+                    'version': 'installed'
                 }
             else:
+                print(f"[CLAUDE CODE] Not detected (rc={result.returncode}, output={output[:100]})")
                 return {
                     'status': 'success',
                     'installed': False,
                     'message': 'Claude Code not found'
                 }
-
         except FileNotFoundError:
             print("[CLAUDE CODE] Not installed (command not found)")
             return {
@@ -4252,6 +4255,9 @@ class MyScene(Scene):
         # If nothing was found at all, provide known defaults
         if not final_models:
             final_models = [
+                {'id': 'claude-sonnet-4-6', 'display_name': 'Sonnet 4.6'},
+                {'id': 'claude-opus-4-6', 'display_name': 'Opus 4.6'},
+                {'id': 'claude-haiku-4-5', 'display_name': 'Haiku 4.5'},
                 {'id': 'sonnet', 'display_name': 'Sonnet (latest)'},
                 {'id': 'opus', 'display_name': 'Opus (latest)'},
                 {'id': 'haiku', 'display_name': 'Haiku (latest)'},
@@ -4269,9 +4275,10 @@ class MyScene(Scene):
     _ai_code_file = None      # path to scene.py inside workspace
     _ai_prompt_file = None    # path to instruction file inside workspace
     _ai_original_code = ''    # original code for comparison
+    _ai_codex_provider = False  # True when current edit is via Codex CLI
 
-    def ai_edit_code(self, code, prompt, model='', selected_code='',
-                     selection_start=0, selection_end=0):
+    def ai_edit_code(self, code, prompt, model='', search=False,
+                     selected_code='', selection_start=0, selection_end=0):
         """Start a real Claude Code agent edit in an isolated workspace.
         Claude Code runs with Read/Write/Edit tools and up to 10 turns,
         working in a temp directory with a copy of the code.
@@ -4281,6 +4288,7 @@ class MyScene(Scene):
             code:            The full source code.
             prompt:          The instruction for Claude.
             model:           Optional model alias (e.g. 'sonnet', 'opus', 'haiku').
+            search:          If True, enable WebSearch tool (--allowedTools).
             selected_code:   If non-empty, only this portion should be edited.
             selection_start: 1-based start line of the selection.
             selection_end:   1-based end line of the selection.
@@ -4337,16 +4345,18 @@ class MyScene(Scene):
             print(f"[AI EDIT] Code file: {code_file} ({len(code)} chars)")
 
             # ── Build the instruction prompt ──
+            search_hint = ("\nUse WebSearch to look up any documentation, APIs, "
+                           "or examples you need to complete this task." if search else "")
             if has_selection:
                 instruction = (
                     f"Edit scene.py — ONLY lines {selection_start}-{selection_end}.\n\n"
                     f"Selected code (lines {selection_start}-{selection_end}):\n"
                     f"```\n{selected_code}\n```\n\n"
-                    f"Instruction: {prompt}"
+                    f"Instruction: {prompt}{search_hint}"
                 )
             else:
                 instruction = (
-                    f"Edit scene.py according to this instruction: {prompt}"
+                    f"Edit scene.py according to this instruction: {prompt}{search_hint}"
                 )
 
             # Write instruction to a file (avoids Windows cmd.exe quoting issues)
@@ -4366,17 +4376,20 @@ class MyScene(Scene):
                 )
 
             # ── Build command — real Claude Code with full tool access ──
-            # No --max-turns: lets Claude finish complex edits without hitting limits
             # --dangerously-skip-permissions: needed for non-interactive tool use
             # --no-session-persistence:       don't save sessions to disk
             # --append-system-prompt-file:    reinforces editing behavior
-            # stderr=STDOUT merges streams (Claude CLI on Windows writes to stderr)
+            # shell=True: needed on Windows to find .cmd wrappers from npm
+            # stdin=PIPE: feed instruction directly (reliable cross-platform)
             model_flag = f' --model "{model}"' if model else ''
+            # --allowedTools WebSearch: auto-approve web search without prompts
+            search_flag = ' --allowedTools "WebSearch,WebFetch"' if search else ''
             command = (
-                f'type "{prompt_file}" | claude -p'
+                f'claude -p'
                 f' --dangerously-skip-permissions'
                 f' --no-session-persistence'
                 f'{model_flag}'
+                f'{search_flag}'
                 f' --output-format text'
                 f' --append-system-prompt-file "{sys_prompt_file}"'
             )
@@ -4399,16 +4412,24 @@ class MyScene(Scene):
             print(f"[AI EDIT] Command: {command}")
             ManimAPI._ai_proc = subprocess.Popen(
                 command,
-                shell=True,
+                shell=True,              # Needed to find .cmd on Windows
+                stdin=subprocess.PIPE,   # Feed instruction via stdin
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,  # Merge stderr → stdout
+                stderr=subprocess.STDOUT,
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                bufsize=1,   # line-buffered for better streaming
-                cwd=workspace,  # Run in isolated workspace
+                bufsize=1,
+                cwd=workspace,
                 env=env
             )
+
+            # Write instruction to stdin then close it
+            try:
+                ManimAPI._ai_proc.stdin.write(instruction)
+                ManimAPI._ai_proc.stdin.close()
+            except Exception as e:
+                print(f"[AI EDIT] Failed to write stdin: {e}")
 
             # Background thread reads combined stdout+stderr for live streaming display
             def _reader():
@@ -4445,11 +4466,14 @@ class MyScene(Scene):
         extracting code from text output if the file wasn't modified.
         """
         import shutil
+        import re as _re
 
         if ManimAPI._ai_proc is None:
             return {'status': 'idle', 'output': '', 'done': True}
 
-        output = ManimAPI._ai_output_buf
+        # Strip ANSI escape codes from output (Codex CLI uses colored output)
+        raw_output = ManimAPI._ai_output_buf
+        output = _re.sub(r'\x1b\[[0-9;]*m', '', raw_output)
 
         if ManimAPI._ai_done:
             code_file = ManimAPI._ai_code_file
@@ -4507,12 +4531,13 @@ class MyScene(Scene):
                     'message': 'Done!'
                 }
             else:
-                err = output or 'Unknown error (no output from Claude)'
+                provider_name = 'Codex' if ManimAPI._ai_codex_provider else 'Claude Code'
+                err = output or f'Unknown error (no output from {provider_name})'
                 return {
                     'status': 'error',
                     'output': output,
                     'done': True,
-                    'message': f'Claude Code error: {err[:500]}'
+                    'message': f'{provider_name} error: {err[:500]}'
                 }
 
         # Still running — return partial output
@@ -4538,6 +4563,7 @@ class MyScene(Scene):
         ManimAPI._ai_output_buf = ''
         ManimAPI._ai_returncode = None
         ManimAPI._ai_original_code = ''
+        ManimAPI._ai_codex_provider = False
         # Clean up workspace directory
         workspace = ManimAPI._ai_workspace
         if workspace and os.path.exists(workspace):
@@ -4550,6 +4576,241 @@ class MyScene(Scene):
         ManimAPI._ai_code_file = None
         ManimAPI._ai_prompt_file = None
         return {'status': 'cancelled'}
+
+    # ── OpenAI Codex CLI ─────────────────────────────────────────────────
+
+    def check_codex_installed(self):
+        """Check if OpenAI Codex CLI is installed (npm i -g @openai/codex).
+        Uses 'codex --help' with shell=True so Windows can find .cmd wrappers.
+        """
+        try:
+            result = subprocess.run(
+                'codex --help',
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                timeout=10,
+                shell=True,
+                env=get_clean_environment()
+            )
+            output = (result.stdout or '').strip() + (result.stderr or '').strip()
+            # If we got any meaningful output, the CLI is installed
+            if output and ('codex' in output.lower() or 'usage' in output.lower()
+                          or 'openai' in output.lower() or len(output) > 20):
+                print(f"[CODEX CLI] Found (help output: {len(output)} chars)")
+                return {'status': 'success', 'installed': True, 'version': 'installed'}
+            else:
+                print(f"[CODEX CLI] Not detected (rc={result.returncode}, output={output[:100]})")
+                return {'status': 'success', 'installed': False,
+                        'message': 'Codex CLI not found'}
+        except FileNotFoundError:
+            print("[CODEX CLI] Not installed (command not found)")
+            return {'status': 'success', 'installed': False,
+                    'message': 'Codex CLI not installed. Install with: npm install -g @openai/codex'}
+        except Exception as e:
+            print(f"[CODEX CLI ERROR] {e}")
+            return {'status': 'error', 'message': str(e), 'installed': False}
+
+    def ai_edit_codex(self, code, prompt, model='', search=False,
+                      selected_code='', selection_start=0, selection_end=0):
+        """Start an AI edit using the OpenAI Codex CLI (codex exec).
+        Works like Claude Code: edits scene.py in an isolated workspace.
+        Reuses ai_edit_poll() for polling — same workspace/file strategy.
+
+        Args:
+            code:            Full source code.
+            prompt:          The instruction for the AI.
+            model:           Codex model (e.g. 'o4-mini', 'gpt-4.1', 'codex-mini').
+            search:          If True, enable live web search (--search flag).
+            selected_code:   If non-empty, only this portion should be edited.
+            selection_start: 1-based start line of the selection.
+            selection_end:   1-based end line of the selection.
+        """
+        import threading
+
+        self.ai_edit_cancel()
+
+        try:
+            check_result = self.check_codex_installed()
+            if not check_result.get('installed', False):
+                return {
+                    'status': 'error',
+                    'message': 'Codex CLI not installed. Install it with: npm install -g @openai/codex'
+                }
+
+            has_selection = bool(selected_code and selected_code.strip())
+            use_model = (model or '').strip()
+
+            print(f"[AI EDIT CODEX] Starting Codex CLI edit...")
+            print(f"[AI EDIT CODEX] Prompt: {prompt}")
+            print(f"[AI EDIT CODEX] Selection: {'lines ' + str(selection_start) + '-' + str(selection_end) if has_selection else 'whole file'}")
+            if use_model:
+                print(f"[AI EDIT CODEX] Model: {use_model}")
+            if search:
+                print(f"[AI EDIT CODEX] Web search: enabled (live)")
+
+            # ── Create isolated workspace ──
+            ts = int(time.time())
+            workspace = os.path.join(PREVIEW_DIR, f'ai_workspace_codex_{ts}')
+            os.makedirs(workspace, exist_ok=True)
+
+            # Copy code into workspace as scene.py
+            code_file = os.path.join(workspace, 'scene.py')
+            with open(code_file, 'w', encoding='utf-8') as f:
+                f.write(code)
+
+            # ── Create AGENTS.md — Codex CLI auto-reads this on startup ──
+            agents_md = os.path.join(workspace, 'AGENTS.md')
+            with open(agents_md, 'w', encoding='utf-8') as f:
+                f.write(
+                    "# Workspace Rules\n\n"
+                    "You are a **code editor**. Your only job is to edit `scene.py` in this directory.\n\n"
+                    "## Workflow\n"
+                    "1. Read `scene.py` using shell commands\n"
+                    "2. Apply the requested changes\n"
+                    "3. Write the modified content back to `scene.py`\n"
+                    "4. Done\n\n"
+                    "## Allowed\n"
+                    "- Reading files (Get-Content, cat, etc.)\n"
+                    "- Writing/editing files (Set-Content, patch, etc.)\n"
+                    "- Listing directory contents\n\n"
+                    "## NOT Allowed\n"
+                    "- Do NOT run pip, python, manim, or any build/execution commands\n"
+                    "- Do NOT create any files other than editing `scene.py`\n"
+                    "- Do NOT give explanations — just edit the file\n\n"
+                    "## Context\n"
+                    "- `scene.py` is a Manim (Python math animation library) file\n"
+                    "- Keep all existing code that wasn't asked to change\n"
+                )
+
+            print(f"[AI EDIT CODEX] Workspace: {workspace}")
+            print(f"[AI EDIT CODEX] Code file: {code_file} ({len(code)} chars)")
+
+            # ── Build the instruction ──
+            search_hint = ("\nUse web search to look up any documentation, APIs, "
+                           "or examples you need to complete this task." if search else "")
+            if has_selection:
+                instruction = (
+                    f"Edit the file `scene.py` in this directory.\n"
+                    f"ONLY modify lines {selection_start}-{selection_end}.\n\n"
+                    f"Selected code (lines {selection_start}-{selection_end}):\n"
+                    f"```python\n{selected_code}\n```\n\n"
+                    f"Instruction: {prompt}\n\n"
+                    f"Read scene.py, apply the changes, and write it back. "
+                    f"Keep all existing code that wasn't asked to change.{search_hint}"
+                )
+            else:
+                instruction = (
+                    f"Edit the file `scene.py` in this directory.\n\n"
+                    f"Instruction: {prompt}\n\n"
+                    f"Read scene.py, apply the changes, and write it back. "
+                    f"Keep all existing code that wasn't asked to change. "
+                    f"This is a Manim (Python math animation library) file.{search_hint}"
+                )
+
+            # Save instruction for reference
+            prompt_file = os.path.join(workspace, 'instruction.txt')
+            with open(prompt_file, 'w', encoding='utf-8') as f:
+                f.write(instruction)
+
+            # ── Build command ──
+            # codex exec - : read prompt from stdin (we feed via PIPE)
+            # --yolo:         bypass all approval prompts (non-interactive)
+            # -m / --model:   select model
+            # -c key=val:     config override (web_search for live search)
+            # shell=True:     needed on Windows to find .cmd wrappers from npm
+            # NOTE: --search is NOT valid for `codex exec`, use -c instead
+            model_flag = f' -m "{use_model}"' if use_model else ''
+            search_flag = ' -c web_search=live' if search else ''
+            command = f'codex exec - --yolo{model_flag}{search_flag}'
+
+            # Reset state — reuse same fields as Claude Code
+            ManimAPI._ai_output_buf = ''
+            ManimAPI._ai_done = False
+            ManimAPI._ai_returncode = None
+            ManimAPI._ai_workspace = workspace
+            ManimAPI._ai_code_file = code_file
+            ManimAPI._ai_prompt_file = prompt_file
+            ManimAPI._ai_original_code = code
+            ManimAPI._ai_codex_provider = True
+
+            # Start the subprocess — feed instruction via stdin PIPE
+            env = get_clean_environment()
+
+            print(f"[AI EDIT CODEX] Command: {command}")
+            ManimAPI._ai_proc = subprocess.Popen(
+                command,
+                shell=True,              # Needed to find .cmd on Windows
+                stdin=subprocess.PIPE,   # Feed instruction via stdin
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                bufsize=1,
+                cwd=workspace,
+                env=env
+            )
+
+            # Write instruction to stdin then close it
+            try:
+                ManimAPI._ai_proc.stdin.write(instruction)
+                ManimAPI._ai_proc.stdin.close()
+            except Exception as e:
+                print(f"[AI EDIT CODEX] Failed to write stdin: {e}")
+
+            # Background thread reads output for live streaming display
+            def _reader():
+                proc = ManimAPI._ai_proc
+                try:
+                    while True:
+                        ch = proc.stdout.read(1)
+                        if ch == '':
+                            break  # EOF
+                        ManimAPI._ai_output_buf += ch
+                except Exception as e:
+                    print(f"[AI EDIT CODEX] Reader error: {e}")
+
+                proc.wait()
+                ManimAPI._ai_returncode = proc.returncode
+                ManimAPI._ai_done = True
+                print(f"[AI EDIT CODEX] Process finished, code={proc.returncode}, {len(ManimAPI._ai_output_buf)} chars")
+
+            t = threading.Thread(target=_reader, daemon=True)
+            t.start()
+
+            return {'status': 'started', 'message': 'Codex is editing...'}
+
+        except Exception as e:
+            print(f"[AI EDIT CODEX ERROR] {e}")
+            return {'status': 'error', 'message': str(e)}
+
+    def get_codex_models(self):
+        """Return a static list of models available for Codex CLI.
+        Includes ChatGPT-authenticated models and API-available models.
+        """
+        return {
+            'models': [
+                # ── Latest / Recommended ──
+                {'id': 'gpt-5.3-codex', 'display_name': 'GPT-5.3 Codex'},
+                {'id': 'gpt-5.3-codex-spark', 'display_name': 'GPT-5.3 Codex Spark'},
+                {'id': 'gpt-5.2-codex', 'display_name': 'GPT-5.2 Codex'},
+                {'id': 'gpt-5.2', 'display_name': 'GPT-5.2'},
+                # ── GPT-5.1 series ──
+                {'id': 'gpt-5.1-codex-max', 'display_name': 'GPT-5.1 Codex Max'},
+                {'id': 'gpt-5.1-codex-mini', 'display_name': 'GPT-5.1 Codex Mini'},
+                {'id': 'gpt-5.1', 'display_name': 'GPT-5.1'},
+                # ── GPT-5 series ──
+                {'id': 'gpt-5-codex', 'display_name': 'GPT-5 Codex'},
+                {'id': 'gpt-5-codex-mini', 'display_name': 'GPT-5 Codex Mini'},
+                {'id': 'gpt-5-mini', 'display_name': 'GPT-5 Mini'},
+                {'id': 'gpt-5-nano', 'display_name': 'GPT-5 Nano'},
+                # ── Open Source (via Ollama / local) ──
+                {'id': 'gpt-oss:120b', 'display_name': 'GPT-OSS 120B (Local)'},
+                {'id': 'gpt-oss:20b', 'display_name': 'GPT-OSS 20B (Local)'},
+            ]
+        }
 
     @staticmethod
     def _extract_code_from_ai_response(raw):

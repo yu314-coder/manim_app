@@ -534,3 +534,418 @@ progress::-moz-progress-bar {
 .panel:hover {
     box-shadow: var(--shadow-lg), 0 0 30px rgba(59, 130, 246, 0.15);
 }
+
+/* ============================================================================
+   AI EDIT PANEL — Premium Modernization
+   ============================================================================ */
+
+/* --- Slide-in Animation --- */
+@keyframes aiSlideInRight {
+    from { opacity: 0; transform: translateX(24px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes aiPulseGlow {
+    0%, 100% { box-shadow: 0 0 8px rgba(99, 102, 241, 0.3); }
+    50%      { box-shadow: 0 0 18px rgba(99, 102, 241, 0.55); }
+}
+
+@keyframes aiTerminalBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0; }
+}
+
+/* --- 1. Panel Container — Glass Effect --- */
+.ai-edit-panel {
+    background: rgba(18, 18, 26, 0.88) !important;
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border-left: 1px solid rgba(99, 102, 241, 0.15) !important;
+    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.35),
+                inset 1px 0 0 rgba(255, 255, 255, 0.04);
+    animation: aiSlideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* --- 2. Panel Header — Gradient Glass Bar --- */
+.ai-edit-panel-header {
+    background: linear-gradient(180deg, rgba(26, 26, 40, 0.98) 0%, rgba(18, 18, 26, 0.95) 100%) !important;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    padding: 10px 12px !important;
+}
+
+.ai-edit-panel-title {
+    font-size: 12.5px !important;
+    letter-spacing: 0.3px;
+}
+
+.ai-edit-panel-title i {
+    color: var(--accent-secondary) !important;
+    filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.5));
+    font-size: 12px !important;
+}
+
+/* --- 3. Context Indicator — Pill Badge --- */
+.ai-edit-context {
+    border-radius: var(--radius-full) !important;
+    background: linear-gradient(135deg, rgba(26, 26, 40, 0.7), rgba(36, 36, 58, 0.4)) !important;
+    border: 1px solid var(--border-subtle);
+    padding: 7px 12px !important;
+    transition: all var(--transition-normal);
+}
+
+.ai-edit-context:hover {
+    border-color: var(--border-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.ai-edit-context i {
+    font-size: 11px !important;
+    filter: drop-shadow(0 0 4px rgba(97, 175, 239, 0.4));
+}
+
+.ai-edit-context.has-selection {
+    border-color: rgba(229, 192, 123, 0.25);
+    background: linear-gradient(135deg, rgba(229, 192, 123, 0.08), rgba(36, 36, 58, 0.4)) !important;
+}
+
+/* --- 4. Form Elements — Premium Inputs --- */
+.ai-edit-label {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.8px !important;
+    color: var(--text-dim) !important;
+    margin-bottom: 2px;
+}
+
+.ai-edit-textarea {
+    background: linear-gradient(180deg, rgba(26, 26, 40, 0.6), rgba(18, 18, 26, 0.8)) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 10px 12px !important;
+    font-size: 12.5px !important;
+    line-height: 1.6 !important;
+    transition: all var(--transition-normal);
+    box-shadow: var(--shadow-inner);
+}
+
+.ai-edit-textarea:focus {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12),
+                var(--shadow-inner) !important;
+    transform: translateY(-1px);
+    background: linear-gradient(180deg, rgba(30, 30, 48, 0.7), rgba(22, 22, 34, 0.9)) !important;
+}
+
+.ai-edit-textarea::placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.ai-edit-select {
+    background: linear-gradient(180deg, rgba(26, 26, 40, 0.6), rgba(18, 18, 26, 0.8)) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 8px 10px !important;
+    transition: all var(--transition-normal);
+    box-shadow: var(--shadow-inner);
+    cursor: pointer;
+}
+
+.ai-edit-select:hover {
+    border-color: var(--border-color);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08),
+                var(--shadow-inner);
+}
+
+.ai-edit-select:focus {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12),
+                var(--shadow-inner);
+    outline: none;
+}
+
+/* --- 5. Web Search — Modern Toggle Switch --- */
+.ai-edit-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 0;
+    transition: color var(--transition-fast);
+}
+
+.ai-edit-toggle-label:hover {
+    color: var(--text-primary);
+}
+
+.ai-edit-toggle-text {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.ai-edit-toggle-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.ai-edit-toggle-switch input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.ai-edit-toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    transition: all var(--transition-normal);
+    cursor: pointer;
+}
+
+.ai-edit-toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    transition: all var(--transition-normal);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.ai-edit-toggle-switch input:checked + .ai-edit-toggle-track {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.35);
+}
+
+.ai-edit-toggle-switch input:checked + .ai-edit-toggle-track::after {
+    transform: translateX(16px);
+    background: var(--text-bright);
+}
+
+.ai-edit-toggle-switch input:focus-visible + .ai-edit-toggle-track {
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.ai-edit-hint {
+    font-size: 10px !important;
+    opacity: 0.5 !important;
+    font-style: italic;
+    letter-spacing: 0.2px;
+}
+
+/* --- 6. Send Button — Premium CTA --- */
+.ai-edit-send-btn {
+    background: var(--gradient-primary) !important;
+    border: none !important;
+    border-radius: var(--radius-md) !important;
+    padding: 10px 16px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-normal) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.ai-edit-send-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.ai-edit-send-btn:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: var(--shadow-lg), var(--shadow-glow) !important;
+    opacity: 1 !important;
+}
+
+.ai-edit-send-btn:hover:not(:disabled)::before {
+    opacity: 1;
+}
+
+.ai-edit-send-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.ai-edit-send-btn:hover:not(:disabled) i {
+    transform: translateX(2px);
+}
+
+.ai-edit-send-btn i {
+    transition: transform var(--transition-normal);
+}
+
+.ai-edit-send-btn:disabled {
+    opacity: 0.45 !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+}
+
+.ai-edit-send-btn.cancel-mode {
+    background: var(--gradient-error) !important;
+    animation: aiPulseGlow 2s ease-in-out infinite;
+}
+
+.ai-edit-send-btn.cancel-mode:hover:not(:disabled) {
+    box-shadow: var(--shadow-lg), 0 0 20px rgba(239, 68, 68, 0.4) !important;
+}
+
+/* --- 7. Status Indicator — Animated --- */
+.ai-edit-status {
+    padding: 8px 12px !important;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(168, 85, 247, 0.04));
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(99, 102, 241, 0.1);
+    animation: fadeIn var(--transition-normal) ease;
+}
+
+.ai-edit-status i {
+    color: var(--accent-secondary) !important;
+    filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.5));
+}
+
+/* --- 8. Streaming Output — Terminal Style --- */
+.ai-edit-stream-output {
+    background: rgba(10, 10, 15, 0.9) !important;
+    border: 1px solid rgba(99, 102, 241, 0.12) !important;
+    border-left: 3px solid var(--accent-primary) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 10px 12px !important;
+    box-shadow: var(--shadow-inner), 0 2px 8px rgba(0, 0, 0, 0.3);
+    font-size: 11px !important;
+    line-height: 1.5 !important;
+    color: var(--accent-emerald) !important;
+    animation: fadeIn var(--transition-normal) ease;
+}
+
+/* Custom scrollbar for stream output */
+.ai-edit-stream-output::-webkit-scrollbar {
+    width: 5px;
+}
+
+.ai-edit-stream-output::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ai-edit-stream-output::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.3);
+    border-radius: var(--radius-full);
+}
+
+.ai-edit-stream-output::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.5);
+}
+
+/* --- 9. Diff Review Section — Card Style --- */
+.ai-edit-diff-actions {
+    background: linear-gradient(145deg, rgba(36, 36, 58, 0.3), rgba(26, 26, 40, 0.3)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 12px !important;
+    gap: 10px !important;
+    box-shadow: var(--shadow-sm);
+    animation: fadeIn var(--transition-slow) ease;
+}
+
+.ai-edit-diff-header {
+    font-size: 12.5px !important;
+}
+
+.ai-edit-diff-header i {
+    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.5));
+}
+
+.ai-edit-diff-stats {
+    font-size: 11px !important;
+    color: var(--text-dim) !important;
+    padding: 4px 0;
+}
+
+.ai-edit-accept-btn {
+    background: var(--gradient-success) !important;
+    border: none !important;
+    border-radius: var(--radius-md) !important;
+    padding: 9px 16px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.3px;
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-normal) !important;
+}
+
+.ai-edit-accept-btn:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: var(--shadow-lg), 0 0 20px rgba(34, 197, 94, 0.35) !important;
+    opacity: 1 !important;
+}
+
+.ai-edit-accept-btn:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.ai-edit-reject-btn {
+    background: linear-gradient(180deg, rgba(36, 36, 58, 0.5), rgba(26, 26, 40, 0.5)) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 9px 16px !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px;
+    transition: all var(--transition-normal) !important;
+    box-shadow: var(--shadow-sm);
+}
+
+.ai-edit-reject-btn:hover {
+    transform: translateY(-2px) scale(1.02);
+    border-color: rgba(239, 68, 68, 0.3) !important;
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.08), rgba(36, 36, 58, 0.5)) !important;
+    box-shadow: var(--shadow-md), 0 0 12px rgba(239, 68, 68, 0.15) !important;
+}
+
+.ai-edit-reject-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* --- Panel Body Scrollbar --- */
+.ai-edit-panel-body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.ai-edit-panel-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ai-edit-panel-body::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: var(--radius-full);
+}
+
+.ai-edit-panel-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.4);
+}
+
+/* --- Section Dividers --- */
+.ai-edit-panel-body .ai-edit-section + .ai-edit-section {
+    padding-top: 2px;
+}
