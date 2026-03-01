@@ -865,6 +865,10 @@
                         <input type="checkbox" id="pkg-pillow">
                         <span class="package-name">pillow - Image processing</span>
                     </div>
+                    <div class="package-item">
+                        <input type="checkbox" id="pkg-narrate">
+                        <span class="package-name">narrate[kokoro] - Text-to-speech narration with Kokoro AI (~310MB)</span>
+                    </div>
                 </div>
             </div>
 
@@ -1032,6 +1036,7 @@
             if (document.getElementById('pkg-scipy').checked) optionalPackages.push('scipy');
             if (document.getElementById('pkg-matplotlib').checked) optionalPackages.push('matplotlib');
             if (document.getElementById('pkg-pillow').checked) optionalPackages.push('pillow');
+            if (document.getElementById('pkg-narrate').checked) optionalPackages.push('narrate[kokoro]');
 
             // Show progress
             document.getElementById('progressSection').style.display = 'block';

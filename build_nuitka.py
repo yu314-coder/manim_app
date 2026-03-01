@@ -3,6 +3,13 @@
 Nuitka Build Script for Manim Studio
 Compiles the application into a standalone executable with all dependencies
 Based on 2025 best practices for PyWebView + Nuitka
+
+Build produces ONE exe that includes all feature modules (ai_edit, narration_addon).
+
+Feature modules included automatically via Python import chain:
+  app.py → ai_edit.py, narration_addon.py
+Web assets included via --include-data-dir=web=web:
+  web/ai-edit.{css,js}, web/narration.{css,js}
 """
 
 import os
@@ -201,8 +208,8 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
         f"--output-filename={APP_NAME}.exe",
         "--company-name=ManimStudio",
         "--product-name=Manim Studio",
-        "--file-version=1.1.0.0",
-        "--product-version=1.1.0.0",
+        "--file-version=1.1.1.0",
+        "--product-version=1.1.1.0",
         "--file-description=Manim Animation Studio",
         "--copyright=Manim Studio 2025",
 

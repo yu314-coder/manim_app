@@ -431,6 +431,40 @@ window.registerManimCompletions = function (monaco) {
         },
     });
 
+    // ── Narration completion (built-in feature) ──────────────────────────────
+    // Shows narrate() snippet for Kokoro TTS narration.
+    monaco.languages.registerCompletionItemProvider('python', {
+        triggerCharacters: ['n'],
+
+        provideCompletionItems(model, position) {
+            const line   = model.getLineContent(position.lineNumber);
+            const before = line.substring(0, position.column - 1);
+
+            // Trigger when typing narrate at start-of-line / after whitespace
+            if (/^\s*n$/i.test(before) || /^\s*na/i.test(before) || /^\s*narr/i.test(before)) {
+                return {
+                    suggestions: [{
+                        label:           'narrate',
+                        kind:            K.Snippet,
+                        insertText:      'narrate("${0:Your narration text}")',
+                        insertTextRules: SNIP,
+                        documentation:   'Add TTS narration. Text in quotes will be spoken by Kokoro TTS and merged with the rendered video.',
+                        detail:          'Narration (Kokoro TTS)',
+                        sortText:        '0_narrate',
+                        filterText:      'narrate narration',
+                        range: {
+                            startLineNumber: position.lineNumber,
+                            endLineNumber:   position.lineNumber,
+                            startColumn:     Math.max(1, position.column - before.trimStart().length),
+                            endColumn:       position.column,
+                        },
+                    }],
+                };
+            }
+            return null;
+        },
+    });
+
     // ── Hover provider ────────────────────────────────────────────────────────
     const HOVER_DOCS = {
         Scene:                   '**Scene** — Base 2D scene. Override `construct(self)` to build your animation.',

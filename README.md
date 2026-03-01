@@ -35,6 +35,14 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 - Fix code errors directly from the diagnostics panel
 - **Premium glass-morphism UI** with animated toggle switch, gradient buttons, and slide-in panel
 
+### 🎙️ **Auto Narration (Kokoro TTS)**
+- Add `narrate("Your text here")` anywhere in your Manim code
+- TTS audio is **automatically generated and merged** with the video on render or preview
+- **Auto-subtitles (CC)** — WebVTT captions appear in the preview player
+- Powered by **Kokoro ONNX** (82M params, ~310MB model, auto-downloaded on first use)
+- Multiple voices — Heart, Bella, Nicole, Sarah, Adam, Michael, Emma, George
+- Optional `narrate[kokoro]` package available in the setup wizard
+
 ### ⚡ **Dual Render Modes**
 - **Quick Preview (F6)**: Fast, low-quality preview (480p, 15fps) for rapid iteration
 - **Final Render (F5)**: High-quality output up to 8K resolution at 120fps
@@ -190,6 +198,23 @@ python build_nuitka.py
    - Choose quality settings in the sidebar
    - Save your high-quality video when complete
    - **Output folder opens automatically** after saving
+
+### Adding Narration
+
+```python
+from manim import *
+
+class NarratedScene(Scene):
+    def construct(self):
+        narrate("Let me show you a circle.")
+        circle = Circle(color=BLUE)
+        self.play(Create(circle))
+        narrate("Now let's transform it into a square.")
+        self.play(Transform(circle, Square(color=RED)))
+        self.wait()
+```
+
+Press **F6** or **F5** — TTS audio is generated and merged with the video automatically. Subtitles appear in the preview player.
 
 ### Keyboard Shortcuts
 
@@ -418,6 +443,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **[basedpyright](https://github.com/DetachHead/basedpyright)** - Python language server for IntelliSense
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's AI coding assistant CLI
 - **[OpenAI Codex CLI](https://github.com/openai/codex)** - OpenAI's AI coding agent
+- **[Kokoro ONNX](https://github.com/thewh1teagle/kokoro-onnx)** - Fast TTS with Kokoro and ONNX Runtime
 - **[PyWebView](https://pywebview.flowrl.com/)** - Native Python desktop apps
 - **[xterm.js](https://xtermjs.org/)** - Terminal emulator for the web
 - **Font Awesome** - Beautiful icons
@@ -492,6 +518,10 @@ If you find this project useful, please consider giving it a star on GitHub!
 ## 📝 Changelog
 
 ### v1.1.1.0 (Latest)
+- ✨ **Auto Narration (Kokoro TTS)** — add `narrate("text")` calls in your code and TTS audio is automatically generated and merged with the video on render/preview
+- ✨ **Subtitles (CC)** — narrated videos get auto-generated WebVTT subtitles displayed in the preview player
+- ✨ **Kokoro model auto-download** — the ~310MB TTS model is downloaded automatically on first narration use
+- ✨ **`narrate` PyPI package** — optional `narrate[kokoro]` package available in the setup wizard for TTS support
 - ✨ **Scene Outline Panel** — tree view of all classes and methods in your code with click-to-navigate
 - ✨ **Command Palette** (Ctrl+Shift+P) — VS Code-style quick launcher for all actions
 - ✨ **Keyboard Shortcuts Modal** (Ctrl+/) — searchable reference of all shortcuts
