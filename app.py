@@ -30,9 +30,11 @@ APP_VERSION = "1.1.1.0"
 # Terminal emulation with PTY support
 try:
     import winpty
+    from winpty.enums import Backend as WinptyBackend
     WINPTY_AVAILABLE = True
 except ImportError:
     WINPTY_AVAILABLE = False
+    WinptyBackend = None
     print("[WARNING] pywinpty not available - terminal will use fallback mode")
 
 # ── Feature Mixins ──
@@ -1003,6 +1005,7 @@ app_state = {
     'window': None,
     'generated_files': [],  # Track files generated this session for cleanup
     'preview_files_to_cleanup': set(),  # Track preview MP4 files copied to assets (kept after app closes)
+    'terminal_backend': 'unknown',  # 'conpty', 'winpty', or 'subprocess'
     'terminal_process': None,  # Persistent cmd.exe session
     'terminal_thread': None,  # Thread for reading terminal output
     'terminal_output_buffer': [],  # Buffer for terminal output (gets cleared when sent to frontend)
@@ -1025,6 +1028,8 @@ app_state = {
     },
     'lsp_process': None,    # basedpyright-langserver subprocess
     'lsp_running': False,   # LSP stdout reader thread active flag
+    'current_editor_code': '',    # Latest code from main editor (for AI window)
+    'ai_edit_pending_code': None, # Code from AI window to apply in main editor
 }
 
 # Quality presets
@@ -1537,6 +1542,9 @@ class MyScene(Scene):
         try:
             import json
             from datetime import datetime
+
+            # Keep a copy for AI edit window to read
+            app_state['current_editor_code'] = code
 
             # Create autosave directory
             os.makedirs(AUTOSAVE_DIR, exist_ok=True)
@@ -3837,11 +3845,17 @@ class MyScene(Scene):
             print("[TERMINAL] Starting persistent cmd.exe session...")
 
             if WINPTY_AVAILABLE:
-                print("[TERMINAL] Using pywinpty PTY for real terminal emulation")
+                # Try ConPTY first (native Windows pseudo-console), fall back to legacy WinPTY
+                try:
+                    terminal_process = winpty.PTY(120, 30, backend=WinptyBackend.ConPTY)
+                    app_state['terminal_backend'] = 'conpty'
+                    print("[TERMINAL] Using ConPTY backend (native Windows pseudo-console)")
+                except Exception as e:
+                    print(f"[TERMINAL] ConPTY failed ({e}), falling back to WinPTY")
+                    terminal_process = winpty.PTY(120, 30, backend=WinptyBackend.WinPTY)
+                    app_state['terminal_backend'] = 'winpty'
 
                 # Spawn cmd.exe with PTY
-                # Use wider terminal to properly display progress bars
-                terminal_process = winpty.PTY(120, 30)  # 120 columns, 30 rows for better tqdm display
                 terminal_process.spawn('cmd.exe')
 
                 app_state['terminal_process'] = terminal_process
@@ -3920,6 +3934,7 @@ class MyScene(Scene):
             else:
                 # Fallback to subprocess.Popen
                 print("[TERMINAL] Using fallback subprocess mode (no PTY)")
+                app_state['terminal_backend'] = 'subprocess'
 
                 terminal_process = subprocess.Popen(
                     ['cmd.exe'],
@@ -4039,6 +4054,17 @@ class MyScene(Scene):
         except Exception as e:
             print(f"[TERMINAL RESIZE ERROR] {e}")
             return {'status': 'error', 'message': str(e)}
+
+    def get_terminal_info(self):
+        """Return terminal backend info for frontend configuration"""
+        import sys
+        build = getattr(sys.getwindowsversion(), 'build', 0) if hasattr(sys, 'getwindowsversion') else 0
+        return {
+            'status': 'success',
+            'backend': app_state.get('terminal_backend', 'unknown'),
+            'windows_build': build,
+            'is_running': app_state['terminal_process'] is not None
+        }
 
     def get_terminal_output(self):
         """Get all terminal output (for continuous display)"""
@@ -4674,6 +4700,62 @@ class MyScene(Scene):
                 'status': 'error',
                 'message': str(e)
             }
+
+    # ── AI Edit Multi-Window ──────────────────────────────────────────
+
+    def open_ai_edit_window(self):
+        """Open AI Edit in a separate popup window."""
+        try:
+            import webview
+            ai_html = os.path.join(BASE_DIR, 'web', 'ai-edit-window.html')
+            ai_window = webview.create_window(
+                'Manim Studio - AI Edit',
+                ai_html,
+                width=900,
+                height=700,
+                resizable=True,
+                js_api=self,
+                x=100, y=100
+            )
+            app_state['ai_edit_window'] = ai_window
+            print(f"[AI EDIT] Opened AI Edit window")
+            return {'status': 'success', 'message': 'AI Edit window opened'}
+        except Exception as e:
+            print(f"[ERROR] Failed to open AI Edit window: {e}")
+            return {'status': 'error', 'message': str(e)}
+
+    def close_ai_edit_window(self):
+        """Close the AI Edit popup window."""
+        win = app_state.get('ai_edit_window')
+        if win:
+            try:
+                win.destroy()
+                print("[AI EDIT] Window closed")
+            except Exception as e:
+                print(f"[AI EDIT] Close error: {e}")
+            app_state['ai_edit_window'] = None
+        return {'status': 'success'}
+
+    def get_editor_code(self):
+        """Get current editor code (for AI window to request code from main window)."""
+        code = app_state.get('current_editor_code', '')
+        if not code:
+            code = app_state.get('current_code', '')
+        return {'status': 'success', 'code': code}
+
+    def set_editor_code(self, code):
+        """Set editor code (AI window pushes edited code back to main window).
+        Main window JS polls ai_edit_pending_code to pick it up."""
+        app_state['ai_edit_pending_code'] = code
+        print(f"[AI EDIT] Pending code set ({len(code)} chars) — main window will apply it")
+        return {'status': 'success'}
+
+    def get_pending_ai_code(self):
+        """Check if AI window pushed code that the main editor should apply."""
+        code = app_state.pop('ai_edit_pending_code', None)
+        if code:
+            return {'status': 'success', 'code': code}
+        return {'status': 'none'}
 
     def get_setup_info(self):
         """Get setup information for virtual environment"""
@@ -6662,6 +6744,29 @@ def cleanup_on_exit():
         print(f"[OK] Cleaned up {cleanup_count} temp folder(s)")
     else:
         print("[OK] No temp folders to clean")
+
+    # Clean up old AI workspaces and images
+    from ai_edit import _cleanup_old_workspaces
+    try:
+        _cleanup_old_workspaces(max_age=0)  # Remove all on exit
+        print("[OK] AI workspaces cleaned up")
+    except Exception as e:
+        print(f"  Error cleaning AI workspaces: {e}")
+
+    # Clean up narration temp dirs
+    try:
+        narr_dirs = [d for d in os.listdir(PREVIEW_DIR)
+                     if d.startswith('narration_') and os.path.isdir(os.path.join(PREVIEW_DIR, d))]
+        for d in narr_dirs:
+            shutil.rmtree(os.path.join(PREVIEW_DIR, d), ignore_errors=True)
+        if narr_dirs:
+            print(f"[OK] Cleaned up {len(narr_dirs)} narration temp dir(s)")
+    except Exception:
+        pass
+
+    # Final garbage collection
+    import gc
+    gc.collect()
     print("[OK] Cleanup complete")
 
 if __name__ == '__main__':

@@ -446,9 +446,9 @@ window.registerManimCompletions = function (monaco) {
                     suggestions: [{
                         label:           'narrate',
                         kind:            K.Snippet,
-                        insertText:      'narrate("${0:Your narration text}")',
+                        insertText:      'narrate("${1:Your narration text}", "${2:af_heart}")',
                         insertTextRules: SNIP,
-                        documentation:   'Add TTS narration. Text in quotes will be spoken by Kokoro TTS and merged with the rendered video.',
+                        documentation:   'Add TTS narration. Voices: af_heart, af_bella, af_nicole, af_sarah, af_sky, am_adam, am_michael, bf_emma, bm_george',
                         detail:          'Narration (Kokoro TTS)',
                         sortText:        '0_narrate',
                         filterText:      'narrate narration',

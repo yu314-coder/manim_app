@@ -90,7 +90,8 @@ results = []
 for i, seg in enumerate(segments):
     audio_path = os.path.join(output_dir, f"segment_{i:03d}.wav")
     try:
-        samples, sr = kokoro.create(seg["text"], voice=voice, speed=speed)
+        seg_voice = seg.get("voice", "") or voice
+        samples, sr = kokoro.create(seg["text"], voice=seg_voice, speed=speed)
         sf.write(audio_path, samples, sr)
         duration = round(len(samples) / sr, 3)
         entry = {"index": i, "audio_path": audio_path, "duration": duration, "status": "ok"}
@@ -174,14 +175,23 @@ class NarrationMixin:
     def parse_narrate_comments(self, code):
         """Parse ``narrate("...")`` calls from Manim code.
 
-        Returns ``{segments: [{line, text}], count: int}``.
+        Supports:
+          narrate("text")
+          narrate("text", "voice_id")
+          narrate("text", voice="voice_id")
+
+        Returns ``{segments: [{line, text, voice}], count: int}``.
         """
-        pattern = r'@?narrate\(\s*["\'](.+?)["\']\s*\)'
+        # Match narrate("text") with optional second arg for voice
+        pattern = r'@?narrate\(\s*["\'](.+?)["\']\s*(?:,\s*(?:voice\s*=\s*)?["\']([a-z_]+)["\']\s*)?\)'
         results = []
         for i, line in enumerate(code.split('\n'), 1):
             m = re.search(pattern, line)
             if m:
-                results.append({'line': i, 'text': m.group(1)})
+                seg = {'line': i, 'text': m.group(1)}
+                if m.group(2):
+                    seg['voice'] = m.group(2)
+                results.append(seg)
         return {'status': 'success', 'segments': results, 'count': len(results)}
 
     # ------------------------------------------------------------------ #

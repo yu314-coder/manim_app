@@ -2239,6 +2239,7 @@ function formatBytes(bytes) {
 // Terminal output polling for persistent cmd.exe session with xterm.js
 let terminalPollInterval = null;
 let term = null; // xterm.js Terminal instance
+let fitAddon = null; // xterm.js FitAddon instance
 
 async function startTerminalPolling() {
     if (terminalPollInterval) return; // Already polling
@@ -2783,6 +2784,21 @@ window.addEventListener('pywebviewready', () => {
                 refreshRenderHistory();
             }
 
+            // Re-fit terminal when switching back to workspace tab
+            if (tabName === 'workspace' && term && fitAddon) {
+                setTimeout(() => {
+                    try {
+                        fitAddon.fit();
+                        const dims = fitAddon.proposeDimensions();
+                        if (dims && dims.cols > 0 && dims.rows > 0) {
+                            pywebview.api.resize_terminal(dims.cols, dims.rows).catch(() => {});
+                        }
+                    } catch (e) {
+                        console.warn('[TERMINAL] Re-fit on tab switch failed:', e);
+                    }
+                }, 50);
+            }
+
             // Handle performance monitoring based on active tab
             handlePerformanceMonitoring();
 
@@ -2906,21 +2922,21 @@ window.addEventListener('pywebviewready', () => {
         console.log('✅ Terminal constructor found, creating instance...');
 
         try {
-            // Create terminal instance with performance-optimized settings
+            // Create terminal instance with xterm.js v5 settings
             term = new TerminalConstructor({
                 cursorBlink: true,
                 cursorStyle: 'block',
                 fontSize: 14,
-                fontFamily: 'Consolas, "Courier New", monospace',
+                fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace',
                 lineHeight: 1.2,
                 letterSpacing: 0,
-                windowsMode: true, // Enable Windows-specific PTY handling
+                windowsPty: { backend: 'conpty', buildNumber: 26200 },
                 theme: {
                     background: '#0c0c0c',
                     foreground: '#cccccc',
                     cursor: '#ffffff',
                     cursorAccent: '#000000',
-                    selection: 'rgba(255, 255, 255, 0.3)',
+                    selectionBackground: 'rgba(255, 255, 255, 0.3)',
                     black: '#0c0c0c',
                     red: '#c50f1f',
                     green: '#13a10e',
@@ -2939,16 +2955,12 @@ window.addEventListener('pywebviewready', () => {
                     brightWhite: '#f2f2f2'
                 },
                 allowTransparency: false,
-                scrollback: 5000, // Reduced from 10000 for better performance
+                scrollback: 5000,
                 fastScrollModifier: 'shift',
                 fastScrollSensitivity: 5,
-                cols: 120,  // Match PTY width for proper progress bar display
-                rows: 30,   // Match PTY height
-                // Performance optimizations
-                rendererType: 'canvas', // Use canvas renderer for better performance
                 disableStdin: false,
-                convertEol: false, // Keep false to preserve \r for progress bars
-                screenReaderMode: false, // Disable for performance
+                convertEol: false,
+                screenReaderMode: false,
                 macOptionIsMeta: true,
                 rightClickSelectsWord: true
             });
@@ -2957,72 +2969,93 @@ window.addEventListener('pywebviewready', () => {
             term.open(terminalContainer);
             console.log('✅ Terminal opened in container');
 
+            // Load addons — FitAddon for auto-sizing
+            fitAddon = null;
+            if (window.FitAddon) {
+                fitAddon = new FitAddon.FitAddon();
+                term.loadAddon(fitAddon);
+                console.log('[TERMINAL] FitAddon loaded');
+            }
+
+            // WebGL addon for GPU-accelerated rendering, with canvas fallback
+            if (window.WebglAddon) {
+                try {
+                    const webgl = new WebglAddon.WebglAddon();
+                    webgl.onContextLoss(() => {
+                        console.warn('[TERMINAL] WebGL context lost, disposing');
+                        webgl.dispose();
+                    });
+                    term.loadAddon(webgl);
+                    console.log('[TERMINAL] WebGL renderer activated');
+                } catch (e) {
+                    console.warn('[TERMINAL] WebGL unavailable, using canvas:', e.message);
+                }
+            }
+
+            // Clickable URLs in terminal output
+            if (window.WebLinksAddon) {
+                term.loadAddon(new WebLinksAddon.WebLinksAddon());
+                console.log('[TERMINAL] WebLinksAddon loaded');
+            }
+
             // Focus terminal so it can receive input immediately
             term.focus();
 
-            // Calculate terminal size based on container - auto-sizing like HTML
-            function calculateTerminalSize() {
-                // Get actual container dimensions
-                const rect = terminalContainer.getBoundingClientRect();
-                const width = rect.width - 20; // Account for padding
-                const height = rect.height - 20;
-
-                // Get actual character dimensions from xterm's render service
-                let charWidth = 9;
-                let charHeight = 17;
-
-                try {
-                    const core = term._core;
-                    if (core && core._renderService && core._renderService.dimensions) {
-                        charWidth = core._renderService.dimensions.css.cell.width || 9;
-                        charHeight = core._renderService.dimensions.css.cell.height || 17;
+            // Fit terminal to container and sync PTY size
+            // Skips fitting when container is hidden (e.g. tab switched away)
+            function fitTerminal() {
+                if (fitAddon) {
+                    // Guard: don't fit if the container is hidden/zero-sized
+                    const rect = terminalContainer.getBoundingClientRect();
+                    if (rect.width < 10 || rect.height < 10) {
+                        return null;
                     }
-                } catch (e) {
-                    // Use defaults if can't access internal API
+                    fitAddon.fit();
+                    const dims = fitAddon.proposeDimensions();
+                    if (dims && dims.cols > 0 && dims.rows > 0) {
+                        if (!isAppClosing) {
+                            pywebview.api.resize_terminal(dims.cols, dims.rows).catch(err => {
+                                if (!isAppClosing) {
+                                    console.error('[TERMINAL] Error resizing PTY:', err);
+                                }
+                            });
+                        }
+                        return dims;
+                    }
                 }
-
-                // Calculate columns and rows to fill the space
-                const cols = Math.max(10, Math.floor(width / charWidth));
-                const rows = Math.max(5, Math.floor(height / charHeight));
-
-                return { cols, rows };
+                return null;
             }
 
-            // Wait for terminal to render, then calculate and apply proper size
+            // Initial fit after terminal renders
             setTimeout(() => {
-                const size = calculateTerminalSize();
-                console.log(`[TERMINAL] Initial auto-size: ${size.cols}x${size.rows} (container: ${terminalContainer.clientWidth}x${terminalContainer.clientHeight})`);
-
-                if (size.cols > 0 && size.rows > 0) {
-                    term.resize(size.cols, size.rows);
-                    lastCols = size.cols;
-                    lastRows = size.rows;
-
-                    // Notify backend of terminal size (skip if app is closing)
-                    if (!isAppClosing) {
-                        pywebview.api.resize_terminal(size.cols, size.rows).catch(err => {
-                            // Ignore errors if app is closing
-                            if (!isAppClosing) {
-                                console.error('[TERMINAL] Error resizing PTY:', err);
-                            }
-                        });
-                    }
+                const dims = fitTerminal();
+                if (dims) {
+                    console.log(`[TERMINAL] Initial fit: ${dims.cols}x${dims.rows}`);
+                    lastCols = dims.cols;
+                    lastRows = dims.rows;
                 }
             }, 200);
 
-            // Force another resize after a bit to ensure proper sizing
+            // Secondary fit to catch late layout changes
             setTimeout(() => {
-                const size = calculateTerminalSize();
-                if (size.cols > 0 && size.rows > 0 && (size.cols !== lastCols || size.rows !== lastRows)) {
-                    console.log(`[TERMINAL] Secondary auto-size adjustment: ${size.cols}x${size.rows}`);
-                    term.resize(size.cols, size.rows);
-                    if (!isAppClosing) {
-                        pywebview.api.resize_terminal(size.cols, size.rows).catch(() => {});
-                    }
-                    lastCols = size.cols;
-                    lastRows = size.rows;
+                const dims = fitTerminal();
+                if (dims && (dims.cols !== lastCols || dims.rows !== lastRows)) {
+                    console.log(`[TERMINAL] Secondary fit: ${dims.cols}x${dims.rows}`);
+                    lastCols = dims.cols;
+                    lastRows = dims.rows;
                 }
             }, 500);
+
+            // Fetch backend info and update windowsPty accordingly
+            pywebview.api.get_terminal_info().then(info => {
+                if (info && info.status === 'success') {
+                    term.options.windowsPty = {
+                        backend: info.backend === 'conpty' ? 'conpty' : 'winpty',
+                        buildNumber: info.windows_build || 0
+                    };
+                    console.log(`[TERMINAL] Backend: ${info.backend}, Windows build: ${info.windows_build}`);
+                }
+            }).catch(() => {});
 
             // Send user input to PTY backend
             term.onData(async (data) => {
@@ -3091,44 +3124,24 @@ window.addEventListener('pywebviewready', () => {
 
             const resizeObserver = new ResizeObserver(() => {
                 if (term && terminalContainer) {
-                    // Debounce resize to avoid too many updates
                     if (resizeTimeout) {
                         clearTimeout(resizeTimeout);
                     }
 
                     resizeTimeout = setTimeout(() => {
-                        // Throttle resize operations - minimum 250ms between resizes
                         const now = Date.now();
                         if (now - lastResizeTime < 250) {
                             return;
                         }
 
-                        const size = calculateTerminalSize();
-
-                        // Only resize if dimensions actually changed significantly
-                        if (size.cols > 0 && size.rows > 0 && (size.cols !== lastCols || size.rows !== lastRows)) {
-                            console.log(`[TERMINAL] Auto-resizing from ${lastCols}x${lastRows} to ${size.cols}x${size.rows}`);
-
-                            // Use requestAnimationFrame for smooth resize
-                            requestAnimationFrame(() => {
-                                term.resize(size.cols, size.rows);
-                            });
-
-                            // Notify backend PTY of new size (skip if app is closing)
-                            if (!isAppClosing) {
-                                pywebview.api.resize_terminal(size.cols, size.rows).catch(err => {
-                                    // Ignore errors if app is closing
-                                    if (!isAppClosing) {
-                                        console.error('[TERMINAL] Error resizing PTY:', err);
-                                    }
-                                });
-                            }
-
-                            lastCols = size.cols;
-                            lastRows = size.rows;
+                        const dims = fitTerminal();
+                        if (dims && (dims.cols !== lastCols || dims.rows !== lastRows)) {
+                            console.log(`[TERMINAL] Auto-resizing from ${lastCols}x${lastRows} to ${dims.cols}x${dims.rows}`);
+                            lastCols = dims.cols;
+                            lastRows = dims.rows;
                             lastResizeTime = now;
                         }
-                    }, 150); // Wait 150ms for resize to settle (increased from 100ms)
+                    }, 150);
                 }
             });
             resizeObserver.observe(terminalContainer);
@@ -3139,14 +3152,10 @@ window.addEventListener('pywebviewready', () => {
                     clearTimeout(resizeTimeout);
                 }
                 resizeTimeout = setTimeout(() => {
-                    const size = calculateTerminalSize();
-                    if (size.cols > 0 && size.rows > 0 && term) {
-                        term.resize(size.cols, size.rows);
-                        if (!isAppClosing) {
-                            pywebview.api.resize_terminal(size.cols, size.rows).catch(() => {});
-                        }
-                        lastCols = size.cols;
-                        lastRows = size.rows;
+                    const dims = fitTerminal();
+                    if (dims) {
+                        lastCols = dims.cols;
+                        lastRows = dims.rows;
                     }
                 }, 100);
             });
@@ -4798,7 +4807,8 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
         { id: 'settings',        icon: 'fa-cog',             label: 'Open Settings',         shortcut: '',                action: () => document.getElementById('settingsBtn')?.click() },
         { id: 'colors',          icon: 'fa-palette',         label: 'Open Color Picker',     shortcut: '',                action: () => document.querySelector('.action-btn[onclick*="color" i], #colorPickerBtn, .action-btn:has(.fa-palette)')?.click() },
         { id: 'clear-terminal',  icon: 'fa-eraser',          label: 'Clear Terminal',        shortcut: '',                action: () => document.getElementById('clearTermBtn')?.click() },
-        { id: 'ai-edit',         icon: 'fa-wand-magic-sparkles', label: 'Edit with AI (Claude)', shortcut: 'Ctrl+Shift+E', action: () => typeof openAIEdit === 'function' && openAIEdit() },
+        { id: 'ai-edit',         icon: 'fa-wand-magic-sparkles', label: 'Edit with AI',          shortcut: 'Ctrl+Shift+E', action: () => typeof openAIEdit === 'function' && openAIEdit() },
+        { id: 'ai-edit-window', icon: 'fa-arrow-up-right-from-square', label: 'AI Edit (Separate Window)', shortcut: '', action: () => { if (typeof pywebview !== 'undefined' && pywebview.api) pywebview.api.open_ai_edit_window(); } },
         { id: 'manim-docs',      icon: 'fa-book',            label: 'Manim Docs Lookup',     shortcut: 'Ctrl+Shift+D',    action: () => typeof openManimDocs === 'function' && openManimDocs() },
     ];
 

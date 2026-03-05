@@ -5,7 +5,7 @@
 (function initAutoNarration() {
     'use strict';
 
-    const NARRATE_RE = /@?narrate\(\s*["'](.+?)["']\s*\)/g;
+    const NARRATE_RE = /@?narrate\(\s*["'](.+?)["']/g;
 
     /** Check if current editor code has narrate() calls. */
     function codeHasNarrate() {

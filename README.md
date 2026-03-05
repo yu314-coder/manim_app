@@ -26,14 +26,15 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 - Line numbers, code folding, and multiple cursors
 - Customizable font size and themes
 
-### 🤖 **AI Edit Panel**
-- **Dual AI Provider** — choose between **Claude Code** and **OpenAI Codex** CLI for AI-assisted editing
+### 🤖 **AI Edit Panel (Codex + Claude Code)**
 - Send your code with a natural language prompt for intelligent edits
-- **Web Search** toggle — let AI reference live web results while editing (both providers)
-- **Model selector** — pick from multiple models per provider (Opus 4.6, Sonnet 4.6, GPT-5.3 Codex, and more)
+- **Claude Code (Beta)** — structured stream-json integration, no API key needed
+- **Image upload** — attach screenshots or reference images for the AI to understand your intent
+- **Web Search** toggle — let the AI reference live web results while editing
+- **Model selector** — pick from GPT-5.3 Codex, GPT-5.2, GPT-5.1 Codex Max, and more
 - Side-by-side diff review — Accept or Reject changes with one click
 - Fix code errors directly from the diagnostics panel
-- **Premium glass-morphism UI** with animated toggle switch, gradient buttons, and slide-in panel
+- **Premium glass-morphism UI** with gradient buttons and slide-in panel
 
 ### 🎙️ **Auto Narration (Kokoro TTS)**
 - Add `narrate("Your text here")` anywhere in your Manim code
@@ -441,7 +442,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **[Manim Community](https://www.manim.community/)** - The amazing animation engine
 - **[Monaco Editor](https://microsoft.github.io/monaco-editor/)** - VS Code's powerful editor
 - **[basedpyright](https://github.com/DetachHead/basedpyright)** - Python language server for IntelliSense
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's AI coding assistant CLI
 - **[OpenAI Codex CLI](https://github.com/openai/codex)** - OpenAI's AI coding agent
 - **[Kokoro ONNX](https://github.com/thewh1teagle/kokoro-onnx)** - Fast TTS with Kokoro and ONNX Runtime
 - **[PyWebView](https://pywebview.flowrl.com/)** - Native Python desktop apps
@@ -518,32 +518,26 @@ If you find this project useful, please consider giving it a star on GitHub!
 ## 📝 Changelog
 
 ### v1.1.1.0 (Latest)
-- ✨ **Auto Narration (Kokoro TTS)** — add `narrate("text")` calls in your code and TTS audio is automatically generated and merged with the video on render/preview
-- ✨ **Subtitles (CC)** — narrated videos get auto-generated WebVTT subtitles displayed in the preview player
-- ✨ **Kokoro model auto-download** — the ~310MB TTS model is downloaded automatically on first narration use
-- ✨ **`narrate` PyPI package** — optional `narrate[kokoro]` package available in the setup wizard for TTS support
-- ✨ **Scene Outline Panel** — tree view of all classes and methods in your code with click-to-navigate
-- ✨ **Command Palette** (Ctrl+Shift+P) — VS Code-style quick launcher for all actions
-- ✨ **Keyboard Shortcuts Modal** (Ctrl+/) — searchable reference of all shortcuts
-- ✨ **Zen Mode** (F11) — distraction-free fullscreen editing
-- ✨ **Editor Bookmarks** (Ctrl+Shift+K) — bookmark lines for quick navigation
-- ✨ **Drag-and-drop file opening** — drop .py files onto the editor to open them
-- ✨ **AI Edit Panel** — dual provider support with Claude Code and OpenAI Codex CLI
-- ✨ **AI Web Search** — let Claude Code or Codex reference live web results while editing your code
-- ✨ **AI Model Selector** — choose from Opus 4.6, Sonnet 4.6, GPT-5.3 Codex, GPT-5.2 Codex, and more
-- ✨ **Premium AI Edit UI** — glass-morphism panel, modern toggle switch, gradient buttons, slide-in animation
-- ✨ **Manim Color Picker** — visual palette of all Manim color constants with one-click insert
-- ✨ **Go-to-Definition** (F12), **Type Definition**, and **Find All References** (Shift+F12) via LSP
-- ✨ **Render History** — persistent log of all renders with replay, open, and delete
-- ✨ **Screenshot Save** — save preview frames with a native Save As dialog
-- 🐛 Fixed version mismatch between backend and UI display
-- 🐛 Video preview now served via HTTP instead of base64 (no size limits)
-- 🐛 Fixed CLI detection for Claude Code and Codex on Windows (`.cmd` wrapper support)
-- 🐛 Fixed subprocess piping for both AI providers on Windows
-- 🐛 Fixed ANSI escape code stripping in AI streaming output
-- 🔧 Replaced hardcoded `C:\Windows` paths with `%SystemRoot%` environment variable
-- 🔧 Cleaned up excessive debug logging in file save/open operations
-- 🔧 Added workspace instruction files (CLAUDE.md / AGENTS.md) for reliable AI file editing
+- ✨ **Claude Code Integration (Beta)** — AI Edit now supports Claude Code via `claude -p --output-format stream-json`, no API key needed
+- ✨ **Enhanced Streaming Output** — tool actions (Write, Read, Bash) render as styled blocks with icons, code lines get line-number gutters
+- ✨ **AI Edit Beta Badge** — panel and window mode show "(Beta)" to indicate active development
+- ✨ **Auto Narration (Kokoro TTS)** — `narrate("text")` calls generate TTS audio, auto-merged with video on render
+- ✨ **Subtitles (CC)** — narrated videos get auto-generated WebVTT subtitles in the preview player
+- ✨ **Kokoro model auto-download** — ~310MB TTS model downloaded automatically on first use
+- ✨ **`narrate` PyPI package** — optional `narrate[kokoro]` for TTS support
+- ✨ **Scene Outline Panel** — tree view of classes/methods with click-to-navigate
+- ✨ **Command Palette** (Ctrl+Shift+P), **Shortcuts Modal** (Ctrl+/), **Zen Mode** (F11), **Bookmarks** (Ctrl+Shift+K)
+- ✨ **Drag-and-drop** .py files onto the editor to open them
+- ✨ **AI Edit Panel** — Codex + Claude Code, image upload, web search, model selector
+- ✨ **Manim Color Picker**, **Go-to-Definition** (F12), **Find References** (Shift+F12)
+- ✨ **Render History** — persistent log with replay, open, and delete
+- ✨ **Screenshot Save** — save preview frames with native Save As dialog
+- 🐛 Fixed WebSearch permission prompts getting stuck on numbered menu format
+- 🐛 Fixed bundled EXE 404 for ai-edit-window.html (absolute path fix)
+- 🐛 Fixed version mismatch, video preview via HTTP, CLI detection, subprocess piping, ANSI stripping
+- 🔧 Refactored Claude Code from PTY-based to stream-json (removed winpty dependency)
+- 🔧 Replaced hardcoded `C:\Windows` paths with `%SystemRoot%`
+- 🔧 Added workspace instruction file (AGENTS.md) for reliable AI file editing
 
 ### v1.1.0.0
 - ✨ **basedpyright IntelliSense** — real-time type checking, diagnostics, hover docs, and completions powered by a full LSP server
