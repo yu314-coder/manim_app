@@ -25,7 +25,7 @@ if sys.platform == 'win32':
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # App version
-APP_VERSION = "1.1.1.0"
+APP_VERSION = "1.1.2.0"
 
 # Terminal emulation with PTY support
 try:
@@ -146,7 +146,7 @@ def get_clean_environment():
     return env
 
 # ── Init feature modules ──
-init_ai_edit(PREVIEW_DIR, get_clean_environment)
+init_ai_edit(PREVIEW_DIR, get_clean_environment, assets_dir=ASSETS_DIR)
 init_narration(PREVIEW_DIR, get_clean_environment, VENV_DIR, USER_DATA_DIR)
 
 # Function to check GPU detection dependencies (no auto-install)
@@ -350,6 +350,122 @@ def detect_gpu():
         gpu_info['info'] = f'Detection error: {str(e)}'
 
     return gpu_info
+
+
+# ── GPU encoder detection for FFmpeg hardware acceleration ──
+_gpu_encoder_cache = None
+
+def detect_gpu_encoder():
+    """
+    Detect the best available FFmpeg GPU encoder for h264.
+    Returns encoder name (e.g. 'h264_nvenc') or None if only CPU available.
+    Caches result after first call.
+    """
+    global _gpu_encoder_cache
+    if _gpu_encoder_cache is not None:
+        return _gpu_encoder_cache
+
+    # Priority order: NVIDIA > AMD > Intel
+    candidates = [
+        ('h264_nvenc', 'NVIDIA NVENC'),
+        ('h264_amf', 'AMD AMF'),
+        ('h264_qsv', 'Intel QuickSync'),
+    ]
+
+    for encoder, label in candidates:
+        try:
+            result = subprocess.run(
+                ['ffmpeg', '-hide_banner', '-f', 'lavfi', '-i',
+                 'nullsrc=s=256x256:d=0.1', '-c:v', encoder,
+                 '-f', 'null', '-'],
+                capture_output=True, text=True, timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+            )
+            if result.returncode == 0:
+                print(f"[GPU ENCODER] {label} ({encoder}) is available and working")
+                _gpu_encoder_cache = encoder
+                return encoder
+            else:
+                print(f"[GPU ENCODER] {label} ({encoder}) not usable")
+        except Exception as e:
+            print(f"[GPU ENCODER] {label} test failed: {e}")
+
+    print("[GPU ENCODER] No GPU encoder available, will use CPU libx264")
+    _gpu_encoder_cache = ''  # empty string = no GPU encoder, cached
+    return ''
+
+
+def patch_manim_gpu_encoder(enable=False):
+    """
+    Patch Manim's scene_file_writer.py to use GPU encoder when available.
+    Sets MANIM_VIDEO_CODEC env var and patches the source file.
+    The patch checks for this env var at runtime.
+    """
+    if not enable:
+        os.environ.pop('MANIM_VIDEO_CODEC', None)
+        os.environ.pop('MANIM_VIDEO_CODEC_OPTIONS', None)
+        return
+
+    encoder = detect_gpu_encoder()
+    if not encoder:
+        return
+
+    os.environ['MANIM_VIDEO_CODEC'] = encoder
+    # Set appropriate quality options for each encoder
+    if 'nvenc' in encoder:
+        os.environ['MANIM_VIDEO_CODEC_OPTIONS'] = 'rc=vbr,cq=23,preset=p4'
+    elif 'amf' in encoder:
+        os.environ['MANIM_VIDEO_CODEC_OPTIONS'] = 'quality=balanced,rc=cqp,qp_i=23,qp_p=23'
+    elif 'qsv' in encoder:
+        os.environ['MANIM_VIDEO_CODEC_OPTIONS'] = 'global_quality=23,preset=medium'
+
+    # Patch scene_file_writer.py to check env var
+    manim_dir = os.path.join(VENV_DIR, 'Lib', 'site-packages', 'manim')
+    sfw_path = os.path.join(manim_dir, 'scene', 'scene_file_writer.py')
+    if not os.path.exists(sfw_path):
+        print(f"[GPU ENCODER] scene_file_writer.py not found at {sfw_path}")
+        return
+
+    with open(sfw_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    # Check if already patched
+    if 'MANIM_VIDEO_CODEC' in content:
+        print("[GPU ENCODER] scene_file_writer.py already patched")
+        return
+
+    # Patch: insert GPU encoder env var check after the av_options definition
+    patch_marker = '# GPU encoder patch by Manim Studio'
+    patch_code = (
+        '\n'
+        '        # GPU encoder patch by Manim Studio\n'
+        '        _env_codec = __import__("os").environ.get("MANIM_VIDEO_CODEC", "")\n'
+        '        if _env_codec:\n'
+        '            partial_movie_file_codec = _env_codec\n'
+        '            _env_opts = __import__("os").environ.get("MANIM_VIDEO_CODEC_OPTIONS", "")\n'
+        '            if _env_opts:\n'
+        '                for _opt in _env_opts.split(","):\n'
+        '                    if "=" in _opt:\n'
+        '                        _k, _v = _opt.split("=", 1)\n'
+        '                        av_options[_k.strip()] = _v.strip()\n'
+        '            # GPU encoders don\'t use crf, remove it\n'
+        '            av_options.pop("crf", None)\n'
+    )
+
+    # Find the insertion point: right after the av_options dict definition
+    insert_target = '            "crf": "23",  # ffmpeg: -crf, constant rate factor (improved bitrate)\n        }'
+    if insert_target not in content:
+        # Try alternate: look for closing brace after crf line
+        insert_target = '            "crf": "23",\n        }'
+    if insert_target not in content:
+        print("[GPU ENCODER] Could not find av_options block in scene_file_writer.py")
+        return
+
+    content = content.replace(insert_target, insert_target + patch_code)
+    with open(sfw_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    print(f"[GPU ENCODER] Patched scene_file_writer.py to support GPU encoding")
+
 
 # Function to get performance metrics
 def get_performance_metrics():
@@ -1312,14 +1428,53 @@ def check_terminal_output_for_errors():
         'Exception:'
     ]
 
+    # Internal Python paths that produce tracebacks we should ignore
+    # (e.g. threading cleanup, internal library errors — not user code)
+    _internal_ignore = [
+        'threading.py',
+        'concurrent\\futures',
+        'concurrent/futures',
+        'asyncio\\',
+        'asyncio/',
+        'importlib\\',
+        'importlib/',
+        'subprocess.py',
+        'multiprocessing\\',
+        'multiprocessing/',
+        '_bootstrap',
+    ]
+
     for pattern in error_patterns:
         if pattern in output:
-            print(f"[ERROR CHECK] Found error pattern: {pattern}")
             # Extract error message from the output
             lines = output.split('\n')
             error_msg = None
+            traceback_start = None
             for i, line in enumerate(lines):
                 if pattern in line:
+                    # For Traceback pattern, check if lines after it reference
+                    # only internal Python modules (not user/manim code)
+                    if pattern == 'Traceback (most recent call last)':
+                        # Scan the traceback block — look for user/manim File refs
+                        has_user_code = False
+                        for j in range(1, min(20, len(lines) - i)):
+                            tl = lines[i + j].strip()
+                            if not tl:
+                                break
+                            # A "File ..." line in the traceback
+                            if tl.startswith('File "'):
+                                is_internal = any(ip in tl for ip in _internal_ignore)
+                                if not is_internal:
+                                    has_user_code = True
+                                    break
+                            # Reached the actual error line (not indented File ref)
+                            if ':' in tl and not tl.startswith('File '):
+                                # Check if it's a real error type
+                                if any(ep in tl for ep in error_patterns if ep != 'Traceback (most recent call last)'):
+                                    has_user_code = True
+                                break
+                        if not has_user_code:
+                            continue  # skip this internal traceback
                     # Get this line and the next few lines for context
                     error_msg = line.strip()
                     # Get up to 2 more lines for context
@@ -1330,8 +1485,9 @@ def check_terminal_output_for_errors():
                     break
 
             if not error_msg:
-                error_msg = f"Error detected: {pattern}"
+                continue  # pattern matched but was filtered out (internal)
 
+            print(f"[ERROR CHECK] Found error pattern: {pattern}")
             print(f"[ERROR CHECK] Error message extracted: {error_msg[:100]}")
             return (True, error_msg[:200])  # Limit error message length
 
@@ -1364,21 +1520,23 @@ class ManimAPI(AIEditMixin, NarrationMixin):
 
     def __init__(self):
         """Initialize the API"""
-        # AI/LLM feature removed
+        # Defer terminal + dependency checker to background thread
+        # so the window appears instantly. get_terminal_output() at line 4072
+        # auto-starts the terminal if called before the thread finishes.
+        import threading
+        def _deferred_init():
+            print("[API] Background: starting persistent terminal...")
+            try:
+                self.start_persistent_terminal()
+            except Exception as e:
+                print(f"[API ERROR] Failed to auto-start terminal: {e}")
+            print("[API] Background: starting dependency checker...")
+            try:
+                self.start_dependency_checker_background()
+            except Exception as e:
+                print(f"[API ERROR] Failed to start dependency checker: {e}")
 
-        # Start terminal automatically
-        print("[API] Auto-starting persistent terminal...")
-        try:
-            self.start_persistent_terminal()
-        except Exception as e:
-            print(f"[API ERROR] Failed to auto-start terminal: {e}")
-
-        # Start dependency checker in background (non-blocking startup)
-        print("[API] Auto-starting dependency checker...")
-        try:
-            self.start_dependency_checker_background()
-        except Exception as e:
-            print(f"[API ERROR] Failed to start dependency checker: {e}")
+        threading.Thread(target=_deferred_init, daemon=True, name='DeferredInit').start()
 
     def get_code(self):
         """Get current code"""
@@ -2044,15 +2202,26 @@ class MyScene(Scene):
             cmd.extend(['--progress_bar', 'display'])
             print(f"[RENDER] Progress bar ENABLED")
 
-            # Add GPU acceleration (OpenGL renderer) if requested
+            # Add GPU acceleration (OpenGL renderer + GPU encoder) if requested
             print(f"[GPU CHECK] Checking gpu_accelerate flag: {gpu_accelerate}")
             if gpu_accelerate:
-                cmd.extend(['--renderer=opengl', '--write_to_movie'])
-                print(f"[GPU] OK GPU acceleration ENABLED - adding --renderer=opengl --write_to_movie to command")
-                print(f"[GPU] Note: OpenGL renderer requires --write_to_movie to save video files")
+                cmd.extend([
+                    '--renderer=opengl', '--write_to_movie',
+                    '--use_projection_fill_shaders',
+                    '--use_projection_stroke_shaders',
+                ])
+                print(f"[GPU] OK GPU acceleration ENABLED - OpenGL + projection shaders + write_to_movie")
+                # Enable GPU video encoder (h264_nvenc / h264_amf / h264_qsv)
+                patch_manim_gpu_encoder(enable=True)
+                gpu_enc = detect_gpu_encoder()
+                if gpu_enc:
+                    print(f"[GPU] Video encoding: {gpu_enc} (hardware accelerated)")
+                else:
+                    print(f"[GPU] Video encoding: libx264 (CPU, no GPU encoder available)")
             else:
                 cmd.extend(['--renderer=cairo'])
-                print(f"[GPU] DISABLED GPU acceleration - using --renderer=cairo")
+                patch_manim_gpu_encoder(enable=False)
+                print(f"[GPU] DISABLED GPU acceleration - using --renderer=cairo + libx264")
 
             print(f"[RENDER] Full command: {' '.join(cmd)}")
 
@@ -2710,15 +2879,26 @@ class MyScene(Scene):
             cmd.extend(['--progress_bar', 'display'])
             print(f"[PREVIEW] Progress bar ENABLED")
 
-            # Add GPU acceleration (OpenGL renderer) if requested
+            # Add GPU acceleration (OpenGL renderer + GPU encoder) if requested
             print(f"[GPU CHECK] Checking gpu_accelerate flag: {gpu_accelerate}")
             if gpu_accelerate:
-                cmd.extend(['--renderer=opengl', '--write_to_movie'])
-                print(f"[GPU] OK GPU acceleration ENABLED - adding --renderer=opengl --write_to_movie to command")
-                print(f"[GPU] Note: OpenGL renderer requires --write_to_movie to save video files")
+                cmd.extend([
+                    '--renderer=opengl', '--write_to_movie',
+                    '--use_projection_fill_shaders',
+                    '--use_projection_stroke_shaders',
+                ])
+                print(f"[GPU] OK GPU acceleration ENABLED - OpenGL + projection shaders + write_to_movie")
+                # Enable GPU video encoder (h264_nvenc / h264_amf / h264_qsv)
+                patch_manim_gpu_encoder(enable=True)
+                gpu_enc = detect_gpu_encoder()
+                if gpu_enc:
+                    print(f"[GPU] Video encoding: {gpu_enc} (hardware accelerated)")
+                else:
+                    print(f"[GPU] Video encoding: libx264 (CPU, no GPU encoder available)")
             else:
                 cmd.extend(['--renderer=cairo'])
-                print(f"[GPU] DISABLED GPU acceleration - using --renderer=cairo")
+                patch_manim_gpu_encoder(enable=False)
+                print(f"[GPU] DISABLED GPU acceleration - using --renderer=cairo + libx264")
 
             print(f"[PREVIEW] Full command: {' '.join(cmd)}")
 
@@ -4988,7 +5168,8 @@ class MyScene(Scene):
                 app_state['dependency_cache'] = results
                 app_state['dependency_last_checked'] = now
                 app_state['dependency_check_error'] = None
-            print(f"[DEPENDENCY] Dependency check complete ({reason})")
+            if reason != 'periodic':
+                print(f"[DEPENDENCY] Dependency check complete ({reason})")
             return True
         except Exception as e:
             print(f"[DEPENDENCY] Dependency check failed ({reason}): {e}")
@@ -5645,70 +5826,59 @@ class MyScene(Scene):
             'venv_exists': os.path.exists(venv_python)
         }
 
-        # Check Manim using the working check_manim_installed() method
-        # This uses 'pip show manim' which is reliable in EXE/MSIX
-        print("[SYSTEM INFO] Checking manim using check_manim_installed()...")
+        # GPU info
         try:
-            manim_check = self.check_manim_installed()
-            if manim_check.get('installed'):
-                version = manim_check.get('version', 'Unknown')
-                info['manim_version'] = f'Manim Community v{version}'
-                info['manim_installed'] = True
-                print(f"[SYSTEM INFO] [OK] Manim detected: v{version}")
+            gpu_result = subprocess.run(
+                ['wmic', 'path', 'win32_VideoController', 'get', 'Name,DriverVersion', '/format:csv'],
+                capture_output=True, text=True, timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            if gpu_result.returncode == 0:
+                lines = [l.strip() for l in gpu_result.stdout.strip().split('\n') if l.strip() and not l.startswith('Node')]
+                gpus = []
+                for line in lines:
+                    parts = line.split(',')
+                    if len(parts) >= 3:
+                        gpus.append({'driver': parts[1].strip(), 'name': parts[2].strip()})
+                info['gpus'] = gpus
             else:
-                info['manim_version'] = 'Not installed'
-                info['manim_installed'] = False
-                message = manim_check.get('message', 'Unknown reason')
-                print(f"[SYSTEM INFO] Manim not installed: {message}")
-        except Exception as e:
-            print(f"[SYSTEM INFO] Error checking manim: {e}")
-            import traceback
-            traceback.print_exc()
-            info['manim_version'] = 'Not installed'
-            info['manim_installed'] = False
-            print(f"[SYSTEM INFO] Setting manim_installed=False due to exception")
+                info['gpus'] = []
+        except Exception:
+            info['gpus'] = []
 
-        # Check for essential Python libraries using the actual Python
+        # Disk space on media directory drive
         try:
-            if actual_python and os.path.exists(actual_python):
-                result = subprocess.run(
-                    [actual_python, '-m', 'pip', 'list', '--format=json'],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    env=get_clean_environment()
-                )
-                if result.returncode == 0:
-                    packages = json.loads(result.stdout)
-                    info['installed_packages'] = packages
-                    info['packages_count'] = len(packages)
+            import shutil
+            usage = shutil.disk_usage(app_state['output_dir'])
+            info['disk_total'] = usage.total
+            info['disk_free'] = usage.free
+            info['disk_used'] = usage.used
+        except Exception:
+            info['disk_total'] = 0
+            info['disk_free'] = 0
+            info['disk_used'] = 0
 
-                    # Check for essential packages
-                    package_names = [pkg['name'].lower() for pkg in packages]
-                    essential_packages = ['manim', 'numpy', 'pillow', 'opencv-python']
-                    missing_packages = [pkg for pkg in essential_packages if pkg not in package_names]
-
-                    info['missing_packages'] = missing_packages
-                    info['essential_packages_installed'] = len(missing_packages) == 0
-                else:
-                    info['packages_count'] = 0
-                    info['installed_packages'] = []
-                    info['packages_error'] = 'Failed to list packages'
+        # ffmpeg info
+        try:
+            ff_result = subprocess.run(
+                ['ffmpeg', '-version'],
+                capture_output=True, text=True, timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            if ff_result.returncode == 0:
+                first_line = ff_result.stdout.split('\n')[0] if ff_result.stdout else ''
+                info['ffmpeg_version'] = first_line
+                info['ffmpeg_installed'] = True
             else:
-                info['packages_count'] = 0
-                info['installed_packages'] = []
-                info['packages_error'] = 'Python not available'
+                info['ffmpeg_version'] = ''
+                info['ffmpeg_installed'] = False
+        except Exception:
+            info['ffmpeg_version'] = ''
+            info['ffmpeg_installed'] = False
 
-        except Exception as e:
-            print(f'Error checking Python packages: {e}')
-            info['packages_count'] = 0
-            info['installed_packages'] = []
+        # Terminal backend
+        info['terminal_backend'] = app_state.get('terminal_backend', 'unknown')
 
-        print("=" * 80)
-        print(f"[SYSTEM INFO] get_system_info() RETURNING:")
-        print(f"[SYSTEM INFO]   manim_installed: {info.get('manim_installed', 'NOT SET')}")
-        print(f"[SYSTEM INFO]   manim_version: {info.get('manim_version', 'NOT SET')}")
-        print("=" * 80)
         return info
 
     def get_app_version(self):
@@ -5778,8 +5948,18 @@ class MyScene(Scene):
             }
 
         gpu_info = detect_gpu()
+        # Add GPU encoder info
+        gpu_enc = detect_gpu_encoder()
+        gpu_info['encoder'] = gpu_enc or 'libx264'
+        gpu_info['encoder_label'] = (
+            'NVIDIA NVENC' if gpu_enc == 'h264_nvenc' else
+            'AMD AMF' if gpu_enc == 'h264_amf' else
+            'Intel QuickSync' if gpu_enc == 'h264_qsv' else
+            'CPU (libx264)'
+        )
         print(f"[GPU INFO] GPU Available: {gpu_info['available']}")
         print(f"[GPU INFO] GPU Info: {gpu_info['info']}")
+        print(f"[GPU INFO] Video Encoder: {gpu_info['encoder_label']} ({gpu_info['encoder']})")
         return gpu_info
 
     def get_performance_data(self):
@@ -6497,6 +6677,99 @@ class MyScene(Scene):
             print(f"[VENV ERROR] {e}")
             traceback.print_exc()
             return {'status': 'error', 'message': str(e)}
+
+
+    # Popular packages for prefix-based autocomplete (PyPI search API is deprecated)
+    _POPULAR_PACKAGES = [
+        'numpy', 'pandas', 'matplotlib', 'scipy', 'scikit-learn', 'requests',
+        'flask', 'django', 'fastapi', 'uvicorn', 'pillow', 'opencv-python',
+        'tensorflow', 'torch', 'pytorch', 'keras', 'transformers',
+        'pytest', 'black', 'ruff', 'mypy', 'pylint', 'flake8',
+        'rich', 'click', 'typer', 'tqdm', 'pydantic', 'httpx',
+        'sqlalchemy', 'alembic', 'celery', 'redis', 'boto3',
+        'beautifulsoup4', 'lxml', 'scrapy', 'selenium',
+        'sympy', 'networkx', 'pygments', 'jinja2', 'pyyaml', 'toml',
+        'cryptography', 'paramiko', 'fabric', 'invoke',
+        'manim', 'manimlib', 'manim-fonts', 'manim-slides', 'manim-voiceover',
+        'manimce', 'manimgl',
+        'openai', 'anthropic', 'langchain', 'tiktoken',
+        'streamlit', 'gradio', 'dash', 'plotly', 'bokeh', 'seaborn',
+        'jupyter', 'notebook', 'ipython', 'jupyterlab',
+        'python-dotenv', 'decouple', 'configparser',
+        'aiohttp', 'websockets', 'grpcio', 'protobuf',
+        'psycopg2', 'pymongo', 'motor', 'peewee',
+        'Cython', 'numba', 'cffi', 'pybind11',
+        'setuptools', 'wheel', 'twine', 'build', 'hatchling',
+        'colorama', 'termcolor', 'tabulate', 'prettytable',
+        'arrow', 'pendulum', 'dateutil', 'python-dateutil',
+        'pyinstaller', 'nuitka', 'cx-Freeze',
+        'imageio', 'moviepy', 'ffmpeg-python', 'pydub',
+        'pyaudio', 'soundfile', 'librosa',
+        'regex', 'chardet', 'charset-normalizer', 'certifi', 'urllib3',
+    ]
+
+    def search_pypi(self, query):
+        """Search PyPI for packages: prefix match on popular list + exact JSON API lookup"""
+        try:
+            if not query or len(query) < 2:
+                return {'status': 'success', 'results': []}
+
+            import urllib.request
+            import urllib.parse
+            import json as _json
+
+            query_lower = query.lower().strip()
+            results = []
+
+            # 1) Prefix match against popular packages list (instant)
+            for pkg in self._POPULAR_PACKAGES:
+                if pkg.lower().startswith(query_lower) or query_lower in pkg.lower():
+                    results.append({'name': pkg, 'version': '', 'summary': ''})
+
+            # 2) Try exact match via JSON API to get version + description
+            try:
+                url = f"https://pypi.org/pypi/{urllib.parse.quote(query)}/json"
+                req = urllib.request.Request(url, headers={
+                    'Accept': 'application/json',
+                    'User-Agent': 'ManimStudio/1.0'
+                })
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = _json.loads(resp.read().decode())
+                    info = data.get('info', {})
+                    exact_name = info.get('name', query)
+                    exact = {
+                        'name': exact_name,
+                        'version': info.get('version', ''),
+                        'summary': (info.get('summary', '') or '')[:120]
+                    }
+                    # Put exact match first, remove duplicate from prefix list
+                    results = [r for r in results if r['name'].lower() != exact_name.lower()]
+                    results.insert(0, exact)
+            except Exception:
+                pass  # 404 = no exact match
+
+            # 3) Enrich first prefix match with version info (keep fast, single request)
+            for r in results[1:2]:
+                if not r['version']:
+                    try:
+                        url = f"https://pypi.org/pypi/{urllib.parse.quote(r['name'])}/json"
+                        req = urllib.request.Request(url, headers={
+                            'Accept': 'application/json',
+                            'User-Agent': 'ManimStudio/1.0'
+                        })
+                        with urllib.request.urlopen(req, timeout=3) as resp:
+                            data = _json.loads(resp.read().decode())
+                            info = data.get('info', {})
+                            r['version'] = info.get('version', '')
+                            r['summary'] = (info.get('summary', '') or '')[:120]
+                    except Exception:
+                        pass
+
+            return {'status': 'success', 'results': results[:10]}
+
+        except Exception as e:
+            print(f"[PYPI SEARCH ERROR] {e}")
+            return {'status': 'error', 'results': [], 'message': str(e)}
 
 
 def find_free_port():

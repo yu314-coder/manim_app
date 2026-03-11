@@ -1,7 +1,12 @@
 // SIMPLE ASSETS - WINDOWS EXPLORER DETAILS LIST VIEW WITH AUTO-LOAD
-// Version: 2025-01-26-AUTO-LOAD-FIX
+// Version: 2025-03-06-SORT-BULK-DRAG
 
-console.log('[SIMPLE ASSETS] Loaded - Details List View with Auto-Load');
+console.log('[SIMPLE ASSETS] Loaded - Details List View with Sort, Bulk, Drag');
+
+// Asset data cache for sorting
+let cachedAssetFiles = [];
+let assetSortKey = 'name';
+let assetSortAsc = true;
 
 // Upload function
 window.uploadAssets = async function() {
@@ -21,7 +26,7 @@ window.uploadAssets = async function() {
     }
 };
 
-// Load and display assets in Modern Card Grid view
+// Load and display assets
 window.loadAssets = async function() {
     console.log('[SIMPLE] Loading assets...');
     const container = document.getElementById('simpleAssetsContainer');
@@ -36,6 +41,8 @@ window.loadAssets = async function() {
         console.log('[SIMPLE] Got files:', result);
 
         if (!result.files || result.files.length === 0) {
+            cachedAssetFiles = [];
+            updateAssetsSummary([]);
             container.innerHTML = `
                 <div class="assets-empty">
                     <i class="fas fa-folder-open"></i>
@@ -45,84 +52,196 @@ window.loadAssets = async function() {
             return;
         }
 
-        // Clear container
-        container.innerHTML = '';
+        cachedAssetFiles = result.files;
+        renderAssetRows(cachedAssetFiles);
+        updateAssetsSummary(cachedAssetFiles);
+        setupAssetsSelectAll();
 
-        // Create rows for each file
-        result.files.forEach(function(file, index) {
-            const ext = file.name.split('.').pop().toLowerCase();
-            const fileType = getFileType(ext);
-            const rowType = getCardType(ext);
-
-            const row = document.createElement('div');
-            row.className = `asset-row ${rowType}`;
-            row.dataset.filepath = file.path;
-            row.dataset.filename = file.name;
-            row.dataset.index = index;
-
-            // Check if it's an image to show thumbnail
-            const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
-            const isImage = imageExts.includes(ext);
-
-            row.innerHTML = `
-                <div class="asset-col-preview">
-                    ${isImage ?
-                        `<img class="asset-thumbnail" src="#" data-filepath="${escapeHtml(file.path)}" alt="${escapeHtml(file.name)}">` :
-                        `<div class="asset-preview">${getAssetIcon(file.name)}</div>`
-                    }
-                </div>
-                <div class="asset-col-name">
-                    <div class="asset-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
-                </div>
-                <div class="asset-col-type">
-                    <div class="asset-type">${fileType}</div>
-                </div>
-                <div class="asset-col-size">
-                    <div class="asset-size">${formatBytes(file.size)}</div>
-                </div>
-                <div class="asset-col-actions">
-                    <div class="asset-actions">
-                        <button class="asset-action-btn" onclick="event.stopPropagation(); showPreviewInAssetsTab('${escapeForJs(file.path)}', '${escapeForJs(file.name)}');">
-                            <i class="fas fa-eye"></i> View
-                        </button>
-                        <button class="asset-action-btn delete" onclick="event.stopPropagation(); window.deleteAssetById('${escapeForJs(file.path)}', '${escapeForJs(file.name)}');">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            // Click row to preview
-            row.addEventListener('click', function() {
-                showPreviewInAssetsTab(file.path, file.name);
-            });
-
-            // Load thumbnail for images
-            if (isImage) {
-                const img = row.querySelector('.asset-thumbnail');
-                if (img && window.pywebview && window.pywebview.api) {
-                    window.pywebview.api.read_file_as_base64(file.path)
-                        .then(function(base64Data) {
-                            img.src = `data:image/${ext};base64,${base64Data}`;
-                        })
-                        .catch(function(err) {
-                            console.error('[THUMBNAIL] Failed to load:', err);
-                            // Fallback to icon
-                            img.outerHTML = `<div class="asset-preview">${getAssetIcon(file.name)}</div>`;
-                        });
-                }
-            }
-
-            container.appendChild(row);
-        });
-
-        console.log('[SIMPLE] [OK] Displayed', result.files.length, 'assets in Column Table view');
+        console.log('[SIMPLE] [OK] Displayed', result.files.length, 'assets');
 
     } catch (error) {
         console.error('[SIMPLE] Load error:', error);
         container.innerHTML = '<div class="assets-empty"><i class="fas fa-exclamation-triangle"></i><p style="color: #ef4444;">Error loading assets</p></div>';
-        showCustomAlert('Error loading assets: ' + error.message, 'error');
     }
+};
+
+// Render sorted asset rows into the container
+function renderAssetRows(files) {
+    const container = document.getElementById('simpleAssetsContainer');
+    if (!container) return;
+
+    // Sort
+    const sorted = [...files].sort((a, b) => {
+        let va, vb;
+        if (assetSortKey === 'name') {
+            va = a.name.toLowerCase(); vb = b.name.toLowerCase();
+        } else if (assetSortKey === 'type') {
+            va = a.name.split('.').pop().toLowerCase(); vb = b.name.split('.').pop().toLowerCase();
+        } else if (assetSortKey === 'size') {
+            va = a.size || 0; vb = b.size || 0;
+        } else {
+            va = a.name.toLowerCase(); vb = b.name.toLowerCase();
+        }
+        if (va < vb) return assetSortAsc ? -1 : 1;
+        if (va > vb) return assetSortAsc ? 1 : -1;
+        return 0;
+    });
+
+    container.innerHTML = '';
+
+    sorted.forEach(function(file, index) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        const fileType = getFileType(ext);
+        const rowType = getCardType(ext);
+
+        const row = document.createElement('div');
+        row.className = `asset-row ${rowType}`;
+        row.dataset.filepath = file.path;
+        row.dataset.filename = file.name;
+        row.dataset.filesize = file.size || 0;
+        row.dataset.index = index;
+
+        const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
+        const isImage = imageExts.includes(ext);
+
+        row.innerHTML = `
+            <div class="asset-row-check">
+                <input type="checkbox" class="asset-check" data-filepath="${escapeHtml(file.path)}" data-filename="${escapeHtml(file.name)}" onclick="event.stopPropagation(); updateBulkDeleteBtn();">
+            </div>
+            <div class="asset-col-preview">
+                ${isImage ?
+                    `<img class="asset-thumbnail" src="#" data-filepath="${escapeHtml(file.path)}" alt="${escapeHtml(file.name)}">` :
+                    `<div class="asset-preview">${getAssetIcon(file.name)}</div>`
+                }
+            </div>
+            <div class="asset-col-name">
+                <div class="asset-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+            </div>
+            <div class="asset-col-type">
+                <div class="asset-type">${fileType}</div>
+            </div>
+            <div class="asset-col-size">
+                <div class="asset-size">${formatBytes(file.size)}</div>
+            </div>
+            <div class="asset-col-actions">
+                <div class="asset-actions">
+                    <button class="asset-action-btn" onclick="event.stopPropagation(); insertAssetToEditor('${escapeForJs(file.name)}');" title="Insert manim code into editor">
+                        <i class="fas fa-code"></i> Insert
+                    </button>
+                    <button class="asset-action-btn" onclick="event.stopPropagation(); showPreviewInAssetsTab('${escapeForJs(file.path)}', '${escapeForJs(file.name)}');">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+                    <button class="asset-action-btn delete" onclick="event.stopPropagation(); window.deleteAssetById('${escapeForJs(file.path)}', '${escapeForJs(file.name)}');">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Click row to preview
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('.asset-row-check') || e.target.tagName === 'INPUT') return;
+            showPreviewInAssetsTab(file.path, file.name);
+        });
+
+        // Load thumbnail for images
+        if (isImage) {
+            const img = row.querySelector('.asset-thumbnail');
+            if (img && window.pywebview && window.pywebview.api) {
+                window.pywebview.api.read_file_as_base64(file.path)
+                    .then(function(base64Data) {
+                        img.src = `data:image/${ext};base64,${base64Data}`;
+                    })
+                    .catch(function(err) {
+                        img.outerHTML = `<div class="asset-preview">${getAssetIcon(file.name)}</div>`;
+                    });
+            }
+        }
+
+        container.appendChild(row);
+    });
+}
+
+// Generate manim code for an asset filename
+function getManimCodeForAsset(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const name = escapeHtml(filename);
+    const videoExts = ['mp4', 'mov', 'avi', 'webm', 'mkv'];
+    const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'webp'];
+    const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'];
+    const fontExts = ['ttf', 'otf', 'woff', 'woff2'];
+
+    if (imageExts.includes(ext)) return `ImageMobject("${name}")`;
+    if (videoExts.includes(ext)) return `# Video: ${name}`;
+    if (audioExts.includes(ext)) return `# Audio: ${name}`;
+    if (ext === 'svg') return `SVGMobject("${name}")`;
+    if (fontExts.includes(ext)) return `Text("Hello", font="${name.replace('.' + ext, '')}")`;
+    return `# Asset: ${name}`;
+}
+
+// Update summary badge (file count + total size)
+function updateAssetsSummary(files) {
+    const el = document.getElementById('assetsSummary');
+    if (!el) return;
+    if (!files || files.length === 0) {
+        el.textContent = '';
+        return;
+    }
+    const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0);
+    el.textContent = `${files.length} files • ${formatBytes(totalSize)}`;
+}
+
+// Select all checkbox
+function setupAssetsSelectAll() {
+    const selectAll = document.getElementById('assetsSelectAll');
+    if (!selectAll) return;
+    selectAll.checked = false;
+    selectAll.onchange = function() {
+        document.querySelectorAll('.asset-check').forEach(cb => {
+            cb.checked = selectAll.checked;
+            cb.closest('.asset-row')?.classList.toggle('selected', selectAll.checked);
+        });
+        updateBulkDeleteBtn();
+    };
+}
+
+// Update bulk delete button visibility
+function updateBulkDeleteBtn() {
+    const checked = document.querySelectorAll('.asset-check:checked');
+    const btn = document.getElementById('bulkDeleteBtn');
+    const countEl = document.getElementById('bulkDeleteCount');
+    if (btn) {
+        btn.style.display = checked.length > 0 ? '' : 'none';
+        if (countEl) countEl.textContent = `Delete Selected (${checked.length})`;
+    }
+    // Toggle row highlight
+    document.querySelectorAll('.asset-check').forEach(cb => {
+        cb.closest('.asset-row')?.classList.toggle('selected', cb.checked);
+    });
+}
+
+// Bulk delete selected assets
+window.bulkDeleteAssets = async function() {
+    const checked = document.querySelectorAll('.asset-check:checked');
+    if (checked.length === 0) return;
+
+    const names = Array.from(checked).map(cb => cb.dataset.filename).filter(Boolean);
+    if (!confirm(`Delete ${names.length} file(s)?\n\n${names.join('\n')}`)) return;
+
+    let deleted = 0;
+    for (const cb of checked) {
+        try {
+            const result = await pywebview.api.delete_asset(cb.dataset.filepath);
+            if (result.status === 'success') deleted++;
+        } catch (e) {
+            console.error('[BULK DELETE]', e);
+        }
+    }
+
+    if (typeof showCustomAlert === 'function') {
+        showCustomAlert(`Deleted ${deleted}/${names.length} files`, deleted > 0 ? 'success' : 'error');
+    }
+    window.loadAssets();
 };
 
 // Get card type for styling
@@ -758,10 +877,7 @@ window.deleteAssetById = function(filepath, filename) {
 
 // Auto-load on pywebview ready
 window.addEventListener('pywebviewready', () => {
-    console.log('[SIMPLE] PyWebView ready - loading assets');
-    setTimeout(() => window.loadAssets(), 500);
-
-    // Initialize drag and drop
+    console.log('[SIMPLE] PyWebView ready');
     initDragAndDrop();
 });
 
@@ -868,24 +984,8 @@ function initDragAndDrop() {
     console.log('[DRAG&DROP] Drag and drop initialized');
 }
 
-// Auto-load when Assets tab is clicked
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('[SIMPLE] Setting up tab change listener');
-
-    const assetTabBtn = document.querySelector('.tab-pill[data-tab="assets"]');
-    if (assetTabBtn) {
-        assetTabBtn.addEventListener('click', function() {
-            console.log('[SIMPLE] Assets tab clicked - auto-loading files');
-            setTimeout(() => {
-                if (window.pywebview && window.pywebview.api) {
-                    window.loadAssets();
-                }
-            }, 100);
-        });
-        console.log('[SIMPLE] Tab listener attached');
-    } else {
-        console.warn('[SIMPLE] Assets tab button not found');
-    }
+    console.log('[SIMPLE] DOMContentLoaded');
 
     // Initialize drag and drop if pywebview is already ready
     if (window.pywebview && window.pywebview.api) {
@@ -1118,4 +1218,69 @@ function showCustomAlert(message, type = 'info') {
     }
 }
 
-console.log('[SIMPLE] Simple assets script ready - Details List View with Auto-Load');
+// ── Insert asset code into editor ──
+function insertAssetToEditor(filename) {
+    const code = getManimCodeForAsset(filename);
+
+    // Switch to workspace tab
+    const workspaceTab = document.querySelector('[data-tab="workspace"]');
+    if (workspaceTab) workspaceTab.click();
+
+    // Insert into Monaco editor at cursor position
+    setTimeout(() => {
+        if (typeof editor !== 'undefined' && editor) {
+            const position = editor.getPosition();
+            editor.executeEdits('insert-asset', [{
+                range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                text: code
+            }]);
+            editor.focus();
+            if (typeof showNotification === 'function') {
+                showNotification('Inserted', `${code}`, 'success');
+            }
+        } else {
+            // Fallback: copy to clipboard
+            navigator.clipboard.writeText(code).then(() => {
+                if (typeof showCustomAlert === 'function') {
+                    showCustomAlert('Code copied to clipboard: ' + code, 'success');
+                }
+            });
+        }
+    }, 100);
+}
+
+// ── Column sorting ──
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.asset-sortable').forEach(header => {
+        header.addEventListener('click', () => {
+            const key = header.dataset.sort;
+            if (assetSortKey === key) {
+                assetSortAsc = !assetSortAsc;
+            } else {
+                assetSortKey = key;
+                assetSortAsc = true;
+            }
+            // Update header icons
+            document.querySelectorAll('.asset-sortable').forEach(h => {
+                const icon = h.querySelector('i');
+                if (icon) {
+                    if (h.dataset.sort === assetSortKey) {
+                        h.classList.add('sort-active');
+                        icon.className = assetSortAsc ? 'fas fa-sort-up' : 'fas fa-sort-down';
+                        icon.style.opacity = '1';
+                    } else {
+                        h.classList.remove('sort-active');
+                        icon.className = 'fas fa-sort';
+                        icon.style.opacity = '0.3';
+                    }
+                }
+            });
+            if (cachedAssetFiles.length > 0) {
+                renderAssetRows(cachedAssetFiles);
+                setupAssetsSelectAll();
+            }
+        });
+    });
+});
+
+console.log('[SIMPLE] Simple assets script ready - Details List View with Sort, Bulk, Drag');

@@ -12,6 +12,69 @@
     <link rel="stylesheet" href="fontawesome/css/all.min.css">
     <link rel="stylesheet" href="xterm/xterm.css">
     <style>
+        /* AI Autocomplete toggle */
+        #aiAutocompleteBtn.active {
+            background: rgba(96, 165, 250, 0.2);
+            box-shadow: 0 0 6px rgba(96, 165, 250, 0.4);
+        }
+        /* AI Agent cursor + UI */
+        .agent-cursor {
+            position: fixed;
+            z-index: 99999;
+            pointer-events: none;
+            font-size: 22px;
+            color: #f59e0b;
+            filter: drop-shadow(0 0 6px rgba(245,158,11,0.7));
+            transition: left 0.5s cubic-bezier(.4,0,.2,1), top 0.5s cubic-bezier(.4,0,.2,1);
+        }
+        .agent-cursor.click { animation: agent-click 0.25s ease; }
+        @keyframes agent-click { 50% { transform: scale(0.7); } }
+        .agent-target-glow {
+            box-shadow: 0 0 12px rgba(245,158,11,0.7) !important;
+            transition: box-shadow 0.3s;
+        }
+        .aip-agent-log {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 6px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        .aip-agent-step {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: var(--text-secondary);
+        }
+        .aip-agent-step.active {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+        .aip-agent-step.done { color: #10b981; }
+        .aip-agent-step.error { color: #ef4444; }
+        .aip-agent-step i { width: 14px; text-align: center; }
+        .aip-agent-shots {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            padding: 4px 0;
+        }
+        .aip-agent-shots img {
+            width: 80px;
+            height: 45px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+        .aip-agent-shots img:hover {
+            border-color: #f59e0b;
+            box-shadow: 0 0 6px rgba(245,158,11,0.4);
+        }
         /* Auto-save indicator */
         .autosave-indicator {
             display: flex;
@@ -754,7 +817,7 @@
             <div class="logo">🎬</div>
             <div class="title-section">
                 <h1 class="app-title">Manim Animation Studio</h1>
-                <span class="app-subtitle">Professional Edition <span id="appVersion">v1.1.1.0</span></span>
+                <span class="app-subtitle">Professional Edition <span id="appVersion">v1.1.2.0</span></span>
             </div>
             <div class="autosave-indicator" id="autosaveIndicator">
                 <i class="fas fa-check-circle"></i>
@@ -841,6 +904,9 @@
                                         <button class="icon-btn small" id="sceneOutlineBtn" title="Scene Outline (Ctrl+Shift+O)">
                                             <i class="fas fa-sitemap"></i>
                                         </button>
+                                        <button class="icon-btn small" id="aiAutocompleteBtn" title="AI Autocomplete (ghost text)" style="color:#60a5fa;" onclick="if(typeof toggleAIAutocomplete==='function')toggleAIAutocomplete()">
+                                            <i class="fas fa-bolt"></i>
+                                        </button>
                                         <button class="icon-btn small" id="aiEditPanelBtn" title="AI Edit (Beta) (Ctrl+Shift+E)" style="color:#a78bfa;">
                                             <i class="fas fa-wand-magic-sparkles"></i>
                                         </button>
@@ -916,6 +982,7 @@
                                             </button>
                                             <div class="aip-model-dropdown" id="aiEditModelDropdown"></div>
                                             <div class="aip-header-right">
+                                                <button class="aip-icon-btn" id="aiEditNewChatBtn" title="New Chat"><i class="fas fa-plus"></i></button>
                                                 <button class="aip-icon-btn" id="aiEditPopoutBtn" title="Open in window"><i class="fas fa-arrow-up-right-from-square"></i></button>
                                                 <button class="aip-icon-btn" id="aiEditPanelClose" title="Close"><i class="fas fa-times"></i></button>
                                             </div>
@@ -949,24 +1016,40 @@
                                                     <button id="aiDiffReject" class="aip-reject"><i class="fas fa-times"></i> Reject</button>
                                                 </div>
                                             </div>
+                                            <!-- Agent step log + screenshot grid -->
+                                            <div id="aiAgentUI" style="display:none;">
+                                                <div id="aiAgentLog" class="aip-agent-log"></div>
+                                                <div id="aiAgentScreenshots" class="aip-agent-shots"></div>
+                                            </div>
                                             <!-- Thumbnail grid (for attached images) -->
                                             <div id="aiEditThumbGrid" class="aip-thumb-grid"></div>
                                         </div>
 
                                         <!-- Bottom: ChatGPT-style input bar -->
                                         <div class="aip-input-bar">
-                                            <button class="aip-attach-btn" id="aiEditDropZone" title="Attach images">
-                                                <i class="fas fa-plus"></i>
-                                            </button>
-                                            <input type="file" id="aiEditImageInput" accept="image/*" multiple style="display:none;">
-                                            <textarea id="aiEditPrompt" class="aip-input" rows="1" placeholder="Ask anything"></textarea>
-                                            <button class="aip-search-btn" id="aiEditSearchBtn" title="Toggle web search">
-                                                <i class="fas fa-globe"></i>
-                                            </button>
-                                            <input type="checkbox" id="aiEditSearchToggle" style="display:none;">
-                                            <button id="aiEditSendBtn" class="aip-send-btn" title="Send">
-                                                <i class="fas fa-arrow-up"></i>
-                                            </button>
+                                            <!-- Agent chip (ChatGPT iOS style, inside input area) -->
+                                            <div id="aiAgentChip" class="aip-agent-chip" style="display:none;">
+                                                <i class="fas fa-robot"></i>
+                                                <span>Agent</span>
+                                                <button id="aiAgentChipClose" class="aip-agent-chip-x">&times;</button>
+                                            </div>
+                                            <div class="aip-input-row">
+                                                <button class="aip-attach-btn" id="aiEditDropZone" title="Attach images">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                                <input type="file" id="aiEditImageInput" accept="image/*" multiple style="display:none;">
+                                                <textarea id="aiEditPrompt" class="aip-input" rows="1" placeholder="Ask anything"></textarea>
+                                                <button class="aip-search-btn" id="aiAgentToggle" title="Toggle Agent mode">
+                                                    <i class="fas fa-robot"></i>
+                                                </button>
+                                                <button class="aip-search-btn" id="aiEditSearchBtn" title="Toggle web search">
+                                                    <i class="fas fa-globe"></i>
+                                                </button>
+                                                <input type="checkbox" id="aiEditSearchToggle" style="display:none;">
+                                                <button id="aiEditSendBtn" class="aip-send-btn" title="Send">
+                                                    <i class="fas fa-arrow-up"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1167,43 +1250,54 @@
                     </div>
                     <div class="info-grid" id="systemInfo">
                         <div class="info-card">
-                            <h4>Python Version</h4>
+                            <h4><i class="fab fa-python" style="color:#3776ab;"></i> Python Version</h4>
                             <p id="pythonVersion">-</p>
                         </div>
                         <div class="info-card">
-                            <h4>Manim Version</h4>
-                            <p id="manimVersion">-</p>
-                        </div>
-                        <div class="info-card">
-                            <h4>Platform</h4>
+                            <h4><i class="fas fa-desktop" style="color:#f59e0b;"></i> Platform</h4>
                             <p id="platform">-</p>
                         </div>
                         <div class="info-card">
-                            <h4>Virtual Environment</h4>
+                            <h4><i class="fas fa-microchip" style="color:#ec4899;"></i> GPU</h4>
+                            <p id="gpuInfo">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4><i class="fas fa-hard-drive" style="color:#8b5cf6;"></i> Disk Space</h4>
+                            <p id="diskSpace">-</p>
+                            <div id="diskBar" class="disk-bar" style="display:none;">
+                                <div class="disk-bar-used" id="diskBarUsed"></div>
+                            </div>
+                        </div>
+                        <div class="info-card">
+                            <h4><i class="fas fa-video" style="color:#ef4444;"></i> FFmpeg</h4>
+                            <p id="ffmpegStatus">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4><i class="fas fa-terminal" style="color:#3a96dd;"></i> Terminal Backend</h4>
+                            <p id="terminalBackend">-</p>
+                        </div>
+                        <div class="info-card">
+                            <h4><i class="fas fa-box" style="color:#22c55e;"></i> Virtual Environment</h4>
                             <p id="venvPath">-</p>
                         </div>
                         <div class="info-card">
-                            <h4>Python Executable</h4>
+                            <h4><i class="fas fa-file-code" style="color:#3b82f6;"></i> Python Executable</h4>
                             <p id="pythonExe">-</p>
                         </div>
                         <div class="info-card">
-                            <h4>Media Directory</h4>
+                            <h4><i class="fas fa-folder" style="color:#f59e0b;"></i> Media Directory</h4>
                             <p id="mediaDir">-</p>
                         </div>
                         <div class="info-card">
-                            <h4>Project Root</h4>
+                            <h4><i class="fas fa-folder-tree" style="color:#6366f1;"></i> Project Root</h4>
                             <p id="baseDir">-</p>
                         </div>
                         <div class="info-card">
-                            <h4>Environment Status</h4>
+                            <h4><i class="fas fa-circle-check" style="color:#22c55e;"></i> Environment Status</h4>
                             <p id="venvStatus">-</p>
                         </div>
-                        <div class="info-card">
-                            <h4>Manim Status</h4>
-                            <p id="manimStatus">-</p>
-                        </div>
                         <div class="info-card" id="latexStatusCard">
-                            <h4>📄 LaTeX Status</h4>
+                            <h4><i class="fas fa-file-alt" style="color:#a78bfa;"></i> LaTeX Status</h4>
                             <p id="latexStatus" style="display: flex; align-items: center; gap: 8px;">
                                 <span class="status-indicator checking"></span>
                                 <span>Checking...</span>
@@ -1647,8 +1741,13 @@
                             <div class="assets-title">
                                 <i class="fas fa-images"></i>
                                 Assets Library
+                                <span id="assetsSummary" class="assets-summary"></span>
                             </div>
                             <div class="assets-actions">
+                                <button class="assets-btn" id="bulkDeleteBtn" onclick="window.bulkDeleteAssets()" style="display:none;color:#ef4444;border-color:rgba(239,68,68,0.25);background:rgba(239,68,68,0.1);">
+                                    <i class="fas fa-trash"></i>
+                                    <span id="bulkDeleteCount">Delete Selected</span>
+                                </button>
                                 <button class="assets-btn" onclick="window.loadAssets()">
                                     <i class="fas fa-sync"></i>
                                     Refresh
@@ -1673,10 +1772,13 @@
                             <div class="assets-files">
                                 <div class="assets-table">
                                     <div class="assets-table-header">
+                                        <div class="asset-col-check" style="width:36px;flex-shrink:0;">
+                                            <input type="checkbox" id="assetsSelectAll" title="Select all" style="cursor:pointer;">
+                                        </div>
                                         <div class="asset-col-preview"></div>
-                                        <div class="asset-col-name">Name</div>
-                                        <div class="asset-col-type">Type</div>
-                                        <div class="asset-col-size">Size</div>
+                                        <div class="asset-col-name asset-sortable" data-sort="name" title="Sort by name">Name <i class="fas fa-sort" style="opacity:0.3;font-size:10px;"></i></div>
+                                        <div class="asset-col-type asset-sortable" data-sort="type" title="Sort by type">Type <i class="fas fa-sort" style="opacity:0.3;font-size:10px;"></i></div>
+                                        <div class="asset-col-size asset-sortable" data-sort="size" title="Sort by size">Size <i class="fas fa-sort" style="opacity:0.3;font-size:10px;"></i></div>
                                         <div class="asset-col-actions">Actions</div>
                                     </div>
                                     <div id="simpleAssetsContainer"></div>
@@ -1707,6 +1809,9 @@
                         <div class="venv-header">
                             <h2><i class="fas fa-box"></i> Package Manager</h2>
                             <div class="venv-header-actions">
+                                <button class="venv-btn" onclick="updateAllPackages()" id="updateAllBtn" style="display:none;">
+                                    <i class="fas fa-arrow-up"></i> Update All
+                                </button>
                                 <button class="venv-btn" onclick="refreshPackages(true)" id="checkUpdatesBtn">
                                     <i class="fas fa-download"></i> Check for Updates
                                 </button>
@@ -1719,13 +1824,17 @@
                         <!-- Install Package Section -->
                         <div class="venv-install-section">
                             <h3>Install New Package</h3>
-                            <div class="venv-install-form">
-                                <input
-                                    type="text"
-                                    id="packageNameInput"
-                                    placeholder="Enter package name (e.g., numpy, matplotlib)"
-                                    onkeypress="if(event.key === 'Enter') installPackage()"
-                                />
+                            <div class="venv-install-form" style="position:relative;">
+                                <div style="flex:1;position:relative;">
+                                    <input
+                                        type="text"
+                                        id="packageNameInput"
+                                        placeholder="Search PyPI (e.g., numpy, matplotlib)"
+                                        onkeypress="if(event.key === 'Enter') installPackage()"
+                                        autocomplete="off"
+                                    />
+                                    <div id="pypiSuggestions" class="pypi-suggestions" style="display:none;"></div>
+                                </div>
                                 <button class="venv-btn-primary" onclick="installPackage()">
                                     <i class="fas fa-download"></i> Install
                                 </button>
@@ -1733,7 +1842,13 @@
                         </div>
                         <!-- Installed Packages List -->
                         <div class="venv-packages-section">
-                            <h3>Installed Packages</h3>
+                            <div class="venv-packages-header">
+                                <h3>Installed Packages <span id="packageCount" class="package-count-badge"></span></h3>
+                                <div class="venv-filter-bar">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="packageFilterInput" placeholder="Filter packages..." />
+                                </div>
+                            </div>
                             <div class="venv-packages-list" id="packagesList">
                                 <div class="venv-loading">
                                     <i class="fas fa-spinner fa-spin"></i> Loading packages...
@@ -2135,7 +2250,7 @@
     <!-- Include the modal HTML -->
     <script>
         // Load and inject the modals HTML
-        fetch('app_features_modals.html?v=2025-02-25-v1.1.1.0')
+        fetch('app_features_modals.html?v=2026-03-12-v1.1.2.0')
             .then(response => response.text())
             .then(html => {
                 // Create temp div to parse HTML
@@ -2164,6 +2279,9 @@
     <script src="xterm/addon-fit.js" onload="console.log('[XTERM LOAD] addon-fit.js loaded')" onerror="console.warn('[XTERM LOAD] addon-fit.js not found')"></script>
     <script src="xterm/addon-webgl.js" onload="console.log('[XTERM LOAD] addon-webgl.js loaded')" onerror="console.warn('[XTERM LOAD] addon-webgl.js not found')"></script>
     <script src="xterm/addon-web-links.js" onload="console.log('[XTERM LOAD] addon-web-links.js loaded')" onerror="console.warn('[XTERM LOAD] addon-web-links.js not found')"></script>
+    <script src="xterm/addon-search.js" onload="console.log('[XTERM LOAD] addon-search.js loaded')" onerror="console.warn('[XTERM LOAD] addon-search.js not found')"></script>
+    <script src="xterm/addon-unicode11.js" onload="console.log('[XTERM LOAD] addon-unicode11.js loaded')" onerror="console.warn('[XTERM LOAD] addon-unicode11.js not found')"></script>
+    <script src="xterm/addon-clipboard.js" onload="console.log('[XTERM LOAD] addon-clipboard.js loaded')" onerror="console.warn('[XTERM LOAD] addon-clipboard.js not found')"></script>
     <script>
         console.log('[XTERM LOAD] After loading xterm.js - Terminal constructor:', typeof Terminal);
         console.log('[XTERM LOAD] After loading xterm.js - window.Terminal:', typeof window.Terminal);
@@ -2187,31 +2305,31 @@
     </script>
 
     <!-- Python + Manim completions provider (zero-lag, client-side IntelliSense) -->
-    <script src="python-completions.js"></script>
+    <script defer src="python-completions.js"></script>
 
     <!-- LSP client — connects Monaco to basedpyright running in Python host -->
-    <script src="lsp-client.js"></script>
+    <script defer src="lsp-client.js"></script>
 
     <!-- Main Application Script - Load renderer_desktop.js directly -->
     <!-- Cache buster added to force reload after fixes - change version to force reload -->
-    <script src="renderer_desktop.js?v=2025-02-19-completions"></script>
+    <script defer src="renderer_desktop.js?v=2025-02-19-completions"></script>
 
     <!-- AI Edit Panel (Claude Code + OpenAI Codex) -->
-    <script src="ai-edit.js?v=2025-02-28"></script>
+    <script defer src="ai-edit.js?v=2025-02-28"></script>
 
     <!-- Narration: auto TTS on render/preview when code has narrate() calls -->
-    <script src="narration.js?v=2025-02-28"></script>
+    <script defer src="narration.js?v=2025-02-28"></script>
 
     <!-- New Features: File Upload via PyWebView Dialog -->
-    <script src="new_features.js?v=2025-01-26-windows-details-view"></script>
+    <script defer src="new_features.js?v=2025-01-26-windows-details-view"></script>
 
     <!-- App Features: Theme Toggle, Help Modal, Settings Dialog -->
-    <script src="app_features.js?v=2025-01-26-v14-pywebview-ready-fix"></script>
+    <script defer src="app_features.js?v=2025-01-26-v14-pywebview-ready-fix"></script>
 
-    <!-- SIMPLE ASSETS - NO CACHE -->
-    <script src="simple_assets.js?nocache"></script>
+    <!-- SIMPLE ASSETS -->
+    <script defer src="simple_assets.js?v=2026-03-06"></script>
 
     <!-- Responsive Scaling & DPI Detection -->
-    <script src="responsive_scaling.js?v=2025-02-05"></script>
+    <script defer src="responsive_scaling.js?v=2025-02-05"></script>
 </body>
 </html>

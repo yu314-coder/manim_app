@@ -361,11 +361,52 @@
 .aip-input-bar {
     flex-shrink: 0;
     display: flex;
-    align-items: flex-end;
-    gap: 6px;
+    flex-direction: column;
+    gap: 0;
     padding: 10px 10px 12px;
     border-top: 1px solid var(--border-color);
     background: var(--bg-primary);
+    border-radius: 0 0 8px 8px;
+}
+.aip-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+/* Agent chip (ChatGPT iOS style) */
+.aip-agent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px 4px 8px;
+    margin-bottom: 8px;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 16px;
+    color: #f59e0b;
+    font-size: 12px;
+    font-weight: 600;
+    width: fit-content;
+}
+.aip-agent-chip i { font-size: 13px; }
+.aip-agent-chip-x {
+    background: none;
+    border: none;
+    color: #f59e0b;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 0 0 0 2px;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+.aip-agent-chip-x:hover { opacity: 1; }
+
+/* Agent toggle button in input row */
+#aiAgentToggle.active {
+    color: #f59e0b !important;
+    opacity: 1 !important;
 }
 
 /* "+" attach button */
@@ -452,6 +493,26 @@
 }
 .aip-send-btn.cancel-mode i::before { content: '\f04d'; } /* fa-stop */
 .aip-send-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+/* ── Continuous chat separators ── */
+.ai-chat-separator {
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding: 8px 0 4px;
+    margin-top: 8px;
+}
+.ai-chat-user-msg {
+    font-size: 11px;
+    color: var(--ai-purple);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(167, 139, 250, 0.08);
+    border-radius: 6px;
+}
+.ai-chat-user-msg i { font-size: 10px; opacity: 0.7; }
+.ai-chat-response { margin-top: 4px; }
 
 /* Diff container overlays the editor area */
 #aiDiffContainer {

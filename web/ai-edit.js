@@ -143,6 +143,7 @@
         const imageInput  = document.getElementById('aiEditImageInput');
         const thumbGrid   = document.getElementById('aiEditThumbGrid');
         const autoApplyEl = document.getElementById('aiEditAutoApply');
+        const newChatBtn  = document.getElementById('aiEditNewChatBtn');
         if (!panel || !editorEl) return;
 
         let diffEditorInstance = null;
@@ -163,6 +164,30 @@
         }
 
         // ── Provider toggle ──
+        const agentUI = document.getElementById('aiAgentUI');
+        const agentLog = document.getElementById('aiAgentLog');
+        const agentShots = document.getElementById('aiAgentScreenshots');
+        const agentChip = document.getElementById('aiAgentChip');
+        const agentChipClose = document.getElementById('aiAgentChipClose');
+        const agentToggleBtn = document.getElementById('aiAgentToggle');
+        let agentMode = false;
+
+        function setAgentMode(on) {
+            agentMode = on;
+            if (agentChip) agentChip.style.display = on ? 'inline-flex' : 'none';
+            if (agentToggleBtn) agentToggleBtn.classList.toggle('active', on);
+            if (agentUI) agentUI.style.display = on ? 'block' : 'none';
+            if (promptInput) promptInput.placeholder = on
+                ? 'Describe your animation...' : 'Ask anything';
+        }
+
+        if (agentToggleBtn) {
+            agentToggleBtn.addEventListener('click', () => setAgentMode(!agentMode));
+        }
+        if (agentChipClose) {
+            agentChipClose.addEventListener('click', () => setAgentMode(false));
+        }
+
         if (providerToggle) {
             providerToggle.querySelectorAll('.aip-prov').forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -357,6 +382,14 @@
         panelBtn?.addEventListener('click', togglePanel);
         panelClose?.addEventListener('click', closePanel);
 
+        // ── New Chat button ──
+        newChatBtn?.addEventListener('click', async () => {
+            if (!await waitForApi()) return;
+            try { await pywebview.api.ai_edit_new_chat(); } catch(e) {}
+            if (streamOutput) streamOutput.innerHTML = '';
+            toast('New chat started', 'info');
+        });
+
         // ── Popout button → open separate window ──
         popoutBtn?.addEventListener('click', async () => {
             if (!await waitForApi()) return;
@@ -435,7 +468,8 @@
             if (isStreaming) {
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 try {
-                    if (currentProvider === 'claude') await pywebview.api.ai_edit_claude_cancel();
+                    if (agentActive) await pywebview.api.ai_agent_cancel();
+                    else if (currentProvider === 'claude') await pywebview.api.ai_edit_claude_cancel();
                     else await pywebview.api.ai_edit_cancel();
                 } catch(e) {}
                 resetSendBtn();
@@ -447,6 +481,12 @@
             const prompt = promptInput.value.trim();
             if (!prompt) { toast('Enter a prompt', 'warning'); promptInput.focus(); return; }
 
+            // ── Agent mode ──
+            if (agentMode) {
+                await startAgent(prompt);
+                return;
+            }
+
             originalCode = editor.getModel().getValue();
             isStreaming = true;
             sendBtn.innerHTML = '<i class="fas fa-stop"></i>';
@@ -454,7 +494,15 @@
             statusText.style.display = 'flex';
             diffActions.style.display = 'none';
             if (streamBox) streamBox.style.display = 'flex';
-            if (streamOutput) streamOutput.textContent = '';
+            // Insert chat separator instead of clearing output
+            if (streamOutput) {
+                const sep = document.createElement('div');
+                sep.className = 'ai-chat-separator';
+                const truncPrompt = prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt;
+                sep.innerHTML = `<div class="ai-chat-user-msg"><i class="fas fa-user"></i> ${esc(truncPrompt)}</div>`;
+                streamOutput.appendChild(sep);
+                requestAnimationFrame(() => { streamOutput.scrollTop = streamOutput.scrollHeight; });
+            }
             const providerName = currentProvider === 'claude' ? 'Claude' : 'Codex';
             statusMsg.textContent = `Starting ${providerName}...`;
 
@@ -491,14 +539,20 @@
                 statusMsg.textContent = `${providerName} is generating...`;
                 const pollFn = currentProvider === 'claude' ? 'ai_edit_claude_poll' : 'ai_edit_poll';
 
+                // Create a response container for this message's output
+                let responseContainer = null;
+                if (streamOutput) {
+                    responseContainer = document.createElement('div');
+                    responseContainer.className = 'ai-chat-response';
+                    streamOutput.appendChild(responseContainer);
+                }
+
                 pollTimer = setInterval(async () => {
                     try {
                         const poll = await pywebview.api[pollFn]();
-                        if (streamOutput) {
-                            // Both Claude and Codex now provide filtered_output (full replace)
+                        if (responseContainer) {
                             const clean = poll.filtered_output || '';
-                            if (clean) streamOutput.innerHTML = renderEnhancedOutput(clean);
-                            // Defer scroll to after browser layout
+                            if (clean) responseContainer.innerHTML = renderEnhancedOutput(clean);
                             requestAnimationFrame(() => {
                                 streamOutput.scrollTop = streamOutput.scrollHeight;
                             });
@@ -510,7 +564,7 @@
                             clearInterval(pollTimer); pollTimer = null;
                             if (poll.status === 'success' && poll.edited_code) {
                                 editedCode = poll.edited_code;
-                                if (streamBox) streamBox.style.display = 'none';
+                                // Keep streamBox visible for chat history
                                 // Auto-apply or show diff
                                 if (autoApplyEl && autoApplyEl.checked) {
                                     editor.setValue(editedCode);
@@ -616,6 +670,279 @@
                 }
             } catch(e) {}
         }, 1000);
+
+        // ══════════════════════════════════════════════════════════════
+        //  AGENT MODE — autonomous generate → render → fix loop
+        // ══════════════════════════════════════════════════════════════
+
+        let agentPollTimer = null;
+        let lastAgentActionId = 0;
+        let agentActive = false;
+
+        const STEP_ICONS = {
+            generating: 'fa-brain',
+            rendering: 'fa-play',
+            capturing: 'fa-camera',
+            analyzing: 'fa-search',
+            fixing: 'fa-wrench',
+            done: 'fa-check-circle',
+            error: 'fa-times-circle',
+        };
+
+        async function startAgent(description) {
+            if (!await waitForApi()) return;
+            isStreaming = true;
+            agentActive = true;
+            sendBtn.innerHTML = '<i class="fas fa-stop"></i>';
+            sendBtn.classList.add('cancel-mode');
+            statusText.style.display = 'flex';
+            statusMsg.textContent = 'Starting agent...';
+            if (agentLog) agentLog.innerHTML = '';
+            if (agentShots) agentShots.innerHTML = '';
+            if (streamBox) { streamBox.style.display = 'flex'; }
+            if (streamOutput) streamOutput.innerHTML = '';
+
+            try {
+                const res = await pywebview.api.ai_agent_start(description, 5, selectedModel, currentProvider);
+                if (res.status === 'error') {
+                    toast(res.message, 'error');
+                    resetSendBtn(); agentActive = false;
+                    return;
+                }
+                lastAgentActionId = 0;
+                agentPollTimer = setInterval(pollAgent, 400);
+            } catch (e) {
+                toast('Agent start failed: ' + e.message, 'error');
+                resetSendBtn(); agentActive = false;
+            }
+        }
+
+        async function pollAgent() {
+            if (!agentActive) { clearInterval(agentPollTimer); return; }
+            try {
+                const st = await pywebview.api.ai_agent_poll();
+                statusMsg.textContent = st.message || st.step;
+                renderAgentLog(st.history || []);
+
+                // Show live stream output from agent edit subprocess
+                if (st.stream_output && streamOutput) {
+                    streamOutput.innerHTML = renderEnhancedOutput(st.stream_output);
+                    requestAnimationFrame(() => {
+                        streamOutput.scrollTop = streamOutput.scrollHeight;
+                        // Also scroll parent panel
+                        const panel = streamOutput.closest('.aip-body, .aip-stream-box');
+                        if (panel) panel.scrollTop = panel.scrollHeight;
+                    });
+                }
+
+                // Execute actions from agent backend
+                const act = st.action;
+                if (act && act._id && act._id !== lastAgentActionId) {
+                    lastAgentActionId = act._id;
+                    await executeAgentAction(act, st.ui_action);
+                }
+
+                // Done / error
+                if (!st.active && (st.step === 'done' || st.step === 'error' || st.step === 'idle')) {
+                    clearInterval(agentPollTimer); agentPollTimer = null;
+                    agentActive = false;
+                    resetSendBtn();
+                    if (st.step === 'done') toast('Agent finished!', 'success');
+                    else if (st.step === 'error') toast('Agent error: ' + st.message, 'error');
+                }
+            } catch (e) { console.error('[AGENT POLL]', e); }
+        }
+
+        function renderAgentLog(history) {
+            if (!agentLog) return;
+            agentLog.innerHTML = '';
+            history.forEach((h, i) => {
+                const isLast = i === history.length - 1;
+                const icon = STEP_ICONS[h.step] || 'fa-circle';
+                const cls = isLast ? (h.step === 'error' ? 'error' : 'active')
+                                   : (h.step === 'done' ? 'done' : '');
+                const spin = isLast && !['done','error'].includes(h.step) ? ' fa-spin' : '';
+                const el = document.createElement('div');
+                el.className = 'aip-agent-step ' + cls;
+                el.innerHTML = `<i class="fas ${isLast && spin ? 'fa-circle-notch' + spin : icon}"></i> ${esc(h.message)}`;
+                agentLog.appendChild(el);
+            });
+            agentLog.scrollTop = agentLog.scrollHeight;
+        }
+
+        async function executeAgentAction(action, uiAction) {
+            // Visual cursor animation
+            if (uiAction && uiAction.type === 'click_button' && uiAction.target) {
+                await showAgentCursor(uiAction.target, uiAction.label || '');
+            }
+
+            if (action.type === 'set_code_and_preview') {
+                // Set code in editor
+                if (typeof editor !== 'undefined' && editor) {
+                    editor.setValue(action.code);
+                }
+                // Trigger preview and listen for result
+                monitorPreviewForAgent();
+                if (typeof quickPreview === 'function') {
+                    quickPreview();
+                }
+            }
+
+            if (action.type === 'capture_screenshots') {
+                const count = action.count || 8;
+                const shots = await captureVideoScreenshots(count);
+                renderScreenshotThumbs(shots);
+                // Send back to agent WITH image data so AI can actually see them
+                try {
+                    await pywebview.api.ai_agent_feedback({
+                        type: 'screenshots',
+                        screenshots: shots.map(s => ({
+                            time: s.time,
+                            dataUrl: s.dataUrl
+                        }))
+                    });
+                } catch (e) { console.error('[AGENT] screenshot feedback:', e); }
+            }
+        }
+
+        // ── Visual cursor that "clicks" a button ──
+        async function showAgentCursor(targetId, label) {
+            const target = document.getElementById(targetId);
+            if (!target) return;
+
+            const cursor = document.createElement('div');
+            cursor.className = 'agent-cursor';
+            cursor.innerHTML = '<i class="fas fa-mouse-pointer"></i>';
+            document.body.appendChild(cursor);
+
+            // Start from center of screen
+            cursor.style.left = (window.innerWidth / 2) + 'px';
+            cursor.style.top = (window.innerHeight / 2) + 'px';
+
+            await new Promise(r => requestAnimationFrame(r));
+
+            // Animate to target
+            const rect = target.getBoundingClientRect();
+            cursor.style.left = (rect.left + rect.width / 2) + 'px';
+            cursor.style.top = (rect.top + rect.height / 2) + 'px';
+
+            await new Promise(r => setTimeout(r, 550));
+
+            // Click effect
+            cursor.classList.add('click');
+            target.classList.add('agent-target-glow');
+
+            await new Promise(r => setTimeout(r, 400));
+            target.classList.remove('agent-target-glow');
+            cursor.remove();
+        }
+
+        // ── Monitor preview/render completion for agent feedback ──
+        function monitorPreviewForAgent() {
+            // Temporarily hook into the global callbacks
+            const origComplete = window.previewCompleted;
+            const origFailed = window.previewFailed;
+            const origRenderComplete = window.renderCompleted;
+            const origRenderFailed = window.renderFailed;
+
+            function cleanup() {
+                window.previewCompleted = origComplete;
+                window.previewFailed = origFailed;
+                window.renderCompleted = origRenderComplete;
+                window.renderFailed = origRenderFailed;
+            }
+
+            window.previewCompleted = function(outputPath) {
+                cleanup();
+                if (origComplete) origComplete(outputPath);
+                // Send success feedback to agent
+                try {
+                    pywebview.api.ai_agent_feedback({ type: 'render_success', path: outputPath });
+                } catch (e) {}
+            };
+            window.previewFailed = function(error) {
+                cleanup();
+                if (origFailed) origFailed(error);
+                try {
+                    pywebview.api.ai_agent_feedback({ type: 'render_error', error: error });
+                } catch (e) {}
+            };
+            window.renderCompleted = function(outputPath, autoSave, suggestedName) {
+                cleanup();
+                if (origRenderComplete) origRenderComplete(outputPath, autoSave, suggestedName);
+                try {
+                    pywebview.api.ai_agent_feedback({ type: 'render_success', path: outputPath });
+                } catch (e) {}
+            };
+            window.renderFailed = function(error) {
+                cleanup();
+                if (origRenderFailed) origRenderFailed(error);
+                try {
+                    pywebview.api.ai_agent_feedback({ type: 'render_error', error: error });
+                } catch (e) {}
+            };
+
+            // Timeout safety — if neither fires within 3 min, send error
+            setTimeout(() => {
+                if (window.previewCompleted !== origComplete) {
+                    cleanup();
+                    try {
+                        pywebview.api.ai_agent_feedback({ type: 'render_error', error: 'Render timeout' });
+                    } catch (e) {}
+                }
+            }, 600000); // 10 min safety — agent itself never times out
+        }
+
+        // ── Capture screenshots from preview video ──
+        // fps=1: capture 1 frame per second of video for thorough review
+        async function captureVideoScreenshots(count) {
+            const video = document.getElementById('previewVideo');
+            if (!video || !video.duration || video.duration === Infinity || video.readyState < 2) {
+                await new Promise(r => setTimeout(r, 1500));
+                if (!video || !video.duration || video.duration === Infinity) return [];
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.min(video.videoWidth || 640, 640);
+            canvas.height = Math.min(video.videoHeight || 360, 360);
+            const ctx = canvas.getContext('2d');
+            const duration = video.duration;
+            const frames = [];
+
+            // 1 frame per second, capped at 30 to avoid huge payloads
+            const actualCount = Math.min(Math.max(Math.floor(duration), 1), 30);
+
+            for (let i = 0; i < actualCount; i++) {
+                const t = (duration / (actualCount + 1)) * (i + 1);
+                video.currentTime = t;
+                await new Promise(r => {
+                    const onSeeked = () => { video.removeEventListener('seeked', onSeeked); r(); };
+                    video.addEventListener('seeked', onSeeked);
+                });
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                frames.push({
+                    time: t.toFixed(2),
+                    dataUrl: canvas.toDataURL('image/jpeg', 0.6)
+                });
+            }
+            video.currentTime = 0;
+            return frames;
+        }
+
+        function renderScreenshotThumbs(shots) {
+            if (!agentShots) return;
+            agentShots.innerHTML = '';
+            shots.forEach(s => {
+                const img = document.createElement('img');
+                img.src = s.dataUrl;
+                img.title = `Frame at ${s.time}s`;
+                img.addEventListener('click', () => {
+                    const video = document.getElementById('previewVideo');
+                    if (video) { video.currentTime = parseFloat(s.time); video.play(); }
+                });
+                agentShots.appendChild(img);
+            });
+        }
 
         window.openAIEdit = openAIEdit;
         updateSendBtnLabel();

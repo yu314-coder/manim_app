@@ -4,7 +4,7 @@
 
 A powerful, feature-rich desktop application for creating stunning mathematical animations using [Manim Community Edition](https://www.manim.community/). Built with Python, PyWebView, and modern web technologies.
 
-![Version](https://img.shields.io/badge/version-1.1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8+-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-orange)
@@ -29,10 +29,18 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 ### 🤖 **AI Edit Panel (Codex + Claude Code)**
 - Send your code with a natural language prompt for intelligent edits
 - **Claude Code (Beta)** — structured stream-json integration, no API key needed
+- **OpenAI Codex CLI** — full JSONL streaming with `codex exec --json`
+- **AI Agent Mode** — autonomous generate → render → screenshot → review → fix loop
+  - Works with both Claude and Codex providers
+  - Visual QA review examines every frame for issues
+  - Auto-iterates until the animation looks correct
+- **Continuous Chat** — multi-turn conversations with session memory (`--session-id` / `--resume`)
+- **Token-Optimized** — AI reads files from disk instead of prompt embedding, session caching saves 70-80% on subsequent turns, screenshots downscaled to reduce image tokens
 - **Image upload** — attach screenshots or reference images for the AI to understand your intent
 - **Web Search** toggle — let the AI reference live web results while editing
-- **Model selector** — pick from GPT-5.3 Codex, GPT-5.2, GPT-5.1 Codex Max, and more
+- **Model selector** — pick from Claude Opus/Sonnet/Haiku, GPT-5.3 Codex, and more
 - Side-by-side diff review — Accept or Reject changes with one click
+- **Inline autocomplete** — ghost-text code completions powered by Claude Haiku
 - Fix code errors directly from the diagnostics panel
 - **Premium glass-morphism UI** with gradient buttons and slide-in panel
 
@@ -517,7 +525,31 @@ If you find this project useful, please consider giving it a star on GitHub!
 
 ## 📝 Changelog
 
-### v1.1.1.0 (Latest)
+### v1.1.2.0 (Latest)
+- ✨ **AI Agent Mode** — autonomous loop: generate code → render → capture screenshots → visual review → auto-fix → repeat until correct
+- ✨ **Dual Agent Providers** — AI Agent works with both Claude Code and OpenAI Codex CLI, using the same provider for edit and review
+- ✨ **Continuous Chat** — multi-turn conversations with session memory; Claude uses `--session-id` / `--resume` for context persistence
+- ✨ **Token Optimization** — removed code embedding from all prompts (AI reads `scene.py` from disk), session caching saves 70-80% on repeated turns, screenshots downscaled to 960px for 4x fewer image tokens
+- ✨ **Claude Agent Session Reuse** — first edit uses `--session-id`, subsequent edits use `--resume` so Claude remembers what it already tried
+- ✨ **Screenshot Downscaling** — review frames auto-resized to 960px wide via Pillow (falls back gracefully if unavailable)
+- ✨ **Claude Review via File Read** — Claude examines screenshot files from disk using its Read tool instead of base64 prompt embedding
+- ✨ **Assets Folder Access** — AI workspaces get a junction/symlink to the assets folder; CLAUDE.md/AGENTS.md lists available asset files
+- ✨ **Inline Autocomplete** — ghost-text code completions powered by Claude Haiku (fast, lightweight)
+- ✨ **New Chat Button** — reset AI Edit session and start fresh without restarting the panel
+- 🐛 Fixed Codex agent not working (cascading bugs: missing AGENTS.md, wrong CLI flags, no JSONL parsing)
+- 🐛 Fixed Codex agent review using Claude instead of Codex — now each provider reviews with its own CLI
+- 🐛 Fixed `--skip-git-repo-check` incorrectly added to Claude CLI calls (only valid for Codex)
+- 🐛 Fixed `--image` flag used for Claude CLI (doesn't exist) — Claude now reads image files via Read tool
+- 🐛 Fixed `--output-format stream-json` requiring `--verbose` flag for Claude agent edits
+- 🐛 Fixed agent loop not continuing when review found bugs (edit failures, unchanged code, review errors)
+- 🐛 Fixed review nitpicking minor issues — now focuses on real visual bugs (overlap, off-screen, wrong text, goal mismatch)
+- 🐛 Fixed agent sending only 5 sampled frames — now sends ALL captured frames to review
+- 🔧 Unified all 3 MD templates (non-agent, Claude agent, Codex agent) with consistent Manim context and "ALWAYS read scene.py FIRST" rule
+- 🔧 Instructions piped via stdin (`-p` without arg) to avoid OS argument length limits
+- 🔧 Review prompt no longer embeds code — reviewer only needs screenshots + goal description
+- 🔧 Agent edit failure counter prevents infinite loops (stops after 5 consecutive failures)
+
+### v1.1.1.0
 - ✨ **Claude Code Integration (Beta)** — AI Edit now supports Claude Code via `claude -p --output-format stream-json`, no API key needed
 - ✨ **Enhanced Streaming Output** — tool actions (Write, Read, Bash) render as styled blocks with icons, code lines get line-number gutters
 - ✨ **AI Edit Beta Badge** — panel and window mode show "(Beta)" to indicate active development

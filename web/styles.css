@@ -3439,8 +3439,8 @@ div[style*="font-family"] {
     gap: 12px;
 }
 
-.venv-install-form input {
-    flex: 1;
+.venv-install-form input#packageNameInput {
+    width: 100%;
     padding: 12px 16px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -3449,6 +3449,7 @@ div[style*="font-family"] {
     font-size: 14px;
     font-family: 'Segoe UI', sans-serif;
     transition: all 0.3s ease;
+    box-sizing: border-box;
 }
 
 .venv-install-form input:focus {
@@ -3499,7 +3500,7 @@ div[style*="font-family"] {
     font-size: 18px;
     font-weight: 600;
     color: var(--text-primary);
-    margin: 0 0 15px 0;
+    margin: 0;
 }
 
 .venv-packages-list {
@@ -3676,6 +3677,204 @@ div[style*="font-family"] {
 .venv-empty p {
     font-size: 16px;
     margin: 0;
+}
+
+/* Assets summary badge */
+.assets-summary {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-left: 8px;
+}
+
+/* Sortable column headers */
+.asset-sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s ease;
+}
+
+.asset-sortable:hover {
+    color: #6366f1;
+}
+
+.asset-sortable.sort-active {
+    color: #6366f1;
+}
+
+/* Asset row checkbox */
+.asset-row-check {
+    width: 36px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.asset-row-check input[type="checkbox"] {
+    cursor: pointer;
+    width: 15px;
+    height: 15px;
+    accent-color: #6366f1;
+}
+
+.asset-row.selected {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+/* Disk usage bar */
+.disk-bar {
+    margin-top: 8px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.disk-bar-used {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+    background: linear-gradient(90deg, #22c55e, #f59e0b);
+}
+
+.disk-bar-used.high {
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+
+/* PyPI Suggestions Dropdown */
+.pypi-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #1e2030;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.pypi-suggestion-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.pypi-suggestion-item:hover,
+.pypi-suggestion-item.active {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.pypi-suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.pypi-suggestion-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.pypi-suggestion-name .pypi-highlight {
+    color: #3b82f6;
+}
+
+.pypi-suggestion-version {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-left: 8px;
+    font-family: 'Consolas', monospace;
+}
+
+.pypi-suggestion-summary {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pypi-suggestions-loading {
+    padding: 12px 14px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Package filter bar */
+.venv-packages-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    gap: 16px;
+}
+
+.venv-packages-header h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.package-count-badge {
+    font-size: 12px;
+    font-weight: 600;
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 10px;
+    padding: 2px 8px;
+}
+
+.venv-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 6px 12px;
+    flex: 0 1 280px;
+    transition: border-color 0.2s ease;
+}
+
+.venv-filter-bar:focus-within {
+    border-color: #3b82f6;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.venv-filter-bar i {
+    color: var(--text-secondary);
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.venv-filter-bar input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: 'Segoe UI', sans-serif;
+    min-width: 0;
+}
+
+.venv-filter-bar input::placeholder {
+    color: var(--text-secondary);
 }
 
 /* Toast Notifications */

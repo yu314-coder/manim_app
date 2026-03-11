@@ -198,6 +198,66 @@ class MyScene(Scene):
             window.initializeLsp(monaco, editor);
         }
 
+        // ── Inline AI Autocomplete (ghost text) ──
+        let _aiCompleteEnabled = localStorage.getItem('aiAutocomplete') === 'true';
+        let _aiCompleteCounter = 0;
+
+        monaco.languages.registerInlineCompletionsProvider('python', {
+            provideInlineCompletions: async (model, position, context, token) => {
+                if (!_aiCompleteEnabled) return { items: [] };
+                if (typeof pywebview === 'undefined' || !pywebview?.api?.ai_inline_complete) return { items: [] };
+
+                const myId = ++_aiCompleteCounter;
+
+                // Get code before and after cursor
+                const fullText = model.getValue();
+                const offset = model.getOffsetAt(position);
+                const codeBefore = fullText.substring(0, offset);
+                const codeAfter = fullText.substring(offset);
+
+                // Skip if line is empty or just whitespace (let user type first)
+                const lineContent = model.getLineContent(position.lineNumber);
+                const beforeCursor = lineContent.substring(0, position.column - 1);
+                if (beforeCursor.trim().length < 3) return { items: [] };
+
+                try {
+                    const res = await pywebview.api.ai_inline_complete(codeBefore, codeAfter);
+                    // Stale check — a newer request was started
+                    if (_aiCompleteCounter !== myId) return { items: [] };
+                    if (token.isCancellationRequested) return { items: [] };
+                    if (res.status === 'success' && res.completion) {
+                        return {
+                            items: [{
+                                insertText: res.completion,
+                                range: new monaco.Range(
+                                    position.lineNumber, position.column,
+                                    position.lineNumber, position.column
+                                )
+                            }]
+                        };
+                    }
+                } catch (e) { console.log('[AI COMPLETE]', e); }
+                return { items: [] };
+            },
+            freeInlineCompletions: () => {}
+        });
+
+        // Expose toggle for toolbar button
+        window.toggleAIAutocomplete = function() {
+            _aiCompleteEnabled = !_aiCompleteEnabled;
+            localStorage.setItem('aiAutocomplete', _aiCompleteEnabled);
+            const btn = document.getElementById('aiAutocompleteBtn');
+            if (btn) btn.classList.toggle('active', _aiCompleteEnabled);
+            toast(_aiCompleteEnabled ? 'AI Autocomplete ON' : 'AI Autocomplete OFF',
+                  _aiCompleteEnabled ? 'success' : 'info');
+        };
+
+        // Sync toggle button state on init
+        setTimeout(() => {
+            const btn = document.getElementById('aiAutocompleteBtn');
+            if (btn) btn.classList.toggle('active', _aiCompleteEnabled);
+        }, 100);
+
         console.log('Monaco Editor initialized successfully');
         console.log('Editor is editable:', !editor.getOption(monaco.editor.EditorOption.readOnly));
         console.log('Editor value:', editor.getValue().substring(0, 50) + '...');
@@ -1036,7 +1096,11 @@ async function renderAnimation() {
 
         if (res.status === 'error') {
             setTerminalStatus('Error', 'error');
-            toast(`Render failed: ${res.message}`, 'error');
+            showToastWithAction(`Render failed: ${res.message}`, 'error', 'Fix with AI', () => {
+                if (typeof window.openAIEdit === 'function') {
+                    window.openAIEdit('Fix this Manim render error:\n' + res.message + '\n\nRead the code, understand the error, and fix it.');
+                }
+            });
         }
     } catch (err) {
         setTerminalStatus('Error', 'error');
@@ -1088,7 +1152,11 @@ async function quickPreview() {
         const res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled, 'mp4', null);
 
         if (res.status === 'error') {
-            toast(`Preview failed: ${res.message}`, 'error');
+            showToastWithAction(`Preview failed: ${res.message}`, 'error', 'Fix with AI', () => {
+                if (typeof window.openAIEdit === 'function') {
+                    window.openAIEdit('Fix this Manim preview error:\n' + res.message + '\n\nRead the code, understand the error, and fix it.');
+                }
+            });
         }
     } catch (err) {
         toast(`Preview error: ${err.message}`, 'error');
@@ -1488,6 +1556,13 @@ window.renderFailed = function(error) {
     appendConsole('─'.repeat(60), 'info');
     job.running = false;
     setTerminalStatus('Error', 'error');
+    // Offer "Fix with AI" via actionable toast
+    window._lastRenderError = error;
+    showToastWithAction(`Render failed`, 'error', 'Fix with AI', () => {
+        if (typeof window.openAIEdit === 'function') {
+            window.openAIEdit('Fix this Manim render error:\n' + error + '\n\nRead the code, understand the error, and fix it.');
+        }
+    });
 };
 
 window.previewCompleted = function(outputPath) {
@@ -1552,6 +1627,13 @@ window.previewFailed = function(error) {
     appendConsole('─'.repeat(60), 'info');
     job.running = false;
     setTerminalStatus('Error', 'error');
+    // Offer "Fix with AI" via actionable toast
+    window._lastRenderError = error;
+    showToastWithAction(`Preview failed`, 'error', 'Fix with AI', () => {
+        if (typeof window.openAIEdit === 'function') {
+            window.openAIEdit('Fix this Manim preview error:\n' + error + '\n\nRead the code, understand the error, and fix it.');
+        }
+    });
 };
 
 // ── Render History helpers ──────────────────────────────────────────────────
@@ -2410,11 +2492,6 @@ async function executeCommand(command) {
             setTerminalStatus('Error', 'error');
         } else {
             setTerminalStatus('Ready', 'success');
-
-            // Refresh system info after pip commands
-            if (command.startsWith('pip ')) {
-                setTimeout(() => loadSystemInfo(), 1500);
-            }
         }
     } catch (err) {
         appendConsole(`Error: ${err.message}`, 'error');
@@ -2434,12 +2511,56 @@ async function loadSystemInfo() {
 
         // Set all system info fields
         document.getElementById('pythonVersion').textContent = info.python_version ? info.python_version.split('\n')[0] : 'Unknown';
-        document.getElementById('manimVersion').textContent = info.manim_version || 'Not installed';
         document.getElementById('platform').textContent = info.platform || 'Unknown';
         document.getElementById('baseDir').textContent = info.base_dir || '-';
         document.getElementById('mediaDir').textContent = info.media_dir || '-';
         document.getElementById('venvPath').textContent = info.venv_path || 'Not in virtual environment';
         document.getElementById('pythonExe').textContent = info.python_exe || '-';
+
+        // GPU info
+        const gpuEl = document.getElementById('gpuInfo');
+        if (gpuEl) {
+            if (info.gpus && info.gpus.length > 0) {
+                gpuEl.innerHTML = info.gpus.map(g =>
+                    `${g.name}${g.driver ? ` <span style="opacity:0.5;font-size:12px;">(${g.driver})</span>` : ''}`
+                ).join('<br>');
+            } else {
+                gpuEl.textContent = 'Not detected';
+            }
+        }
+
+        // Disk space
+        const diskEl = document.getElementById('diskSpace');
+        const diskBar = document.getElementById('diskBar');
+        const diskBarUsed = document.getElementById('diskBarUsed');
+        if (diskEl && info.disk_total > 0) {
+            const freeGB = (info.disk_free / (1024 ** 3)).toFixed(1);
+            const totalGB = (info.disk_total / (1024 ** 3)).toFixed(1);
+            const usedPct = ((info.disk_used / info.disk_total) * 100).toFixed(0);
+            diskEl.textContent = `${freeGB} GB free of ${totalGB} GB (${usedPct}% used)`;
+            if (diskBar && diskBarUsed) {
+                diskBar.style.display = 'block';
+                diskBarUsed.style.width = usedPct + '%';
+                if (parseInt(usedPct) > 85) diskBarUsed.classList.add('high');
+            }
+        }
+
+        // FFmpeg
+        const ffmpegEl = document.getElementById('ffmpegStatus');
+        if (ffmpegEl) {
+            if (info.ffmpeg_installed) {
+                ffmpegEl.innerHTML = `<span style="color:#22c55e;">✓</span> ${info.ffmpeg_version || 'Installed'}`;
+            } else {
+                ffmpegEl.innerHTML = `<span style="color:#ef4444;">✗</span> Not found`;
+            }
+        }
+
+        // Terminal backend
+        const termBackendEl = document.getElementById('terminalBackend');
+        if (termBackendEl) {
+            const backendLabels = { 'conpty': 'ConPTY (native)', 'winpty': 'WinPTY (legacy)', 'subprocess': 'Subprocess (fallback)' };
+            termBackendEl.textContent = backendLabels[info.terminal_backend] || info.terminal_backend || '-';
+        }
 
         // Set status indicators
         const venvStatus = document.getElementById('venvStatus');
@@ -2449,15 +2570,6 @@ async function loadSystemInfo() {
         } else {
             venvStatus.textContent = 'Not Active';
             venvStatus.className = 'status-badge warning';
-        }
-
-        const manimStatus = document.getElementById('manimStatus');
-        if (info.manim_installed) {
-            manimStatus.textContent = 'Installed';
-            manimStatus.className = 'status-badge success';
-        } else {
-            manimStatus.textContent = 'Not Installed';
-            manimStatus.className = 'status-badge error';
         }
 
         // Check LaTeX status
@@ -2706,26 +2818,26 @@ window.addEventListener('pywebviewready', () => {
     console.log('Loading initial data...');
     console.log('============================================');
 
-    console.log('[INIT] 0. Loading app version...');
-    loadAppVersion();
-
-    console.log('[INIT] 0.5. Restoring render sidebar settings...');
-    loadRenderSidebarSettings();
-
-    console.log('[INIT] 1. Loading settings...');
-    loadSettings();
-
-    console.log('[INIT] 2. Loading system info...');
-    loadSystemInfo();
-
-    console.log('[INIT] 2.5. Checking LaTeX status for header button...');
-    checkLatexStatus();
-
-    console.log('[INIT] 3. Refreshing assets...');
-    refreshAssets();
+    // Local-only operations first (zero API overhead)
+    console.log('[INIT] 0.5. Restoring render sidebar settings (local)...');
+    loadRenderSidebarSettings();  // reads localStorage only
 
     console.log('[INIT] 4. Starting auto-save...');
-    startAutosave();
+    startAutosave();  // just starts a timer
+
+    // Fire independent API calls in parallel (don't await)
+    console.log('[INIT] 0+1. Loading version + settings in parallel...');
+    loadAppVersion();   // async fire-and-forget
+    loadSettings();     // async fire-and-forget
+
+    console.log('[INIT] 2. System info will load on first tab visit');
+    console.log('[INIT] 3. Assets will load on first tab visit');
+
+    // Defer LaTeX check — triggers subprocess calls on backend.
+    // By waiting 3s, the background dependency checker (Step 1) has time
+    // to populate its cache, so this hits a warm cache instead.
+    console.log('[INIT] 2.5. Deferring LaTeX check 3s...');
+    setTimeout(() => checkLatexStatus(), 3000);
 
     console.log('[INIT] 5. Checking for unsaved work (delayed)...');
     // Delay autosave check to ensure app is fully loaded
@@ -2741,15 +2853,13 @@ window.addEventListener('pywebviewready', () => {
     console.log('[INIT] 6. Will initialize terminal when ready...');
     // Terminal initialization happens below (after Terminal constructor is loaded)
 
-    // Auto-refresh system info every 1 minute (60000ms)
+    // Auto-refresh system info every 5 minutes (only when system tab is visible)
     setInterval(() => {
-        // Only refresh if system tab is active to avoid unnecessary API calls
         const systemPanel = document.getElementById('system-panel');
         if (systemPanel && systemPanel.classList.contains('active')) {
-            console.log('🔄 Auto-refreshing system info...');
             loadSystemInfo();
         }
-    }, 60000); // 60 seconds
+    }, 300000);
 
     // Setup assets functionality
     setupAssetsSearch();
@@ -2773,10 +2883,22 @@ window.addEventListener('pywebviewready', () => {
             pill.classList.add('active');
             document.getElementById(`${tabName}-panel`)?.classList.add('active');
 
-            // Refresh assets when assets tab is clicked
+            // Lazy-load assets on first visit, skip re-fetch on subsequent visits
             if (tabName === 'assets') {
-                console.log('[TAB] Assets tab selected, refreshing assets...');
-                refreshAssets();
+                if (!assetsTabLoaded) {
+                    console.log('[TAB] Assets tab first visit, loading assets...');
+                    refreshAssets();
+                    assetsTabLoaded = true;
+                }
+            }
+
+            // Lazy-load system info on first visit
+            if (tabName === 'system') {
+                if (!systemTabLoaded) {
+                    console.log('[TAB] System tab first visit, loading system info...');
+                    loadSystemInfo();
+                    systemTabLoaded = true;
+                }
             }
 
             // Refresh history when history tab is clicked
@@ -2798,9 +2920,6 @@ window.addEventListener('pywebviewready', () => {
                     }
                 }, 50);
             }
-
-            // Handle performance monitoring based on active tab
-            handlePerformanceMonitoring();
 
             console.log(`Switched to ${tabName} tab`);
         });
@@ -2969,15 +3088,20 @@ window.addEventListener('pywebviewready', () => {
             term.open(terminalContainer);
             console.log('✅ Terminal opened in container');
 
-            // Load addons — FitAddon for auto-sizing
+            // Load addons — each wrapped in try/catch so one failure doesn't kill the terminal
             fitAddon = null;
+            let searchAddon = null;
+
+            // FitAddon — auto-sizing
             if (window.FitAddon) {
-                fitAddon = new FitAddon.FitAddon();
-                term.loadAddon(fitAddon);
-                console.log('[TERMINAL] FitAddon loaded');
+                try {
+                    fitAddon = new FitAddon.FitAddon();
+                    term.loadAddon(fitAddon);
+                    console.log('[TERMINAL] FitAddon loaded');
+                } catch (e) { console.warn('[TERMINAL] FitAddon failed:', e.message); }
             }
 
-            // WebGL addon for GPU-accelerated rendering, with canvas fallback
+            // WebGL — GPU-accelerated rendering, with canvas fallback
             if (window.WebglAddon) {
                 try {
                     const webgl = new WebglAddon.WebglAddon();
@@ -2992,10 +3116,38 @@ window.addEventListener('pywebviewready', () => {
                 }
             }
 
-            // Clickable URLs in terminal output
+            // WebLinksAddon — clickable URLs
             if (window.WebLinksAddon) {
-                term.loadAddon(new WebLinksAddon.WebLinksAddon());
-                console.log('[TERMINAL] WebLinksAddon loaded');
+                try {
+                    term.loadAddon(new WebLinksAddon.WebLinksAddon());
+                    console.log('[TERMINAL] WebLinksAddon loaded');
+                } catch (e) { console.warn('[TERMINAL] WebLinksAddon failed:', e.message); }
+            }
+
+            // SearchAddon — Ctrl+Shift+F to search buffer
+            if (window.SearchAddon) {
+                try {
+                    searchAddon = new SearchAddon.SearchAddon();
+                    term.loadAddon(searchAddon);
+                    console.log('[TERMINAL] SearchAddon loaded');
+                } catch (e) { console.warn('[TERMINAL] SearchAddon failed:', e.message); }
+            }
+
+            // Unicode11Addon — correct widths for box-drawing, CJK, emoji
+            if (window.Unicode11Addon) {
+                try {
+                    term.loadAddon(new Unicode11Addon.Unicode11Addon());
+                    term.unicode.activeVersion = '11';
+                    console.log('[TERMINAL] Unicode11Addon loaded');
+                } catch (e) { console.warn('[TERMINAL] Unicode11Addon failed:', e.message); }
+            }
+
+            // ClipboardAddon — OSC 52 clipboard from programs inside terminal
+            if (window.ClipboardAddon) {
+                try {
+                    term.loadAddon(new ClipboardAddon.ClipboardAddon());
+                    console.log('[TERMINAL] ClipboardAddon loaded');
+                } catch (e) { console.warn('[TERMINAL] ClipboardAddon failed:', e.message); }
             }
 
             // Focus terminal so it can receive input immediately
@@ -3066,8 +3218,27 @@ window.addEventListener('pywebviewready', () => {
                 }
             });
 
-            // Enable copy/paste support
+            // Enable copy/paste and search support
             term.attachCustomKeyEventHandler((event) => {
+                // Ctrl+Shift+F - Search terminal buffer
+                if (event.ctrlKey && event.shiftKey && event.key === 'F' && event.type === 'keydown') {
+                    if (searchAddon) {
+                        toggleTerminalSearch();
+                    }
+                    return false;
+                }
+
+                // Escape - Close search bar if open
+                if (event.key === 'Escape' && event.type === 'keydown') {
+                    const searchBar = document.getElementById('terminalSearchBar');
+                    if (searchBar && searchBar.style.display !== 'none') {
+                        searchBar.style.display = 'none';
+                        if (searchAddon) searchAddon.clearDecorations();
+                        term.focus();
+                        return false;
+                    }
+                }
+
                 // Ctrl+Shift+C - Copy (when text is selected)
                 if (event.ctrlKey && event.shiftKey && event.key === 'C' && term.hasSelection()) {
                     const selection = term.getSelection();
@@ -3115,6 +3286,60 @@ window.addEventListener('pywebviewready', () => {
                     console.error('[TERMINAL] Paste failed:', err);
                 });
             });
+
+            // Terminal search bar (Ctrl+Shift+F)
+            function toggleTerminalSearch() {
+                let searchBar = document.getElementById('terminalSearchBar');
+                if (!searchBar) {
+                    // Create search bar
+                    searchBar = document.createElement('div');
+                    searchBar.id = 'terminalSearchBar';
+                    searchBar.style.cssText = 'position:absolute;top:4px;right:20px;z-index:10;display:flex;gap:4px;align-items:center;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px 8px;';
+                    searchBar.innerHTML = `
+                        <input type="text" id="termSearchInput" placeholder="Search..." style="background:#2d2d2d;color:#ccc;border:1px solid #555;border-radius:3px;padding:3px 6px;font-size:12px;width:180px;outline:none;">
+                        <button id="termSearchPrev" title="Previous (Shift+Enter)" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:13px;padding:2px 5px;">&#9650;</button>
+                        <button id="termSearchNext" title="Next (Enter)" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:13px;padding:2px 5px;">&#9660;</button>
+                        <button id="termSearchClose" title="Close (Esc)" style="background:none;border:none;color:#888;cursor:pointer;font-size:14px;padding:2px 5px;">&#10005;</button>
+                    `;
+                    terminalContainer.style.position = 'relative';
+                    terminalContainer.appendChild(searchBar);
+
+                    const input = document.getElementById('termSearchInput');
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                                searchAddon.findPrevious(input.value);
+                            } else {
+                                searchAddon.findNext(input.value);
+                            }
+                        }
+                        if (e.key === 'Escape') {
+                            searchBar.style.display = 'none';
+                            searchAddon.clearDecorations();
+                            term.focus();
+                        }
+                    });
+                    document.getElementById('termSearchNext').addEventListener('click', () => searchAddon.findNext(input.value));
+                    document.getElementById('termSearchPrev').addEventListener('click', () => searchAddon.findPrevious(input.value));
+                    document.getElementById('termSearchClose').addEventListener('click', () => {
+                        searchBar.style.display = 'none';
+                        searchAddon.clearDecorations();
+                        term.focus();
+                    });
+                }
+
+                if (searchBar.style.display === 'none') {
+                    searchBar.style.display = 'flex';
+                    const input = document.getElementById('termSearchInput');
+                    input.focus();
+                    input.select();
+                } else {
+                    searchBar.style.display = 'none';
+                    searchAddon.clearDecorations();
+                    term.focus();
+                }
+            }
 
             // Handle terminal resize - auto-size on container changes
             let lastCols = 10;
@@ -3619,6 +3844,18 @@ async function refreshPackages(checkUpdates = false) {
                 `;
             });
             packagesList.innerHTML = html;
+
+            // Update package count badge
+            const countBadge = document.getElementById('packageCount');
+            if (countBadge) countBadge.textContent = packagesResult.packages.length;
+
+            // Show/hide Update All button
+            const updateAllBtn = document.getElementById('updateAllBtn');
+            const safeUpdates = Object.values(updatesMap).filter(u => u.safe_to_update);
+            if (updateAllBtn) {
+                updateAllBtn.style.display = safeUpdates.length > 0 ? '' : 'none';
+                updateAllBtn.innerHTML = `<i class="fas fa-arrow-up"></i> Update All (${safeUpdates.length})`;
+            }
         } else if (packagesResult.status === 'error') {
             packagesList.innerHTML = `
                 <div class="venv-empty">
@@ -3822,9 +4059,167 @@ async function uninstallPackage(packageName) {
     }
 }
 
+// ── PyPI autocomplete for package install input ──
+let pypiSearchTimeout = null;
+let pypiActiveIndex = -1;
+
+function setupPypiAutocomplete() {
+    const input = document.getElementById('packageNameInput');
+    const dropdown = document.getElementById('pypiSuggestions');
+    if (!input || !dropdown) return;
+
+    input.addEventListener('input', () => {
+        const query = input.value.trim();
+        if (pypiSearchTimeout) clearTimeout(pypiSearchTimeout);
+
+        if (query.length < 2) {
+            dropdown.style.display = 'none';
+            return;
+        }
+
+        pypiSearchTimeout = setTimeout(async () => {
+            dropdown.innerHTML = '<div class="pypi-suggestions-loading"><i class="fas fa-spinner fa-spin"></i> Searching PyPI...</div>';
+            dropdown.style.display = 'block';
+            pypiActiveIndex = -1;
+
+            try {
+                const result = await pywebview.api.search_pypi(query);
+                if (result.status === 'success' && result.results.length > 0) {
+                    dropdown.innerHTML = result.results.map((pkg, i) => {
+                        const nameHtml = pkg.name.replace(
+                            new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i'),
+                            '<span class="pypi-highlight">$1</span>'
+                        );
+                        return `<div class="pypi-suggestion-item" data-index="${i}" data-name="${pkg.name}">
+                            <div><span class="pypi-suggestion-name">${nameHtml}</span>${pkg.version ? `<span class="pypi-suggestion-version">${pkg.version}</span>` : ''}</div>
+                            ${pkg.summary ? `<div class="pypi-suggestion-summary">${pkg.summary}</div>` : ''}
+                        </div>`;
+                    }).join('');
+
+                    // Click to select
+                    dropdown.querySelectorAll('.pypi-suggestion-item').forEach(item => {
+                        item.addEventListener('click', () => {
+                            input.value = item.dataset.name;
+                            dropdown.style.display = 'none';
+                            input.focus();
+                        });
+                    });
+                } else {
+                    dropdown.innerHTML = '<div class="pypi-suggestions-loading">No packages found</div>';
+                }
+            } catch (e) {
+                dropdown.style.display = 'none';
+            }
+        }, 350);
+    });
+
+    // Keyboard navigation
+    input.addEventListener('keydown', (e) => {
+        const items = dropdown.querySelectorAll('.pypi-suggestion-item');
+        if (!items.length || dropdown.style.display === 'none') return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            pypiActiveIndex = Math.min(pypiActiveIndex + 1, items.length - 1);
+            items.forEach((el, i) => el.classList.toggle('active', i === pypiActiveIndex));
+            items[pypiActiveIndex]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            pypiActiveIndex = Math.max(pypiActiveIndex - 1, 0);
+            items.forEach((el, i) => el.classList.toggle('active', i === pypiActiveIndex));
+            items[pypiActiveIndex]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter' && pypiActiveIndex >= 0) {
+            e.preventDefault();
+            input.value = items[pypiActiveIndex].dataset.name;
+            dropdown.style.display = 'none';
+        } else if (e.key === 'Escape') {
+            dropdown.style.display = 'none';
+        }
+    });
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.venv-install-form')) {
+            dropdown.style.display = 'none';
+        }
+    });
+}
+
+// ── Filter installed packages ──
+function setupPackageFilter() {
+    const filterInput = document.getElementById('packageFilterInput');
+    if (!filterInput) return;
+
+    filterInput.addEventListener('input', () => {
+        const query = filterInput.value.toLowerCase().trim();
+        const items = document.querySelectorAll('#packagesList .package-item');
+        let visible = 0;
+
+        items.forEach(item => {
+            const name = item.querySelector('.package-name')?.textContent?.toLowerCase() || '';
+            const show = !query || name.includes(query);
+            item.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+
+        // Update count badge with filtered count
+        const countBadge = document.getElementById('packageCount');
+        if (countBadge && query) {
+            countBadge.textContent = `${visible}/${items.length}`;
+        } else if (countBadge) {
+            countBadge.textContent = items.length;
+        }
+    });
+}
+
+// ── Update All safe packages ──
+async function updateAllPackages() {
+    if (!cachedUpdates || cachedUpdates.length === 0) {
+        showNotification('No Updates', 'No updates available. Click "Check for Updates" first.', 'info');
+        return;
+    }
+
+    const safeUpdates = cachedUpdates.filter(u => u.safe_to_update !== false);
+    if (safeUpdates.length === 0) {
+        showNotification('No Safe Updates', 'All available updates have compatibility warnings.', 'info');
+        return;
+    }
+
+    const names = safeUpdates.map(u => u.name).join(', ');
+    if (!confirm(`Update ${safeUpdates.length} package(s)?\n\n${names}`)) return;
+
+    const btn = document.getElementById('updateAllBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    }
+
+    let successCount = 0;
+    for (const pkg of safeUpdates) {
+        try {
+            const result = await pywebview.api.update_package(pkg.name);
+            if (result.status === 'success') successCount++;
+        } catch (e) {
+            console.error(`[VENV] Failed to update ${pkg.name}:`, e);
+        }
+    }
+
+    if (btn) {
+        btn.disabled = false;
+    }
+
+    showNotification('Update Complete', `Updated ${successCount}/${safeUpdates.length} packages`, successCount > 0 ? 'success' : 'error');
+    await refreshPackages(true);
+}
+
 // Auto-refresh packages when venv tab is opened (first time only)
 let venvTabLoaded = false;
+let systemTabLoaded = false;
+let assetsTabLoaded = false;
 document.addEventListener('DOMContentLoaded', () => {
+    setupPypiAutocomplete();
+    setupPackageFilter();
+
     const tabPills = document.querySelectorAll('.tab-pill');
     tabPills.forEach(pill => {
         pill.addEventListener('click', () => {
