@@ -1063,7 +1063,7 @@ def setup_venv(window=None):
 
         # Use python -m pip instead of pip.exe directly for better compatibility
         install_process = subprocess.Popen(
-            [venv_python_exe, '-m', 'pip', 'install', 'manim', 'manim-fonts', 'pyright'],
+            [venv_python_exe, '-m', 'pip', 'install', 'manim', 'manim-fonts', 'pyright', 'importlib_metadata'],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
