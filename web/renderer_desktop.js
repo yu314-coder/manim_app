@@ -2055,15 +2055,19 @@ function displayAssets(files) {
             const badge = getFileTypeBadge(file.name);
             const icon = getFileTypeIcon(file.name);
 
+            // Escape user-controlled strings to prevent XSS
+            const safeName = escapeHtml(file.name);
+            const safePath = escapeHtml(file.path.replace(/\\/g, '/'));
+
             // Convert Windows path to web path
             const webPath = file.path.replace(/\\/g, '/');
 
             // Build thumbnail
             let thumbnailHTML = '';
             if (isVideo) {
-                thumbnailHTML = `<video src="${webPath}" muted style="width: 100%; height: 100%; object-fit: cover;"></video>`;
+                thumbnailHTML = `<video src="${safePath}" muted style="width: 100%; height: 100%; object-fit: cover;"></video>`;
             } else if (isImage) {
-                thumbnailHTML = `<img src="${webPath}" alt="${file.name}" style="width: 100%; height: 100%; object-fit: cover;">`;
+                thumbnailHTML = `<img src="${safePath}" alt="${safeName}" style="width: 100%; height: 100%; object-fit: cover;">`;
             } else {
                 thumbnailHTML = `<i class="fas ${icon}" style="font-size: 48px; color: var(--accent-primary);"></i>`;
             }
@@ -2092,14 +2096,14 @@ function displayAssets(files) {
                     ${thumbnailHTML}
                 </div>
                 <div class="asset-info">
-                    <div class="asset-name" title="${file.name}" style="
+                    <div class="asset-name" title="${safeName}" style="
                         font-weight: 500;
                         color: var(--text-primary);
                         margin-bottom: 8px;
                         overflow: hidden;
                         text-overflow: ellipsis;
                         white-space: nowrap;
-                    ">${file.name}</div>
+                    ">${safeName}</div>
                     <div class="asset-meta" style="
                         display: flex;
                         flex-wrap: wrap;
@@ -3801,24 +3805,28 @@ async function refreshPackages(checkUpdates = false) {
             // Build package list HTML
             let html = '';
             packagesResult.packages.forEach(pkg => {
+                const safePkgName = escapeHtml(pkg.name);
+                const safePkgVersion = escapeHtml(pkg.version);
                 const isCritical = ['pip', 'setuptools', 'wheel', 'manim', 'manim-fonts'].includes(pkg.name.toLowerCase());
                 const hasUpdate = updatesMap[pkg.name];
+                const safeLatest = hasUpdate ? escapeHtml(hasUpdate.latest) : '';
+                const safeWarning = hasUpdate && hasUpdate.warning ? escapeHtml(hasUpdate.warning) : '';
 
                 html += `
                     <div class="package-item ${hasUpdate ? 'has-update' : ''} ${hasUpdate && !hasUpdate.safe_to_update ? 'has-warning' : ''}">
                         <div class="package-info">
                             <div class="package-name">
-                                ${pkg.name}
+                                ${safePkgName}
                                 ${hasUpdate && hasUpdate.is_critical ? '<span style="color: #ef4444; margin-left: 6px;" title="Critical for Manim"><i class="fas fa-exclamation-triangle"></i></span>' : ''}
                                 ${hasUpdate ? '<span class="package-update-badge"><i class="fas fa-arrow-up"></i> Update available</span>' : ''}
                             </div>
                             <div class="package-version">
-                                v${pkg.version}
-                                ${hasUpdate ? `<span class="package-latest"> → v${hasUpdate.latest}</span>` : ''}
+                                v${safePkgVersion}
+                                ${hasUpdate ? `<span class="package-latest"> → v${safeLatest}</span>` : ''}
                             </div>
-                            ${hasUpdate && hasUpdate.warning ? `
+                            ${safeWarning ? `
                                 <div style="margin-top: 6px; padding: 6px 10px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; border-radius: 4px; font-size: 12px; color: #ef4444;">
-                                    ${hasUpdate.warning}
+                                    ${safeWarning}
                                 </div>
                             ` : ''}
                         </div>
@@ -3826,7 +3834,7 @@ async function refreshPackages(checkUpdates = false) {
                             ${hasUpdate ? `
                                 <button
                                     class="package-btn package-btn-update ${!hasUpdate.safe_to_update ? 'package-btn-warning' : ''}"
-                                    onclick="updatePackage('${pkg.name}', ${!hasUpdate.safe_to_update})"
+                                    onclick="updatePackage('${safePkgName}', ${!hasUpdate.safe_to_update})"
                                     title="${!hasUpdate.safe_to_update ? 'Warning: May affect Manim compatibility' : 'Update to latest version'}"
                                 >
                                     <i class="fas ${!hasUpdate.safe_to_update ? 'fa-exclamation-triangle' : 'fa-arrow-up'}"></i> Update
@@ -3834,7 +3842,7 @@ async function refreshPackages(checkUpdates = false) {
                             ` : ''}
                             <button
                                 class="package-btn package-btn-uninstall"
-                                onclick="uninstallPackage('${pkg.name}')"
+                                onclick="uninstallPackage('${safePkgName}')"
                                 ${isCritical ? 'disabled title="Cannot uninstall critical package"' : ''}
                             >
                                 <i class="fas fa-trash"></i> Uninstall
@@ -4086,13 +4094,16 @@ function setupPypiAutocomplete() {
                 const result = await pywebview.api.search_pypi(query);
                 if (result.status === 'success' && result.results.length > 0) {
                     dropdown.innerHTML = result.results.map((pkg, i) => {
-                        const nameHtml = pkg.name.replace(
+                        const safeName = escapeHtml(pkg.name);
+                        const safeVersion = pkg.version ? escapeHtml(pkg.version) : '';
+                        const safeSummary = pkg.summary ? escapeHtml(pkg.summary) : '';
+                        const nameHtml = safeName.replace(
                             new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i'),
                             '<span class="pypi-highlight">$1</span>'
                         );
-                        return `<div class="pypi-suggestion-item" data-index="${i}" data-name="${pkg.name}">
-                            <div><span class="pypi-suggestion-name">${nameHtml}</span>${pkg.version ? `<span class="pypi-suggestion-version">${pkg.version}</span>` : ''}</div>
-                            ${pkg.summary ? `<div class="pypi-suggestion-summary">${pkg.summary}</div>` : ''}
+                        return `<div class="pypi-suggestion-item" data-index="${i}" data-name="${safeName}">
+                            <div><span class="pypi-suggestion-name">${nameHtml}</span>${safeVersion ? `<span class="pypi-suggestion-version">${safeVersion}</span>` : ''}</div>
+                            ${safeSummary ? `<div class="pypi-suggestion-summary">${safeSummary}</div>` : ''}
                         </div>`;
                     }).join('');
 

@@ -5668,6 +5668,11 @@ class MyScene(Scene):
             except Exception as e:
                 return {'status': 'error', 'message': f'Failed to decode file: {e}'}
 
+            # Sanitize filename — strip path components to prevent traversal
+            filename = os.path.basename(filename)
+            if not filename:
+                return {'status': 'error', 'message': 'Invalid filename'}
+
             # Generate destination path
             dest_path = os.path.join(ASSETS_DIR, filename)
 

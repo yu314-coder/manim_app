@@ -777,15 +777,16 @@ class AIEditMixin:
             with open(prompt_file, 'w', encoding='utf-8') as f:
                 f.write(instruction)
 
-            # ── Build command (shell=True needed for .cmd wrapper on Windows) ──
-            cmd_parts = 'codex exec - --full-auto --skip-git-repo-check --json'
+            # ── Build command as list (no shell=True — prevents injection) ──
+            cmd_parts = ['codex', 'exec', '-', '--full-auto',
+                         '--skip-git-repo-check', '--json']
             if use_model:
-                cmd_parts += f' -m "{use_model}"'
+                cmd_parts.extend(['-m', use_model])
             if search:
-                cmd_parts += ' -c web_search=live'
+                cmd_parts.extend(['-c', 'web_search=live'])
             if image_paths:
                 for ip in image_paths:
-                    cmd_parts += f' -i "{ip}"'
+                    cmd_parts.extend(['-i', ip])
 
             # Reset state
             AIEditMixin._ai_codex_events = []
@@ -803,7 +804,6 @@ class AIEditMixin:
 
             proc = subprocess.Popen(
                 cmd_parts,
-                shell=True,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -1548,16 +1548,17 @@ class AIEditMixin:
                     with open(md_path, 'w', encoding='utf-8') as f:
                         f.write(md_content)
 
-            cmd = 'codex exec - --full-auto --skip-git-repo-check --json'
+            cmd = ['codex', 'exec', '-', '--full-auto',
+                   '--skip-git-repo-check', '--json']
             if AIEditMixin._ai_agent_model:
-                cmd += f' -m "{AIEditMixin._ai_agent_model}"'
+                cmd.extend(['-m', AIEditMixin._ai_agent_model])
 
             env = _get_clean_env()
             AIEditMixin._ai_agent_stream_events = []
 
             print(f"[AI AGENT] Codex edit: {len(instruction)} chars instruction")
             proc = subprocess.Popen(
-                cmd, shell=True,
+                cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -1695,17 +1696,18 @@ class AIEditMixin:
 
             if AIEditMixin._ai_agent_provider == 'codex':
                 # ── Codex review: -i flag passes images natively ──
-                cmd_str = 'codex exec - --full-auto --skip-git-repo-check --color never'
+                cmd_list = ['codex', 'exec', '-', '--full-auto',
+                            '--skip-git-repo-check', '--color', 'never']
                 if AIEditMixin._ai_agent_model:
-                    cmd_str += f' -m "{AIEditMixin._ai_agent_model}"'
+                    cmd_list.extend(['-m', AIEditMixin._ai_agent_model])
                 for img_path in valid_imgs:
-                    cmd_str += f' -i "{img_path}"'
+                    cmd_list.extend(['-i', img_path])
 
                 env = _get_clean_env()
                 print(f"[AI AGENT] Codex review: {len(prompt)} chars, "
                       f"{len(valid_imgs)} images via -i, cwd={review_cwd}")
                 proc = subprocess.Popen(
-                    cmd_str, shell=True,
+                    cmd_list,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,

@@ -548,6 +548,10 @@ If you find this project useful, please consider giving it a star on GitHub!
 - 🔧 Instructions piped via stdin (`-p` without arg) to avoid OS argument length limits
 - 🔧 Review prompt no longer embeds code — reviewer only needs screenshots + goal description
 - 🔧 Agent edit failure counter prevents infinite loops (stops after 5 consecutive failures)
+- 🔒 **Security: Shell injection fix** — Codex CLI commands converted from `shell=True` string interpolation to safe list-based `subprocess.Popen` (prevents model name / image path injection)
+- 🔒 **Security: Path traversal fix** — `upload_file_content` now strips directory components with `os.path.basename()` (prevents writing files outside assets folder)
+- 🔒 **Security: XSS fix in asset display** — `displayAssets()` now escapes `file.name` and `file.path` via `escapeHtml()` before innerHTML insertion
+- 🔒 **Security: XSS fix in package manager** — PyPI search results and installed package list now escape all metadata (`pkg.name`, `pkg.version`, `pkg.summary`, update warnings) before rendering
 
 ### v1.1.1.0
 - ✨ **Claude Code Integration (Beta)** — AI Edit now supports Claude Code via `claude -p --output-format stream-json`, no API key needed
