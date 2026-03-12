@@ -28,14 +28,28 @@ if sys.platform == 'win32':
 APP_VERSION = "1.1.2.0"
 
 # Terminal emulation with PTY support
-try:
-    import winpty
-    from winpty.enums import Backend as WinptyBackend
-    WINPTY_AVAILABLE = True
-except ImportError:
-    WINPTY_AVAILABLE = False
-    WinptyBackend = None
-    print("[WARNING] pywinpty not available - terminal will use fallback mode")
+WINPTY_AVAILABLE = False
+UNIX_PTY_AVAILABLE = False
+WinptyBackend = None
+
+if os.name == 'nt':
+    try:
+        import winpty
+        from winpty.enums import Backend as WinptyBackend
+        WINPTY_AVAILABLE = True
+    except ImportError:
+        print("[WARNING] pywinpty not available - terminal will use fallback mode")
+else:
+    try:
+        import pty
+        import fcntl
+        import termios
+        import struct
+        import select
+        import signal as signal_module
+        UNIX_PTY_AVAILABLE = True
+    except ImportError:
+        print("[WARNING] Unix PTY modules not available - terminal will use fallback mode")
 
 # ── Feature Mixins ──
 # Each feature module is a separate .py with a Mixin class added to ManimAPI's bases.
@@ -111,10 +125,35 @@ def get_clean_environment():
     env['FORCE_COLOR'] = '1'
     env['PYTHONUNBUFFERED'] = '1'  # Disable Python output buffering
 
-    # If frozen, ensure exe directory is not interfering
-    if getattr(sys, 'frozen', False):
+    # macOS .app bundles (and Nuitka standalone) inherit a minimal PATH
+    # (/usr/bin:/bin) that's missing LaTeX, Homebrew, etc.
+    # Always ensure common tool directories are in PATH on macOS.
+    if sys.platform == 'darwin':
+        macos_paths = [
+            '/Library/TeX/texbin',                      # MacTeX
+            '/opt/homebrew/bin',                        # Homebrew (Apple Silicon)
+            '/opt/homebrew/sbin',
+            '/usr/local/bin',                           # Homebrew (Intel) / MacPorts
+            '/usr/local/sbin',
+            os.path.expanduser('~/.pyenv/shims'),       # pyenv
+            os.path.expanduser('~/miniconda3/bin'),     # conda
+            os.path.expanduser('~/anaconda3/bin'),
+            '/usr/bin',
+            '/bin',
+            '/usr/sbin',
+            '/sbin',
+        ]
+        current_paths = env.get('PATH', '').split(os.pathsep)
+        for p in macos_paths:
+            if os.path.isdir(p) and p not in current_paths:
+                current_paths.append(p)
+        env['PATH'] = os.pathsep.join(current_paths)
+
+    # If frozen/compiled, ensure exe directory is not interfering
+    is_bundled = getattr(sys, 'frozen', False) or '__compiled__' in dir()
+    if is_bundled:
         exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-        print(f"[ENV] Running as frozen EXE from: {exe_dir}")
+        print(f"[ENV] Running as bundled app from: {exe_dir}")
 
         # Remove exe directory from PATH if present
         if 'PATH' in env:
@@ -122,26 +161,24 @@ def get_clean_environment():
             original_count = len(path_parts)
             path_parts = [p for p in path_parts if os.path.normpath(p) != os.path.normpath(exe_dir)]
             if len(path_parts) < original_count:
-                print(f"[ENV] Removed EXE directory from PATH")
+                print(f"[ENV] Removed app directory from PATH")
             env['PATH'] = os.pathsep.join(path_parts)
 
-        # Ensure system Python paths are available
-        # This helps the venv Python find system DLLs
-        windir = os.environ.get('SystemRoot', os.environ.get('WINDIR', r'C:\Windows'))
-        system_paths = [
-            os.path.join(windir, 'System32'),
-            windir,
-            os.path.join(windir, 'System32', 'Wbem'),
-            os.path.join(windir, 'System32', 'WindowsPowerShell', 'v1.0'),
-        ]
-
-        current_paths = env.get('PATH', '').split(os.pathsep)
-        for sys_path in system_paths:
-            if os.path.exists(sys_path) and sys_path not in current_paths:
-                current_paths.append(sys_path)
-
-        env['PATH'] = os.pathsep.join(current_paths)
-        print(f"[ENV] PATH configured with {len(current_paths)} entries")
+        if os.name == 'nt':
+            # Windows: ensure system DLL paths are available
+            windir = os.environ.get('SystemRoot', os.environ.get('WINDIR', r'C:\Windows'))
+            system_paths = [
+                os.path.join(windir, 'System32'),
+                windir,
+                os.path.join(windir, 'System32', 'Wbem'),
+                os.path.join(windir, 'System32', 'WindowsPowerShell', 'v1.0'),
+            ]
+            current_paths = env.get('PATH', '').split(os.pathsep)
+            for sys_path in system_paths:
+                if os.path.exists(sys_path) and sys_path not in current_paths:
+                    current_paths.append(sys_path)
+            env['PATH'] = os.pathsep.join(current_paths)
+            print(f"[ENV] PATH configured with {len(current_paths)} entries")
 
     return env
 
@@ -321,8 +358,34 @@ def detect_gpu():
                     print(f"[GPU DETECT] wmic detection failed: {e}")
                     gpu_info['info'] = 'GPU detection failed'
 
+            # macOS: Use system_profiler
+            elif sys.platform == 'darwin':
+                try:
+                    result = subprocess.run(
+                        ['system_profiler', 'SPDisplaysDataType'],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+
+                    if result.returncode == 0:
+                        for line in result.stdout.split('\n'):
+                            line_stripped = line.strip()
+                            if line_stripped.startswith('Chipset Model:') or line_stripped.startswith('Chip:'):
+                                gpu_name = line_stripped.split(':', 1)[1].strip()
+                                gpu_info['available'] = True
+                                gpu_info['gpu_present'] = True
+                                gpu_info['info'] = gpu_name
+                                gpu_info['renderer'] = gpu_name
+                                print(f"[GPU DETECT] Found GPU via system_profiler: {gpu_name}")
+                                break
+
+                except Exception as e:
+                    print(f"[GPU DETECT] system_profiler detection failed: {e}")
+                    gpu_info['info'] = 'GPU detection failed'
+
             # Linux: Try lspci
-            elif os.name == 'posix':
+            elif sys.platform == 'linux':
                 try:
                     result = subprocess.run(
                         ['lspci'],
@@ -420,7 +483,13 @@ def patch_manim_gpu_encoder(enable=False):
         os.environ['MANIM_VIDEO_CODEC_OPTIONS'] = 'global_quality=23,preset=medium'
 
     # Patch scene_file_writer.py to check env var
-    manim_dir = os.path.join(VENV_DIR, 'Lib', 'site-packages', 'manim')
+    if os.name == 'nt':
+        manim_dir = os.path.join(VENV_DIR, 'Lib', 'site-packages', 'manim')
+    else:
+        # On macOS/Linux, site-packages is under lib/python3.X/
+        import glob as _glob
+        sp_matches = _glob.glob(os.path.join(VENV_DIR, 'lib', 'python3.*', 'site-packages', 'manim'))
+        manim_dir = sp_matches[0] if sp_matches else os.path.join(VENV_DIR, 'lib', 'site-packages', 'manim')
     sfw_path = os.path.join(manim_dir, 'scene', 'scene_file_writer.py')
     if not os.path.exists(sfw_path):
         print(f"[GPU ENCODER] scene_file_writer.py not found at {sfw_path}")
@@ -659,36 +728,42 @@ def find_system_python():
             print(f"  [SKIP] Version check failed: {e}")
             return False
 
-    # Method 1: Try 'where python' command (PATH-based)
-    print("\n[METHOD 1] Trying 'where python' command...")
-    try:
-        env = get_clean_environment()
-        result = subprocess.run(
-            ['where', 'python'],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=5,
-            env=env,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-        )
+    # Method 1: Try 'where'/'which' command (PATH-based)
+    if os.name == 'nt':
+        find_commands = [['where', 'python']]
+    else:
+        find_commands = [['which', '-a', 'python3'], ['which', '-a', 'python']]
 
-        if result.returncode == 0:
-            pythons = result.stdout.strip().split('\n')
-            print(f"[INFO] Found {len(pythons)} Python installation(s) in PATH")
+    for find_cmd in find_commands:
+        print(f"\n[METHOD 1] Trying '{' '.join(find_cmd)}' command...")
+        try:
+            env = get_clean_environment()
+            result = subprocess.run(
+                find_cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env=env,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
 
-            for python_path in pythons:
-                python_path = python_path.strip()
-                if not python_path:
-                    continue
+            if result.returncode == 0:
+                pythons = result.stdout.strip().split('\n')
+                print(f"[INFO] Found {len(pythons)} Python installation(s) in PATH")
 
-                print(f"\n[CHECK] {python_path}")
-                if is_valid_python(python_path):
-                    return python_path
-        else:
-            print("[INFO] 'where python' found nothing in PATH")
-    except Exception as e:
-        print(f"[INFO] 'where python' failed: {e}")
+                for python_path in pythons:
+                    python_path = python_path.strip()
+                    if not python_path:
+                        continue
+
+                    print(f"\n[CHECK] {python_path}")
+                    if is_valid_python(python_path):
+                        return python_path
+            else:
+                print(f"[INFO] '{' '.join(find_cmd)}' found nothing in PATH")
+        except Exception as e:
+            print(f"[INFO] '{' '.join(find_cmd)}' failed: {e}")
 
     # Method 2: Check Windows Registry (only on Windows)
     if os.name == 'nt':
@@ -757,6 +832,40 @@ def find_system_python():
         if localappdata:
             common_paths.append(f"{localappdata}\\Microsoft\\WindowsApps\\python.exe")
 
+    elif sys.platform == 'darwin':
+        # macOS common paths
+        home = os.path.expanduser('~')
+        # Homebrew (Apple Silicon and Intel)
+        common_paths.extend([
+            '/opt/homebrew/bin/python3',
+            '/usr/local/bin/python3',
+        ])
+        # Versioned Homebrew installs
+        for version in ['3.12', '3.11', '3.10', '3.13']:
+            common_paths.extend([
+                f'/opt/homebrew/bin/python{version}',
+                f'/usr/local/bin/python{version}',
+            ])
+        # pyenv
+        common_paths.append(os.path.join(home, '.pyenv', 'shims', 'python3'))
+        # System Python
+        common_paths.append('/usr/bin/python3')
+        # Python.org framework installs
+        for version in ['3.12', '3.11', '3.10', '3.13']:
+            common_paths.append(f'/Library/Frameworks/Python.framework/Versions/{version}/bin/python3')
+        # Conda
+        common_paths.extend([
+            os.path.join(home, 'miniconda3', 'bin', 'python3'),
+            os.path.join(home, 'anaconda3', 'bin', 'python3'),
+        ])
+
+    else:
+        # Linux common paths
+        common_paths.extend([
+            '/usr/bin/python3',
+            '/usr/local/bin/python3',
+        ])
+
     for python_path in common_paths:
         if python_path and os.path.exists(python_path):
             print(f"[CHECK] {python_path}")
@@ -767,11 +876,17 @@ def find_system_python():
     print("\n" + "=" * 60)
     print("[ERROR] Could not find Python on this system!")
     print("=" * 60)
-    print("\nPlease ensure Python is installed:")
-    print("1. Download Python from https://www.python.org/downloads/")
-    print("2. Run the installer")
-    print("3. IMPORTANT: Check 'Add Python to PATH' during installation")
-    print("4. Restart this application after installing Python")
+    if sys.platform == 'darwin':
+        print("\nPlease install Python on macOS:")
+        print("  Option A (Homebrew): brew install python")
+        print("  Option B: Download from https://www.python.org/downloads/")
+        print("Restart this application after installing Python")
+    else:
+        print("\nPlease ensure Python is installed:")
+        print("1. Download Python from https://www.python.org/downloads/")
+        print("2. Run the installer")
+        print("3. IMPORTANT: Check 'Add Python to PATH' during installation")
+        print("4. Restart this application after installing Python")
     print("=" * 60)
     return None
 
@@ -948,7 +1063,7 @@ def setup_venv(window=None):
 
         # Use python -m pip instead of pip.exe directly for better compatibility
         install_process = subprocess.Popen(
-            [venv_python_exe, '-m', 'pip', 'install', 'manim', 'manim-fonts', 'basedpyright'],
+            [venv_python_exe, '-m', 'pip', 'install', 'manim', 'manim-fonts', 'pyright'],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -1142,7 +1257,7 @@ app_state = {
         'font_size': 14,
         'intellisense_enabled': True
     },
-    'lsp_process': None,    # basedpyright-langserver subprocess
+    'lsp_process': None,    # pyright-langserver subprocess
     'lsp_running': False,   # LSP stdout reader thread active flag
     'current_editor_code': '',    # Latest code from main editor (for AI window)
     'ai_edit_pending_code': None, # Code from AI window to apply in main editor
@@ -1854,7 +1969,9 @@ class MyScene(Scene):
 
             if os.name == 'nt':
                 os.startfile(AUTOSAVE_DIR)
-            elif os.name == 'posix':
+            elif sys.platform == 'darwin':
+                subprocess.run(['open', AUTOSAVE_DIR])
+            else:
                 subprocess.run(['xdg-open', AUTOSAVE_DIR])
 
             return {'status': 'success', 'path': AUTOSAVE_DIR}
@@ -2242,8 +2359,9 @@ class MyScene(Scene):
             if app_state['terminal_process'] is not None:
                 try:
                     # Clear terminal before running new render to remove old errors
-                    if WINPTY_AVAILABLE and hasattr(app_state['terminal_process'], 'write'):
-                        app_state['terminal_process'].write('cls\r\n')
+                    if app_state.get('terminal_backend') in ('conpty', 'winpty', 'unix_pty'):
+                        clear_cmd = 'cls\r\n' if os.name == 'nt' else 'clear\n'
+                        app_state['terminal_process'].write(clear_cmd)
                         time.sleep(0.2)
 
                     # Clear error buffer for fresh error detection
@@ -2251,8 +2369,9 @@ class MyScene(Scene):
                     print("[RENDER] Cleared error buffer for new render")
 
                     # Send command to terminal
-                    if WINPTY_AVAILABLE and hasattr(app_state['terminal_process'], 'write'):
-                        app_state['terminal_process'].write(cmd_string + '\r\n')
+                    if app_state.get('terminal_backend') in ('conpty', 'winpty', 'unix_pty'):
+                        line_end = '\r\n' if os.name == 'nt' else '\n'
+                        app_state['terminal_process'].write(cmd_string + line_end)
                     else:
                         app_state['terminal_process'].stdin.write(cmd_string + '\n')
                         app_state['terminal_process'].stdin.flush()
@@ -2919,8 +3038,9 @@ class MyScene(Scene):
             if app_state['terminal_process'] is not None:
                 try:
                     # Clear terminal before running new preview to remove old errors
-                    if WINPTY_AVAILABLE and hasattr(app_state['terminal_process'], 'write'):
-                        app_state['terminal_process'].write('cls\r\n')
+                    if app_state.get('terminal_backend') in ('conpty', 'winpty', 'unix_pty'):
+                        clear_cmd = 'cls\r\n' if os.name == 'nt' else 'clear\n'
+                        app_state['terminal_process'].write(clear_cmd)
                         time.sleep(0.2)
 
                     # Clear error buffer for fresh error detection
@@ -2928,8 +3048,9 @@ class MyScene(Scene):
                     print("[PREVIEW] Cleared error buffer for new preview")
 
                     # Send command to terminal
-                    if WINPTY_AVAILABLE and hasattr(app_state['terminal_process'], 'write'):
-                        app_state['terminal_process'].write(cmd_string + '\r\n')
+                    if app_state.get('terminal_backend') in ('conpty', 'winpty', 'unix_pty'):
+                        line_end = '\r\n' if os.name == 'nt' else '\n'
+                        app_state['terminal_process'].write(cmd_string + line_end)
                     else:
                         app_state['terminal_process'].stdin.write(cmd_string + '\n')
                         app_state['terminal_process'].stdin.flush()
@@ -3476,7 +3597,7 @@ class MyScene(Scene):
             # If using terminal mode, send Ctrl+C
             if app_state['terminal_process']:
                 try:
-                    if WINPTY_AVAILABLE and hasattr(app_state['terminal_process'], 'write'):
+                    if app_state.get('terminal_backend') in ('conpty', 'winpty', 'unix_pty'):
                         # Send Ctrl+C to terminal
                         app_state['terminal_process'].write('\x03')
                         print("[STOP] Sent Ctrl+C to terminal")
@@ -4111,13 +4232,138 @@ class MyScene(Scene):
                 print("[TERMINAL PTY] Environment setup complete")
                 return {'status': 'success', 'message': 'PTY terminal started'}
 
+            elif UNIX_PTY_AVAILABLE:
+                # macOS/Linux: Use native PTY via pty.openpty()
+                print("[TERMINAL] Using Unix PTY backend")
+
+                master_fd, slave_fd = pty.openpty()
+
+                # Set terminal size
+                winsize = struct.pack('HHHH', 30, 120, 0, 0)
+                fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
+
+                # Determine shell
+                shell = os.environ.get('SHELL', '/bin/zsh' if sys.platform == 'darwin' else '/bin/bash')
+
+                # Spawn shell process
+                terminal_proc = subprocess.Popen(
+                    [shell],
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    preexec_fn=os.setsid,
+                    env=get_clean_environment(),
+                )
+
+                os.close(slave_fd)
+
+                # Wrapper class to match winpty PTY interface
+                class UnixPTYWrapper:
+                    def __init__(self, master_fd, proc):
+                        self._fd = master_fd
+                        self._proc = proc
+                        self._closed = False
+
+                    def write(self, data):
+                        if isinstance(data, str):
+                            data = data.encode('utf-8')
+                        os.write(self._fd, data)
+
+                    def read(self, timeout=0.05):
+                        try:
+                            ready, _, _ = select.select([self._fd], [], [], timeout)
+                            if ready:
+                                data = os.read(self._fd, 65536)
+                                return data.decode('utf-8', errors='replace')
+                        except OSError:
+                            pass
+                        return ''
+
+                    def set_size(self, cols, rows):
+                        try:
+                            winsize = struct.pack('HHHH', rows, cols, 0, 0)
+                            fcntl.ioctl(self._fd, termios.TIOCSWINSZ, winsize)
+                        except OSError:
+                            pass
+
+                    def close(self):
+                        if not self._closed:
+                            self._closed = True
+                            try:
+                                os.close(self._fd)
+                            except OSError:
+                                pass
+                            try:
+                                self._proc.terminate()
+                                self._proc.wait(timeout=3)
+                            except Exception:
+                                try:
+                                    self._proc.kill()
+                                except Exception:
+                                    pass
+
+                terminal_process = UnixPTYWrapper(master_fd, terminal_proc)
+                app_state['terminal_process'] = terminal_process
+                app_state['terminal_backend'] = 'unix_pty'
+                app_state['terminal_output_buffer'] = []
+                app_state['terminal_error_buffer'] = []
+
+                # Background reader thread
+                def read_terminal_output():
+                    print("[TERMINAL PTY] Unix background reader thread started")
+                    while not terminal_process._closed:
+                        try:
+                            data = terminal_process.read(timeout=0.05)
+                            if data:
+                                app_state['terminal_output_buffer'].append(data)
+                                app_state['terminal_error_buffer'].append(data)
+                                if len(app_state['terminal_error_buffer']) > 1000:
+                                    app_state['terminal_error_buffer'] = app_state['terminal_error_buffer'][-1000:]
+                        except Exception as e:
+                            error_msg = str(e).lower()
+                            if "closed" not in error_msg and "bad file descriptor" not in error_msg:
+                                print(f"[TERMINAL PTY ERROR] {e}")
+                            time.sleep(0.01)
+                    print("[TERMINAL PTY] Unix background reader thread stopped")
+
+                terminal_thread = threading.Thread(target=read_terminal_output, daemon=True)
+                terminal_thread.start()
+                app_state['terminal_thread'] = terminal_thread
+
+                print("[TERMINAL PTY] Unix terminal started successfully")
+                time.sleep(0.5)
+
+                # Initialize terminal: cd to ASSETS_DIR and activate venv
+                print(f"[TERMINAL PTY] Setting up initial environment...")
+
+                terminal_process.write(f'cd "{ASSETS_DIR}"\n')
+                time.sleep(0.3)
+
+                activate_script = os.path.join(VENV_DIR, 'bin', 'activate')
+                if os.path.exists(activate_script):
+                    terminal_process.write(f'source "{activate_script}"\n')
+                    time.sleep(0.5)
+                    print(f"[TERMINAL PTY] Activated venv at: {VENV_DIR}")
+                else:
+                    print(f"[TERMINAL PTY WARNING] Venv activate script not found: {activate_script}")
+
+                time.sleep(0.5)
+                terminal_process.write('clear\n')
+                time.sleep(0.2)
+
+                app_state['terminal_output_buffer'] = []
+
+                print("[TERMINAL PTY] Unix environment setup complete")
+                return {'status': 'success', 'message': 'Unix PTY terminal started'}
+
             else:
                 # Fallback to subprocess.Popen
                 print("[TERMINAL] Using fallback subprocess mode (no PTY)")
                 app_state['terminal_backend'] = 'subprocess'
 
+                fallback_shell = ['cmd.exe'] if os.name == 'nt' else [os.environ.get('SHELL', '/bin/bash')]
                 terminal_process = subprocess.Popen(
-                    ['cmd.exe'],
+                    fallback_shell,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -4160,7 +4406,8 @@ class MyScene(Scene):
                 # Initialize environment
                 # Keep error buffer for now - it will be cleared when a render/preview starts
                 app_state['terminal_output_buffer'] = []
-                terminal_process.stdin.write(f'cd /d "{ASSETS_DIR}"\n')
+                cd_cmd = f'cd /d "{ASSETS_DIR}"\n' if os.name == 'nt' else f'cd "{ASSETS_DIR}"\n'
+                terminal_process.stdin.write(cd_cmd)
                 terminal_process.stdin.flush()
                 time.sleep(0.2)
 
@@ -4170,7 +4417,8 @@ class MyScene(Scene):
                     activate_script = os.path.join(VENV_DIR, 'bin', 'activate')
 
                 if os.path.exists(activate_script):
-                    terminal_process.stdin.write(f'call "{activate_script}"\n')
+                    activate_cmd = f'call "{activate_script}"\n' if os.name == 'nt' else f'source "{activate_script}"\n'
+                    terminal_process.stdin.write(activate_cmd)
                     terminal_process.stdin.flush()
                     time.sleep(0.3)
 
@@ -4198,7 +4446,7 @@ class MyScene(Scene):
             terminal_process = app_state['terminal_process']
 
             # Check if using PTY mode or fallback mode
-            if WINPTY_AVAILABLE and hasattr(terminal_process, 'write'):
+            if app_state.get('terminal_backend') in ('conpty', 'winpty', 'unix_pty'):
                 # PTY mode - send raw data
                 terminal_process.write(data)
             else:
@@ -4223,7 +4471,7 @@ class MyScene(Scene):
             terminal_process = app_state['terminal_process']
 
             # Check if using PTY mode and has set_size method
-            if WINPTY_AVAILABLE and hasattr(terminal_process, 'set_size'):
+            if app_state.get('terminal_backend') in ('conpty', 'winpty', 'unix_pty') and hasattr(terminal_process, 'set_size'):
                 print(f"[TERMINAL] Resizing PTY to {cols}x{rows}")
                 terminal_process.set_size(cols, rows)
                 return {'status': 'success'}
@@ -4243,7 +4491,8 @@ class MyScene(Scene):
             'status': 'success',
             'backend': app_state.get('terminal_backend', 'unknown'),
             'windows_build': build,
-            'is_running': app_state['terminal_process'] is not None
+            'is_running': app_state['terminal_process'] is not None,
+            'platform': sys.platform
         }
 
     def get_terminal_output(self):
@@ -4289,13 +4538,13 @@ class MyScene(Scene):
             python = os.path.join(VENV_DIR, 'bin', 'python')
         return python if os.path.exists(python) else None
 
-    # ── LSP (basedpyright / pyright) ─────────────────────────────────────────
+    # ── LSP (pyright) ────────────────────────────────────────────────────────
 
     def start_lsp(self):
         """
-        Start basedpyright-langserver (or pyright-langserver) from the venv as a
-        stdio subprocess.  A background thread reads its stdout and pushes each
-        JSON-RPC message to the frontend via window.lspReceive(jsonString).
+        Start pyright-langserver from the venv as a stdio subprocess.
+        A background thread reads its stdout and pushes each JSON-RPC message
+        to the frontend via window.lspReceive(jsonString).
         Returns immediately so the UI is never blocked.
         """
         import json as _json
@@ -4308,40 +4557,53 @@ class MyScene(Scene):
         if os.name == 'nt':
             scripts = os.path.join(VENV_DIR, 'Scripts')
             candidates = [
-                os.path.join(scripts, 'basedpyright-langserver.exe'),
                 os.path.join(scripts, 'pyright-langserver.exe'),
+                os.path.join(scripts, 'basedpyright-langserver.exe'),
             ]
         else:
             bin_dir = os.path.join(VENV_DIR, 'bin')
             candidates = [
-                os.path.join(bin_dir, 'basedpyright-langserver'),
                 os.path.join(bin_dir, 'pyright-langserver'),
+                os.path.join(bin_dir, 'basedpyright-langserver'),
             ]
 
         lsp_exe = next((p for p in candidates if os.path.exists(p)), None)
         if not lsp_exe:
-            print('[LSP] Neither basedpyright-langserver nor pyright-langserver found in venv.')
-            print('[LSP] Install with: pip install basedpyright')
-            return {'status': 'error', 'message': 'basedpyright not installed in venv'}
+            print('[LSP] pyright-langserver not found in venv.')
+            print('[LSP] Install with: pip install pyright')
+            return {'status': 'error', 'message': 'pyright not installed in venv'}
 
         print(f'[LSP] Starting language server: {lsp_exe}')
 
         try:
             env = get_clean_environment()
-            proc = subprocess.Popen(
-                [lsp_exe, '--stdio'],
+            popen_kwargs = dict(
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
             )
+            if os.name != 'nt':
+                popen_kwargs['preexec_fn'] = os.setsid
+            proc = subprocess.Popen([lsp_exe, '--stdio'], **popen_kwargs)
             app_state['lsp_process'] = proc
             app_state['lsp_running'] = True
             print(f'[LSP] Language server PID: {proc.pid}')
         except Exception as e:
             print(f'[LSP] Failed to start language server: {e}')
             return {'status': 'error', 'message': str(e)}
+
+        # ── background stderr drain (prevents pipe-buffer deadlock) ──────────
+        def _drain_stderr():
+            try:
+                for line in proc.stderr:
+                    msg = line.decode('utf-8', errors='replace').rstrip()
+                    if msg:
+                        print(f'[LSP stderr] {msg}')
+            except Exception:
+                pass
+        threading.Thread(target=_drain_stderr, daemon=True, name='lsp-stderr').start()
 
         # ── background stdout reader ─────────────────────────────────────────
         def _read_lsp():
@@ -4424,7 +4686,7 @@ class MyScene(Scene):
 
     def setup_lsp_workspace(self):
         """
-        Create a real workspace directory for basedpyright and write a
+        Create a real workspace directory for pyright and write a
         pyrightconfig.json that points at the Manim venv.
         Returns the workspace URI and scene-file URI so JS can use real paths.
         """
@@ -4443,17 +4705,63 @@ class MyScene(Scene):
             'typeCheckingMode':      'basic',
             'useLibraryCodeForTypes': True,
             # suppress noise for generated/dynamic Manim attributes
-            'reportAttributeAccessIssue':  'warning',
+            'reportAttributeAccessIssue':  'none',
             'reportMissingModuleSource':   'none',
+            'reportWildcardImportFromLibrary': 'none',
+            # Manim accepts lists where tuples/ndarray are typed (Point3DLike, etc.)
+            'reportArgumentType':          'none',
+            # Every Manim scene overrides construct() without `override` decorator
+            'reportImplicitOverride':      'none',
         }
 
-        python_path = self.get_python_path()
-        if python_path:
-            config['pythonPath'] = python_path
+        # Detect Python version from pyvenv.cfg so pyright uses the
+        # correct site-packages path (lib/python3.X/site-packages on Unix).
+        # Without this, pyright falls back to the system Python version
+        # and looks in the wrong directory, failing to find installed libs.
+        pyvenv_cfg = os.path.join(VENV_DIR, 'pyvenv.cfg')
+        if os.path.exists(pyvenv_cfg):
+            try:
+                with open(pyvenv_cfg, 'r') as f:
+                    for line in f:
+                        if line.strip().startswith('version'):
+                            version_str = line.split('=', 1)[1].strip()
+                            parts = version_str.split('.')
+                            if len(parts) >= 2:
+                                config['pythonVersion'] = f'{parts[0]}.{parts[1]}'
+                                print(f'[LSP] Detected venv Python version: {config["pythonVersion"]}')
+                            break
+            except Exception as e:
+                print(f'[LSP] Could not read pyvenv.cfg: {e}')
+
+        # Set platform for cross-platform type checking
+        if sys.platform == 'darwin':
+            config['pythonPlatform'] = 'Darwin'
+        elif sys.platform == 'win32':
+            config['pythonPlatform'] = 'Windows'
+        else:
+            config['pythonPlatform'] = 'Linux'
+
+        # Add explicit extraPaths to site-packages so pyright can
+        # resolve all installed libs even if venvPath resolution fails.
+        if os.name == 'nt':
+            sp_dir = os.path.join(VENV_DIR, 'Lib', 'site-packages')
+            if os.path.isdir(sp_dir):
+                config['extraPaths'] = [sp_dir]
+        else:
+            import glob as _glob
+            sp_dirs = _glob.glob(os.path.join(VENV_DIR, 'lib', 'python*', 'site-packages'))
+            if sp_dirs:
+                config['extraPaths'] = [sp_dirs[0]]
 
         config_path = os.path.join(workspace_dir, 'pyrightconfig.json')
         with open(config_path, 'w', encoding='utf-8') as f:
             _json.dump(config, f, indent=2)
+
+        # Ensure scene.py exists on disk (pyright resolves paths from it)
+        scene_path = os.path.join(workspace_dir, 'scene.py')
+        if not os.path.exists(scene_path):
+            with open(scene_path, 'w', encoding='utf-8') as f:
+                f.write('')
 
         # Build a proper file:// URI (handles Windows drive letters)
         ws_posix = workspace_dir.replace('\\', '/')
@@ -5143,6 +5451,17 @@ class MyScene(Scene):
                         )
                         if where_result.returncode == 0:
                             results['latex']['path'] = where_result.stdout.strip().split('\n')[0]
+                    else:
+                        which_result = subprocess.run(
+                            ['which', cmd],
+                            stdin=subprocess.DEVNULL,
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                            env=env,
+                        )
+                        if which_result.returncode == 0:
+                            results['latex']['path'] = which_result.stdout.strip()
                     break
             except Exception:
                 continue
@@ -5453,7 +5772,7 @@ class MyScene(Scene):
                     return True
 
             # Install required packages
-            required_packages = ['manim', 'manim-fonts', 'pywebview', 'basedpyright']
+            required_packages = ['manim', 'manim-fonts', 'pywebview', 'pyright']
             progress = 40
 
             for pkg in required_packages:
@@ -6239,7 +6558,7 @@ class MyScene(Scene):
 
     def check_missing_required_packages(self):
         """Check which required packages are missing from the venv."""
-        required = ['basedpyright']
+        required = ['pyright']
         try:
             if os.name == 'nt':
                 venv_python = os.path.join(VENV_DIR, 'Scripts', 'python.exe')
@@ -6960,7 +7279,13 @@ def cleanup_on_exit():
         lsp_proc = app_state.get('lsp_process')
         if lsp_proc and lsp_proc.poll() is None:
             app_state['lsp_running'] = False
-            lsp_proc.terminate()
+            if os.name != 'nt':
+                try:
+                    os.killpg(os.getpgid(lsp_proc.pid), 15)  # SIGTERM to process group
+                except (ProcessLookupError, OSError):
+                    lsp_proc.terminate()
+            else:
+                lsp_proc.terminate()
             lsp_proc.wait(timeout=2)
             print("[CLEANUP] LSP language server stopped")
     except Exception as e:

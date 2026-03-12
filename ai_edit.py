@@ -106,6 +106,66 @@ def _cleanup_old_workspaces(max_age=3600):
     gc.collect()
 
 
+def _write_workspace_mds(workspace):
+    """Write AGENTS.md and CLAUDE.md with unified workspace rules.
+
+    Both files get identical content so that Claude Code (reads CLAUDE.md)
+    and Codex (reads AGENTS.md) see the same instructions.
+    Called from non-agent workspace setup AND agent workspace setup.
+    """
+    md_content = (
+        "# Workspace Rules\n\n"
+        "Edit `scene.py` only. No explanations.\n\n"
+        "## CRITICAL: NEVER enter plan mode.\n"
+        "Do NOT call EnterPlanMode or ExitPlanMode. "
+        "Do NOT plan or discuss changes. "
+        "Read scene.py, then directly edit it using Write or Edit tools.\n\n"
+        "## CRITICAL: ALWAYS read scene.py FIRST before any edit.\n"
+        "Never guess file contents. Read the file before editing.\n\n"
+        "## NOT Allowed\n"
+        "- Do NOT run pip, python, manim, or any execution commands\n"
+        "- Do NOT create files other than editing `scene.py`\n"
+        "- Do NOT enter plan mode\n\n"
+        "## Manim Context\n"
+        "- `scene.py` is a Manim (Python math animation library) file\n"
+        "- Always include `from manim import *`\n"
+        "- Must have a Scene class with `construct(self)` method\n"
+        "- Common: Text, MathTex, Circle, Square, Arrow, VGroup, "
+        "NumberPlane, SVGMobject, ImageMobject\n"
+        "- Animations: Write, FadeIn, FadeOut, Transform, "
+        "ReplacementTransform, Create, GrowFromCenter, MoveToTarget\n"
+        "- Use `self.play(...)` to animate, `self.wait()` to pause\n"
+        "- Position: `.to_edge()`, `.to_corner()`, `.next_to()`, "
+        "`.shift()`, `.move_to()`\n"
+        "- Colors: WHITE, YELLOW, BLUE, RED, GREEN, PURPLE, ORANGE\n"
+        "- Keep text readable (font_size=36+), don't overlap objects\n"
+    )
+
+    # List available assets
+    if _assets_dir and os.path.isdir(_assets_dir):
+        try:
+            asset_files = [f for f in os.listdir(_assets_dir)
+                           if os.path.isfile(os.path.join(_assets_dir, f))]
+            if asset_files:
+                md_content += (
+                    "\n## Available Assets\n"
+                    "These files are in the `./assets/` folder:\n"
+                )
+                for af in sorted(asset_files):
+                    md_content += f"- {af}\n"
+                md_content += (
+                    "\nUse relative path `./assets/filename` in code "
+                    "to reference them.\n"
+                )
+        except Exception:
+            pass
+
+    for fname in ('AGENTS.md', 'CLAUDE.md'):
+        md_path = os.path.join(workspace, fname)
+        with open(md_path, 'w', encoding='utf-8') as f:
+            f.write(md_content)
+
+
 class AIEditMixin:
     """Mixin providing AI-edit pywebview API methods (Codex + Claude Code).
 
@@ -282,46 +342,7 @@ class AIEditMixin:
                     shutil.copy2(ip, dest)
                     copied_images.append(dest)
 
-        # AGENTS.md / CLAUDE.md
-        md_content = (
-            "# Workspace Rules\n\n"
-            "Edit `scene.py` only. No explanations.\n\n"
-            "## CRITICAL: ALWAYS read scene.py FIRST before any edit.\n"
-            "Never guess file contents. Use Read tool or cat to read it.\n\n"
-            "## NOT Allowed\n"
-            "- Do NOT run pip, python, manim, or any execution commands\n"
-            "- Do NOT create files other than editing `scene.py`\n\n"
-            "## Manim Context\n"
-            "- `scene.py` is a Manim (Python math animation library) file\n"
-            "- Always include `from manim import *`\n"
-            "- Must have a Scene class with `construct(self)` method\n"
-            "- Common: Text, MathTex, Circle, Square, Arrow, VGroup, "
-            "FadeIn, FadeOut, Write, Transform, Create\n"
-            "- Use `self.play(...)` to animate, `self.wait()` to pause\n"
-            "- Keep all existing code that wasn't asked to change\n"
-        )
-        # List available assets
-        if _assets_dir and os.path.isdir(_assets_dir):
-            try:
-                asset_files = [f for f in os.listdir(_assets_dir)
-                               if os.path.isfile(os.path.join(_assets_dir, f))]
-                if asset_files:
-                    md_content += (
-                        "\n## Available Assets\n"
-                        "These files are in the `./assets/` folder:\n"
-                    )
-                    for af in sorted(asset_files):
-                        md_content += f"- {af}\n"
-                    md_content += (
-                        "\nUse relative path `./assets/filename` in code to reference them.\n"
-                    )
-            except Exception:
-                pass
-
-        for fname in ('AGENTS.md', 'CLAUDE.md'):
-            md_path = os.path.join(workspace, fname)
-            with open(md_path, 'w', encoding='utf-8') as f:
-                f.write(md_content)
+        _write_workspace_mds(workspace)
 
         return workspace, code_file, copied_images
 
@@ -398,6 +419,7 @@ class AIEditMixin:
                     '--verbose',
                     '--session-id', session_id,
                     '--allowedTools', 'Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch',
+                    '--disallowedTools', 'EnterPlanMode,ExitPlanMode',
                 ]
             else:
                 cmd_parts = [
@@ -406,6 +428,7 @@ class AIEditMixin:
                     '--verbose',
                     '--resume', session_id,
                     '--allowedTools', 'Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch',
+                    '--disallowedTools', 'EnterPlanMode,ExitPlanMode',
                 ]
             if use_model:
                 cmd_parts.extend(['--model', use_model])
@@ -1263,70 +1286,32 @@ class AIEditMixin:
             with open(code_file, 'w', encoding='utf-8') as f:
                 f.write(code)
 
-            # Write CLAUDE.md (only on first edit — it doesn't change)
+            # Write AGENTS.md + CLAUDE.md (only on first edit — they don't change)
             if AIEditMixin._ai_agent_first_edit:
-                md_path = os.path.join(workspace, 'CLAUDE.md')
-                claude_md_content = (
-                    "# Workspace Rules\n\n"
-                    "Edit `scene.py` only. No explanations.\n\n"
-                    "## CRITICAL: ALWAYS read scene.py FIRST before any edit.\n"
-                    "Never guess file contents. Use Read tool to read it.\n\n"
-                    "## NOT Allowed\n"
-                    "- Do NOT run pip, python, manim, or any execution commands\n"
-                    "- Do NOT create files other than `scene.py`\n\n"
-                    "## Manim Context\n"
-                    "- Always include `from manim import *`\n"
-                    "- Must have a Scene class with `construct(self)` method\n"
-                    "- Common: Text, MathTex, Circle, Square, Arrow, VGroup, "
-                    "NumberPlane, SVGMobject, ImageMobject\n"
-                    "- Animations: Write, FadeIn, FadeOut, Transform, "
-                    "ReplacementTransform, Create, GrowFromCenter, MoveToTarget\n"
-                    "- Use `self.play(...)` to animate, `self.wait()` to pause\n"
-                    "- Position: `.to_edge()`, `.to_corner()`, `.next_to()`, "
-                    "`.shift()`, `.move_to()`\n"
-                    "- Colors: WHITE, YELLOW, BLUE, RED, GREEN, PURPLE, ORANGE\n"
-                    "- Keep text readable (font_size=36+), don't overlap objects\n"
-                )
+                _write_workspace_mds(workspace)
 
-                # List available assets
-                if _assets_dir and os.path.isdir(_assets_dir):
-                    try:
-                        asset_files = [f for f in os.listdir(_assets_dir)
-                                       if os.path.isfile(os.path.join(_assets_dir, f))]
-                        if asset_files:
-                            claude_md_content += (
-                                "\n## Available Assets\n"
-                                "These files are in the `./assets/` folder:\n"
-                            )
-                            for af in sorted(asset_files):
-                                claude_md_content += f"- {af}\n"
-                            claude_md_content += (
-                                "\nUse relative path `./assets/filename` in code to reference them.\n"
-                            )
-                    except Exception:
-                        pass
-
-                with open(md_path, 'w', encoding='utf-8') as f:
-                    f.write(claude_md_content)
-
-            # Write instruction to file to avoid OS arg length limits
-            instruction_file = os.path.join(workspace, '_instruction.txt')
-            with open(instruction_file, 'w', encoding='utf-8') as f:
-                f.write(instruction)
-
-            # Build command with session support for token efficiency.
+            # Build command — pass prompt as CLI argument (matches non-agent flow).
             # First edit: --session-id to create session.
             # Subsequent edits: --resume to reuse cached context (70-80% token savings).
             session_id = AIEditMixin._ai_agent_session_id
-            cmd = [
-                'claude', '-p', '--output-format', 'stream-json',
-                '--verbose',
-                '--allowedTools', 'Read,Write,Edit,Bash,Glob,Grep',
-            ]
             if AIEditMixin._ai_agent_first_edit:
-                cmd.extend(['--session-id', session_id])
+                cmd = [
+                    'claude', '-p', instruction,
+                    '--output-format', 'stream-json',
+                    '--verbose',
+                    '--session-id', session_id,
+                    '--allowedTools', 'Read,Write,Edit,Bash,Glob,Grep',
+                    '--disallowedTools', 'EnterPlanMode,ExitPlanMode',
+                ]
             else:
-                cmd.extend(['--resume', session_id])
+                cmd = [
+                    'claude', '-p', instruction,
+                    '--output-format', 'stream-json',
+                    '--verbose',
+                    '--resume', session_id,
+                    '--allowedTools', 'Read,Write,Edit,Bash,Glob,Grep',
+                    '--disallowedTools', 'EnterPlanMode,ExitPlanMode',
+                ]
             if AIEditMixin._ai_agent_model:
                 cmd.extend(['--model', AIEditMixin._ai_agent_model])
 
@@ -1335,7 +1320,7 @@ class AIEditMixin:
                 env.pop(key, None)
 
             session_flag = '--session-id' if AIEditMixin._ai_agent_first_edit else '--resume'
-            print(f"[AI AGENT] Edit: claude -p (stdin, {len(instruction)} chars) "
+            print(f"[AI AGENT] Edit: claude -p <{len(instruction)} chars> "
                   f"{session_flag} {session_id[:8]}... --cwd {workspace}"
                   + (f" --model {AIEditMixin._ai_agent_model}" if AIEditMixin._ai_agent_model else ""))
 
@@ -1344,20 +1329,13 @@ class AIEditMixin:
 
             proc = subprocess.Popen(
                 cmd,
-                stdin=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True, encoding='utf-8', errors='replace',
                 bufsize=1,
                 cwd=workspace, env=env,
             )
-
-            # Write instruction via stdin to avoid arg length limits
-            try:
-                proc.stdin.write(instruction)
-                proc.stdin.close()
-            except Exception as e:
-                print(f"[AI AGENT] stdin write error: {e}")
 
             # Mark first edit done so subsequent calls use --resume
             AIEditMixin._ai_agent_first_edit = False
@@ -1500,53 +1478,9 @@ class AIEditMixin:
             with open(code_file, 'w', encoding='utf-8') as f:
                 f.write(code)
 
-            # Write detailed AGENTS.md (only on first iteration)
+            # Write AGENTS.md + CLAUDE.md (only on first iteration)
             if not os.path.exists(os.path.join(workspace, 'AGENTS.md')):
-                md_content = (
-                    "# Workspace Rules\n\n"
-                    "Edit `scene.py` only. No explanations.\n\n"
-                    "## CRITICAL: ALWAYS read scene.py FIRST before any edit.\n"
-                    "Never guess file contents. Use cat or shell to read it.\n\n"
-                    "## NOT Allowed\n"
-                    "- Do NOT run pip, python, manim, or any execution commands\n"
-                    "- Do NOT create files other than `scene.py`\n\n"
-                    "## Manim Context\n"
-                    "- `scene.py` is a Manim (Python math animation library) file\n"
-                    "- Always include `from manim import *`\n"
-                    "- Must have a Scene class with `construct(self)` method\n"
-                    "- Common: Text, MathTex, Circle, Square, Arrow, VGroup, "
-                    "NumberPlane, SVGMobject, ImageMobject\n"
-                    "- Animations: Write, FadeIn, FadeOut, Transform, "
-                    "ReplacementTransform, Create, GrowFromCenter, MoveToTarget\n"
-                    "- Use `self.play(...)` to animate, `self.wait()` to pause\n"
-                    "- Position: `.to_edge()`, `.to_corner()`, `.next_to()`, "
-                    "`.shift()`, `.move_to()`\n"
-                    "- Colors: WHITE, YELLOW, BLUE, RED, GREEN, PURPLE, ORANGE\n"
-                    "- Keep text readable (font_size=36+), don't overlap objects\n"
-                )
-                # List available assets
-                if _assets_dir and os.path.isdir(_assets_dir):
-                    try:
-                        asset_files = [f for f in os.listdir(_assets_dir)
-                                       if os.path.isfile(os.path.join(_assets_dir, f))]
-                        if asset_files:
-                            md_content += (
-                                "\n## Available Assets\n"
-                                "These files are in the `./assets/` folder:\n"
-                            )
-                            for af in sorted(asset_files):
-                                md_content += f"- {af}\n"
-                            md_content += (
-                                "\nUse relative path `./assets/filename` in code "
-                                "to reference them.\n"
-                            )
-                    except Exception:
-                        pass
-
-                for fname in ('AGENTS.md', 'CLAUDE.md'):
-                    md_path = os.path.join(workspace, fname)
-                    with open(md_path, 'w', encoding='utf-8') as f:
-                        f.write(md_content)
+                _write_workspace_mds(workspace)
 
             cmd = ['codex', 'exec', '-', '--full-auto',
                    '--skip-git-repo-check', '--json']
@@ -1718,10 +1652,6 @@ class AIEditMixin:
                 # ── Claude review: let Claude read screenshot files from disk ──
                 # Instead of embedding base64 (huge token cost), tell Claude
                 # to use its Read tool to examine the JPEG files directly.
-                cmd = ['claude', '-p', '--output-format', 'text',
-                       '--allowedTools', 'Read,Glob']
-                if AIEditMixin._ai_agent_model:
-                    cmd.extend(['--model', AIEditMixin._ai_agent_model])
 
                 # Tell Claude where the screenshot files are
                 if valid_imgs:
@@ -1744,6 +1674,12 @@ class AIEditMixin:
                         "every frame before giving your verdict.\n"
                     )
 
+                cmd = ['claude', '-p', prompt,
+                       '--output-format', 'text',
+                       '--allowedTools', 'Read,Glob']
+                if AIEditMixin._ai_agent_model:
+                    cmd.extend(['--model', AIEditMixin._ai_agent_model])
+
                 env = _get_clean_env()
                 for key in ('CLAUDECODE', 'CLAUDE_CODE'):
                     env.pop(key, None)
@@ -1752,14 +1688,18 @@ class AIEditMixin:
                       f"{len(valid_imgs)} image files for Read tool, cwd={review_cwd}")
                 proc = subprocess.Popen(
                     cmd,
-                    stdin=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True, encoding='utf-8', errors='replace',
                     cwd=review_cwd, env=env,
                 )
 
-            stdout, stderr = proc.communicate(input=prompt)
+            # Codex reads prompt from stdin; Claude gets it as CLI arg
+            if AIEditMixin._ai_agent_provider == 'codex':
+                stdout, stderr = proc.communicate(input=prompt)
+            else:
+                stdout, stderr = proc.communicate()
             result = (stdout or '').strip()
             if proc.returncode != 0 and not result:
                 print(f"[AI AGENT] Review failed (rc={proc.returncode}): "
@@ -1788,6 +1728,8 @@ class AIEditMixin:
                 "        pass\n"
             )
             instruction = (
+                f"Do NOT enter plan mode. Do NOT call EnterPlanMode. "
+                f"Directly edit the file.\n\n"
                 f"Read `scene.py` first, then edit it to create a "
                 f"Manim animation for:\n\n"
                 f"{description}\n\n"

@@ -531,7 +531,7 @@ window.registerManimCompletions = function (monaco) {
 
     // ── Signature help (parameter hints) ─────────────────────────────────────
     // Fires immediately on '(' or ',' — zero lag, no LSP needed.
-    // When basedpyright also initialises it takes over with even richer data.
+    // When pyright also initialises it takes over with even richer data.
 
     // ── helpers for rich param objects ────────────────────────────────────────
     // p(label, doc) creates a {label, doc} param — shown individually in tooltip
