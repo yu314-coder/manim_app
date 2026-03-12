@@ -747,8 +747,16 @@
                     clearInterval(agentPollTimer); agentPollTimer = null;
                     agentActive = false;
                     resetSendBtn();
-                    if (st.step === 'done') toast('Agent finished!', 'success');
-                    else if (st.step === 'error') toast('Agent error: ' + st.message, 'error');
+                    // Apply final code to editor
+                    if (st.step === 'done' && st.code && typeof editor !== 'undefined' && editor) {
+                        editor.setValue(st.code);
+                        if (typeof performAutosave === 'function') performAutosave();
+                        toast('Agent finished! Code applied.', 'success');
+                    } else if (st.step === 'done') {
+                        toast('Agent finished!', 'success');
+                    } else if (st.step === 'error') {
+                        toast('Agent error: ' + st.message, 'error');
+                    }
                 }
             } catch (e) { console.error('[AGENT POLL]', e); }
         }

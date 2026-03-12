@@ -1,8 +1,8 @@
 /**
  * Manim Studio — LSP Client
  *
- * Connects Monaco Editor to basedpyright-langserver (or pyright-langserver)
- * running as a subprocess in the Python host via the PyWebView API bridge.
+ * Connects Monaco Editor to pyright-langserver running as a subprocess in
+ * the Python host via the PyWebView API bridge.
  *
  * Transport:  JS → pywebview.api.lsp_send(jsonString)  → Python stdin → LSP server
  *             LSP server stdout → Python thread → window.lspReceive(jsonString) → JS
@@ -10,7 +10,7 @@
  * The editor is immediately usable.  LSP starts 2 s after the editor mounts,
  * completely in the background — zero perceived startup lag.
  *
- * If basedpyright is not installed the client silently stays inactive and the
+ * If pyright is not installed the client silently stays inactive and the
  * static completions from python-completions.js continue to work.
  */
 
@@ -307,7 +307,7 @@
                 endLineNumber:   d.range.end.line + 1,
                 endColumn:       d.range.end.character + 1,
                 message:         d.message,
-                source:          d.source || 'basedpyright',
+                source:          d.source || 'pyright',
                 code:            d.code ? String(d.code) : undefined,
             }));
 
@@ -333,7 +333,7 @@
 
     // ── initialisation sequence ───────────────────────────────────────────────
     async function _doInit(monaco, editor) {
-        // 1. Tell Python to start basedpyright
+        // 1. Tell Python to start pyright
         let startResult;
         try {
             startResult = await pywebview.api.start_lsp();
@@ -351,7 +351,7 @@
         console.log('[LSP] Server started:', startResult.exe || 'ok');
 
         // 2. Set up a real workspace directory with pyrightconfig.json so
-        //    basedpyright can find the Manim venv and resolve imports correctly.
+        //    pyright can find the Manim venv and resolve imports correctly.
         try {
             const wsInfo = await pywebview.api.setup_lsp_workspace();
             if (wsInfo?.status === 'success') {
@@ -373,6 +373,7 @@
             initResult = await client.request('initialize', {
                 processId:    null,
                 rootUri:      LSP_WORKSPACE_URI,
+                workspaceFolders: [{ uri: LSP_WORKSPACE_URI, name: 'manim_studio' }],
                 capabilities: {
                     textDocument: {
                         synchronization: {
@@ -419,6 +420,7 @@
                     workspace: {
                         configuration:       false,
                         didChangeConfiguration: { dynamicRegistration: false },
+                        workspaceFolders:     true,
                     },
                 },
                 initializationOptions: {
@@ -433,14 +435,15 @@
         // 5. Send initialized notification (required by LSP spec)
         client.notify('initialized', {});
 
-        // 6. Reinforce Python path via workspace/didChangeConfiguration so
-        //    basedpyright picks it up even if pyrightconfig.json wasn't read yet.
+        // 6. Reinforce Python path via workspace/didChangeConfiguration.
+        //    NOTE: Do NOT send diagnosticSeverityOverrides here — pyright
+        //    treats any LSP-level overrides as typeCheckingMode="all", ignoring
+        //    pyrightconfig.json. All diagnostic rules are set in pyrightconfig.json.
         if (venvPython) {
             client.notify('workspace/didChangeConfiguration', {
                 settings: {
-                    python:        { pythonPath: venvPython },
-                    basedpyright:  { pythonPath: venvPython },
-                    pyright:       { pythonPath: venvPython },
+                    python:  { pythonPath: venvPython },
+                    pyright: { pythonPath: venvPython },
                 },
             });
         }
@@ -464,7 +467,7 @@
 
         // 10. Show status to user
         if (window.showToast) {
-            showToast('IntelliSense ready (basedpyright)', 'success', 2500);
+            showToast('IntelliSense ready (pyright)', 'success', 2500);
         }
     }
 

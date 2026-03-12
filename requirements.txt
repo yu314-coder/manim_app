@@ -1,0 +1,11 @@
+# Manim Studio — App Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core UI Framework
+pywebview>=5.0
+
+# Image Processing
+pillow>=10.0
+
+# System Utilities
+psutil>=5.9
