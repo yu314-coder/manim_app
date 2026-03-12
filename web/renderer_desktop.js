@@ -3053,7 +3053,6 @@ window.addEventListener('pywebviewready', () => {
                 fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace',
                 lineHeight: 1.2,
                 letterSpacing: 0,
-                windowsPty: { backend: 'conpty', buildNumber: 26200 },
                 theme: {
                     background: '#0c0c0c',
                     foreground: '#cccccc',
@@ -3205,11 +3204,13 @@ window.addEventListener('pywebviewready', () => {
             // Fetch backend info and update windowsPty accordingly
             pywebview.api.get_terminal_info().then(info => {
                 if (info && info.status === 'success') {
-                    term.options.windowsPty = {
-                        backend: info.backend === 'conpty' ? 'conpty' : 'winpty',
-                        buildNumber: info.windows_build || 0
-                    };
-                    console.log(`[TERMINAL] Backend: ${info.backend}, Windows build: ${info.windows_build}`);
+                    if (info.platform === 'win32') {
+                        term.options.windowsPty = {
+                            backend: info.backend === 'conpty' ? 'conpty' : 'winpty',
+                            buildNumber: info.windows_build || 0
+                        };
+                    }
+                    console.log(`[TERMINAL] Backend: ${info.backend}, platform: ${info.platform}`);
                 }
             }).catch(() => {});
 
@@ -3243,8 +3244,9 @@ window.addEventListener('pywebviewready', () => {
                     }
                 }
 
-                // Ctrl+Shift+C - Copy (when text is selected)
-                if (event.ctrlKey && event.shiftKey && event.key === 'C' && term.hasSelection()) {
+                // Ctrl+Shift+C or Cmd+C (macOS) - Copy (when text is selected)
+                if (((event.ctrlKey && event.shiftKey && event.key === 'C') ||
+                     (event.metaKey && event.key === 'c')) && term.hasSelection()) {
                     const selection = term.getSelection();
                     navigator.clipboard.writeText(selection).catch(err => {
                         console.error('[TERMINAL] Copy failed:', err);
@@ -3252,8 +3254,9 @@ window.addEventListener('pywebviewready', () => {
                     return false; // Prevent default
                 }
 
-                // Ctrl+Shift+V - Paste
-                if (event.ctrlKey && event.shiftKey && event.key === 'V' && event.type === 'keydown') {
+                // Ctrl+Shift+V or Cmd+V (macOS) - Paste
+                if (((event.ctrlKey && event.shiftKey && event.key === 'V') ||
+                     (event.metaKey && event.key === 'v')) && event.type === 'keydown') {
                     navigator.clipboard.readText().then(text => {
                         if (text) {
                             pywebview.api.send_terminal_command(text);
