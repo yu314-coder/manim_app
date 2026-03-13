@@ -365,7 +365,8 @@ def detect_gpu():
                         ['system_profiler', 'SPDisplaysDataType'],
                         capture_output=True,
                         text=True,
-                        timeout=10
+                        timeout=10,
+                        env=get_clean_environment()
                     )
 
                     if result.returncode == 0:
@@ -1063,7 +1064,7 @@ def setup_venv(window=None):
 
         # Use python -m pip instead of pip.exe directly for better compatibility
         install_process = subprocess.Popen(
-            [venv_python_exe, '-m', 'pip', 'install', 'manim', 'manim-fonts', 'pyright', 'importlib_metadata'],
+            [venv_python_exe, '-m', 'pip', 'install', 'manim', 'manim-fonts', 'pyright', 'importlib_metadata', 'ffmpeg-python'],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -5772,7 +5773,7 @@ class MyScene(Scene):
                     return True
 
             # Install required packages
-            required_packages = ['manim', 'manim-fonts', 'pywebview', 'pyright']
+            required_packages = ['manim', 'manim-fonts', 'pywebview', 'pyright', 'importlib_metadata', 'ffmpeg-python']
             progress = 40
 
             for pkg in required_packages:
@@ -6152,18 +6153,35 @@ class MyScene(Scene):
 
         # GPU info
         try:
-            gpu_result = subprocess.run(
-                ['wmic', 'path', 'win32_VideoController', 'get', 'Name,DriverVersion', '/format:csv'],
-                capture_output=True, text=True, timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            if gpu_result.returncode == 0:
-                lines = [l.strip() for l in gpu_result.stdout.strip().split('\n') if l.strip() and not l.startswith('Node')]
+            if os.name == 'nt':
+                gpu_result = subprocess.run(
+                    ['wmic', 'path', 'win32_VideoController', 'get', 'Name,DriverVersion', '/format:csv'],
+                    capture_output=True, text=True, timeout=5,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                if gpu_result.returncode == 0:
+                    lines = [l.strip() for l in gpu_result.stdout.strip().split('\n') if l.strip() and not l.startswith('Node')]
+                    gpus = []
+                    for line in lines:
+                        parts = line.split(',')
+                        if len(parts) >= 3:
+                            gpus.append({'driver': parts[1].strip(), 'name': parts[2].strip()})
+                    info['gpus'] = gpus
+                else:
+                    info['gpus'] = []
+            elif sys.platform == 'darwin':
+                gpu_result = subprocess.run(
+                    ['system_profiler', 'SPDisplaysDataType'],
+                    capture_output=True, text=True, timeout=10,
+                    env=get_clean_environment()
+                )
                 gpus = []
-                for line in lines:
-                    parts = line.split(',')
-                    if len(parts) >= 3:
-                        gpus.append({'driver': parts[1].strip(), 'name': parts[2].strip()})
+                if gpu_result.returncode == 0:
+                    for line in gpu_result.stdout.split('\n'):
+                        line_stripped = line.strip()
+                        if line_stripped.startswith('Chipset Model:') or line_stripped.startswith('Chip:'):
+                            gpu_name = line_stripped.split(':', 1)[1].strip()
+                            gpus.append({'driver': '', 'name': gpu_name})
                 info['gpus'] = gpus
             else:
                 info['gpus'] = []
@@ -6187,7 +6205,8 @@ class MyScene(Scene):
             ff_result = subprocess.run(
                 ['ffmpeg', '-version'],
                 capture_output=True, text=True, timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+                env=get_clean_environment()
             )
             if ff_result.returncode == 0:
                 first_line = ff_result.stdout.split('\n')[0] if ff_result.stdout else ''
@@ -6558,7 +6577,7 @@ class MyScene(Scene):
 
     def check_missing_required_packages(self):
         """Check which required packages are missing from the venv."""
-        required = ['pyright']
+        required = ['pyright', 'importlib_metadata', 'ffmpeg-python']
         try:
             if os.name == 'nt':
                 venv_python = os.path.join(VENV_DIR, 'Scripts', 'python.exe')
