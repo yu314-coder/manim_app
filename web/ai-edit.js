@@ -703,7 +703,9 @@
             if (streamOutput) streamOutput.innerHTML = '';
 
             try {
-                const res = await pywebview.api.ai_agent_start(description, 5, selectedModel, currentProvider);
+                const imagePaths = attachedImages.map(img => img.path);
+                const currentCode = await pywebview.api.get_code();
+                const res = await pywebview.api.ai_agent_start(description, 5, selectedModel, currentProvider, imagePaths, currentCode);
                 if (res.status === 'error') {
                     toast(res.message, 'error');
                     resetSendBtn(); agentActive = false;

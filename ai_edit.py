@@ -23,6 +23,73 @@ _get_clean_env = None
 _assets_dir = None
 
 
+_PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompts')
+
+# Prompt cache — loaded once from prompts/ folder
+_prompt_cache = {}
+
+
+def _load_prompt(filename):
+    """Load a prompt template from the prompts/ folder. Cached after first read."""
+    if filename in _prompt_cache:
+        return _prompt_cache[filename]
+    fpath = os.path.join(_PROMPTS_DIR, filename)
+    try:
+        with open(fpath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        _prompt_cache[filename] = content
+        return content
+    except Exception as e:
+        print(f"[AI EDIT] Failed to load prompt {filename}: {e}")
+        return ''
+
+
+def _load_prompt_section(filename, section):
+    """Load a specific ## section from a prompt file.
+    E.g. _load_prompt_section('claude_agent.md', 'Fix') returns the
+    text under '## Fix' up to the next '## ' or end of file."""
+    content = _load_prompt(filename)
+    if not content:
+        return ''
+    marker = f'## {section}'
+    start = content.find(marker)
+    if start == -1:
+        return ''
+    start += len(marker)
+    # Skip to next line after the header
+    nl = content.find('\n', start)
+    if nl == -1:
+        return content[start:].strip()
+    start = nl + 1
+    # Find next section or end
+    next_section = content.find('\n## ', start)
+    if next_section == -1:
+        return content[start:].strip()
+    return content[start:next_section].strip()
+
+
+def _append_assets_list(md_content):
+    """Append available assets list to MD content if assets exist."""
+    if _assets_dir and os.path.isdir(_assets_dir):
+        try:
+            asset_files = [f for f in os.listdir(_assets_dir)
+                           if os.path.isfile(os.path.join(_assets_dir, f))]
+            if asset_files:
+                md_content += (
+                    "\n## Available Assets\n"
+                    "These files are in the `./assets/` folder:\n"
+                )
+                for af in sorted(asset_files):
+                    md_content += f"- {af}\n"
+                md_content += (
+                    "\nOnly read and use assets that are referenced in `scene.py`.\n"
+                    "Use relative path `./assets/filename` in code.\n"
+                )
+        except Exception:
+            pass
+    return md_content
+
+
 def init_ai_edit(preview_dir, get_clean_env_func, assets_dir=None):
     """Initialise module-level dependencies (called once from app.py)."""
     global _preview_dir, _get_clean_env, _assets_dir
@@ -229,30 +296,31 @@ class AIEditMixin:
         image_hint = ""
         if image_paths:
             names = [os.path.basename(p) for p in image_paths]
-            image_hint = (f"\n\nI've attached {len(image_paths)} image(s) in the `images/` folder "
-                          f"for reference: {', '.join(names)}. "
-                          f"Look at them to understand what I'm referring to.")
+            image_hint = (
+                f"\n\nReference images in `images/` folder: {', '.join(names)}. "
+                f"Read every image first — describe ALL text, layout, colors, "
+                f"shapes, math exactly. Then use that to code."
+            )
 
+        # Load from prompts/ folder (claude and codex share the same non-agent prompt)
+        prompt_file = 'claude_non_agent.md'
         if has_selection:
-            return (
-                f"Edit the file `scene.py` in this directory.\n"
-                f"ONLY modify lines {selection_start}-{selection_end}.\n\n"
-                f"Selected code (lines {selection_start}-{selection_end}):\n"
-                f"```python\n{selected_code}\n```\n\n"
-                f"Instruction: {prompt}\n\n"
-                f"Apply the changes to scene.py and write it back. "
-                f"Keep all existing code that wasn't asked to change."
-                f"{search_hint}{image_hint}"
-            )
+            tpl = _load_prompt_section(prompt_file, 'With Selection')
+            if tpl:
+                result = (tpl
+                    .replace('{{SEL_START}}', str(selection_start))
+                    .replace('{{SEL_END}}', str(selection_end))
+                    .replace('{{SELECTED_CODE}}', selected_code)
+                    .replace('{{PROMPT}}', prompt))
+                return result + search_hint + image_hint
         else:
-            return (
-                f"Read `scene.py` in this directory first, then edit it.\n"
-                f"This is a Manim (Python math animation library) file.\n\n"
-                f"Instruction: {prompt}\n\n"
-                f"Apply the changes and write the result back to scene.py. "
-                f"Keep all existing code that wasn't asked to change."
-                f"{search_hint}{image_hint}"
-            )
+            tpl = _load_prompt_section(prompt_file, 'Without Selection')
+            if tpl:
+                result = tpl.replace('{{PROMPT}}', prompt)
+                return result + image_hint + search_hint
+
+        # Fallback if prompt file missing
+        return f"Read `scene.py` first, then edit it.\nInstruction: {prompt}{image_hint}{search_hint}"
 
     def _setup_ai_workspace(self, code, image_paths):
         """Create isolated workspace with scene.py, AGENTS.md, and images.
@@ -282,41 +350,11 @@ class AIEditMixin:
                     shutil.copy2(ip, dest)
                     copied_images.append(dest)
 
-        # AGENTS.md / CLAUDE.md
-        md_content = (
-            "# Workspace Rules\n\n"
-            "Edit `scene.py` only. No explanations.\n\n"
-            "## CRITICAL: ALWAYS read scene.py FIRST before any edit.\n"
-            "Never guess file contents. Use Read tool or cat to read it.\n\n"
-            "## NOT Allowed\n"
-            "- Do NOT run pip, python, manim, or any execution commands\n"
-            "- Do NOT create files other than editing `scene.py`\n\n"
-            "## Manim Context\n"
-            "- `scene.py` is a Manim (Python math animation library) file\n"
-            "- Always include `from manim import *`\n"
-            "- Must have a Scene class with `construct(self)` method\n"
-            "- Common: Text, MathTex, Circle, Square, Arrow, VGroup, "
-            "FadeIn, FadeOut, Write, Transform, Create\n"
-            "- Use `self.play(...)` to animate, `self.wait()` to pause\n"
-            "- Keep all existing code that wasn't asked to change\n"
-        )
-        # List available assets
-        if _assets_dir and os.path.isdir(_assets_dir):
-            try:
-                asset_files = [f for f in os.listdir(_assets_dir)
-                               if os.path.isfile(os.path.join(_assets_dir, f))]
-                if asset_files:
-                    md_content += (
-                        "\n## Available Assets\n"
-                        "These files are in the `./assets/` folder:\n"
-                    )
-                    for af in sorted(asset_files):
-                        md_content += f"- {af}\n"
-                    md_content += (
-                        "\nUse relative path `./assets/filename` in code to reference them.\n"
-                    )
-            except Exception:
-                pass
+        # CLAUDE.md / AGENTS.md — loaded from prompts/ folder
+        md_content = _load_prompt('workspace_claude.md')
+        if not md_content:
+            md_content = "# Workspace Rules\nEdit scene.py only. Read it first.\n"
+        md_content = _append_assets_list(md_content)
 
         for fname in ('AGENTS.md', 'CLAUDE.md'):
             md_path = os.path.join(workspace, fname)
@@ -1171,8 +1209,9 @@ class AIEditMixin:
     _ai_agent_stream_events = []  # live stream-json events from edit subprocess
 
     _ai_agent_provider = 'claude'  # 'claude' or 'codex'
+    _ai_agent_image_paths = []    # user-uploaded reference images
 
-    def ai_agent_start(self, description, max_iterations=5, model='', provider='claude'):
+    def ai_agent_start(self, description, max_iterations=5, model='', provider='claude', image_paths=None, code=''):
         """Start the autonomous AI agent workflow."""
         if AIEditMixin._ai_agent_active:
             return {'status': 'error', 'message': 'Agent already running'}
@@ -1204,13 +1243,14 @@ class AIEditMixin:
         AIEditMixin._ai_agent_feedback = None
         AIEditMixin._ai_agent_feedback_event = threading.Event()
         AIEditMixin._ai_agent_cancel_flag = False
+        AIEditMixin._ai_agent_image_paths = image_paths or []
         # Reset session memory for fresh agent run
         AIEditMixin._ai_agent_session_id = None
         AIEditMixin._ai_agent_workspace = None
         AIEditMixin._ai_agent_first_edit = True
 
         t = threading.Thread(target=self._ai_agent_run,
-                             args=(description, max_iterations), daemon=True)
+                             args=(description, max_iterations, code), daemon=True)
         t.start()
         return {'status': 'started'}
 
@@ -1258,6 +1298,16 @@ class AIEditMixin:
                 AIEditMixin._ai_agent_first_edit = True
                 _link_assets(workspace)
 
+                # Copy user-uploaded reference images into workspace
+                if AIEditMixin._ai_agent_image_paths:
+                    img_ws_dir = os.path.join(workspace, 'images')
+                    os.makedirs(img_ws_dir, exist_ok=True)
+                    for ip in AIEditMixin._ai_agent_image_paths:
+                        if os.path.isfile(ip):
+                            dest = os.path.join(img_ws_dir, os.path.basename(ip))
+                            shutil.copy2(ip, dest)
+                            print(f"[AI AGENT] Copied image: {os.path.basename(ip)}")
+
             # Write scene.py
             code_file = os.path.join(workspace, 'scene.py')
             with open(code_file, 'w', encoding='utf-8') as f:
@@ -1266,46 +1316,10 @@ class AIEditMixin:
             # Write CLAUDE.md (only on first edit — it doesn't change)
             if AIEditMixin._ai_agent_first_edit:
                 md_path = os.path.join(workspace, 'CLAUDE.md')
-                claude_md_content = (
-                    "# Workspace Rules\n\n"
-                    "Edit `scene.py` only. No explanations.\n\n"
-                    "## CRITICAL: ALWAYS read scene.py FIRST before any edit.\n"
-                    "Never guess file contents. Use Read tool to read it.\n\n"
-                    "## NOT Allowed\n"
-                    "- Do NOT run pip, python, manim, or any execution commands\n"
-                    "- Do NOT create files other than `scene.py`\n\n"
-                    "## Manim Context\n"
-                    "- Always include `from manim import *`\n"
-                    "- Must have a Scene class with `construct(self)` method\n"
-                    "- Common: Text, MathTex, Circle, Square, Arrow, VGroup, "
-                    "NumberPlane, SVGMobject, ImageMobject\n"
-                    "- Animations: Write, FadeIn, FadeOut, Transform, "
-                    "ReplacementTransform, Create, GrowFromCenter, MoveToTarget\n"
-                    "- Use `self.play(...)` to animate, `self.wait()` to pause\n"
-                    "- Position: `.to_edge()`, `.to_corner()`, `.next_to()`, "
-                    "`.shift()`, `.move_to()`\n"
-                    "- Colors: WHITE, YELLOW, BLUE, RED, GREEN, PURPLE, ORANGE\n"
-                    "- Keep text readable (font_size=36+), don't overlap objects\n"
-                )
-
-                # List available assets
-                if _assets_dir and os.path.isdir(_assets_dir):
-                    try:
-                        asset_files = [f for f in os.listdir(_assets_dir)
-                                       if os.path.isfile(os.path.join(_assets_dir, f))]
-                        if asset_files:
-                            claude_md_content += (
-                                "\n## Available Assets\n"
-                                "These files are in the `./assets/` folder:\n"
-                            )
-                            for af in sorted(asset_files):
-                                claude_md_content += f"- {af}\n"
-                            claude_md_content += (
-                                "\nUse relative path `./assets/filename` in code to reference them.\n"
-                            )
-                    except Exception:
-                        pass
-
+                claude_md_content = _load_prompt('workspace_claude.md')
+                if not claude_md_content:
+                    claude_md_content = "# Workspace Rules\nEdit scene.py only. Read it first.\n"
+                claude_md_content = _append_assets_list(claude_md_content)
                 with open(md_path, 'w', encoding='utf-8') as f:
                     f.write(claude_md_content)
 
@@ -1496,53 +1510,26 @@ class AIEditMixin:
                 AIEditMixin._ai_agent_workspace = workspace
                 _link_assets(workspace)
 
+                # Copy user-uploaded reference images into workspace
+                if AIEditMixin._ai_agent_image_paths:
+                    img_ws_dir = os.path.join(workspace, 'images')
+                    os.makedirs(img_ws_dir, exist_ok=True)
+                    for ip in AIEditMixin._ai_agent_image_paths:
+                        if os.path.isfile(ip):
+                            dest = os.path.join(img_ws_dir, os.path.basename(ip))
+                            shutil.copy2(ip, dest)
+                            print(f"[AI AGENT] Copied image: {os.path.basename(ip)}")
+
             code_file = os.path.join(workspace, 'scene.py')
             with open(code_file, 'w', encoding='utf-8') as f:
                 f.write(code)
 
-            # Write detailed AGENTS.md (only on first iteration)
+            # Write AGENTS.md + CLAUDE.md (only on first iteration)
             if not os.path.exists(os.path.join(workspace, 'AGENTS.md')):
-                md_content = (
-                    "# Workspace Rules\n\n"
-                    "Edit `scene.py` only. No explanations.\n\n"
-                    "## CRITICAL: ALWAYS read scene.py FIRST before any edit.\n"
-                    "Never guess file contents. Use cat or shell to read it.\n\n"
-                    "## NOT Allowed\n"
-                    "- Do NOT run pip, python, manim, or any execution commands\n"
-                    "- Do NOT create files other than `scene.py`\n\n"
-                    "## Manim Context\n"
-                    "- `scene.py` is a Manim (Python math animation library) file\n"
-                    "- Always include `from manim import *`\n"
-                    "- Must have a Scene class with `construct(self)` method\n"
-                    "- Common: Text, MathTex, Circle, Square, Arrow, VGroup, "
-                    "NumberPlane, SVGMobject, ImageMobject\n"
-                    "- Animations: Write, FadeIn, FadeOut, Transform, "
-                    "ReplacementTransform, Create, GrowFromCenter, MoveToTarget\n"
-                    "- Use `self.play(...)` to animate, `self.wait()` to pause\n"
-                    "- Position: `.to_edge()`, `.to_corner()`, `.next_to()`, "
-                    "`.shift()`, `.move_to()`\n"
-                    "- Colors: WHITE, YELLOW, BLUE, RED, GREEN, PURPLE, ORANGE\n"
-                    "- Keep text readable (font_size=36+), don't overlap objects\n"
-                )
-                # List available assets
-                if _assets_dir and os.path.isdir(_assets_dir):
-                    try:
-                        asset_files = [f for f in os.listdir(_assets_dir)
-                                       if os.path.isfile(os.path.join(_assets_dir, f))]
-                        if asset_files:
-                            md_content += (
-                                "\n## Available Assets\n"
-                                "These files are in the `./assets/` folder:\n"
-                            )
-                            for af in sorted(asset_files):
-                                md_content += f"- {af}\n"
-                            md_content += (
-                                "\nUse relative path `./assets/filename` in code "
-                                "to reference them.\n"
-                            )
-                    except Exception:
-                        pass
-
+                md_content = _load_prompt('workspace_codex.md')
+                if not md_content:
+                    md_content = "# Workspace Rules\nEdit scene.py only. Read it first.\n"
+                md_content = _append_assets_list(md_content)
                 for fname in ('AGENTS.md', 'CLAUDE.md'):
                     md_path = os.path.join(workspace, fname)
                     with open(md_path, 'w', encoding='utf-8') as f:
@@ -1552,6 +1539,14 @@ class AIEditMixin:
                    '--skip-git-repo-check', '--json']
             if AIEditMixin._ai_agent_model:
                 cmd.extend(['-m', AIEditMixin._ai_agent_model])
+            # Pass user-uploaded reference images via -i flag
+            if AIEditMixin._ai_agent_image_paths:
+                img_ws_dir = os.path.join(workspace, 'images')
+                if os.path.isdir(img_ws_dir):
+                    for fname in os.listdir(img_ws_dir):
+                        fpath = os.path.join(img_ws_dir, fname)
+                        if os.path.isfile(fpath):
+                            cmd.extend(['-i', fpath])
 
             env = _get_clean_env()
             AIEditMixin._ai_agent_stream_events = []
@@ -1774,30 +1769,45 @@ class AIEditMixin:
             traceback.print_exc()
             return None
 
-    def _ai_agent_run(self, description, max_iterations):
+    def _ai_agent_run(self, description, max_iterations, code=''):
         """Main agent loop (runs in thread). Never times out — loops until
         cancelled or the animation is correct."""
         try:
             # ── Step 1: Generate code via workspace ──
             self._ai_agent_set('generating', 'Creating Manim animation...')
 
-            template = (
+            # Use the actual editor code; fall back to empty template only if blank
+            template = code.strip() if code and code.strip() else (
                 "from manim import *\n\n"
                 "class MyScene(Scene):\n"
                 "    def construct(self):\n"
                 "        pass\n"
             )
-            instruction = (
-                f"Read `scene.py` first, then edit it to create a "
-                f"Manim animation for:\n\n"
-                f"{description}\n\n"
-                f"Replace the placeholder code with a complete, working "
-                f"animation and write it back to scene.py.\n"
-                f"Use smooth animations (Write, FadeIn, Transform, etc.) "
-                f"and add self.wait() between animations.\n"
-                f"Make sure text is readable, objects don't overlap, "
-                f"and colors have good contrast against a black background."
-            )
+            # Build image hint if user uploaded reference images
+            image_hint = ''
+            if AIEditMixin._ai_agent_image_paths:
+                img_names = [os.path.basename(ip)
+                             for ip in AIEditMixin._ai_agent_image_paths
+                             if os.path.isfile(ip)]
+                if img_names:
+                    image_hint = (
+                        f"\n\nReference images in `images/` folder: "
+                        f"{', '.join(img_names)}. "
+                        f"Read every image first — describe ALL text, layout, "
+                        f"colors, shapes, math exactly. Then use that to code."
+                    )
+
+            # Load Generate prompt from file
+            agent_prompt_file = ('codex_agent.md' if AIEditMixin._ai_agent_provider == 'codex'
+                                 else 'claude_agent.md')
+            tpl = _load_prompt_section(agent_prompt_file, 'Generate')
+            if tpl:
+                instruction = tpl.replace('{{DESCRIPTION}}', description) + image_hint
+            else:
+                instruction = (
+                    f"Create a Manim animation for:\n\n{description}{image_hint}\n\n"
+                    f"Write the complete animation code to scene.py."
+                )
             code = self._ai_agent_edit(template, instruction)
             if not code or AIEditMixin._ai_agent_cancel_flag:
                 self._ai_agent_set('error', 'Failed to generate code')
@@ -1845,11 +1855,15 @@ class AIEditMixin:
                         'fixing',
                         f'Auto-fixing error (attempt {consecutive_errors}): {err[:100]}')
                     err_truncated = err[:1500] if len(err) > 1500 else err
-                    fix_instruction = (
-                        f"Read `scene.py` first. It has a render error:\n\n"
-                        f"{err_truncated}\n\n"
-                        f"Fix the bug and write the corrected code back to scene.py."
-                    )
+                    tpl_fix = _load_prompt_section(agent_prompt_file, 'Fix')
+                    if tpl_fix:
+                        fix_instruction = tpl_fix.replace('{{ERROR}}', err_truncated)
+                    else:
+                        fix_instruction = (
+                            f"Read `scene.py` first. It has a render error:\n\n"
+                            f"{err_truncated}\n\n"
+                            f"Fix the bug and write the corrected code back to scene.py."
+                        )
                     fixed = self._ai_agent_edit(code, fix_instruction)
                     if fixed and fixed.strip() != code.strip():
                         code = fixed
@@ -1903,31 +1917,18 @@ class AIEditMixin:
                     self._ai_agent_set('analyzing',
                         f'Reviewing {len(screenshot_files)} frames...')
 
-                    review_prompt = (
-                        f"You are a visual QA reviewer for Manim animations.\n\n"
-                        f"GOAL: \"{description}\"\n\n"
-                        f"You MUST examine EVERY frame image carefully. "
-                        f"There are {len(screenshot_files)} frames at 1 per second.\n\n"
-                        f"Check each frame for these problems:\n"
-                        f"1. DOESN'T MATCH GOAL — missing key elements that were "
-                        f"requested, or showing wrong content entirely\n"
-                        f"2. UNNATURAL/STRANGE — things that look weird or wrong, "
-                        f"not how a proper math animation should look\n"
-                        f"3. OVERLAPPING — objects or text piled on each other, "
-                        f"making things unreadable\n"
-                        f"4. OFF SCREEN — objects cut off at edges\n"
-                        f"5. WRONG TEXT — typos, wrong words, wrong math, "
-                        f"garbled or unreadable text\n"
-                        f"6. DISCONNECTED — elements that should be connected "
-                        f"look broken apart\n\n"
-                        f"IGNORE: colors, fonts, spacing, timing, speed, style.\n\n"
-                        f"IMPORTANT: If you find ANY of the above problems, "
-                        f"you MUST say IMPROVE and describe what's wrong. "
-                        f"Only say SATISFIED if there are ZERO problems.\n\n"
-                        f"Reply:\n"
-                        f"SATISFIED — if animation looks correct and natural\n"
-                        f"IMPROVE: <what is wrong and needs fixing>"
-                    )
+                    tpl_review = _load_prompt_section(agent_prompt_file, 'Review')
+                    if tpl_review:
+                        review_prompt = (tpl_review
+                            .replace('{{DESCRIPTION}}', description)
+                            .replace('{{NUM_FRAMES}}', str(len(screenshot_files))))
+                    else:
+                        review_prompt = (
+                            f"You are a visual QA reviewer for Manim animations.\n\n"
+                            f"GOAL: \"{description}\"\n\n"
+                            f"Examine all {len(screenshot_files)} frames.\n"
+                            f"Reply SATISFIED or IMPROVE: <what is wrong>"
+                        )
                     review = self._ai_agent_review(review_prompt, screenshot_files)
 
                     # ── Review failed → skip review, continue loop ──
@@ -1978,11 +1979,15 @@ class AIEditMixin:
                     # Give user time to read what was found
                     time.sleep(3)
                     tip_truncated = tip[:800] if len(tip) > 800 else tip
-                    improve_instruction = (
-                        f"Read `scene.py` first, then improve it based on this review:\n"
-                        f"{tip_truncated}\n\n"
-                        f"Apply the improvements and write the result back to scene.py."
-                    )
+                    tpl_improve = _load_prompt_section(agent_prompt_file, 'Improve')
+                    if tpl_improve:
+                        improve_instruction = tpl_improve.replace('{{REVIEW_FEEDBACK}}', tip_truncated)
+                    else:
+                        improve_instruction = (
+                            f"Read `scene.py` first, then improve it based on this review:\n"
+                            f"{tip_truncated}\n\n"
+                            f"Apply the improvements and write the result back to scene.py."
+                        )
                     improved = self._ai_agent_edit(code, improve_instruction)
                     if improved and improved.strip() != code.strip():
                         code = improved

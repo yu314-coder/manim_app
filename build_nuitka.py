@@ -234,6 +234,7 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
     nuitka_cmd.extend([
         # Include data directories
         "--include-data-dir=web=web",  # Include entire web folder
+        "--include-data-dir=prompts=prompts",  # AI prompt templates
 
         # Note: pywebview plugin is always enabled by Nuitka, no need to specify it
 
