@@ -146,6 +146,13 @@ class MyScene(Scene):
             }
         });
 
+        // Remove skeleton placeholder now that Monaco is ready
+        const skel = document.getElementById('editorSkeleton');
+        if (skel) {
+            skel.classList.add('hidden');
+            setTimeout(() => skel.remove(), 300);
+        }
+
         // Event listeners
         let errorCheckTimeout = null;
         editor.onDidChangeModelContent(() => {
@@ -649,6 +656,22 @@ function setTerminalStatus(text, type = 'info') {
     }
 }
 
+// ── App state indicator for AI screen readers ──
+function updateAppState(overrides = {}) {
+    const el = document.getElementById('appStateIndicator');
+    if (!el) return;
+    for (const [k, v] of Object.entries(overrides)) {
+        el.dataset[k] = v;
+    }
+    const s = el.dataset;
+    const parts = [];
+    if (s.render && s.render !== 'none') parts.push(`Render: ${s.render}`);
+    if (s.ai && s.ai !== 'none') parts.push(`AI: ${s.ai}`);
+    if (s.file) parts.push(`File: ${s.file}`);
+    el.dataset.state = parts.length ? 'busy' : 'idle';
+    el.textContent = parts.length ? `App state: ${parts.join(', ')}` : 'App state: idle';
+}
+
 function focusInput() {
     // Focus xterm.js terminal if available
     if (term) {
@@ -1091,11 +1114,13 @@ async function renderAnimation() {
     _renderMeta = { startTime: Date.now(), mode: 'render', quality: String(quality), fps, sceneName: '', format };
 
     setTerminalStatus('Rendering...', 'warning');
+    updateAppState({ render: 'rendering', state: 'busy' });
     try {
         const res = await pywebview.api.render_animation(code, quality, fps, gpuEnabled, format, null, null, null);
 
         if (res.status === 'error') {
             setTerminalStatus('Error', 'error');
+            updateAppState({ render: 'error' });
             showToastWithAction(`Render failed: ${res.message}`, 'error', 'Fix with AI', () => {
                 if (typeof window.openAIEdit === 'function') {
                     window.openAIEdit('Fix this Manim render error:\n' + res.message + '\n\nRead the code, understand the error, and fix it.');
@@ -1104,6 +1129,7 @@ async function renderAnimation() {
         }
     } catch (err) {
         setTerminalStatus('Error', 'error');
+        updateAppState({ render: 'error' });
         toast(`Render error: ${err.message}`, 'error');
     }
 }
@@ -1148,10 +1174,12 @@ async function quickPreview() {
     _renderMeta = { startTime: Date.now(), mode: 'preview', quality: String(quality), fps, sceneName: '', format: 'mp4' };
 
     // Just run the command in terminal - no UI messages
+    updateAppState({ render: 'previewing' });
     try {
         const res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled, 'mp4', null);
 
         if (res.status === 'error') {
+            updateAppState({ render: 'error' });
             showToastWithAction(`Preview failed: ${res.message}`, 'error', 'Fix with AI', () => {
                 if (typeof window.openAIEdit === 'function') {
                     window.openAIEdit('Fix this Manim preview error:\n' + res.message + '\n\nRead the code, understand the error, and fix it.');
@@ -1162,6 +1190,7 @@ async function quickPreview() {
         toast(`Preview error: ${err.message}`, 'error');
         job.running = false;
         setTerminalStatus('Error', 'error');
+        updateAppState({ render: 'error' });
     }
 }
 
@@ -1180,6 +1209,7 @@ async function stopActiveRender() {
             appendConsole('Render stopped', 'info');
             job.running = false;
             setTerminalStatus('Stopped', 'info');
+            updateAppState({ render: 'none' });
         } else {
             appendConsole(`Stop failed: ${res.message}`, 'error');
         }
@@ -1375,6 +1405,12 @@ async function showPreview(filePath, forceReload = false) {
                 console.log('[PREVIEW] Autoplay prevented (user interaction required)');
             });
 
+            // Reattach narration subtitles if available (they get removed
+            // when we clear child elements above).
+            if (typeof window._autoNarrateAttachSubs === 'function') {
+                window._autoNarrateAttachSubs(previewVideo);
+            }
+
             console.log('[PREVIEW] Preview box updated with new video');
         }
         // Image formats
@@ -1514,6 +1550,7 @@ window.renderCompleted = function(outputPath, autoSave = false, suggestedName = 
     appendConsole('─'.repeat(60), 'info');
     job.running = false;
     setTerminalStatus('Ready', 'success');
+    updateAppState({ render: 'none' });
     toast('Render completed!', 'success');
 
     // Record in render history
@@ -1556,6 +1593,7 @@ window.renderFailed = function(error) {
     appendConsole('─'.repeat(60), 'info');
     job.running = false;
     setTerminalStatus('Error', 'error');
+    updateAppState({ render: 'error' });
     // Offer "Fix with AI" via actionable toast
     window._lastRenderError = error;
     showToastWithAction(`Render failed`, 'error', 'Fix with AI', () => {
@@ -1585,6 +1623,7 @@ window.previewCompleted = function(outputPath) {
     appendConsole('─'.repeat(60), 'info');
     job.running = false;
     setTerminalStatus('Ready', 'success');
+    updateAppState({ render: 'none' });
 
     // Record in render history
     _recordRenderHistory(outputPath, 'preview');
@@ -1627,6 +1666,7 @@ window.previewFailed = function(error) {
     appendConsole('─'.repeat(60), 'info');
     job.running = false;
     setTerminalStatus('Error', 'error');
+    updateAppState({ render: 'error' });
     // Offer "Fix with AI" via actionable toast
     window._lastRenderError = error;
     showToastWithAction(`Preview failed`, 'error', 'Fix with AI', () => {
@@ -2747,6 +2787,26 @@ function loadRenderSidebarSettings() {
     } catch (err) {
         console.error('[SETTINGS] Failed to load render sidebar settings:', err);
     }
+
+    // ── Narration voice & speed: restore from localStorage ──
+    try {
+        const voiceSel = document.getElementById('narrationVoiceSelect');
+        const speedSel = document.getElementById('narrationSpeedSelect');
+        if (voiceSel) {
+            const saved = localStorage.getItem('narration_voice');
+            if (saved) voiceSel.value = saved;
+            voiceSel.addEventListener('change', () => {
+                localStorage.setItem('narration_voice', voiceSel.value);
+            });
+        }
+        if (speedSel) {
+            const saved = localStorage.getItem('narration_speed');
+            if (saved) speedSel.value = saved;
+            speedSel.addEventListener('change', () => {
+                localStorage.setItem('narration_speed', speedSel.value);
+            });
+        }
+    } catch(e) {}
 }
 
 // ─── App version (Fix 4) ────────────────────────────────────────────────────
@@ -4252,22 +4312,38 @@ async function checkMissingRequiredPackages() {
     try {
         const result = await pywebview.api.check_missing_required_packages();
         if (result.status === 'success' && result.missing.length > 0) {
-            showMissingPackagesModal(result.missing);
+            showMissingPackagesModal(result.missing, result.details || []);
         }
     } catch (e) {
         console.warn('[VENV] check_missing_required_packages error:', e);
     }
 }
 
-function showMissingPackagesModal(missingPackages) {
+function showMissingPackagesModal(missingPackages, details) {
     // Prevent duplicate modals
     if (document.getElementById('missingPkgModal')) return;
 
-    const pkgList = missingPackages.map(p =>
-        `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#1e2433;border-radius:6px;margin-bottom:6px;">
-            <span style="color:#f87171;font-size:16px;">⚠</span>
-            <span style="color:#e2e8f0;font-family:monospace;font-size:13px;">${p}</span>
-        </div>`
+    const pkgList = (details && details.length > 0
+        ? details.map(d => {
+            const badge = d.importance === 'optional'
+                ? '<span style="color:#94a3b8;font-size:10px;background:#2d3748;padding:1px 6px;border-radius:4px;margin-left:6px;">optional</span>'
+                : '<span style="color:#a78bfa;font-size:10px;background:#2d1f5e;padding:1px 6px;border-radius:4px;margin-left:6px;">recommended</span>';
+            return `<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:#1e2433;border-radius:6px;margin-bottom:6px;">
+                <span style="color:#f87171;font-size:14px;margin-top:2px;">⚠</span>
+                <div>
+                    <div style="display:flex;align-items:center;">
+                        <span style="color:#e2e8f0;font-family:monospace;font-size:13px;font-weight:600;">${d.name}</span>
+                        ${badge}
+                    </div>
+                    <div style="color:#94a3b8;font-size:11px;margin-top:3px;">${d.description}</div>
+                </div>
+            </div>`;
+        })
+        : missingPackages.map(p =>
+            `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#1e2433;border-radius:6px;margin-bottom:6px;">
+                <span style="color:#f87171;font-size:16px;">⚠</span>
+                <span style="color:#e2e8f0;font-family:monospace;font-size:13px;">${p}</span>
+            </div>`)
     ).join('');
 
     const modal = document.createElement('div');
@@ -5187,35 +5263,58 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
 
     let activeIndex = 0;
 
-    // Command registry
+    // Command registry — grouped by category for display
     const commands = [
-        { id: 'new-file',        icon: 'fa-file',            label: 'New File',              shortcut: 'Ctrl+N',          action: () => typeof newFile === 'function' && newFile() },
-        { id: 'open-file',       icon: 'fa-folder-open',     label: 'Open File',             shortcut: 'Ctrl+O',          action: () => typeof openFile === 'function' && openFile() },
-        { id: 'save-file',       icon: 'fa-save',            label: 'Save File',             shortcut: 'Ctrl+S',          action: () => typeof saveFile === 'function' && saveFile() },
-        { id: 'save-as',         icon: 'fa-save',            label: 'Save File As...',       shortcut: 'Ctrl+Shift+S',    action: () => typeof saveFileAs === 'function' && saveFileAs() },
-        { id: 'render',          icon: 'fa-play',            label: 'Render Animation',      shortcut: 'F5',              action: () => typeof renderAnimation === 'function' && renderAnimation() },
-        { id: 'preview',         icon: 'fa-eye',             label: 'Quick Preview',         shortcut: 'F6',              action: () => typeof quickPreview === 'function' && quickPreview() },
-        { id: 'stop',            icon: 'fa-stop',            label: 'Stop Render',           shortcut: 'Esc',             action: () => typeof stopRender === 'function' && stopRender() },
-        { id: 'find',            icon: 'fa-search',          label: 'Find',                  shortcut: 'Ctrl+F',          action: () => editor?.getAction('editor.action.startFindReplaceAction')?.run() },
-        { id: 'find-replace',    icon: 'fa-exchange-alt',    label: 'Find & Replace',        shortcut: 'Ctrl+H',          action: () => editor?.getAction('editor.action.startFindReplaceAction')?.run() },
-        { id: 'goto-line',       icon: 'fa-hashtag',         label: 'Go to Line...',         shortcut: 'Ctrl+G',          action: () => editor?.getAction('editor.action.gotoLine')?.run() },
-        { id: 'zen-mode',        icon: 'fa-expand',          label: 'Toggle Zen Mode',       shortcut: 'F11',             action: () => typeof toggleZenMode === 'function' && toggleZenMode() },
-        { id: 'toggle-comment',  icon: 'fa-comment',         label: 'Toggle Line Comment',   shortcut: 'Ctrl+/',          action: () => editor?.getAction('editor.action.commentLine')?.run() },
-        { id: 'format-doc',      icon: 'fa-indent',          label: 'Format Document',       shortcut: 'Shift+Alt+F',     action: () => editor?.getAction('editor.action.formatDocument')?.run() },
-        { id: 'shortcuts',       icon: 'fa-keyboard',        label: 'Keyboard Shortcuts',    shortcut: '',                action: () => { const m = document.getElementById('shortcutMapModal'); if (m) m.style.display = 'flex'; } },
-        { id: 'outline',         icon: 'fa-sitemap',         label: 'Toggle Scene Outline',  shortcut: 'Ctrl+Shift+O',    action: () => document.getElementById('sceneOutlineBtn')?.click() },
-        { id: 'bookmark',        icon: 'fa-bookmark',        label: 'Toggle Bookmark',       shortcut: 'Ctrl+B',          action: () => typeof toggleBookmark === 'function' && toggleBookmark() },
-        { id: 'select-all',      icon: 'fa-object-group',    label: 'Select All',            shortcut: 'Ctrl+A',          action: () => editor?.getAction('editor.action.selectAll')?.run() },
-        { id: 'toggle-minimap',  icon: 'fa-map',             label: 'Toggle Minimap',        shortcut: '',                action: () => { if (editor) { const cur = editor.getOption(monaco.editor.EditorOption.minimap); editor.updateOptions({ minimap: { enabled: !cur.enabled } }); } } },
-        { id: 'toggle-wordwrap', icon: 'fa-align-left',      label: 'Toggle Word Wrap',      shortcut: '',                action: () => { if (editor) { const cur = editor.getOption(monaco.editor.EditorOption.wordWrap); editor.updateOptions({ wordWrap: cur === 'on' ? 'off' : 'on' }); } } },
-        { id: 'screenshot',      icon: 'fa-camera',          label: 'Screenshot Preview',    shortcut: '',                action: () => document.getElementById('screenshotBtn')?.click() },
-        { id: 'theme',           icon: 'fa-moon',            label: 'Toggle Theme',          shortcut: '',                action: () => document.getElementById('themeBtn')?.click() },
-        { id: 'settings',        icon: 'fa-cog',             label: 'Open Settings',         shortcut: '',                action: () => document.getElementById('settingsBtn')?.click() },
-        { id: 'colors',          icon: 'fa-palette',         label: 'Open Color Picker',     shortcut: '',                action: () => document.querySelector('.action-btn[onclick*="color" i], #colorPickerBtn, .action-btn:has(.fa-palette)')?.click() },
-        { id: 'clear-terminal',  icon: 'fa-eraser',          label: 'Clear Terminal',        shortcut: '',                action: () => document.getElementById('clearTermBtn')?.click() },
-        { id: 'ai-edit',         icon: 'fa-wand-magic-sparkles', label: 'Edit with AI',          shortcut: 'Ctrl+Shift+E', action: () => typeof openAIEdit === 'function' && openAIEdit() },
-        { id: 'ai-edit-window', icon: 'fa-arrow-up-right-from-square', label: 'AI Edit (Separate Window)', shortcut: '', action: () => { if (typeof pywebview !== 'undefined' && pywebview.api) pywebview.api.open_ai_edit_window(); } },
-        { id: 'manim-docs',      icon: 'fa-book',            label: 'Manim Docs Lookup',     shortcut: 'Ctrl+Shift+D',    action: () => typeof openManimDocs === 'function' && openManimDocs() },
+        // ── File ──
+        { id: 'new-file',        icon: 'fa-file',            label: 'New File',              shortcut: 'Ctrl+N',       cat: 'File',    action: () => typeof newFile === 'function' && newFile() },
+        { id: 'open-file',       icon: 'fa-folder-open',     label: 'Open File',             shortcut: 'Ctrl+O',       cat: 'File',    action: () => typeof openFile === 'function' && openFile() },
+        { id: 'save-file',       icon: 'fa-save',            label: 'Save File',             shortcut: 'Ctrl+S',       cat: 'File',    action: () => typeof saveFile === 'function' && saveFile() },
+        { id: 'save-as',         icon: 'fa-save',            label: 'Save File As...',       shortcut: 'Ctrl+Shift+S', cat: 'File',    action: () => typeof saveFileAs === 'function' && saveFileAs() },
+        // ── Render ──
+        { id: 'render',          icon: 'fa-play',            label: 'Render Animation',      shortcut: 'F5',            cat: 'Render',  action: () => typeof renderAnimation === 'function' && renderAnimation() },
+        { id: 'preview',         icon: 'fa-eye',             label: 'Quick Preview',         shortcut: 'F6',            cat: 'Render',  action: () => typeof quickPreview === 'function' && quickPreview() },
+        { id: 'stop',            icon: 'fa-stop',            label: 'Stop Render',           shortcut: 'Esc',           cat: 'Render',  action: () => typeof stopRender === 'function' && stopRender() },
+        { id: 'screenshot',      icon: 'fa-camera',          label: 'Screenshot Preview',    shortcut: '',              cat: 'Render',  action: () => document.getElementById('screenshotBtn')?.click() },
+        { id: 'gpu-toggle',      icon: 'fa-microchip',       label: 'Toggle GPU Acceleration', shortcut: '',            cat: 'Render',  action: () => document.getElementById('gpuToggleBtn')?.click() },
+        // ── Editor ──
+        { id: 'find',            icon: 'fa-search',          label: 'Find',                  shortcut: 'Ctrl+F',       cat: 'Editor',  action: () => editor?.getAction('editor.action.startFindReplaceAction')?.run() },
+        { id: 'find-replace',    icon: 'fa-exchange-alt',    label: 'Find & Replace',        shortcut: 'Ctrl+H',       cat: 'Editor',  action: () => editor?.getAction('editor.action.startFindReplaceAction')?.run() },
+        { id: 'goto-line',       icon: 'fa-hashtag',         label: 'Go to Line...',         shortcut: 'Ctrl+G',       cat: 'Editor',  action: () => editor?.getAction('editor.action.gotoLine')?.run() },
+        { id: 'goto-def',        icon: 'fa-arrow-right',     label: 'Go to Definition',      shortcut: 'F12',           cat: 'Editor',  action: () => editor?.getAction('editor.action.revealDefinition')?.run() },
+        { id: 'find-refs',       icon: 'fa-link',            label: 'Find References',       shortcut: 'Shift+F12',     cat: 'Editor',  action: () => editor?.getAction('editor.action.goToReferences')?.run() },
+        { id: 'toggle-comment',  icon: 'fa-comment',         label: 'Toggle Line Comment',   shortcut: 'Ctrl+/',        cat: 'Editor',  action: () => editor?.getAction('editor.action.commentLine')?.run() },
+        { id: 'format-doc',      icon: 'fa-indent',          label: 'Format Document',       shortcut: 'Shift+Alt+F',   cat: 'Editor',  action: () => editor?.getAction('editor.action.formatDocument')?.run() },
+        { id: 'select-all',      icon: 'fa-object-group',    label: 'Select All',            shortcut: 'Ctrl+A',        cat: 'Editor',  action: () => editor?.getAction('editor.action.selectAll')?.run() },
+        { id: 'bookmark',        icon: 'fa-bookmark',        label: 'Toggle Bookmark',       shortcut: 'Ctrl+B',        cat: 'Editor',  action: () => typeof toggleBookmark === 'function' && toggleBookmark() },
+        { id: 'bookmark-prev',   icon: 'fa-chevron-up',      label: 'Previous Bookmark',     shortcut: 'Ctrl+Up',       cat: 'Editor',  action: () => typeof navigateBookmark === 'function' && navigateBookmark(-1) },
+        { id: 'bookmark-next',   icon: 'fa-chevron-down',    label: 'Next Bookmark',         shortcut: 'Ctrl+Down',     cat: 'Editor',  action: () => typeof navigateBookmark === 'function' && navigateBookmark(1) },
+        // ── AI ──
+        { id: 'ai-edit',         icon: 'fa-wand-magic-sparkles', label: 'Edit with AI',      shortcut: 'Ctrl+Shift+E',  cat: 'AI',      action: () => typeof openAIEdit === 'function' && openAIEdit() },
+        { id: 'ai-edit-window',  icon: 'fa-arrow-up-right-from-square', label: 'AI Edit (Separate Window)', shortcut: '', cat: 'AI',   action: () => { if (typeof pywebview !== 'undefined' && pywebview.api) pywebview.api.open_ai_edit_window(); } },
+        { id: 'ai-agent',        icon: 'fa-robot',           label: 'Start AI Agent',        shortcut: '',               cat: 'AI',      action: () => { typeof openAIEdit === 'function' && openAIEdit(); setTimeout(() => document.getElementById('aiAgentToggle')?.click(), 200); } },
+        { id: 'ai-autocomplete', icon: 'fa-bolt',            label: 'Toggle AI Autocomplete', shortcut: '',              cat: 'AI',      action: () => document.getElementById('aiAutocompleteBtn')?.click() },
+        // ── View ──
+        { id: 'zen-mode',        icon: 'fa-expand',          label: 'Toggle Zen Mode',       shortcut: 'F11',            cat: 'View',    action: () => typeof toggleZenMode === 'function' && toggleZenMode() },
+        { id: 'outline',         icon: 'fa-sitemap',         label: 'Toggle Scene Outline',  shortcut: 'Ctrl+Shift+O',   cat: 'View',    action: () => document.getElementById('sceneOutlineBtn')?.click() },
+        { id: 'toggle-minimap',  icon: 'fa-map',             label: 'Toggle Minimap',        shortcut: '',               cat: 'View',    action: () => { if (editor) { const cur = editor.getOption(monaco.editor.EditorOption.minimap); editor.updateOptions({ minimap: { enabled: !cur.enabled } }); } } },
+        { id: 'toggle-wordwrap', icon: 'fa-align-left',      label: 'Toggle Word Wrap',      shortcut: '',               cat: 'View',    action: () => { if (editor) { const cur = editor.getOption(monaco.editor.EditorOption.wordWrap); editor.updateOptions({ wordWrap: cur === 'on' ? 'off' : 'on' }); } } },
+        { id: 'theme',           icon: 'fa-moon',            label: 'Toggle Theme',          shortcut: '',               cat: 'View',    action: () => document.getElementById('themeBtn')?.click() },
+        { id: 'zoom-in',         icon: 'fa-magnifying-glass-plus',  label: 'Zoom In',        shortcut: 'Ctrl+=',         cat: 'View',    action: () => typeof adjustZoom === 'function' && adjustZoom(0.05) },
+        { id: 'zoom-out',        icon: 'fa-magnifying-glass-minus', label: 'Zoom Out',       shortcut: 'Ctrl+-',         cat: 'View',    action: () => typeof adjustZoom === 'function' && adjustZoom(-0.05) },
+        { id: 'zoom-reset',      icon: 'fa-compress',        label: 'Reset Zoom',            shortcut: 'Ctrl+0',         cat: 'View',    action: () => typeof resetZoom === 'function' && resetZoom() },
+        // ── Navigate ──
+        { id: 'tab-workspace',   icon: 'fa-code',            label: 'Go to: Workspace',      shortcut: '',               cat: 'Navigate', action: () => document.querySelector('[data-tab="workspace"]')?.click() },
+        { id: 'tab-system',      icon: 'fa-desktop',         label: 'Go to: System',         shortcut: '',               cat: 'Navigate', action: () => document.querySelector('[data-tab="system"]')?.click() },
+        { id: 'tab-assets',      icon: 'fa-images',          label: 'Go to: Assets',         shortcut: '',               cat: 'Navigate', action: () => document.querySelector('[data-tab="assets"]')?.click() },
+        { id: 'tab-packages',    icon: 'fa-cube',            label: 'Go to: Packages',       shortcut: '',               cat: 'Navigate', action: () => document.querySelector('[data-tab="venv"]')?.click() },
+        { id: 'tab-history',     icon: 'fa-clock-rotate-left', label: 'Go to: History',      shortcut: '',               cat: 'Navigate', action: () => document.querySelector('[data-tab="history"]')?.click() },
+        // ── Tools ──
+        { id: 'colors',          icon: 'fa-palette',         label: 'Manim Color Picker',    shortcut: '',               cat: 'Tools',   action: () => document.querySelector('.action-btn[onclick*="color" i], #colorPickerBtn, .action-btn:has(.fa-palette)')?.click() },
+        { id: 'narrate',         icon: 'fa-microphone',      label: 'Auto Narrate',          shortcut: '',               cat: 'Tools',   action: () => document.getElementById('autoNarrateBtn')?.click() },
+        { id: 'manim-docs',      icon: 'fa-book',            label: 'Manim Docs Lookup',     shortcut: 'Ctrl+Shift+D',   cat: 'Tools',   action: () => typeof openManimDocs === 'function' && openManimDocs() },
+        { id: 'clear-terminal',  icon: 'fa-eraser',          label: 'Clear Terminal',        shortcut: '',               cat: 'Tools',   action: () => document.getElementById('clearTermBtn')?.click() },
+        { id: 'shortcuts',       icon: 'fa-keyboard',        label: 'Keyboard Shortcuts',    shortcut: 'Ctrl+/',         cat: 'Tools',   action: () => { const m = document.getElementById('shortcutMapModal'); if (m) m.style.display = 'flex'; } },
+        { id: 'settings',        icon: 'fa-cog',             label: 'Open Settings',         shortcut: '',               cat: 'Tools',   action: () => document.getElementById('settingsBtn')?.click() },
     ];
 
     function openPalette() {
@@ -5235,7 +5334,9 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
     function renderCommands(query) {
         const q = query.toLowerCase().trim();
         const filtered = q
-            ? commands.filter(c => c.label.toLowerCase().includes(q) || c.id.includes(q))
+            ? commands.filter(c =>
+                c.label.toLowerCase().includes(q) || c.id.includes(q) ||
+                (c.cat && c.cat.toLowerCase().includes(q)))
             : commands;
 
         if (filtered.length === 0) {
@@ -5245,13 +5346,21 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
 
         activeIndex = Math.min(activeIndex, filtered.length - 1);
 
-        results.innerHTML = filtered.map((cmd, i) => `
-            <div class="cmd-item ${i === activeIndex ? 'active' : ''}" data-idx="${i}">
+        // Group by category when not searching
+        let html = '';
+        let lastCat = '';
+        filtered.forEach((cmd, i) => {
+            if (!q && cmd.cat && cmd.cat !== lastCat) {
+                lastCat = cmd.cat;
+                html += `<div class="cmd-cat">${cmd.cat}</div>`;
+            }
+            html += `<div class="cmd-item ${i === activeIndex ? 'active' : ''}" data-idx="${i}">
                 <i class="fas ${cmd.icon}"></i>
                 <span class="cmd-label">${highlight(cmd.label, q)}</span>
                 ${cmd.shortcut ? `<span class="cmd-shortcut">${cmd.shortcut}</span>` : ''}
-            </div>
-        `).join('');
+            </div>`;
+        });
+        results.innerHTML = html;
 
         // Click handlers
         results.querySelectorAll('.cmd-item').forEach((el, i) => {
@@ -5284,7 +5393,9 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
         const items = results.querySelectorAll('.cmd-item');
         const q = input.value.toLowerCase().trim();
         const filtered = q
-            ? commands.filter(c => c.label.toLowerCase().includes(q) || c.id.includes(q))
+            ? commands.filter(c =>
+                c.label.toLowerCase().includes(q) || c.id.includes(q) ||
+                (c.cat && c.cat.toLowerCase().includes(q)))
             : commands;
 
         if (e.key === 'ArrowDown') {

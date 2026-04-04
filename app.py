@@ -17,12 +17,17 @@ import re
 import socket
 
 # Fix encoding issues on Windows - ensure UTF-8 encoding for stdout/stderr
+# Guard: with --windows-console-mode=attach and no parent console (double-click),
+# sys.stdout/stderr may be None or lack .encoding/.buffer.
 if sys.platform == 'win32':
     import io
-    if sys.stdout.encoding != 'utf-8':
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    if sys.stderr.encoding != 'utf-8':
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    try:
+        if sys.stdout and hasattr(sys.stdout, 'encoding') and sys.stdout.encoding != 'utf-8':
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if sys.stderr and hasattr(sys.stderr, 'encoding') and sys.stderr.encoding != 'utf-8':
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass  # No console available (GUI double-click) — app logs to file instead
 
 # App version
 APP_VERSION = "1.1.2.0"
@@ -146,7 +151,7 @@ def get_clean_environment():
     return env
 
 # ── Init feature modules ──
-init_ai_edit(PREVIEW_DIR, get_clean_environment, assets_dir=ASSETS_DIR)
+init_ai_edit(PREVIEW_DIR, get_clean_environment, assets_dir=ASSETS_DIR, venv_dir=VENV_DIR)
 init_narration(PREVIEW_DIR, get_clean_environment, VENV_DIR, USER_DATA_DIR)
 
 # Function to check GPU detection dependencies (no auto-install)
@@ -5078,76 +5083,109 @@ class MyScene(Scene):
             return result
 
     def _perform_prerequisite_check(self):
-        """Run dependency checks and return raw results."""
+        """Run dependency checks and return raw results.
+        Python and LaTeX checks run in parallel to cut wall-clock time."""
         results = {
             'python': {'installed': False, 'version': None, 'path': None},
             'latex': {'installed': False, 'variant': None, 'path': None}
         }
+        _flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        _timeout = 3  # 3s instead of 5s — these are local binaries
 
-        # Check Python
-        try:
-            system_python = find_system_python()
-            if system_python:
-                results['python']['installed'] = True
-                results['python']['path'] = system_python
-
-                env = get_clean_environment()
-                version_result = subprocess.run(
-                    [system_python, '--version'],
-                    stdin=subprocess.DEVNULL,
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    env=env,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                )
-                version_output = (version_result.stdout + version_result.stderr).strip()
-                if 'python' in version_output.lower():
-                    results['python']['version'] = version_output.replace('Python ', '')
-        except Exception as e:
-            print(f"[WARNING] Python check failed: {e}")
-
-        # Check LaTeX (try multiple variants)
-        latex_commands = [
-            ('pdflatex', 'pdfLaTeX (MiKTeX)'),
-            ('xelatex', 'XeLaTeX'),
-            ('lualatex', 'LuaLaTeX'),
-            ('latex', 'LaTeX')
-        ]
-
-        for cmd, variant_name in latex_commands:
+        def check_python():
             try:
-                env = get_clean_environment()
-                latex_result = subprocess.run(
-                    [cmd, '--version'],
-                    stdin=subprocess.DEVNULL,
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    env=env,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                )
-                if latex_result.returncode == 0:
+                system_python = find_system_python()
+                if system_python:
+                    results['python']['installed'] = True
+                    results['python']['path'] = system_python
+                    env = get_clean_environment()
+                    r = subprocess.run(
+                        [system_python, '--version'],
+                        stdin=subprocess.DEVNULL, capture_output=True,
+                        text=True, timeout=_timeout, env=env,
+                        creationflags=_flags)
+                    out = (r.stdout + r.stderr).strip()
+                    if 'python' in out.lower():
+                        results['python']['version'] = out.replace('Python ', '')
+            except Exception as e:
+                print(f"[WARNING] Python check failed: {e}")
+
+        def check_latex():
+            latex_commands = [
+                ('pdflatex', 'pdfLaTeX (MiKTeX)'),
+                ('xelatex', 'XeLaTeX'),
+                ('lualatex', 'LuaLaTeX'),
+                ('latex', 'LaTeX')
+            ]
+            # Fast pre-check: use shutil.which to avoid spawning processes
+            import shutil as _sh
+            for cmd, variant_name in latex_commands:
+                found = _sh.which(cmd)
+                if found:
                     results['latex']['installed'] = True
                     results['latex']['variant'] = variant_name
+                    results['latex']['path'] = found
+                    return
+            # Fallback: try running them (handles PATH edge cases)
+            env = get_clean_environment()
+            for cmd, variant_name in latex_commands:
+                try:
+                    r = subprocess.run(
+                        [cmd, '--version'],
+                        stdin=subprocess.DEVNULL, capture_output=True,
+                        text=True, timeout=_timeout, env=env,
+                        creationflags=_flags)
+                    if r.returncode == 0:
+                        results['latex']['installed'] = True
+                        results['latex']['variant'] = variant_name
+                        if os.name == 'nt':
+                            wr = subprocess.run(
+                                ['where', cmd],
+                                stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=_timeout, env=env,
+                                creationflags=_flags)
+                            if wr.returncode == 0:
+                                results['latex']['path'] = wr.stdout.strip().split('\n')[0]
+                        break
+                except Exception:
+                    continue
 
-                    if os.name == 'nt':
-                        where_result = subprocess.run(
-                            ['where', cmd],
-                            stdin=subprocess.DEVNULL,
-                            capture_output=True,
-                            text=True,
-                            timeout=5,
-                            env=env,
-                            creationflags=subprocess.CREATE_NO_WINDOW
-                        )
-                        if where_result.returncode == 0:
-                            results['latex']['path'] = where_result.stdout.strip().split('\n')[0]
-                    break
-            except Exception:
-                continue
+        # Run both checks in parallel
+        t1 = threading.Thread(target=check_python, daemon=True)
+        t2 = threading.Thread(target=check_latex, daemon=True)
+        t1.start(); t2.start()
+        t1.join(timeout=_timeout + 1)
+        t2.join(timeout=_timeout + 1)
 
         return results
+
+    # Disk cache path for dependency results (survives app restarts)
+    _DEP_CACHE_FILE = os.path.join(
+        os.path.expanduser('~'), '.manim_studio', 'dep_cache.json')
+    _DEP_DISK_TTL = 3600  # 1 hour — revalidate after this
+
+    def _load_dep_disk_cache(self):
+        """Load dependency results from disk if fresh enough."""
+        try:
+            if not os.path.exists(self._DEP_CACHE_FILE):
+                return None
+            with open(self._DEP_CACHE_FILE, 'r', encoding='utf-8') as f:
+                data = json.loads(f.read())
+            ts = data.get('timestamp', 0)
+            if time.time() - ts > self._DEP_DISK_TTL:
+                return None  # Stale
+            return data.get('results')
+        except Exception:
+            return None
+
+    def _save_dep_disk_cache(self, results):
+        """Persist dependency results to disk."""
+        try:
+            os.makedirs(os.path.dirname(self._DEP_CACHE_FILE), exist_ok=True)
+            with open(self._DEP_CACHE_FILE, 'w', encoding='utf-8') as f:
+                f.write(json.dumps({'timestamp': time.time(), 'results': results}))
+        except Exception:
+            pass
 
     def _refresh_dependency_cache(self, reason='manual'):
         """
@@ -5161,6 +5199,18 @@ class MyScene(Scene):
             app_state['dependency_check_in_progress'] = True
 
         try:
+            # On startup, try disk cache first to avoid subprocess calls
+            if reason == 'startup':
+                disk = self._load_dep_disk_cache()
+                if disk:
+                    now = time.time()
+                    with lock:
+                        app_state['dependency_cache'] = disk
+                        app_state['dependency_last_checked'] = now
+                        app_state['dependency_check_error'] = None
+                    print(f"[DEPENDENCY] Loaded from disk cache (skipped subprocess calls)")
+                    return True
+
             print(f"[DEPENDENCY] Running dependency check ({reason})...")
             results = self._perform_prerequisite_check()
             now = time.time()
@@ -5168,6 +5218,7 @@ class MyScene(Scene):
                 app_state['dependency_cache'] = results
                 app_state['dependency_last_checked'] = now
                 app_state['dependency_check_error'] = None
+            self._save_dep_disk_cache(results)
             if reason != 'periodic':
                 print(f"[DEPENDENCY] Dependency check complete ({reason})")
             return True
@@ -5205,11 +5256,14 @@ class MyScene(Scene):
             app_state['dependency_stop_event'].clear()
 
         def run_checker():
-            # Initial short delay so startup remains responsive.
-            if app_state['dependency_stop_event'].wait(3):
-                return
-
+            # Try disk cache immediately (no subprocess calls)
             self._refresh_dependency_cache(reason='startup')
+
+            # Revalidate with real subprocess calls after 10s
+            # (catches cases where user uninstalled something since last run)
+            if app_state['dependency_stop_event'].wait(10):
+                return
+            self._refresh_dependency_cache(reason='revalidate')
 
             # Periodic refresh every 5 minutes.
             while not app_state['dependency_stop_event'].wait(300):
@@ -5246,7 +5300,17 @@ class MyScene(Scene):
 
             # Force refresh or first call without cache performs a synchronous check.
             if force_refresh or cached_results is None:
-                self._refresh_dependency_cache(reason='api_forced' if force_refresh else 'api_initial')
+                # If another thread is already checking, wait for it instead of returning empty
+                if in_progress:
+                    for _ in range(40):  # wait up to ~10s
+                        time.sleep(0.25)
+                        with lock:
+                            cached_results = app_state['dependency_cache']
+                            in_progress = app_state['dependency_check_in_progress']
+                        if cached_results is not None or not in_progress:
+                            break
+                else:
+                    self._refresh_dependency_cache(reason='api_forced' if force_refresh else 'api_initial')
                 with lock:
                     cached_results = app_state['dependency_cache']
                     last_checked = app_state['dependency_last_checked']
@@ -6238,8 +6302,29 @@ class MyScene(Scene):
             }
 
     def check_missing_required_packages(self):
-        """Check which required packages are missing from the venv."""
-        required = ['basedpyright']
+        """Check which required packages are missing from the venv.
+
+        Returns missing packages with descriptions so the UI can show
+        what each package does and why it's needed.
+        """
+        # Package name → (pip name, description, importance)
+        REQUIRED_PACKAGES = {
+            'basedpyright':  ('basedpyright',
+                'IntelliSense — code completions, type checking, hover docs',
+                'recommended'),
+            'pillow':        ('Pillow',
+                'Image processing — screenshot downscaling for AI review (4x token savings)',
+                'recommended'),
+            'narrate':       ('narrate[kokoro]',
+                'Auto Narration — narrate("text") generates TTS audio merged with video (~310MB model)',
+                'optional'),
+            'pyperclip':     ('pyperclip',
+                'Clipboard support — copy rendered file paths and code snippets',
+                'optional'),
+            'pypdf':         ('pypdf',
+                'PDF text extraction — lets AI read uploaded PDF reference documents',
+                'recommended'),
+        }
         try:
             if os.name == 'nt':
                 venv_python = os.path.join(VENV_DIR, 'Scripts', 'python.exe')
@@ -6247,7 +6332,7 @@ class MyScene(Scene):
                 venv_python = os.path.join(VENV_DIR, 'bin', 'python')
 
             if not os.path.exists(venv_python):
-                return {'status': 'no_venv', 'missing': []}
+                return {'status': 'no_venv', 'missing': [], 'details': []}
 
             result = subprocess.run(
                 [venv_python, '-m', 'pip', 'list', '--format=json'],
@@ -6255,15 +6340,28 @@ class MyScene(Scene):
                 env=get_clean_environment()
             )
             if result.returncode != 0:
-                return {'status': 'error', 'missing': []}
+                return {'status': 'error', 'missing': [], 'details': []}
 
             import json as _json
             installed = {p['name'].lower() for p in _json.loads(result.stdout)}
-            missing = [p for p in required if p.lower() not in installed]
-            return {'status': 'success', 'missing': missing}
+
+            missing = []
+            details = []
+            for key, (pip_name, desc, importance) in REQUIRED_PACKAGES.items():
+                if key.lower() not in installed:
+                    missing.append(pip_name)
+                    details.append({
+                        'name': pip_name,
+                        'description': desc,
+                        'importance': importance,
+                    })
+
+            if missing:
+                print(f"[VENV] Missing packages: {', '.join(missing)}")
+            return {'status': 'success', 'missing': missing, 'details': details}
         except Exception as e:
             print(f'[VENV] check_missing_required_packages error: {e}')
-            return {'status': 'error', 'missing': []}
+            return {'status': 'error', 'missing': [], 'details': []}
 
     def install_missing_required_packages(self, packages):
         """Install missing required packages, streaming pip output to JS."""
@@ -6976,17 +7074,23 @@ def cleanup_on_exit():
     except Exception as e:
         print(f"[CLEANUP] Failed to stop dependency checker cleanly: {e}")
 
-    # Keep preview files in assets folder (don't delete them)
-    # Preview files stay in ASSETS_DIR for user access even after app closes
-    print("[CLEANUP] Preview files kept in assets folder:")
+    # Delete preview MP4s that were copied to assets folder during the session.
+    # These are temporary preview renders — the user can save them via the
+    # Save button (which moves them to a user-chosen location). Any unsaved
+    # previews left in assets are just clutter.
     if app_state['preview_files_to_cleanup']:
-        print(f"  {len(app_state['preview_files_to_cleanup'])} preview file(s) saved in {ASSETS_DIR}")
+        removed = 0
         for preview_file in app_state['preview_files_to_cleanup']:
-            if os.path.exists(preview_file):
-                print(f"    - {os.path.basename(preview_file)}")
-        print("[INFO] Preview files will persist - manually delete from assets folder if needed")
+            try:
+                if os.path.exists(preview_file):
+                    os.remove(preview_file)
+                    removed += 1
+                    print(f"  Removed preview: {os.path.basename(preview_file)}")
+            except Exception as e:
+                print(f"  Failed to remove {os.path.basename(preview_file)}: {e}")
+        print(f"[OK] Cleaned up {removed} preview file(s) from assets")
     else:
-        print("[OK] No preview files were created")
+        print("[OK] No preview files to clean")
 
     # Clean up temp folders in MEDIA_DIR (only if user didn't save)
     print("[CLEANUP] Cleaning up unsaved temp folders...")
@@ -7042,12 +7146,41 @@ def cleanup_on_exit():
     except Exception:
         pass
 
+    # Clean up PREVIEW_DIR — all preview videos are temporary.
+    # Saved renders go to RENDER_DIR; preview is just for quick iteration.
+    try:
+        if os.path.exists(PREVIEW_DIR):
+            preview_count = 0
+            for item in os.listdir(PREVIEW_DIR):
+                item_path = os.path.join(PREVIEW_DIR, item)
+                try:
+                    if os.path.isdir(item_path):
+                        shutil.rmtree(item_path, ignore_errors=True)
+                    else:
+                        os.remove(item_path)
+                    preview_count += 1
+                except Exception:
+                    pass
+            if preview_count:
+                print(f"[OK] Cleaned up {preview_count} preview file(s)/dir(s) in {PREVIEW_DIR}")
+    except Exception as e:
+        print(f"  Error cleaning preview folder: {e}")
+
     # Final garbage collection
     import gc
     gc.collect()
     print("[OK] Cleanup complete")
 
 if __name__ == '__main__':
+    # CLI mode: if first arg is a known subcommand, run headless (no GUI)
+    # This lets the same EXE serve as both GUI app and CLI/MCP tool.
+    # e.g. ManimStudio.exe render scene.py --quality 1080p --width 1920 --height 1080
+    # e.g. ManimStudio.exe mcp   (starts MCP server for Codex)
+    if len(sys.argv) > 1 and sys.argv[1] in ('render', 'mcp', 'validate', 'presets'):
+        from cli import cli_main
+        cli_main(sys.argv[1:])
+        sys.exit(0)
+
     # CRITICAL: Must be first for frozen exe with pywebview (uses multiprocessing)
     # Without this, exe will freeze/not open when console is disabled
     import multiprocessing

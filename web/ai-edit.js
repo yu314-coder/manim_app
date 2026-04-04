@@ -144,6 +144,8 @@
         const thumbGrid   = document.getElementById('aiEditThumbGrid');
         const autoApplyEl = document.getElementById('aiEditAutoApply');
         const newChatBtn  = document.getElementById('aiEditNewChatBtn');
+        const historyBtn  = document.getElementById('aiEditHistoryBtn');
+        const historyDrop = document.getElementById('aiEditHistoryDropdown');
         if (!panel || !editorEl) return;
 
         let diffEditorInstance = null;
@@ -191,8 +193,12 @@
         if (providerToggle) {
             providerToggle.querySelectorAll('.aip-prov').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    providerToggle.querySelectorAll('.aip-prov').forEach(b => b.classList.remove('active'));
+                    providerToggle.querySelectorAll('.aip-prov').forEach(b => {
+                        b.classList.remove('active');
+                        b.setAttribute('aria-checked', 'false');
+                    });
                     btn.classList.add('active');
+                    btn.setAttribute('aria-checked', 'true');
                     currentProvider = btn.dataset.provider;
                     loadModels();
                 });
@@ -228,24 +234,83 @@
         function renderModelDropdown() {
             if (!modelDropdown) return;
             modelDropdown.innerHTML = '';
+
+            const tierIcons = {
+                premium:  { icon: 'fa-gem',      color: '#c084fc', label: 'Premium' },
+                standard: { icon: 'fa-bolt',     color: '#60a5fa', label: 'Standard' },
+                economy:  { icon: 'fa-feather',  color: '#34d399', label: 'Fast' },
+            };
+
             // Default option
             const defOpt = document.createElement('button');
-            defOpt.className = 'aiw-model-option' + (selectedModel === '' ? ' active' : '');
-            defOpt.textContent = 'Default';
-            defOpt.addEventListener('click', () => selectModel('', 'Default'));
+            defOpt.className = 'aim-option' + (selectedModel === '' ? ' active' : '');
+            defOpt.setAttribute('role', 'option');
+            defOpt.setAttribute('aria-label', 'Auto - best model selected per task type');
+            defOpt.setAttribute('data-testid', 'model-option-auto');
+            defOpt.innerHTML = `
+                <div class="aim-option-main">
+                    <i class="fas fa-magic aim-option-icon" style="color:#94a3b8"></i>
+                    <span class="aim-option-name">Auto</span>
+                    <span class="aim-option-badge" style="background:rgba(148,163,184,0.15);color:#94a3b8">default</span>
+                </div>
+                <div class="aim-option-desc">Best model selected per task type</div>
+            `;
+            defOpt.addEventListener('click', () => selectModel('', 'Auto'));
             modelDropdown.appendChild(defOpt);
 
+            // Group by tier
+            const grouped = {};
             for (const m of currentModels) {
-                const opt = document.createElement('button');
-                opt.className = 'aiw-model-option' + (selectedModel === m.id ? ' active' : '');
-                opt.textContent = m.display_name;
-                opt.addEventListener('click', () => selectModel(m.id, m.display_name));
-                modelDropdown.appendChild(opt);
+                const tier = m.tier || 'standard';
+                if (!grouped[tier]) grouped[tier] = [];
+                grouped[tier].push(m);
             }
+
+            for (const tier of ['premium', 'standard', 'economy']) {
+                const models = grouped[tier];
+                if (!models || !models.length) continue;
+                const t = tierIcons[tier] || tierIcons.standard;
+
+                const sep = document.createElement('div');
+                sep.className = 'aim-tier-sep';
+                sep.innerHTML = `<i class="fas ${t.icon}" style="color:${t.color}"></i> ${t.label}`;
+                modelDropdown.appendChild(sep);
+
+                for (const m of models) {
+                    const opt = document.createElement('button');
+                    opt.className = 'aim-option' + (selectedModel === m.id ? ' active' : '');
+                    opt.setAttribute('role', 'option');
+                    opt.setAttribute('aria-label', `${m.display_name} - ${m.cost || ''} ${tier} tier`);
+                    opt.setAttribute('data-testid', `model-option-${m.id}`);
+
+                    const costStr = m.cost || '';
+                    const thinkBadge = m.thinking === 'adaptive'
+                        ? '<span class="aim-option-badge" style="background:rgba(168,85,247,0.15);color:#a855f7">adaptive</span>'
+                        : '';
+                    const recTags = (m.recommended_for || []).slice(0, 2).map(r =>
+                        `<span class="aim-rec-tag">${r}</span>`
+                    ).join('');
+
+                    opt.innerHTML = `
+                        <div class="aim-option-main">
+                            <i class="fas ${t.icon} aim-option-icon" style="color:${t.color}"></i>
+                            <span class="aim-option-name">${m.display_name}</span>
+                            ${thinkBadge}
+                        </div>
+                        <div class="aim-option-meta">
+                            ${costStr ? `<span class="aim-cost">${costStr}</span>` : ''}
+                            ${recTags}
+                        </div>
+                    `;
+                    opt.addEventListener('click', () => selectModel(m.id, m.display_name));
+                    modelDropdown.appendChild(opt);
+                }
+            }
+
             // Update label
             if (modelLabel) {
                 const sel = currentModels.find(m => m.id === selectedModel);
-                modelLabel.textContent = sel ? sel.display_name : 'Default';
+                modelLabel.textContent = sel ? sel.display_name : 'Auto';
             }
         }
 
@@ -255,8 +320,14 @@
             if (modelDropdown) {
                 modelDropdown.classList.remove('show');
                 modelBtn?.classList.remove('open');
-                modelDropdown.querySelectorAll('.aiw-model-option').forEach(o =>
-                    o.classList.toggle('active', o.textContent === name));
+                modelDropdown.querySelectorAll('.aim-option').forEach(o =>
+                    o.classList.toggle('active', false));
+                // Find and mark active
+                const opts = modelDropdown.querySelectorAll('.aim-option');
+                for (const o of opts) {
+                    const n = o.querySelector('.aim-option-name');
+                    if (n && n.textContent === name) { o.classList.add('active'); break; }
+                }
             }
         }
 
@@ -292,17 +363,19 @@
         async function handleFiles(files) {
             if (!files) return;
             for (const file of files) {
-                if (!file.type.startsWith('image/')) continue;
+                const isImage = file.type.startsWith('image/');
+                const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                if (!isImage && !isPdf) continue;
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const dataUrl = e.target.result;
                     try {
                         const res = await pywebview.api.ai_edit_save_image(file.name, dataUrl);
                         if (res.status === 'success') {
-                            attachedImages.push({ name: file.name, path: res.path, dataUrl });
+                            attachedImages.push({ name: file.name, path: res.path, dataUrl: isImage ? dataUrl : null, isPdf });
                             renderThumbs();
                         }
-                    } catch (err) { console.error('[AI EDIT] Image save:', err); }
+                    } catch (err) { console.error('[AI EDIT] File save:', err); }
                 };
                 reader.readAsDataURL(file);
             }
@@ -314,7 +387,10 @@
             attachedImages.forEach((img, i) => {
                 const div = document.createElement('div');
                 div.className = 'ai-edit-thumb';
-                div.innerHTML = `<img src="${img.dataUrl || ''}" alt="${img.name}">
+                const preview = img.isPdf
+                    ? `<div class="ai-edit-thumb-pdf"><i class="fas fa-file-pdf"></i><span>${img.name}</span></div>`
+                    : `<img src="${img.dataUrl || ''}" alt="${img.name}">`;
+                div.innerHTML = `${preview}
                     <button class="ai-edit-thumb-remove" data-idx="${i}">&times;</button>`;
                 thumbGrid.appendChild(div);
             });
@@ -390,6 +466,83 @@
             toast('New chat started', 'info');
         });
 
+        // ── Chat History button ──
+        historyBtn?.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (historyDrop?.classList.contains('show')) {
+                historyDrop.classList.remove('show');
+                return;
+            }
+            if (!await waitForApi()) return;
+            try {
+                const res = await pywebview.api.ai_edit_list_sessions();
+                if (!res || !res.sessions || res.sessions.length === 0) {
+                    historyDrop.innerHTML = '<div class="aip-hist-empty">No chat history yet</div>';
+                } else {
+                    historyDrop.innerHTML = res.sessions.map(s => {
+                        const date = s.updated_at ? new Date(s.updated_at).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : '';
+                        const cost = s.total_cost_usd ? `$${s.total_cost_usd.toFixed(2)}` : '';
+                        const meta = [s.turn_count + ' turns', cost, date].filter(Boolean).join(' · ');
+                        const prompt = s.last_prompt || 'No messages';
+                        return `<div class="aip-hist-item" data-sid="${s.session_id}">
+                            <div class="aip-hist-top">
+                                <span class="aip-hist-file">${esc(s.file_name || 'untitled')}</span>
+                                <span class="aip-hist-meta">${esc(meta)}</span>
+                                <button class="aip-hist-del" data-del="${s.session_id}" title="Delete">&times;</button>
+                            </div>
+                            <span class="aip-hist-prompt">${esc(prompt)}</span>
+                        </div>`;
+                    }).join('');
+                }
+                historyDrop.classList.add('show');
+            } catch (err) { console.error('[AI EDIT] History error:', err); }
+        });
+
+        // History dropdown: click to resume, X to delete
+        historyDrop?.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const delBtn = e.target.closest('.aip-hist-del');
+            if (delBtn) {
+                const sid = delBtn.dataset.del;
+                try { await pywebview.api.ai_edit_delete_session(sid); } catch(err) {}
+                delBtn.closest('.aip-hist-item')?.remove();
+                if (!historyDrop.querySelector('.aip-hist-item')) {
+                    historyDrop.innerHTML = '<div class="aip-hist-empty">No chat history yet</div>';
+                }
+                return;
+            }
+            const item = e.target.closest('.aip-hist-item');
+            if (!item) return;
+            const sid = item.dataset.sid;
+            historyDrop.classList.remove('show');
+            try {
+                const res = await pywebview.api.ai_edit_resume_session(sid);
+                if (res.status === 'ok' && res.session) {
+                    // Render previous turns in the output area
+                    if (streamOutput) {
+                        streamOutput.innerHTML = '';
+                        for (const turn of (res.session.turns || [])) {
+                            const sep = document.createElement('div');
+                            sep.className = 'ai-chat-separator';
+                            sep.innerHTML = `<div class="ai-chat-user-msg"><i class="fas fa-user"></i> ${esc(turn.prompt || '')}</div>`;
+                            streamOutput.appendChild(sep);
+                            if (turn.response) {
+                                const resp = document.createElement('div');
+                                resp.className = 'ai-chat-response';
+                                resp.textContent = turn.response;
+                                streamOutput.appendChild(resp);
+                            }
+                        }
+                        streamOutput.scrollTop = streamOutput.scrollHeight;
+                    }
+                    toast(`Resumed session (${res.session.turns?.length || 0} turns)`, 'info');
+                }
+            } catch (err) { console.error('[AI EDIT] Resume error:', err); }
+        });
+
+        // Close history dropdown when clicking elsewhere
+        document.addEventListener('click', () => historyDrop?.classList.remove('show'));
+
         // ── Popout button → open separate window ──
         popoutBtn?.addEventListener('click', async () => {
             if (!await waitForApi()) return;
@@ -455,6 +608,7 @@
 
         function resetSendBtn() {
             isStreaming = false;
+            if (typeof updateAppState === 'function') updateAppState({ ai: 'none' });
             if (sendBtn) {
                 sendBtn.disabled = false;
                 sendBtn.classList.remove('cancel-mode');
@@ -489,6 +643,7 @@
 
             originalCode = editor.getModel().getValue();
             isStreaming = true;
+            if (typeof updateAppState === 'function') updateAppState({ ai: 'streaming' });
             sendBtn.innerHTML = '<i class="fas fa-stop"></i>';
             sendBtn.classList.add('cancel-mode');
             statusText.style.display = 'flex';
@@ -687,6 +842,12 @@
             fixing: 'fa-wrench',
             done: 'fa-check-circle',
             error: 'fa-times-circle',
+        };
+
+        // Expose so agent-trigger redirect can call it from outside IIFE
+        window.startAIAgent = function(desc, model) {
+            if (model) selectedModel = model;
+            startAgent(desc);
         };
 
         async function startAgent(description) {
@@ -1076,22 +1237,74 @@
         function renderModelDropdown() {
             if (!modelDropdown) return;
             modelDropdown.innerHTML = '';
+
+            const tierIcons = {
+                premium:  { icon: 'fa-gem',      color: '#c084fc', label: 'Premium' },
+                standard: { icon: 'fa-bolt',     color: '#60a5fa', label: 'Standard' },
+                economy:  { icon: 'fa-feather',  color: '#34d399', label: 'Fast' },
+            };
+
             const defOpt = document.createElement('button');
-            defOpt.className = 'aiw-model-option' + (selectedModel === '' ? ' active' : '');
-            defOpt.textContent = 'Default';
-            defOpt.addEventListener('click', () => selectModel('', 'Default'));
+            defOpt.className = 'aim-option' + (selectedModel === '' ? ' active' : '');
+            defOpt.innerHTML = `
+                <div class="aim-option-main">
+                    <i class="fas fa-magic aim-option-icon" style="color:#94a3b8"></i>
+                    <span class="aim-option-name">Auto</span>
+                    <span class="aim-option-badge" style="background:rgba(148,163,184,0.15);color:#94a3b8">default</span>
+                </div>
+                <div class="aim-option-desc">Best model selected per task type</div>
+            `;
+            defOpt.addEventListener('click', () => selectModel('', 'Auto'));
             modelDropdown.appendChild(defOpt);
 
+            const grouped = {};
             for (const m of currentModels) {
+                const tier = m.tier || 'standard';
+                if (!grouped[tier]) grouped[tier] = [];
+                grouped[tier].push(m);
+            }
+
+            for (const tier of ['premium', 'standard', 'economy']) {
+                const models = grouped[tier];
+                if (!models || !models.length) continue;
+                const t = tierIcons[tier] || tierIcons.standard;
+                const sep = document.createElement('div');
+                sep.className = 'aim-tier-sep';
+                sep.innerHTML = `<i class="fas ${t.icon}" style="color:${t.color}"></i> ${t.label}`;
+                modelDropdown.appendChild(sep);
+                for (const m of models) {
+                    const opt = document.createElement('button');
+                    opt.className = 'aim-option' + (selectedModel === m.id ? ' active' : '');
+                    const costStr = m.cost || '';
+                    const thinkBadge = m.thinking === 'adaptive'
+                        ? '<span class="aim-option-badge" style="background:rgba(168,85,247,0.15);color:#a855f7">adaptive</span>'
+                        : '';
+                    opt.innerHTML = `
+                        <div class="aim-option-main">
+                            <i class="fas ${t.icon} aim-option-icon" style="color:${t.color}"></i>
+                            <span class="aim-option-name">${m.display_name || m.display}</span>
+                            ${thinkBadge}
+                        </div>
+                        ${costStr ? `<div class="aim-option-meta"><span class="aim-cost">${costStr}</span></div>` : ''}
+                    `;
+                    opt.addEventListener('click', () => selectModel(m.id, m.display_name || m.display));
+                    modelDropdown.appendChild(opt);
+                }
+            }
+
+            // Models without tier (Codex extras)
+            const noTier = currentModels.filter(m => !m.tier);
+            for (const m of noTier) {
                 const opt = document.createElement('button');
-                opt.className = 'aiw-model-option' + (selectedModel === m.id ? ' active' : '');
-                opt.textContent = m.display_name;
-                opt.addEventListener('click', () => selectModel(m.id, m.display_name));
+                opt.className = 'aim-option' + (selectedModel === m.id ? ' active' : '');
+                opt.innerHTML = `<div class="aim-option-main"><span class="aim-option-name">${m.display_name || m.id}</span></div>`;
+                opt.addEventListener('click', () => selectModel(m.id, m.display_name || m.id));
                 modelDropdown.appendChild(opt);
             }
+
             if (modelLabel) {
                 const sel = currentModels.find(m => m.id === selectedModel);
-                modelLabel.textContent = sel ? sel.display_name : 'Default';
+                modelLabel.textContent = sel ? (sel.display_name || sel.display) : 'Auto';
             }
         }
 
@@ -1101,8 +1314,13 @@
             if (modelDropdown) {
                 modelDropdown.classList.remove('show');
                 modelBtn?.classList.remove('open');
-                modelDropdown.querySelectorAll('.aiw-model-option').forEach(o =>
-                    o.classList.toggle('active', o.textContent === name));
+                modelDropdown.querySelectorAll('.aim-option').forEach(o =>
+                    o.classList.toggle('active', false));
+                const opts = modelDropdown.querySelectorAll('.aim-option');
+                for (const o of opts) {
+                    const n = o.querySelector('.aim-option-name');
+                    if (n && n.textContent === name) { o.classList.add('active'); break; }
+                }
             }
         }
 
@@ -1135,17 +1353,19 @@
         async function handleFiles(files) {
             if (!files) return;
             for (const file of files) {
-                if (!file.type.startsWith('image/')) continue;
+                const isImage = file.type.startsWith('image/');
+                const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                if (!isImage && !isPdf) continue;
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const dataUrl = e.target.result;
                     try {
                         const res = await pywebview.api.ai_edit_save_image(file.name, dataUrl);
                         if (res.status === 'success') {
-                            attachedImages.push({ name: file.name, path: res.path, dataUrl });
+                            attachedImages.push({ name: file.name, path: res.path, dataUrl: isImage ? dataUrl : null, isPdf });
                             renderThumbs();
                         }
-                    } catch (err) { console.error('[AI EDIT WIN] Image save:', err); }
+                    } catch (err) { console.error('[AI EDIT WIN] File save:', err); }
                 };
                 reader.readAsDataURL(file);
             }
@@ -1157,7 +1377,10 @@
             attachedImages.forEach((img, i) => {
                 const div = document.createElement('div');
                 div.className = 'aiw-thumb';
-                div.innerHTML = `<img src="${img.dataUrl || ''}" alt="${img.name}">
+                const preview = img.isPdf
+                    ? `<div class="aiw-thumb-pdf"><i class="fas fa-file-pdf"></i><span>${img.name}</span></div>`
+                    : `<img src="${img.dataUrl || ''}" alt="${img.name}">`;
+                div.innerHTML = `${preview}
                     <button class="aiw-thumb-remove" data-idx="${i}">&times;</button>`;
                 thumbGrid.appendChild(div);
             });

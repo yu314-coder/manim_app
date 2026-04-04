@@ -16,6 +16,9 @@
     }
 
     /** Attach WebVTT subtitles to a <video> element. */
+    // Expose globally so showPreview() can reattach after video reload.
+    window._autoNarrateAttachSubs = attachSubtitles;
+
     async function attachSubtitles(videoEl) {
         try {
             if (!pywebview?.api?.get_narration_subtitles) return;
@@ -58,7 +61,7 @@
 
         const code = editor.getModel().getValue();
         const voice = (() => { try { return localStorage.getItem('narration_voice') || 'af_heart'; } catch(e) { return 'af_heart'; } })();
-        const speed = 1.0;
+        const speed = (() => { try { return parseFloat(localStorage.getItem('narration_speed')) || 1.0; } catch(e) { return 1.0; } })();
 
         console.log('[NARRATION] Auto-narrate starting...');
         if (typeof appendConsole === 'function') appendConsole('Generating narration...', 'info');

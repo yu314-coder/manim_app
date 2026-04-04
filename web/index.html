@@ -636,6 +636,12 @@
         .cmd-label { flex: 1; font-size: 13px; color: var(--text-primary); }
         .cmd-item:hover .cmd-label, .cmd-item.active .cmd-label { color: #fff; }
         .cmd-shortcut { font-size: 11px; color: var(--text-secondary); }
+        .cmd-cat {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1px; color: var(--text-secondary);
+            padding: 8px 16px 4px; margin-top: 2px;
+            opacity: 0.7;
+        }
         .cmd-empty { padding: 20px; text-align: center; color: var(--text-secondary); font-size: 13px; }
 
         /* ===== Zen Mode ===== */
@@ -819,6 +825,12 @@
                 <h1 class="app-title">Manim Animation Studio</h1>
                 <span class="app-subtitle">Professional Edition <span id="appVersion">v1.1.2.0</span></span>
             </div>
+            <!-- App state indicator: invisible but DOM-present for AI screen readers -->
+            <div id="appStateIndicator" role="status" aria-live="polite" data-testid="app-state"
+                 data-state="idle" data-render="none" data-ai="none" data-file=""
+                 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">
+                App state: idle
+            </div>
             <div class="autosave-indicator" id="autosaveIndicator">
                 <i class="fas fa-check-circle"></i>
                 <span id="autosaveStatus">Saved</span>
@@ -826,54 +838,54 @@
         </div>
 
         <div class="header-center">
-            <button class="action-btn" id="newFileBtn" title="New File">
+            <button class="action-btn" id="newFileBtn" title="New File" data-testid="new-file-btn">
                 <i class="fas fa-file"></i>
                 <span>New</span>
             </button>
-            <button class="action-btn" id="openFileBtn" title="Open File">
+            <button class="action-btn" id="openFileBtn" title="Open File" data-testid="open-file-btn">
                 <i class="fas fa-folder-open"></i>
                 <span>Open</span>
             </button>
-            <button class="action-btn" id="saveFileBtn" title="Save File">
+            <button class="action-btn" id="saveFileBtn" title="Save File" data-testid="save-file-btn">
                 <i class="fas fa-save"></i>
                 <span>Save</span>
             </button>
             <div class="divider"></div>
-            <button class="action-btn primary" id="renderBtn" title="Render Animation (F5)">
+            <button class="action-btn primary" id="renderBtn" title="Render Animation (F5)" data-testid="render-btn">
                 <i class="fas fa-play"></i>
                 <span>Render</span>
             </button>
-            <button class="action-btn" id="previewBtn" title="Quick Preview (F6)">
+            <button class="action-btn" id="previewBtn" title="Quick Preview (F6)" data-testid="preview-btn">
                 <i class="fas fa-eye"></i>
                 <span>Preview</span>
             </button>
-            <button class="action-btn danger" id="stopBtn" title="Stop Render" style="display: none;">
+            <button class="action-btn danger" id="stopBtn" title="Stop Render" style="display: none;" data-testid="stop-btn">
                 <i class="fas fa-stop"></i>
                 <span>Stop</span>
             </button>
             <div class="divider"></div>
-            <button class="action-btn" id="gpuToggleBtn" title="Toggle GPU Acceleration (OpenGL Renderer)">
+            <button class="action-btn" id="gpuToggleBtn" title="Toggle GPU Acceleration (OpenGL Renderer)" data-testid="gpu-toggle-btn">
                 <i class="fas fa-microchip"></i>
                 <span id="gpuToggleText">GPU: OFF</span>
             </button>
-            <button class="action-btn" id="colorPickerBtn" title="Manim Color Palette">
+            <button class="action-btn" id="colorPickerBtn" title="Manim Color Palette" data-testid="color-picker-btn">
                 <i class="fas fa-palette"></i>
                 <span>Colors</span>
             </button>
         </div>
 
         <div class="header-right">
-            <button class="status-btn" id="latexStatusBtn" title="LaTeX Status - Checking...">
+            <button class="status-btn" id="latexStatusBtn" title="LaTeX Status - Checking..." data-testid="latex-status-btn">
                 <span class="status-dot checking"></span>
                 <span class="status-text">LaTeX</span>
             </button>
-            <button class="icon-btn" id="settingsBtn" title="Settings">
+            <button class="icon-btn" id="settingsBtn" title="Settings" data-testid="settings-btn">
                 <i class="fas fa-cog"></i>
             </button>
-            <button class="icon-btn" id="themeBtn" title="Toggle Theme">
+            <button class="icon-btn" id="themeBtn" title="Toggle Theme" data-testid="theme-btn">
                 <i class="fas fa-moon"></i>
             </button>
-            <button class="icon-btn" id="helpBtn" title="Help">
+            <button class="icon-btn" id="helpBtn" title="Help" data-testid="help-btn">
                 <i class="fas fa-question-circle"></i>
             </button>
         </div>
@@ -883,11 +895,11 @@
         <div class="layout">
             <section class="content">
                 <div class="tab-header">
-                    <button class="tab-pill active" data-tab="workspace"><i class="fas fa-desktop"></i> Workspace</button>
-                    <button class="tab-pill" data-tab="system"><i class="fas fa-info-circle"></i> System</button>
-                    <button class="tab-pill" data-tab="assets"><i class="fas fa-images"></i> Assets</button>
-                    <button class="tab-pill" data-tab="venv"><i class="fas fa-box"></i> Packages</button>
-                    <button class="tab-pill" data-tab="history"><i class="fas fa-clock-rotate-left"></i> History</button>
+                    <button class="tab-pill active" data-tab="workspace" data-testid="tab-workspace" aria-label="Workspace tab"><i class="fas fa-desktop"></i> Workspace</button>
+                    <button class="tab-pill" data-tab="system" data-testid="tab-system" aria-label="System info tab"><i class="fas fa-info-circle"></i> System</button>
+                    <button class="tab-pill" data-tab="assets" data-testid="tab-assets" aria-label="Assets tab"><i class="fas fa-images"></i> Assets</button>
+                    <button class="tab-pill" data-tab="venv" data-testid="tab-packages" aria-label="Packages tab"><i class="fas fa-box"></i> Packages</button>
+                    <button class="tab-pill" data-tab="history" data-testid="tab-history" aria-label="Render history tab"><i class="fas fa-clock-rotate-left"></i> History</button>
                 </div>
 
                 <div class="tab-panel active" id="workspace-panel">
@@ -901,24 +913,24 @@
                                 <div class="workspace-header">
                                     <h2><i class="fas fa-code"></i> Code Editor</h2>
                                     <div class="workspace-tools">
-                                        <button class="icon-btn small" id="sceneOutlineBtn" title="Scene Outline (Ctrl+Shift+O)">
+                                        <button class="icon-btn small" id="sceneOutlineBtn" title="Scene Outline (Ctrl+Shift+O)" data-testid="scene-outline-btn">
                                             <i class="fas fa-sitemap"></i>
                                         </button>
-                                        <button class="icon-btn small" id="aiAutocompleteBtn" title="AI Autocomplete (ghost text)" style="color:#60a5fa;" onclick="if(typeof toggleAIAutocomplete==='function')toggleAIAutocomplete()">
+                                        <button class="icon-btn small" id="aiAutocompleteBtn" title="AI Autocomplete (ghost text)" style="color:#60a5fa;" onclick="if(typeof toggleAIAutocomplete==='function')toggleAIAutocomplete()" data-testid="ai-autocomplete-btn">
                                             <i class="fas fa-bolt"></i>
                                         </button>
-                                        <button class="icon-btn small" id="aiEditPanelBtn" title="AI Edit (Beta) (Ctrl+Shift+E)" style="color:#a78bfa;">
+                                        <button class="icon-btn small" id="aiEditPanelBtn" title="AI Edit (Beta) (Ctrl+Shift+E)" style="color:#a78bfa;" data-testid="ai-edit-panel-btn">
                                             <i class="fas fa-wand-magic-sparkles"></i>
                                         </button>
-                                        <button class="icon-btn small" id="findReplaceBtn" title="Find & Replace (Ctrl+H)">
+                                        <button class="icon-btn small" id="findReplaceBtn" title="Find & Replace (Ctrl+H)" data-testid="find-replace-btn">
                                             <i class="fas fa-search"></i>
                                         </button>
-                                        <button class="icon-btn small" id="shortcutMapBtn" title="Keyboard Shortcuts (Ctrl+/)">
+                                        <button class="icon-btn small" id="shortcutMapBtn" title="Keyboard Shortcuts (Ctrl+/)" data-testid="shortcut-map-btn">
                                             <i class="fas fa-keyboard"></i>
                                         </button>
                                         <label class="workspace-control">
                                             <span>Font Size</span>
-                                            <select id="fontSizeSelect">
+                                            <select id="fontSizeSelect" aria-label="Editor font size" data-testid="font-size-select">
                                                 <option value="12">12px</option>
                                                 <option value="14" selected>14px</option>
                                                 <option value="16">16px</option>
@@ -940,24 +952,40 @@
                                         </div>
                                     </div>
                                     <div class="editor-main-col">
-                                        <div id="monacoEditor" style="flex:1;width:100%;min-height:0;"></div>
+                                        <div id="monacoEditor" style="flex:1;width:100%;min-height:0;">
+                                            <!-- Skeleton placeholder — shown until Monaco loads -->
+                                            <div id="editorSkeleton" class="editor-skeleton">
+                                                <div class="skel-line skel-w80"></div>
+                                                <div class="skel-line skel-w60"></div>
+                                                <div class="skel-line skel-w90"></div>
+                                                <div class="skel-line skel-w40"></div>
+                                                <div class="skel-line skel-w70"></div>
+                                                <div class="skel-line skel-w50"></div>
+                                                <div class="skel-line skel-w85"></div>
+                                                <div class="skel-line skel-w65"></div>
+                                                <div class="skel-line skel-w45"></div>
+                                                <div class="skel-line skel-w75"></div>
+                                                <div class="skel-line skel-w55"></div>
+                                                <div class="skel-line skel-w80"></div>
+                                            </div>
+                                        </div>
                                         <!-- Live Code Errors Panel (hidden by default, shows when errors detected) -->
-                                        <div id="codeErrorsPanel" class="code-errors-panel" style="display: none;">
+                                        <div id="codeErrorsPanel" class="code-errors-panel" style="display: none;" role="alert" aria-live="polite" data-testid="code-errors-panel">
                                             <div class="errors-header">
                                                 <span class="errors-title">
                                                     <i class="fas fa-exclamation-triangle"></i>
                                                     Code Issues (<span id="errorCount">0</span>)
                                                 </span>
                                                 <div style="display:flex;gap:4px;align-items:center;">
-                                                    <button id="fixWithAIBtn" class="errors-clear-btn" title="Fix errors with AI (Claude)" style="color:#a78bfa;">
+                                                    <button id="fixWithAIBtn" class="errors-clear-btn" title="Fix errors with AI (Claude)" style="color:#a78bfa;" data-testid="fix-with-ai-btn" aria-label="Fix code errors with AI">
                                                         <i class="fas fa-wand-magic-sparkles"></i> Fix with AI
                                                     </button>
-                                                    <button id="clearErrorsBtn" class="errors-clear-btn" title="Clear errors">
+                                                    <button id="clearErrorsBtn" class="errors-clear-btn" title="Clear errors" data-testid="clear-errors-btn" aria-label="Clear error list">
                                                         <i class="fas fa-times"></i>
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div id="errorsList" class="errors-list">
+                                            <div id="errorsList" class="errors-list" aria-label="Code error list">
                                                 <div class="errors-empty">
                                                     <i class="fas fa-check-circle"></i>
                                                     No issues found
@@ -970,21 +998,23 @@
                                         <!-- Header: provider pill | model selector | popout + close -->
                                         <div class="aip-header">
                                             <div class="aip-header-left">
-                                                <div class="aip-provider-toggle" id="aiEditProviderToggle">
-                                                    <button class="aip-prov active" data-provider="claude">Claude</button>
-                                                    <button class="aip-prov" data-provider="codex">Codex</button>
+                                                <div class="aip-provider-toggle" id="aiEditProviderToggle" role="radiogroup" aria-label="AI provider selection">
+                                                    <button class="aip-prov active" data-provider="claude" role="radio" aria-checked="true" data-testid="provider-claude" aria-label="Use Claude provider">Claude</button>
+                                                    <button class="aip-prov" data-provider="codex" role="radio" aria-checked="false" data-testid="provider-codex" aria-label="Use Codex provider">Codex</button>
                                                 </div>
                                                 <span class="aip-beta-badge">Beta</span>
                                             </div>
-                                            <button class="aip-model-btn" id="aiEditModelBtn">
+                                            <button class="aip-model-btn" id="aiEditModelBtn" aria-label="Select AI model" data-testid="ai-model-btn">
                                                 <span id="aiEditModelLabel">Default</span>
                                                 <i class="fas fa-chevron-right aip-model-chevron"></i>
                                             </button>
-                                            <div class="aip-model-dropdown" id="aiEditModelDropdown"></div>
+                                            <div class="aip-model-dropdown" id="aiEditModelDropdown" role="listbox" aria-label="AI model options"></div>
                                             <div class="aip-header-right">
-                                                <button class="aip-icon-btn" id="aiEditNewChatBtn" title="New Chat"><i class="fas fa-plus"></i></button>
-                                                <button class="aip-icon-btn" id="aiEditPopoutBtn" title="Open in window"><i class="fas fa-arrow-up-right-from-square"></i></button>
-                                                <button class="aip-icon-btn" id="aiEditPanelClose" title="Close"><i class="fas fa-times"></i></button>
+                                                <button class="aip-icon-btn" id="aiEditHistoryBtn" title="Chat History" data-testid="ai-history-btn"><i class="fas fa-clock-rotate-left"></i></button>
+                                                <div class="aip-history-dropdown" id="aiEditHistoryDropdown" role="menu" aria-label="Chat session history"></div>
+                                                <button class="aip-icon-btn" id="aiEditNewChatBtn" title="New Chat" data-testid="ai-new-chat-btn"><i class="fas fa-plus"></i></button>
+                                                <button class="aip-icon-btn" id="aiEditPopoutBtn" title="Open in window" data-testid="ai-popout-btn"><i class="fas fa-arrow-up-right-from-square"></i></button>
+                                                <button class="aip-icon-btn" id="aiEditPanelClose" title="Close" data-testid="ai-panel-close-btn"><i class="fas fa-times"></i></button>
                                             </div>
                                         </div>
 
@@ -1000,20 +1030,20 @@
                                                 <i class="fas fa-bolt"></i> Auto-apply
                                             </label>
                                             <!-- Status -->
-                                            <div id="aiEditStatusText" class="aip-status" style="display:none;">
+                                            <div id="aiEditStatusText" class="aip-status" style="display:none;" role="status" aria-live="polite" data-testid="ai-status">
                                                 <i class="fas fa-circle-notch fa-spin"></i>
                                                 <span id="aiEditStatusMsg">Working...</span>
                                             </div>
                                             <!-- Streaming Output -->
-                                            <div id="aiEditStreamBox" class="aip-stream" style="display:none;">
-                                                <div id="aiEditStreamOutput" class="aip-stream-output"></div>
+                                            <div id="aiEditStreamBox" class="aip-stream" style="display:none;" data-testid="ai-stream-box">
+                                                <div id="aiEditStreamOutput" class="aip-stream-output" aria-live="polite" aria-label="AI response output"></div>
                                             </div>
                                             <!-- Diff Review -->
-                                            <div id="aiDiffActions" class="aip-diff" style="display:none;">
+                                            <div id="aiDiffActions" class="aip-diff" style="display:none;" role="alert" aria-live="assertive" data-testid="ai-diff-actions">
                                                 <span id="aiDiffStats" class="aip-diff-stats"></span>
                                                 <div class="aip-diff-btns">
-                                                    <button id="aiDiffAccept" class="aip-accept"><i class="fas fa-check"></i> Accept</button>
-                                                    <button id="aiDiffReject" class="aip-reject"><i class="fas fa-times"></i> Reject</button>
+                                                    <button id="aiDiffAccept" class="aip-accept" data-testid="ai-diff-accept" aria-label="Accept AI changes"><i class="fas fa-check"></i> Accept</button>
+                                                    <button id="aiDiffReject" class="aip-reject" data-testid="ai-diff-reject" aria-label="Reject AI changes"><i class="fas fa-times"></i> Reject</button>
                                                 </div>
                                             </div>
                                             <!-- Agent step log + screenshot grid -->
@@ -1034,19 +1064,19 @@
                                                 <button id="aiAgentChipClose" class="aip-agent-chip-x">&times;</button>
                                             </div>
                                             <div class="aip-input-row">
-                                                <button class="aip-attach-btn" id="aiEditDropZone" title="Attach images">
+                                                <button class="aip-attach-btn" id="aiEditDropZone" title="Attach images or PDFs" data-testid="ai-attach-btn" aria-label="Attach images or PDFs">
                                                     <i class="fas fa-plus"></i>
                                                 </button>
-                                                <input type="file" id="aiEditImageInput" accept="image/*" multiple style="display:none;">
-                                                <textarea id="aiEditPrompt" class="aip-input" rows="1" placeholder="Ask anything"></textarea>
-                                                <button class="aip-search-btn" id="aiAgentToggle" title="Toggle Agent mode">
+                                                <input type="file" id="aiEditImageInput" accept="image/*,.pdf" multiple style="display:none;" aria-label="Upload images or PDFs">
+                                                <textarea id="aiEditPrompt" class="aip-input" rows="1" placeholder="Ask anything" data-testid="ai-prompt-input" aria-label="AI edit prompt"></textarea>
+                                                <button class="aip-search-btn" id="aiAgentToggle" title="Toggle Agent mode" data-testid="ai-agent-toggle" aria-label="Toggle Agent mode">
                                                     <i class="fas fa-robot"></i>
                                                 </button>
-                                                <button class="aip-search-btn" id="aiEditSearchBtn" title="Toggle web search">
+                                                <button class="aip-search-btn" id="aiEditSearchBtn" title="Toggle web search" data-testid="ai-search-toggle" aria-label="Toggle web search">
                                                     <i class="fas fa-globe"></i>
                                                 </button>
-                                                <input type="checkbox" id="aiEditSearchToggle" style="display:none;">
-                                                <button id="aiEditSendBtn" class="aip-send-btn" title="Send">
+                                                <input type="checkbox" id="aiEditSearchToggle" style="display:none;" aria-label="Web search enabled">
+                                                <button id="aiEditSendBtn" class="aip-send-btn" title="Send" data-testid="ai-send-btn" aria-label="Send AI prompt">
                                                     <i class="fas fa-arrow-up"></i>
                                                 </button>
                                             </div>
@@ -1064,7 +1094,7 @@
                                 <div class="workspace-header">
                                     <h2><i class="fas fa-play-circle"></i> Preview</h2>
                                     <div class="workspace-tools">
-                                        <button class="icon-btn small" id="screenshotBtn" title="Screenshot current frame (Ctrl+Shift+S)">
+                                        <button class="icon-btn small" id="screenshotBtn" title="Screenshot current frame (Ctrl+Shift+S)" data-testid="screenshot-btn">
                                             <i class="fas fa-camera"></i>
                                         </button>
                                     </div>
@@ -1084,8 +1114,8 @@
                                     <!-- Video/Image Viewport -->
                                     <div class="preview-viewport" id="previewContainer">
                                         <div class="preview-media-container">
-                                            <video id="previewVideo" class="preview-media" controls style="display:none;"></video>
-                                            <img id="previewImage" class="preview-media" alt="Preview" style="display:none;">
+                                            <video id="previewVideo" class="preview-media" controls style="display:none;" data-testid="preview-video" aria-label="Animation preview video"></video>
+                                            <img id="previewImage" class="preview-media" alt="Animation preview frame" style="display:none;" data-testid="preview-image">
 
                                             <!-- Placeholder -->
                                             <div class="preview-placeholder">
@@ -1113,11 +1143,11 @@
                             <div class="workspace-header">
                                 <h2><i class="fas fa-terminal"></i> Console & Terminal</h2>
                                 <div class="workspace-tools">
-                                    <span class="terminal-status-label">Status: <span id="terminalStatus">Ready</span></span>
-                                    <button class="icon-btn small" id="copyOutputBtn" title="Copy Terminal Output">
+                                    <span class="terminal-status-label">Status: <span id="terminalStatus" role="status" aria-live="polite" data-testid="terminal-status">Ready</span></span>
+                                    <button class="icon-btn small" id="copyOutputBtn" title="Copy Terminal Output" data-testid="copy-output-btn">
                                         <i class="fas fa-copy"></i>
                                     </button>
-                                    <button class="icon-btn small" id="clearOutputBtn" title="Clear Console">
+                                    <button class="icon-btn small" id="clearOutputBtn" title="Clear Console" data-testid="clear-output-btn">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </div>
@@ -1154,7 +1184,7 @@
                                 <div class="sidebar-section-body">
                                     <div class="sidebar-control">
                                         <label>Quality</label>
-                                        <select id="previewQualitySelect">
+                                        <select id="previewQualitySelect" aria-label="Preview quality" data-testid="preview-quality-select">
                                             <option value="120p">120p</option>
                                             <option value="240p">240p</option>
                                             <option value="480p" selected>480p</option>
@@ -1165,13 +1195,13 @@
                                     </div>
                                     <div class="sidebar-control" id="previewCustomResolutionDiv" style="display: none;">
                                         <label>Width</label>
-                                        <input type="text" id="previewCustomWidth" placeholder="1920" value="1920">
+                                        <input type="text" id="previewCustomWidth" placeholder="1920" value="1920" aria-label="Preview custom width" data-testid="preview-custom-width">
                                         <label style="margin-top: 8px;">Height</label>
-                                        <input type="text" id="previewCustomHeight" placeholder="1080" value="1080">
+                                        <input type="text" id="previewCustomHeight" placeholder="1080" value="1080" aria-label="Preview custom height" data-testid="preview-custom-height">
                                     </div>
                                     <div class="sidebar-control">
                                         <label>FPS</label>
-                                        <select id="previewFpsSelect">
+                                        <select id="previewFpsSelect" aria-label="Preview frames per second" data-testid="preview-fps-select">
                                             <option value="15" selected>15</option>
                                             <option value="24">24</option>
                                             <option value="30">30</option>
@@ -1181,7 +1211,7 @@
                                     </div>
                                     <div class="sidebar-control" id="previewCustomFpsDiv" style="display: none;">
                                         <label>Custom FPS</label>
-                                        <input type="text" id="previewCustomFps" placeholder="30" value="30">
+                                        <input type="text" id="previewCustomFps" placeholder="30" value="30" aria-label="Preview custom FPS" data-testid="preview-custom-fps">
                                     </div>
                                 </div>
                             </div>
@@ -1195,7 +1225,7 @@
                                 <div class="sidebar-section-body">
                                     <div class="sidebar-control">
                                         <label>Quality</label>
-                                        <select id="qualitySelect">
+                                        <select id="qualitySelect" aria-label="Render quality" data-testid="render-quality-select">
                                             <option value="8K">8K</option>
                                             <option value="4K">4K</option>
                                             <option value="1440p">1440p</option>
@@ -1207,13 +1237,13 @@
                                     </div>
                                     <div class="sidebar-control" id="customResolutionDiv" style="display: none;">
                                         <label>Width</label>
-                                        <input type="text" id="customWidth" placeholder="1920" value="1920">
+                                        <input type="text" id="customWidth" placeholder="1920" value="1920" aria-label="Render custom width" data-testid="render-custom-width">
                                         <label style="margin-top: 8px;">Height</label>
-                                        <input type="text" id="customHeight" placeholder="1080" value="1080">
+                                        <input type="text" id="customHeight" placeholder="1080" value="1080" aria-label="Render custom height" data-testid="render-custom-height">
                                     </div>
                                     <div class="sidebar-control">
                                         <label>FPS</label>
-                                        <select id="fpsSelect">
+                                        <select id="fpsSelect" aria-label="Render frames per second" data-testid="render-fps-select">
                                             <option value="24">24</option>
                                             <option value="30" selected>30</option>
                                             <option value="60">60</option>
@@ -1223,15 +1253,47 @@
                                     </div>
                                     <div class="sidebar-control" id="customFpsDiv" style="display: none;">
                                         <label>Custom FPS</label>
-                                        <input type="text" id="customFps" placeholder="30" value="30">
+                                        <input type="text" id="customFps" placeholder="30" value="30" aria-label="Render custom FPS" data-testid="render-custom-fps">
                                     </div>
                                     <div class="sidebar-control">
                                         <label>Format</label>
-                                        <select id="formatSelect">
+                                        <select id="formatSelect" aria-label="Output format" data-testid="render-format-select">
                                             <option value="mp4" selected>MP4</option>
                                             <option value="mov">MOV</option>
                                             <option value="gif">GIF</option>
                                             <option value="png">PNG</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Narration Settings Section -->
+                            <div class="sidebar-section">
+                                <div class="sidebar-section-header">
+                                    <i class="fas fa-microphone"></i>
+                                    <span>Narration (TTS)</span>
+                                </div>
+                                <div class="sidebar-section-body">
+                                    <div class="sidebar-control">
+                                        <label>Voice</label>
+                                        <select id="narrationVoiceSelect" aria-label="Narration voice" data-testid="narration-voice-select">
+                                            <option value="af_heart">Heart (Female)</option>
+                                            <option value="af_bella">Bella (Female)</option>
+                                            <option value="af_nicole">Nicole (Female)</option>
+                                            <option value="af_sarah">Sarah (Female)</option>
+                                            <option value="am_adam">Adam (Male)</option>
+                                            <option value="am_michael">Michael (Male)</option>
+                                            <option value="bf_emma">Emma (Female, British)</option>
+                                            <option value="bm_george">George (Male, British)</option>
+                                        </select>
+                                    </div>
+                                    <div class="sidebar-control">
+                                        <label>Speed</label>
+                                        <select id="narrationSpeedSelect" aria-label="Narration speed" data-testid="narration-speed-select">
+                                            <option value="0.75">0.75x</option>
+                                            <option value="1.0" selected>1.0x</option>
+                                            <option value="1.25">1.25x</option>
+                                            <option value="1.5">1.5x</option>
                                         </select>
                                     </div>
                                 </div>
@@ -2203,14 +2265,14 @@
             </div>
             <div class="shortcut-map-body" id="shortcutMapBody">
                 <div class="shortcut-group">
-                    <h3>File Operations</h3>
+                    <h3>File</h3>
                     <div class="shortcut-row"><span class="shortcut-desc">New File</span><kbd>Ctrl</kbd>+<kbd>N</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Open File</span><kbd>Ctrl</kbd>+<kbd>O</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Save File</span><kbd>Ctrl</kbd>+<kbd>S</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Save As</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></div>
                 </div>
                 <div class="shortcut-group">
-                    <h3>Rendering</h3>
+                    <h3>Render</h3>
                     <div class="shortcut-row"><span class="shortcut-desc">Render Animation</span><kbd>F5</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Quick Preview</span><kbd>F6</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Stop Render</span><kbd>Esc</kbd></div>
@@ -2219,26 +2281,36 @@
                     <h3>Editor</h3>
                     <div class="shortcut-row"><span class="shortcut-desc">Find</span><kbd>Ctrl</kbd>+<kbd>F</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Find & Replace</span><kbd>Ctrl</kbd>+<kbd>H</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Go to Line</span><kbd>Ctrl</kbd>+<kbd>G</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Go to Definition</span><kbd>F12</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Find References</span><kbd>Shift</kbd>+<kbd>F12</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Select All</span><kbd>Ctrl</kbd>+<kbd>A</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Undo</span><kbd>Ctrl</kbd>+<kbd>Z</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Redo</span><kbd>Ctrl</kbd>+<kbd>Y</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Duplicate Line</span><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>Down</kbd></div>
-                    <div class="shortcut-row"><span class="shortcut-desc">Move Line Up</span><kbd>Alt</kbd>+<kbd>Up</kbd></div>
-                    <div class="shortcut-row"><span class="shortcut-desc">Move Line Down</span><kbd>Alt</kbd>+<kbd>Down</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Move Line Up / Down</span><kbd>Alt</kbd>+<kbd>Up</kbd>/<kbd>Down</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Toggle Comment</span><kbd>Ctrl</kbd>+<kbd>/</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Format Document</span><kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Multi-Cursor</span><kbd>Alt</kbd>+<kbd>Click</kbd></div>
-                    <div class="shortcut-row"><span class="shortcut-desc">Zoom In</span><kbd>Ctrl</kbd>+<kbd>=</kbd></div>
-                    <div class="shortcut-row"><span class="shortcut-desc">Zoom Out</span><kbd>Ctrl</kbd>+<kbd>-</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Toggle Bookmark</span><kbd>Ctrl</kbd>+<kbd>B</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Prev / Next Bookmark</span><kbd>Ctrl</kbd>+<kbd>Up</kbd>/<kbd>Down</kbd></div>
                 </div>
                 <div class="shortcut-group">
-                    <h3>Navigation</h3>
-                    <div class="shortcut-row"><span class="shortcut-desc">Go to Line</span><kbd>Ctrl</kbd>+<kbd>G</kbd></div>
-                    <div class="shortcut-row"><span class="shortcut-desc">Command Palette</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></div>
+                    <h3>AI</h3>
+                    <div class="shortcut-row"><span class="shortcut-desc">Edit with AI (Panel)</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Manim Docs Lookup</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd></div>
+                </div>
+                <div class="shortcut-group">
+                    <h3>View</h3>
+                    <div class="shortcut-row"><span class="shortcut-desc">Zen Mode (Fullscreen)</span><kbd>F11</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Scene Outline</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Command Palette</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Keyboard Shortcuts</span><kbd>Ctrl</kbd>+<kbd>/</kbd></div>
+                    <div class="shortcut-row"><span class="shortcut-desc">Zoom In / Out / Reset</span><kbd>Ctrl</kbd>+<kbd>=</kbd>/<kbd>-</kbd>/<kbd>0</kbd></div>
                 </div>
                 <div class="shortcut-group">
                     <h3>Terminal</h3>
+                    <div class="shortcut-row"><span class="shortcut-desc">Search Terminal</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Copy in Terminal</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></div>
                     <div class="shortcut-row"><span class="shortcut-desc">Paste in Terminal</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd></div>
                 </div>

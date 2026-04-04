@@ -1,0 +1,4 @@
+dist_nuitka/
+nuitka/
+__pycache__/
+.claude/

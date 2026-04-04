@@ -430,16 +430,24 @@ class NarrationMixin:
             base, ext = os.path.splitext(video_path)
             output_path = f"{base}_narrated{ext}"
 
-        # ffmpeg: overlay audio on video, keep video codec, encode audio as AAC
+        # ffmpeg: merge audio and video.
+        # -c:v copy keeps original video (fast, no re-encode).
+        # -c:a aac encodes narration audio.
+        # apad pads audio with silence if video is longer than narration.
+        # -shortest stops when the shortest stream ends — since audio is
+        # padded to infinity, it effectively stops at video end.
+        # If narration is longer than video, the extra audio is trimmed
+        # (video can't be extended without re-encoding).
         cmd = [
             'ffmpeg', '-y',
             '-i', video_path,
             '-i', final_audio,
+            '-filter_complex', '[1:a]apad[a]',
+            '-map', '0:v:0',
+            '-map', '[a]',
             '-c:v', 'copy',
             '-c:a', 'aac',
             '-b:a', '192k',
-            '-map', '0:v:0',
-            '-map', '1:a:0',
             '-shortest',
             output_path
         ]

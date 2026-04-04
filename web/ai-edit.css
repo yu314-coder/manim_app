@@ -57,7 +57,83 @@
     display: flex;
     gap: 4px;
     margin-left: auto;
+    position: relative;
 }
+
+/* ── Chat History Dropdown ── */
+.aip-history-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    width: 320px;
+    max-height: 400px;
+    overflow-y: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--ai-radius-sm);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+    z-index: 1000;
+    padding: 4px 0;
+}
+.aip-history-dropdown.show { display: block; }
+.aip-history-dropdown .aip-hist-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+.aip-history-dropdown .aip-hist-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.15s;
+}
+.aip-history-dropdown .aip-hist-item:last-child { border-bottom: none; }
+.aip-history-dropdown .aip-hist-item:hover { background: var(--bg-secondary); }
+.aip-history-dropdown .aip-hist-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.aip-history-dropdown .aip-hist-file {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+}
+.aip-history-dropdown .aip-hist-meta {
+    font-size: 10px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.aip-history-dropdown .aip-hist-prompt {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.aip-history-dropdown .aip-hist-del {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 10px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.aip-history-dropdown .aip-hist-item:hover .aip-hist-del { opacity: 1; }
+.aip-history-dropdown .aip-hist-del:hover { color: var(--ai-red); background: rgba(239,68,68,0.1); }
 
 /* Provider toggle: compact segmented pill */
 .aip-provider-toggle {
@@ -118,18 +194,111 @@
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    min-width: 200px;
+    min-width: 280px;
+    max-width: 340px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--ai-radius);
     padding: 4px;
     z-index: 100;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+    max-height: 400px;
+    overflow-y: auto;
 }
 .aip-model-dropdown.show { display: block; }
-.aip-model-dropdown .aiw-model-option {
-    padding: 8px 12px;
-    font-size: 12px;
+
+/* ── Rich model option (shared by panel + window mode) ── */
+.aim-tier-sep {
+    padding: 6px 10px 3px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+    opacity: 0.8;
+}
+.aim-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+    position: relative;
+}
+.aim-option:hover {
+    background: rgba(255,255,255,0.06);
+}
+.aim-option.active {
+    background: rgba(99,102,241,0.12);
+}
+.aim-option.active::before {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 18px;
+    border-radius: 2px;
+    background: #6366f1;
+}
+.aim-option-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.aim-option-icon {
+    font-size: 11px;
+    width: 14px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.aim-option-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.aim-option-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.aim-option-desc {
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    padding-left: 20px;
+}
+.aim-option-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+    padding-left: 20px;
+    flex-wrap: wrap;
+}
+.aim-cost {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono, 'Consolas', monospace);
+}
+.aim-rec-tag {
+    font-size: 9px;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.05);
+    padding: 1px 4px;
+    border-radius: 3px;
 }
 
 /* Header icon buttons */
@@ -340,6 +509,17 @@
     border: 1px solid var(--border-color);
 }
 .ai-edit-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ai-edit-thumb-pdf {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: #1e1e2e; color: #ef4444; font-size: 16px;
+}
+.ai-edit-thumb-pdf span {
+    font-size: 6px; color: #aaa;
+    overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; max-width: 40px; margin-top: 1px;
+}
 .ai-edit-thumb-remove {
     position: absolute;
     top: -3px;
@@ -512,7 +692,16 @@
     border-radius: 6px;
 }
 .ai-chat-user-msg i { font-size: 10px; opacity: 0.7; }
-.ai-chat-response { margin-top: 4px; }
+.ai-chat-response {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 4px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 120px;
+    overflow-y: auto;
+}
 
 /* Diff container overlays the editor area */
 #aiDiffContainer {
@@ -583,15 +772,19 @@
     top: calc(100% + 6px);
     left: 50%;
     transform: translateX(-50%);
-    min-width: 220px;
+    min-width: 280px;
+    max-width: 360px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--ai-radius);
     padding: 6px;
     z-index: 100;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+    max-height: 420px;
+    overflow-y: auto;
 }
 .aiw-model-dropdown.show { display: block; }
+/* Old .aiw-model-option kept for backwards compat — new dropdown uses .aim-option */
 .aiw-model-option {
     display: flex;
     align-items: center;
@@ -828,6 +1021,17 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+.aiw-thumb-pdf {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: #1e1e2e; color: #ef4444; font-size: 18px;
+}
+.aiw-thumb-pdf span {
+    font-size: 7px; color: #aaa;
+    overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; max-width: 48px; margin-top: 2px;
 }
 .aiw-thumb-remove {
     position: absolute;

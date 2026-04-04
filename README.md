@@ -81,6 +81,17 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 - Persistent session across renders
 - Color-coded output for better readability
 
+### 🖥️ **CLI & MCP Server (Codex Plugin)**
+- **Same EXE, dual mode** — double-click for GUI, run from terminal for CLI
+- `ManimStudio render scene.py --quality 1080p --width 1920 --height 1080 --fps 60` — headless render
+- `ManimStudio validate scene.py` — syntax check and scene class detection
+- `ManimStudio presets` — list all quality presets with resolutions
+- `ManimStudio mcp` — start MCP server (stdio) for **OpenAI Codex** integration
+- **Full resolution control** — quality presets (120p–8K) plus custom `--width` / `--height` override
+- **MCP tools exposed**: `render_manim_animation`, `check_render_status`, `validate_scene`, `list_quality_presets`
+- Uses the same `manim_studio_default` venv as the GUI — no separate setup
+- Register in Codex: add `[mcp_servers.ManimStudio]` to `~/.codex/config.toml`
+
 ### 🎯 **Smart Workflow Features**
 - **Auto-save backups**: Never lose your work
 - **Unsaved changes warning**: Prompted before opening a new file
@@ -177,6 +188,62 @@ python build_nuitka.py
 
 # Output will be in dist_nuitka/
 ```
+
+### CLI Usage
+
+The same executable (or `python app.py`) works as both GUI and CLI:
+
+```bash
+# Headless render with quality preset
+ManimStudio.exe render scene.py --quality 1080p --fps 60
+
+# Render with custom resolution (overrides preset width/height)
+ManimStudio.exe render scene.py --quality 720p --width 800 --height 600 --fps 24
+
+# Render to a specific output directory
+ManimStudio.exe render scene.py -q 4K -o C:\renders\my_video
+
+# Validate code without rendering
+ManimStudio.exe validate scene.py
+
+# List all quality presets
+ManimStudio.exe presets
+
+# Start MCP server for Codex integration
+ManimStudio.exe mcp
+```
+
+From source, replace `ManimStudio.exe` with `python app.py`:
+
+```bash
+python app.py render scene.py --quality 720p --width 1280 --height 720
+python app.py mcp
+```
+
+### Codex MCP Integration
+
+Register ManimStudio as an MCP server in `~/.codex/config.toml`:
+
+```toml
+# If using the compiled EXE:
+[mcp_servers.ManimStudio]
+command = "C:\\path\\to\\ManimStudio.exe"
+args = ["mcp"]
+
+# If running from source:
+[mcp_servers.ManimStudio]
+command = "python"
+args = ["C:\\path\\to\\app.py", "mcp"]
+```
+
+Once registered, Codex can call these MCP tools:
+
+| Tool | Description |
+|------|-------------|
+| `render_manim_animation` | Render Manim code with quality/width/height/fps/format controls |
+| `check_render_status` | Check if a render output file exists |
+| `validate_scene` | Syntax check + scene class name extraction |
+| `list_quality_presets` | List all presets with their default resolutions |
 
 ---
 
@@ -299,13 +366,20 @@ class AudioExample(Scene):
 
 ### Render Settings
 
-**Quality Presets:**
-- **480p**: 854×480, 15fps (Fast preview)
-- **720p**: 1280×720, 30fps (Standard HD)
-- **1080p**: 1920×1080, 60fps (Full HD)
-- **1440p**: 2560×1440, 60fps (2K)
-- **4K**: 3840×2160, 60fps (Ultra HD)
-- **8K**: 7680×4320, 60fps (Cinema quality)
+**Quality Presets** (GUI, CLI `--quality`, and MCP `quality` param):
+
+| Preset | Resolution | Default FPS | CLI Flag |
+|--------|-----------|------------|----------|
+| 120p | 214×120 | 15 | `-q 120p` |
+| 240p | 426×240 | 15 | `-q 240p` |
+| 480p | 854×480 | 15 | `-q 480p` |
+| 720p | 1280×720 | 30 | `-q 720p` |
+| 1080p | 1920×1080 | 60 | `-q 1080p` |
+| 1440p | 2560×1440 | 60 | `-q 1440p` |
+| 4K | 3840×2160 | 60 | `-q 4K` |
+| 8K | 7680×4320 | 60 | `-q 8K` |
+
+Use `--width` / `--height` (CLI) or `width` / `height` (MCP) to override the preset resolution.
 
 **Output Formats:**
 - MP4 (H.264 video)
@@ -333,7 +407,16 @@ Access via Settings (⚙️ icon):
 ## 📂 File Structure
 
 ```
-C:\Users\<you>\.manim_studio\
+manim_app/                    # Source / EXE directory
+├── app.py                    # Main app (GUI + CLI dispatcher)
+├── cli.py                    # CLI & MCP server (headless render)
+├── ai_edit.py                # AI Edit module (Claude + Codex)
+├── narration_addon.py        # Kokoro TTS narration
+├── build_nuitka.py           # Nuitka build script
+├── prompts/                  # AI prompt templates (.md)
+└── web/                      # Frontend (HTML/CSS/JS)
+
+C:\Users\<you>\.manim_studio\   # User data directory
 ├── assets\              # Your uploaded files (fonts, images, audio)
 ├── lsp_workspace\       # basedpyright workspace (auto-managed)
 ├── media\               # Manim cache and temp files
@@ -341,7 +424,7 @@ C:\Users\<you>\.manim_studio\
 ├── preview\             # Quick preview output (temporary)
 ├── autosave\            # Auto-saved code backups
 ├── venvs\
-│   └── manim_studio_default\  # Python virtual environment
+│   └── manim_studio_default\  # Python virtual environment (shared by GUI & CLI)
 └── settings.json        # Your app preferences
 ```
 
@@ -471,6 +554,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### Upcoming Features
 
+- [x] **CLI & MCP Server**: Headless render + Codex plugin via MCP tools
 - [ ] **Live Preview Mode**: See animations update in real-time as you type
 - [ ] **Scene Browser**: Visual navigation between multiple scenes
 - [ ] **Animation Templates**: Pre-built scenes for common use cases
@@ -526,6 +610,9 @@ If you find this project useful, please consider giving it a star on GitHub!
 ## 📝 Changelog
 
 ### v1.1.2.0 (Latest)
+- ✨ **CLI Mode** — same EXE works as headless CLI: `ManimStudio render scene.py --quality 1080p --width 1920 --height 1080 --fps 60`
+- ✨ **MCP Server for Codex** — `ManimStudio mcp` exposes render/validate/presets as MCP tools over stdio; register in `~/.codex/config.toml` and Codex can render Manim animations directly
+- ✨ **Full Resolution Control** — CLI and MCP support all quality presets (120p–8K) plus custom `--width`/`--height` override
 - ✨ **AI Agent Mode** — autonomous loop: generate code → render → capture screenshots → visual review → auto-fix → repeat until correct
 - ✨ **Dual Agent Providers** — AI Agent works with both Claude Code and OpenAI Codex CLI, using the same provider for edit and review
 - ✨ **Continuous Chat** — multi-turn conversations with session memory; Claude uses `--session-id` / `--resume` for context persistence
@@ -536,6 +623,11 @@ If you find this project useful, please consider giving it a star on GitHub!
 - ✨ **Assets Folder Access** — AI workspaces get a junction/symlink to the assets folder; CLAUDE.md/AGENTS.md lists available asset files
 - ✨ **Inline Autocomplete** — ghost-text code completions powered by Claude Haiku (fast, lightweight)
 - ✨ **New Chat Button** — reset AI Edit session and start fresh without restarting the panel
+- ✨ **Persistent Chat History** — AI chat sessions auto-saved to disk (`~/.manim_studio/chat_history/`); browse, resume, or delete past sessions from the history dropdown
+- ✨ **AI-Friendly GUI** — `aria-label`, `data-testid`, `aria-live` attributes on all interactive elements; hidden app state indicator (`#appStateIndicator`) exposes render/AI/file state for computer-control agents (Claude Code Desktop, Codex)
+- ✨ **Narration Voice & Speed Selector** — pick TTS voice (Heart, Bella, Nicole, Sarah, Adam, Michael, Emma, George) and speed (0.75x–1.5x) from the Settings sidebar; persisted via localStorage
+- ✨ **Faster Startup** — disk-cached dependency checks (1-hour TTL) skip subprocess calls on repeat launches; Python and LaTeX checks run in parallel threads; `shutil.which()` fast path for LaTeX
+- ✨ **Editor Skeleton UI** — CSS shimmer placeholder shown while Monaco editor loads for improved perceived startup speed
 - 🐛 Fixed Codex agent not working (cascading bugs: missing AGENTS.md, wrong CLI flags, no JSONL parsing)
 - 🐛 Fixed Codex agent review using Claude instead of Codex — now each provider reviews with its own CLI
 - 🐛 Fixed `--skip-git-repo-check` incorrectly added to Claude CLI calls (only valid for Codex)
@@ -548,6 +640,8 @@ If you find this project useful, please consider giving it a star on GitHub!
 - 🔧 Instructions piped via stdin (`-p` without arg) to avoid OS argument length limits
 - 🔧 Review prompt no longer embeds code — reviewer only needs screenshots + goal description
 - 🔧 Agent edit failure counter prevents infinite loops (stops after 5 consecutive failures)
+- 🔧 Build: console mode changed from `disable` to `attach` so the EXE works as both GUI and CLI
+- 🔧 Build: removed `--force-stdout-spec`/`--force-stderr-spec` (they broke CLI/MCP stdio)
 - 🔒 **Security: Shell injection fix** — Codex CLI commands converted from `shell=True` string interpolation to safe list-based `subprocess.Popen` (prevents model name / image path injection)
 - 🔒 **Security: Path traversal fix** — `upload_file_content` now strips directory components with `os.path.basename()` (prevents writing files outside assets folder)
 - 🔒 **Security: XSS fix in asset display** — `displayAssets()` now escapes `file.name` and `file.path` via `escapeHtml()` before innerHTML insertion

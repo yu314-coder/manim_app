@@ -3359,6 +3359,41 @@ div[style*="font-family"] {
     position: relative;
 }
 
+/* Editor skeleton placeholder — visible until Monaco loads */
+.editor-skeleton {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+    background: var(--bg-primary, #0d1117);
+    animation: skel-fade-in 0.15s ease;
+}
+.editor-skeleton.hidden {
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    pointer-events: none;
+}
+.skel-line {
+    height: 14px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+    background-size: 200% 100%;
+    animation: skel-shimmer 1.5s ease-in-out infinite;
+}
+.skel-w40 { width: 40%; } .skel-w45 { width: 45%; } .skel-w50 { width: 50%; }
+.skel-w55 { width: 55%; } .skel-w60 { width: 60%; } .skel-w65 { width: 65%; }
+.skel-w70 { width: 70%; } .skel-w75 { width: 75%; } .skel-w80 { width: 80%; }
+.skel-w85 { width: 85%; } .skel-w90 { width: 90%; }
+@keyframes skel-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+@keyframes skel-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
 /* Venv/Package Manager Tab Styles */
 .venv-container {
     display: flex;

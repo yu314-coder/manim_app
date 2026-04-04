@@ -60,10 +60,12 @@ def parse_args():
     parser.add_argument(
         "--console-mode",
         choices=["disable", "attach"],
-        default="disable",
+        default="attach",
         help=(
-            "Windows console mode for the built app. Use 'attach' when "
-            "debugging startup failures."
+            "Windows console mode. 'attach' (default) reuses the parent "
+            "console when launched from a terminal (required for CLI/MCP "
+            "mode) and shows no window when double-clicked.  'disable' "
+            "removes console entirely (breaks CLI/MCP)."
         ),
     )
     parser.add_argument(
@@ -208,22 +210,23 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
         f"--output-filename={APP_NAME}.exe",
         "--company-name=ManimStudio",
         "--product-name=Manim Studio",
-        "--file-version=1.1.1.0",
-        "--product-version=1.1.1.0",
+        "--file-version=1.1.2.0",
+        "--product-version=1.1.2.0",
         "--file-description=Manim Animation Studio",
         "--copyright=Manim Studio 2025",
 
         # Windows-specific options
-        # Use 'disable' for NO console flash (completely GUI-only application)
-        # Combined with multiprocessing plugin and freeze_support() in code
+        # 'attach' reuses parent console (needed for CLI/MCP mode) and
+        # creates none when double-clicked (GUI stays clean).
         f"--windows-console-mode={console_mode}",
 
         # Enable multiprocessing plugin (REQUIRED for pywebview with disabled console)
         "--plugin-enable=multiprocessing",
 
-        # Output error logging for debugging (helps troubleshoot issues)
-        "--force-stdout-spec={CACHE_DIR}/ManimStudio.out.txt",
-        "--force-stderr-spec={CACHE_DIR}/ManimStudio.err.txt",
+        # NOTE: Do NOT use --force-stdout-spec / --force-stderr-spec here.
+        # They redirect ALL stdout/stderr to files, which breaks CLI JSON
+        # output and MCP stdio communication.  The app handles its own
+        # debug log file in the frozen-exe __main__ block instead.
     ]
 
     # Add icon if exists
@@ -235,6 +238,9 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
         # Include data directories
         "--include-data-dir=web=web",  # Include entire web folder
         "--include-data-dir=prompts=prompts",  # AI prompt templates
+
+        # Ensure cli.py is compiled (used by CLI/MCP mode via conditional import)
+        "--include-module=cli",
 
         # Note: pywebview plugin is always enabled by Nuitka, no need to specify it
 
