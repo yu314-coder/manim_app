@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ManimStudio does not use the camera. This declaration is required because a transitively-linked media library (FFmpeg/PyAV avdevice) references the AVFoundation camera API, even though the app never invokes it.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ManimStudio does not use the microphone. This declaration is required because a transitively-linked media library (FFmpeg/PyAV avdevice) references the AVFoundation audio capture API, even though the app never invokes it.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>fetch</string>
+	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+</dict>
+</plist>

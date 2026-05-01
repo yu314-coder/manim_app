@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OfflinAi Editor</title>
+    <style>
+        :root {
+            /* Deep dark palette (matches ManimStudio) */
+            --bg-primary:    #0a0a0f;
+            --bg-secondary:  #12121a;
+            --bg-tertiary:   #1a1a28;
+            --bg-surface:    #1f1f2e;
+            --bg-elevated:   #2a2a42;
+            --text-primary:  #f0f0f5;
+            --text-secondary:#a8a8b8;
+            --text-dim:      #6b6b80;
+            --accent:        #6366f1;
+            --accent-violet: #a855f7;
+            --border-sub:    rgba(99, 102, 241, 0.15);
+            --border-glow:   rgba(99, 102, 241, 0.35);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', Menlo, monospace;
+            /* Let touch and cursor events through to Monaco without
+               triggering the browser's built-in double-tap-to-zoom or
+               swipe-to-back. Monaco needs pan-y for its vertical
+               scrollbar (touch drag) and pan-x for horizontal. */
+            touch-action: pan-x pan-y;
+            -webkit-user-select: text;
+            user-select: text;
+            /* Kill iOS's tap-highlight overlay — Monaco draws its own
+               cursor and line highlight; the default blue flash
+               competes with them on every tap. */
+            -webkit-tap-highlight-color: transparent;
+        }
+        #editor {
+            width: 100%;
+            height: 100vh;
+            background: var(--bg-primary);
+            /* Text selection within the editor — Monaco does this
+               natively via DOM ranges, but the default WKWebView
+               user-select: none inherits from some Safari builds.
+               Forcing `text` here guarantees drag-to-select works. */
+            -webkit-user-select: text;
+            user-select: text;
+        }
+        /* Monaco's inner text container — keep selection cursor visible
+           on Mac Catalyst. Without this, hovering over the code area
+           shows the default arrow cursor instead of the I-beam. */
+        .monaco-editor, .monaco-editor .view-lines, .monaco-editor textarea {
+            cursor: text !important;
+            -webkit-user-select: text !important;
+            user-select: text !important;
+        }
+
+        /* ─ Skeleton loader (shown until Monaco mounts) ──────────────── */
+        #editorSkeleton {
+            position: absolute;
+            inset: 0;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: var(--bg-primary);
+            z-index: 10;
+            transition: opacity 240ms ease;
+        }
+        #editorSkeleton.hidden { opacity: 0; pointer-events: none; }
+        .skel-line {
+            height: 14px;
+            border-radius: 4px;
+            background: linear-gradient(
+                90deg,
+                rgba(255,255,255,0.03) 0%,
+                rgba(99,102,241,0.10) 50%,
+                rgba(255,255,255,0.03) 100%
+            );
+            background-size: 200% 100%;
+            animation: skel-shimmer 1.5s ease-in-out infinite;
+        }
+        @keyframes skel-shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .skel-w80 { width: 80%; } .skel-w60 { width: 60%; } .skel-w90 { width: 90%; }
+        .skel-w40 { width: 40%; } .skel-w70 { width: 70%; } .skel-w50 { width: 50%; }
+        .skel-w85 { width: 85%; } .skel-w65 { width: 65%; } .skel-w45 { width: 45%; }
+        .skel-w75 { width: 75%; } .skel-w55 { width: 55%; }
+
+        /* ─ Monaco suggest/hover widget polish ──────────────────────── */
+        .monaco-editor .suggest-widget {
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6),
+                        0 0 0 1px var(--border-sub);
+            border-radius: 10px !important;
+            overflow: hidden;
+        }
+        .monaco-editor .monaco-hover {
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5),
+                        0 0 0 1px var(--border-sub);
+            border-radius: 8px !important;
+        }
+        .monaco-editor .parameter-hints-widget {
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5),
+                        0 0 0 1px var(--border-sub);
+            border-radius: 8px !important;
+        }
+        /* Subtle accent on selected suggestion */
+        .monaco-editor .suggest-widget .monaco-list-row.focused {
+            background: linear-gradient(90deg, rgba(99,102,241,0.25), rgba(168,85,247,0.12)) !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Skeleton loader while Monaco is still loading -->
+    <div id="editorSkeleton" aria-hidden="true">
+        <div class="skel-line skel-w80"></div>
+        <div class="skel-line skel-w60"></div>
+        <div class="skel-line skel-w90"></div>
+        <div class="skel-line skel-w40"></div>
+        <div class="skel-line skel-w70"></div>
+        <div class="skel-line skel-w50"></div>
+        <div class="skel-line skel-w85"></div>
+        <div class="skel-line skel-w65"></div>
+        <div class="skel-line skel-w45"></div>
+        <div class="skel-line skel-w75"></div>
+        <div class="skel-line skel-w55"></div>
+        <div class="skel-line skel-w80"></div>
+    </div>
+    <div id="editor"></div>
+
+    <script src="Monaco/vs/loader.js"></script>
+    <script>
+        // Configure Monaco AMD loader
+        require.config({ paths: { 'vs': 'Monaco/vs' } });
+
+        // NB: do NOT define `window.MonacoEnvironment` here. The Vite-
+        // bundled `vs/editor/editor.main.js` we ship installs its own
+        // `self.MonacoEnvironment.getWorker` that points to the hashed
+        // worker bundles in `Monaco/vs/assets/`. The legacy
+        // `getWorkerUrl` override that used to live here pointed at
+        // `Monaco/vs/base/worker/workerMain.js`, which doesn't exist
+        // in this distribution — that's why the editor was wedging at
+        // load and we had to fall back to a UITextView. Letting
+        // editor.main set MonacoEnvironment itself is the fix.
+
+        // Surface load errors loudly so we can debug from the Xcode
+        // console next time something in this bundle goes sideways.
+        window.addEventListener('error', function (e) {
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.editor) {
+                window.webkit.messageHandlers.editor.postMessage({
+                    kind: 'jserror',
+                    msg: String(e && e.message),
+                    src: String(e && e.filename),
+                    line: (e && e.lineno) || 0
+                });
+            }
+        });
+
+        // Swift bridge
+        function postToSwift(obj) {
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.editor) {
+                window.webkit.messageHandlers.editor.postMessage(obj);
+            }
+        }
+        window.postToSwift = postToSwift;
+        window.__resolvePending = {};
+
+        require(['vs/editor/editor.main'], function () {
+            // Deep dark theme (matches ManimStudio palette)
+            monaco.editor.defineTheme('offlinai-dark', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [
+                    { token: 'keyword',    foreground: '8b5cf6', fontStyle: 'bold' },
+                    { token: 'string',     foreground: 'fbbf24' },
+                    { token: 'comment',    foreground: '6b6b80', fontStyle: 'italic' },
+                    { token: 'number',     foreground: '34d399' },
+                    { token: 'type',       foreground: '06b6d4' },
+                    { token: 'identifier', foreground: 'f0f0f5' },
+                    { token: 'delimiter',  foreground: 'a8a8b8' },
+                    { token: 'operator',   foreground: 'a855f7' },
+                ],
+                colors: {
+                    'editor.background':                '#0a0a0f',
+                    'editor.foreground':                '#f0f0f5',
+                    'editor.lineHighlightBackground':   '#12121a',
+                    'editor.lineHighlightBorder':       '#00000000',
+                    'editor.selectionBackground':       '#6366f140',
+                    'editor.inactiveSelectionBackground':'#6366f120',
+                    'editor.findMatchBackground':       '#a855f760',
+                    'editor.findMatchHighlightBackground':'#a855f730',
+                    'editorLineNumber.foreground':      '#505068',
+                    'editorLineNumber.activeForeground':'#a8a8b8',
+                    'editorCursor.foreground':          '#a855f7',
+                    'editorIndentGuide.background1':    '#1f1f2e',
+                    'editorIndentGuide.activeBackground1':'#6366f180',
+                    'editorGutter.background':          '#0a0a0f',
+                    'editorBracketMatch.background':    '#6366f140',
+                    'editorBracketMatch.border':        '#a855f7',
+                    // Suggest widget
+                    'editorSuggestWidget.background':         '#12121a',
+                    'editorSuggestWidget.border':             '#1f1f2e',
+                    'editorSuggestWidget.selectedBackground': '#6366f140',
+                    'editorSuggestWidget.selectedForeground': '#ffffff',
+                    'editorSuggestWidget.foreground':         '#f0f0f5',
+                    'editorSuggestWidget.highlightForeground':'#a855f7',
+                    'editorSuggestWidget.focusHighlightForeground':'#fbbf24',
+                    // Hover / parameter hints
+                    'editorHoverWidget.background':     '#12121a',
+                    'editorHoverWidget.border':         '#1f1f2e',
+                    'editorHoverWidget.foreground':     '#f0f0f5',
+                    'editorWidget.background':          '#12121a',
+                    'editorWidget.border':              '#1f1f2e',
+                    'editorWidget.foreground':          '#f0f0f5',
+                    // Scrollbar
+                    'scrollbar.shadow':                 '#00000000',
+                    'scrollbarSlider.background':       '#6366f130',
+                    'scrollbarSlider.hoverBackground':  '#6366f160',
+                    'scrollbarSlider.activeBackground': '#a855f780',
+                },
+            });
+
+            // Create editor
+            const editor = monaco.editor.create(document.getElementById('editor'), {
+                // Swift overwrites this via setCode(); empty avoids a flash.
+                value: '',
+                language: 'python',
+                theme: 'offlinai-dark',
+                fontSize: 13,
+                fontFamily: "'SF Mono', Menlo, Monaco, 'Courier New', monospace",
+                fontLigatures: true,
+                lineHeight: 20,
+                letterSpacing: 0.2,
+                automaticLayout: true,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                lineNumbers: 'on',
+                lineNumbersMinChars: 3,
+                glyphMargin: false,
+                folding: true,
+                showFoldingControls: 'mouseover',
+                wordWrap: 'on',
+                tabSize: 4,
+                insertSpaces: true,
+                renderWhitespace: 'selection',
+                renderLineHighlight: 'all',
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                smoothScrolling: true,
+                // IntelliSense: fire instantly, no delay
+                autoClosingBrackets: 'always',
+                autoClosingQuotes: 'always',
+                autoIndent: 'full',
+                formatOnType: true,
+                suggestOnTriggerCharacters: true,
+                acceptSuggestionOnEnter: 'on',
+                acceptSuggestionOnCommitCharacter: true,
+                tabCompletion: 'on',
+                quickSuggestions: { other: true, comments: false, strings: false },
+                quickSuggestionsDelay: 0,          // instant (was 10ms)
+                wordBasedSuggestions: 'currentDocument',
+                parameterHints: { enabled: true, cycle: true },
+                hover: { enabled: true, delay: 200, sticky: true },
+                suggest: {
+                    showWords: true,
+                    showMethods: true,
+                    showFunctions: true,
+                    showConstructors: true,
+                    showFields: true,
+                    showVariables: true,
+                    showClasses: true,
+                    showStructs: true,
+                    showInterfaces: true,
+                    showModules: true,
+                    showProperties: true,
+                    showEvents: true,
+                    showOperators: true,
+                    showUnits: true,
+                    showValues: true,
+                    showConstants: true,
+                    showEnums: true,
+                    showEnumMembers: true,
+                    showKeywords: true,
+                    showSnippets: true,
+                    snippetsPreventQuickSuggestions: false,
+                    preview: true,
+                    previewMode: 'subwordSmart',
+                    filterGraceful: true,
+                    localityBonus: true,
+                    shareSuggestSelections: true,
+                    insertMode: 'insert',
+                },
+                fixedOverflowWidgets: true,
+                padding: { top: 12, bottom: 12 },
+                scrollbar: {
+                    verticalScrollbarSize: 10,
+                    horizontalScrollbarSize: 10,
+                    useShadows: false,
+                },
+                occurrencesHighlight: 'singleFile',
+                selectionHighlight: true,
+                matchBrackets: 'always',
+                renderControlCharacters: false,
+                mouseWheelZoom: false,
+                inlineSuggest: { enabled: false },
+            });
+
+            window.__monacoEditor = editor;
+
+            // Clipboard bridge — WKWebView's native clipboard API is
+            // unreliable on iOS/Catalyst (execCommand('copy') silently
+            // fails, Clipboard API blocked outside user-gesture
+            // contexts). Intercept Cmd+C/X/V ourselves, bounce through
+            // the Swift postMessage channel to UIPasteboard, and run
+            // the matching Monaco action to update the editor buffer.
+            function _postToSwift(msg) {
+                try {
+                    window.webkit.messageHandlers.editor.postMessage(msg);
+                } catch (_) { /* ignore — Swift handler missing */ }
+            }
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, () => {
+                const sel = editor.getSelection();
+                const text = sel && !sel.isEmpty()
+                    ? editor.getModel().getValueInRange(sel)
+                    : '';
+                if (text) _postToSwift({ kind: 'clipboardCopy', text: text });
+            });
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, () => {
+                const sel = editor.getSelection();
+                if (!sel || sel.isEmpty()) return;
+                const text = editor.getModel().getValueInRange(sel);
+                _postToSwift({ kind: 'clipboardCopy', text: text });
+                editor.executeEdits('cut', [{ range: sel, text: '', forceMoveMarkers: true }]);
+            });
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
+                // Request paste text from Swift. Response comes back
+                // via window.__editor.pasteFromClipboard(text) below.
+                _postToSwift({ kind: 'clipboardPasteRequest' });
+            });
+            // Cmd+A — Monaco has this built-in, but make it explicit
+            // in case a future build disables it.
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA, () => {
+                const model = editor.getModel();
+                if (!model) return;
+                const last = model.getLineCount();
+                const lastCol = model.getLineMaxColumn(last);
+                editor.setSelection({ startLineNumber: 1, startColumn: 1,
+                                      endLineNumber: last, endColumn: lastCol });
+            });
+
+            // Fade out skeleton
+            const skel = document.getElementById('editorSkeleton');
+            if (skel) {
+                skel.classList.add('hidden');
+                setTimeout(() => skel.remove(), 300);
+            }
+
+            // Notify Swift — content changes (debounced)
+            let changeTimer = null;
+            editor.onDidChangeModelContent(() => {
+                if (changeTimer) clearTimeout(changeTimer);
+                changeTimer = setTimeout(() => {
+                    postToSwift({ kind: 'textChanged', text: editor.getValue() });
+                }, 120);
+            });
+
+            // Swift-callable API
+            window.__editor = {
+                setCode(code, language) {
+                    const model = editor.getModel();
+                    monaco.editor.setModelLanguage(model, language || 'python');
+                    model.setValue(code);
+                },
+                setLanguage(language) {
+                    // Re-tag the syntax highlighter without touching the
+                    // buffer contents — used when the user switches the
+                    // language selector and we want their existing code
+                    // to stay put.
+                    const model = editor.getModel();
+                    if (model) {
+                        monaco.editor.setModelLanguage(model, language || 'python');
+                    }
+                },
+                insertCode(code) {
+                    const selection = editor.getSelection();
+                    editor.executeEdits('swift-apply', [{
+                        range: selection,
+                        text: code,
+                        forceMoveMarkers: true,
+                    }]);
+                },
+                getText() {
+                    return editor.getValue();
+                },
+                setSymbolIndex(json) {
+                    window.__pythonSymbolIndex = json;
+                    if (typeof window.__onSymbolIndexReady === 'function') {
+                        window.__onSymbolIndexReady();
+                    }
+                },
+                resolveResponse(id, signature, docs) {
+                    const cb = window.__resolvePending[id];
+                    if (cb) {
+                        delete window.__resolvePending[id];
+                        cb({ signature: signature, documentation: docs });
+                    }
+                },
+                focusEditor() { editor.focus(); },
+                triggerSuggest() {
+                    editor.trigger('kbd', 'editor.action.triggerSuggest', {});
+                },
+                // Called by Swift's WKScriptMessageHandler in response
+                // to a clipboardPasteRequest: inserts `text` at the
+                // current selection/cursor. Used by the Cmd+V handler
+                // registered via editor.addCommand above.
+                pasteFromClipboard(text) {
+                    if (typeof text !== 'string' || !text) return;
+                    const selection = editor.getSelection();
+                    editor.executeEdits('paste', [{
+                        range: selection,
+                        text: text,
+                        forceMoveMarkers: true,
+                    }]);
+                },
+            };
+
+            // Single bundled entry point — registers Python + C + C++ + Fortran
+            // IntelliSense providers. See editor.js for the full language DB.
+            if (typeof window.registerAllLanguageProviders === 'function') {
+                window.registerAllLanguageProviders(monaco, editor);
+            }
+
+            postToSwift({ kind: 'ready' });
+        });
+    </script>
+    <script src="editor.js"></script>
+</body>
+</html>

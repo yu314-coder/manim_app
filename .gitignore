@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Xcode build artifacts
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Reference clones / vendored upstream sources kept locally for grep,
+# never pushed (see python-ios-lib + CodeBench upstream repos).
+/_vendor/
+
+# Busytex web build (~237 MB; texlive-basic.data is 100 MB which hits
+# GitHub's per-file limit). Fetch separately from the busytex release
+# and drop the unpacked bundle at ManimStudio/ManimStudio/Resources/Busytex/
+# before building.
+ManimStudio/ManimStudio/Resources/Busytex/
+
+# Last-archive logs from the SwiftSupport injector script.
+scripts/last-archive-postaction.log
