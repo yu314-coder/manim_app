@@ -1,92 +1,106 @@
 # ManimStudio (macOS)
 
-Native macOS port of the desktop ManimStudio that lives on `main`.
-**Separate target** from the iOS / iPadOS app — only the AppIcon asset
-is shared (regenerated from the iOS 1024×1024 master).
+Native macOS rewrite of the desktop ManimStudio that lives on `main`.
+**Separate target** from the iOS / iPadOS app — only the AppIcon
+asset is shared (regenerated from the iOS 1024×1024 master).
 
-## Strategy
+## Architecture
 
-Rather than rewriting 25 k+ LOC of Python + JS in Swift, this target
-**reuses the entire `web/` frontend and `app.py` business logic** from
-`main` and replaces only the platform shell. PyWebView's WKWebView+IPC
-container is swapped for a native AppKit one, with an identical
-`window.pywebview.api.*` JS contract so the existing JS calls work
-unchanged.
+Pure SwiftUI + AppKit. **No** WKWebView shell, **no** embedded Python
+interpreter, **no** PyWebView IPC. The render pipeline shells out to
+a host `python3.*` (resolved by `PythonResolver`) running `python -m
+manim render scene.py <SceneName>` against a bundled
+`Resources/site-packages/` (manim, numpy, scipy, matplotlib, …).
 
-## Phases
+This trades the Windows desktop app's PyWebView container for a real
+native macOS app — proper NSWindow chrome, native menu bar, native
+NSToolbar, NSTextView-based editor with Python syntax highlighting,
+AVKit video preview, NSOpenPanel/NSSavePanel file dialogs.
 
-### ✅ Phase 1 — WKWebView shell (this commit)
+## Files
 
-- `ManimStudio_macosApp.swift` — `@main`, hosts a single `WindowGroup`.
-- `ContentView.swift` — root SwiftUI view, embeds `WebHost`.
-- `WebHost.swift` — `NSViewRepresentable` wrapping `WKWebView`:
-  - Loads `Resources/web/index.html` as a file URL with directory read
-    access so all relative asset paths resolve.
-  - Injects a `window.pywebview` shim at document-start providing
-    `pywebview.api.*` as a `Proxy` that posts to a `pywebviewBridge`
-    message handler. Every method call is a Promise resolved by a
-    later `webView.evaluateJavaScript("…_resolve(id, payload)…")`.
-  - `IPCHandler` receives the JS messages. Phase 1 stub replies
-    `null` to every call so the page loads without errors.
-- `Assets.xcassets/AppIcon.appiconset/` — generated from the iOS
-  1024×1024 master via `sips` into the 7 sizes macOS expects
-  (16/32/64/128/256/512/1024 in @1x and @2x flavors).
-- `Resources/web/` — the unmodified `web/` tree from `origin/main`
-  (Monaco, xterm.js, FontAwesome, AI edit panel, modals, all CSS/JS).
-- `Resources/prompts/` — the AI agent prompt pack.
-- `PythonApp/` — `app.py`, `ai_edit.py`, `cli.py`, `narration_addon.py`
-  copied from `origin/main`. Not yet executed; placeholder for Phase 2.
+```
+ManimStudio_macos/
+├── ManimStudio_macosApp.swift  · @main, NSWindow, menu bar, file IO
+├── ContentView.swift            · NavigationSplitView + toolbar
+├── AppState.swift               · ObservableObject central state
+├── Theme.swift                  · color palette + reusable styling
+├── EditorView.swift             · NSTextView + Python syntax highlight
+├── PreviewView.swift            · AVKit player for rendered MP4/MOV
+├── TerminalView.swift           · NSTextView console with ANSI strip
+├── RenderManager.swift          · subprocess driver for manim CLI
+├── PythonResolver.swift         · finds host python3.* on disk
+├── Assets.xcassets/             · AppIcon (regen'd from iOS master)
+├── ManimStudio_macos.entitlements
+└── README.md  (this file)
+```
 
-After this commit you can build the `ManimStudio_macos` scheme and
-see the existing Windows-app UI render in a native macOS window. Every
-button click hits the IPC stub and gets `null` back, so nothing
-actually renders or saves yet — that's Phase 2.
+## What Swift handles
 
-### ✅ Phase 2 — Embed Python + wire IPC (this commit)
+| Concern | Implementation |
+|---------|----------------|
+| Window chrome | SwiftUI `WindowGroup` + native NSWindow titlebar |
+| Sidebar nav | `NavigationSplitView` with five `SidebarSection` cases |
+| Code editor | `NSTextView` + 200-line `PythonTokens` regex tokenizer |
+| Preview | `AVKit.VideoPlayer` for MP4/MOV; `NSImage` for PNG/GIF |
+| Terminal | `NSTextView` (read-only) with ANSI CSI stripping |
+| File IO | `NSOpenPanel` / `NSSavePanel` |
+| Menu bar | SwiftUI `.commands` modifier with `CommandGroup` / `CommandMenu` |
+| Render | `Foundation.Process` + `Pipe` |
+| Python deps | bundled `Resources/site-packages/` (no embedded interpreter) |
 
-- `PythonHost.swift` — embeds `Python.framework` (BeeWare's
-  macOS slice), `Py_Initialize`, owns the GIL on a dedicated
-  serial dispatch queue. `dispatch(method:args:)` JSON-encodes
-  the JS args, runs a tiny `getattr(api, method)(*args)` wrapper
-  via `PyRun_SimpleString`, JSON-encodes the return value, and
-  hands it back through a temp file (avoids walking the C API
-  for every primitive).
-- `IPCHandler.dispatch` now calls `PythonHost.shared.dispatch(...)`
-  instead of returning `null`. JSON shape is preserved end-to-end:
-  JS → Swift `[Any]` → JSON string → Python `json.loads` → method
-  call → JSON-encoded return → Swift JSON object → JS Promise.
-- `PythonApp/bootstrap_macos.py` — entry point loaded once after
-  `Py_Initialize`. Applies platform shims **before** importing
-  `app`:
-  - `winpty` → wrapper around `pty.openpty()` + `posix_spawn`
-  - `webview` → no-op stub (we don't need PyWebView's window)
-  - `COMSPEC=/bin/zsh`, `SHELL=/bin/zsh`
-  Then `import app`, instantiate `App()` (or a fallback name),
-  expose as module-level `api`. The Windows `app.py` is left
-  byte-identical so future merges from `main` are clean.
-- `scripts/install-python-macos.sh` — build phase that copies the
-  stdlib + a pip-installed `_vendor/macos-site-packages/` cache
-  into `<App>.app/Contents/Resources/`. First build pip-installs
-  everything once (~5 min); subsequent builds rsync from the cache.
-- `requirements-macos.txt` — pip deps: manim / numpy / scipy /
-  matplotlib / Pillow / webvtt-py / kokoro-onnx / httpx / pyyaml.
+## What Python handles (subprocess only)
 
-### ⏳ Phase 3 — Native macOS niceties
+The host `python3.*` is invoked exactly once per render, with these
+overrides:
 
-- `NSMenu` File / Edit / Render / View / Help with all keybindings.
-- Drag-drop `.py` onto window via `NSDraggingDestination`.
-- `NSOpenPanel` / `NSSavePanel` shim for `pywebview.create_file_dialog`.
-- Real PTY-backed terminal via `posix_spawn` + `openpty`.
-- macOS notarization + DMG packaging for distribution outside the
-  App Store.
+```
+PYTHONPATH = <App>.app/Contents/Resources/site-packages
+PYTHONUNBUFFERED = 1
+PYTHONDONTWRITEBYTECODE = 1
+MANIM_DISABLE_RENDERER_CACHE = 1
+```
 
-### ⏳ Phase 4 — Subsystem feature parity
+The user's system Python install is never modified. Side-effect: if
+they don't have a Python 3.14 on PATH, RenderManager surfaces a
+helpful "install Python 3.14 from python.org or `brew install
+python@3.14`" message in the terminal pane.
 
-Everything from `main`'s README that's Python-side (AI edit, Codex /
-Claude Code integration, Kokoro TTS narration, asset manager, package
-manager, render history, scene outline, basedpyright LSP) is
-business logic in `app.py` / `ai_edit.py` and works without
-modification once Phase 2 is in. Just verify on macOS and ship.
+## Build dependencies
+
+- **Xcode 26+** (Swift 6, macOS 26 SDK).
+- **Apple Developer team** (`LYK4LV2859` is hard-coded — change in
+  `project.pbxproj` for your own team).
+- **Host Python 3.14** for the one-time `pip install` step that
+  populates `_vendor/macos-site-packages/` (~508 MB, runs ~5 min).
+  Subsequent builds rsync from that cache and complete in seconds.
+
+```sh
+xcodebuild -project ManimStudio/ManimStudio.xcodeproj \
+           -scheme ManimStudio_macos -configuration Debug build
+```
+
+The `install-python-macos.sh` build phase will pip-install on first
+clean build, then rsync the site-packages tree into
+`<App>.app/Contents/Resources/site-packages/`.
+
+## What's NOT here yet
+
+This is the **first native cut**. Many features from the Windows
+desktop app's `main` branch aren't ported yet:
+
+- AI Edit panel (Codex / Claude Code subprocess driver) — needs
+  `AIEditView.swift` + a JSONL pipe parser
+- Auto narration with Kokoro TTS — needs `NarrationManager.swift`
+  + `narrate("…")` source preprocessor
+- basedpyright LSP integration — would need a Node.js launcher
+- Real `Assets`, `Packages`, `History` views (currently placeholders)
+- Drag-drop `.py` onto the window
+- macOS notarization + DMG packaging
+
+The structure is designed to slot these in without rewriting any of
+the existing files — each becomes its own focused Swift file under
+`ManimStudio_macos/`.
 
 ## Sharing convention
 
@@ -94,9 +108,7 @@ modification once Phase 2 is in. Just verify on macOS and ship.
 |-------|----------|------------|
 | AppIcon (1024×1024 master) | `ManimStudio/Assets.xcassets/AppIcon` | regenerated into `ManimStudio_macos/Assets.xcassets/AppIcon` |
 | Swift sources | iOS only | macOS only |
-| `web/` frontend | n/a (uses Monaco directly) | bundled from `main` |
-| `app.py` & friends | n/a | bundled from `main` |
+| Anything else | nothing shared | nothing shared |
 
-By design, no Swift file is ever shared. iOS layouts (compact size
-class, segmented panes) and macOS layouts (NSWindow + WKWebView) live
-in separate files in their respective target folders.
+By design, no Swift file is ever shared. The two targets can
+diverge freely.
