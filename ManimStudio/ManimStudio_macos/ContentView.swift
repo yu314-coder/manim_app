@@ -6,6 +6,7 @@
 // terminal + collapsible right-side render controls.
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject var app: AppState

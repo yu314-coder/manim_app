@@ -20,6 +20,16 @@ final class RenderManager {
 
     let app: AppState
     private var current: Process?
+    /// Timer that polls the output dir while a render is in flight,
+    /// updating `app.lastRenderURL` to the newest produced
+    /// .mp4/.mov/.gif/.png so the preview pane shows partial movie
+    /// segments mid-render instead of staying empty until the very
+    /// end. The interval is generous (1.2 s) so we don't churn the
+    /// AVPlayer for tiny scenes that finish in under a second.
+    private var outputPoller: Timer?
+    /// Set of paths we've already surfaced — keeps the AVPlayer
+    /// from re-loading the same partial repeatedly.
+    private var surfacedURLs: Set<URL> = []
 
     init(app: AppState) { self.app = app }
 
@@ -127,13 +137,66 @@ final class RenderManager {
         let invocation = ([pyURL.path] + args).joined(separator: " ")
         app.appendTerminal("\n[render] \(invocation)\n")
         app.isRendering = true
+        surfacedURLs.removeAll()
         do {
             try proc.run()
             current = proc
+            startOutputPoller(in: outputDir)
         } catch {
             app.appendTerminal("[render] failed to launch: \(error)\n")
             app.isRendering = false
         }
+    }
+
+    // MARK: live preview polling
+
+    /// Walks `outputDir` every ~1.2 s while the render is running,
+    /// promoting the newest .mp4/.mov/.gif/.png to
+    /// `app.lastRenderURL` so the preview pane updates incrementally
+    /// instead of waiting for the final concat step.
+    private func startOutputPoller(in outputDir: URL) {
+        stopOutputPoller()
+        let exts: Set<String> = ["mp4", "mov", "m4v", "gif", "png"]
+        outputPoller = Timer.scheduledTimer(withTimeInterval: 1.2,
+                                             repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                guard let walker = FileManager.default.enumerator(
+                    at: outputDir,
+                    includingPropertiesForKeys: [.contentModificationDateKey,
+                                                  .isRegularFileKey,
+                                                  .fileSizeKey])
+                else { return }
+                var best: (URL, Date)?
+                for case let url as URL in walker {
+                    let v = try? url.resourceValues(forKeys: [
+                        .isRegularFileKey, .contentModificationDateKey,
+                        .fileSizeKey])
+                    guard v?.isRegularFile == true,
+                          exts.contains(url.pathExtension.lowercased()),
+                          // Skip empty files — manim creates a 0-byte
+                          // mp4 placeholder before the encoder starts
+                          // writing frames; AVPlayer chokes on those.
+                          (v?.fileSize ?? 0) > 0
+                    else { continue }
+                    let m = v?.contentModificationDate ?? .distantPast
+                    if best == nil || m > best!.1 { best = (url, m) }
+                }
+                if let (url, _) = best, !self.surfacedURLs.contains(url) {
+                    self.surfacedURLs.insert(url)
+                    self.app.lastRenderURL = url
+                    self.app.appendTerminal(
+                        "[render] partial available: \(url.lastPathComponent)\n")
+                }
+            }
+        }
+        if let t = outputPoller {
+            RunLoop.main.add(t, forMode: .common)
+        }
+    }
+    private func stopOutputPoller() {
+        outputPoller?.invalidate()
+        outputPoller = nil
     }
 
     // MARK: pipes → terminal
@@ -159,6 +222,7 @@ final class RenderManager {
             (p.standardError  as? Pipe)?.fileHandleForReading.readabilityHandler = nil
         }
         current = nil
+        stopOutputPoller()
 
         if exit == 0 {
             // Walk outputDir for the most recently produced video file.
