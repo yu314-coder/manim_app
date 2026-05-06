@@ -10,6 +10,7 @@
 // manim version per-app instead of fighting with their system Python.
 import Foundation
 import SwiftUI
+import Combine
 
 /// Drops the class-level @MainActor — Swift 6's strict-isolation
 /// synthesis of ObservableObject's objectWillChange publisher
