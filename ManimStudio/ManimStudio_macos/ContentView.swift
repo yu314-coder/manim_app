@@ -1,31 +1,47 @@
-// ContentView.swift — root SwiftUI view. NavigationSplitView with
-// a sidebar (Workspace / Assets / Packages / History / Settings)
-// and a detail pane that swaps based on the selected section.
+// ContentView.swift — root SwiftUI view for the macOS app.
 //
-// Workspace is the main editor experience: top split = editor +
-// preview, bottom = terminal. Terminal text comes from RenderManager
-// streaming the manim subprocess's stdout/stderr.
+// Layout (high-tech glassmorphic theme):
+//   ┌──────┬─────────────────────────────────────────┬────────┐
+//   │      │ ┌── Top toolbar ──────────────────────┐ │        │
+//   │      │ │ logo · scene-picker · render/preview │ │        │
+//   │      │ └─────────────────────────────────────┘ │        │
+//   │ side │ ┌──── Editor ───┐  ┌──── Preview ───┐  │ render │
+//   │  bar │ │               │  │                │  │  ctrl  │
+//   │      │ │   NSTextView  │  │  AVKit Player  │  │ panel  │
+//   │      │ └───────────────┘  └────────────────┘  │        │
+//   │      │ ┌── Terminal (read-only) ───────────┐  │        │
+//   │      │ │  manim subprocess output…         │  │        │
+//   │      │ └───────────────────────────────────┘  │        │
+//   └──────┴─────────────────────────────────────────┴────────┘
+//
+// The right-side render-controls panel can collapse via the slider
+// button. Workspace, Assets, Packages, History, Settings live in
+// the left sidebar.
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
     @EnvironmentObject var app: AppState
-    /// RenderManager has to be constructed with the AppState that
-    /// the parent injects via @EnvironmentObject, which @StateObject
-    /// can't capture from `init`. We hold it in plain @State and
-    /// initialize lazily in `onAppear`. RenderManager doesn't need
-    /// to publish — the views observe AppState's @Published props
-    /// (terminalText, isRendering, lastRenderURL) instead.
+    @EnvironmentObject var venv: VenvManager
+
     @State private var renderManager: RenderManager?
+    @State private var controlsOpen = true
 
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
         } detail: {
-            detailPane
+            ZStack {
+                // Window-wide blur underlay for the high-tech feel.
+                VisualEffectBackground(material: .underWindowBackground)
+                    .ignoresSafeArea()
+                Theme.bgPrimary.opacity(0.85).ignoresSafeArea()
+
+                detailPane
+            }
         }
-        .frame(minWidth: 1100, minHeight: 700)
-        .background(Theme.bgPrimary)
+        .frame(minWidth: 1200, minHeight: 760)
         .preferredColorScheme(.dark)
         .onAppear {
             if renderManager == nil {
@@ -35,16 +51,96 @@ struct ContentView: View {
         .toolbar { toolbarContent }
     }
 
-    // MARK: sidebar
+    // MARK: sidebar (high-tech list)
 
     private var sidebar: some View {
-        List(selection: $app.sidebarSection) {
-            ForEach(SidebarSection.allCases) { section in
-                Label(section.label, systemImage: section.icon)
-                    .tag(section)
+        ZStack {
+            VisualEffectBackground(material: .sidebar).ignoresSafeArea()
+            VStack(spacing: 0) {
+                logoHeader
+                Divider().background(Theme.borderSubtle)
+                List(selection: $app.sidebarSection) {
+                    Section {
+                        ForEach(SidebarSection.allCases) { section in
+                            HStack(spacing: 10) {
+                                Image(systemName: section.icon)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(app.sidebarSection == section
+                                                     ? Color.white
+                                                     : Theme.indigo)
+                                    .frame(width: 22)
+                                Text(section.label)
+                                    .font(.system(size: 13, weight: app.sidebarSection == section
+                                                  ? .semibold : .regular))
+                            }
+                            .padding(.vertical, 2)
+                            .tag(section)
+                        }
+                    } header: {
+                        SectionHeader(title: "Navigate", icon: "square.grid.2x2")
+                            .padding(.top, 6)
+                    }
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+
+                Divider().background(Theme.borderSubtle)
+                statusBar
             }
         }
-        .listStyle(.sidebar)
+    }
+
+    private var logoHeader: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(Theme.signatureGradient)
+                    .frame(width: 34, height: 34)
+                    .shadow(color: Theme.glowPrimary, radius: 8)
+                Text("🎬").font(.system(size: 18))
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text("ManimStudio")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text("Native · macOS")
+                    .font(.system(size: 9, weight: .medium))
+                    .tracking(1)
+                    .foregroundStyle(Theme.textDim)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 14)
+    }
+
+    private var statusBar: some View {
+        HStack(spacing: 8) {
+            StatusDot(state: dotState)
+            Text(statusText)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1).truncationMode(.middle)
+            Spacer()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+    }
+
+    private var dotState: StatusDot.DotState {
+        if app.isRendering { return .active }
+        switch venv.status {
+        case .ready:  return .ok
+        case .failed: return .error
+        default:      return .idle
+        }
+    }
+    private var statusText: String {
+        if app.isRendering { return "rendering…" }
+        switch venv.status {
+        case .ready:  return "manim \(venv.manimVersion)"
+        case .missing, .unknown: return "venv not set up"
+        case .creating, .installing: return "installing…"
+        case .failed:  return "venv error"
+        }
     }
 
     // MARK: detail
@@ -54,7 +150,7 @@ struct ContentView: View {
         switch app.sidebarSection {
         case .workspace: workspace
         case .assets:    AssetsView()
-        case .packages:  PackagesView()
+        case .packages:  PackagesView(venv: venv)
         case .history:   HistoryView()
         case .settings:  SettingsView()
         }
@@ -62,21 +158,42 @@ struct ContentView: View {
 
     @ViewBuilder
     private var workspace: some View {
-        VSplitView {
-            HSplitView {
-                EditorView(text: $app.sourceCode,
-                           fontSize: CGFloat(app.editorFontSize))
-                    .frame(minWidth: 320)
-                PreviewView(url: app.lastRenderURL)
-                    .frame(minWidth: 240)
-            }
-            .frame(minHeight: 220)
+        HStack(spacing: 0) {
+            VSplitView {
+                HSplitView {
+                    EditorView(text: $app.sourceCode,
+                               fontSize: CGFloat(app.editorFontSize))
+                        .frame(minWidth: 320)
+                    PreviewView(url: app.lastRenderURL)
+                        .frame(minWidth: 240)
+                }
+                .frame(minHeight: 240)
 
-            TerminalView(text: $app.terminalText,
-                         fontSize: CGFloat(app.terminalFontSize))
-                .frame(minHeight: 100)
+                TerminalView(text: $app.terminalText,
+                             fontSize: CGFloat(app.terminalFontSize))
+                    .frame(minHeight: 100)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if controlsOpen {
+                RenderControlsPanel(venv: venv, open: $controlsOpen)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .background(Theme.bgPrimary)
+        .overlay(alignment: .trailing) {
+            if !controlsOpen {
+                Button { withAnimation(.spring) { controlsOpen = true } } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Theme.signatureGradient))
+                        .shadow(color: Theme.glowPrimary, radius: 10)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 12)
+            }
+        }
     }
 
     // MARK: toolbar
@@ -87,7 +204,6 @@ struct ContentView: View {
             scenePicker
         }
         ToolbarItemGroup(placement: .primaryAction) {
-            // Render — primary gradient action.
             Button {
                 renderManager?.renderFinal()
             } label: {
@@ -115,6 +231,13 @@ struct ContentView: View {
                 .keyboardShortcut(".", modifiers: [.command])
                 .help("Stop (⌘.)")
             }
+
+            Button {
+                withAnimation(.spring) { controlsOpen.toggle() }
+            } label: {
+                Image(systemName: controlsOpen ? "sidebar.right" : "slider.horizontal.3")
+            }
+            .help("Toggle render controls")
         }
     }
 
@@ -126,10 +249,12 @@ struct ContentView: View {
                 app.selectedScene = ""
             } label: {
                 if app.selectedScene.isEmpty {
-                    Label(scenes.isEmpty ? "First detected" : "First detected (\(scenes.first ?? ""))",
+                    Label(scenes.isEmpty ? "First detected"
+                          : "First detected (\(scenes.first ?? ""))",
                           systemImage: "checkmark")
                 } else {
-                    Text(scenes.isEmpty ? "First detected" : "First detected (\(scenes.first ?? ""))")
+                    Text(scenes.isEmpty ? "First detected"
+                         : "First detected (\(scenes.first ?? ""))")
                 }
             }
             if !scenes.isEmpty { Divider() }
@@ -159,46 +284,12 @@ struct ContentView: View {
     }
 }
 
-// MARK: - placeholders for non-workspace sections
+// MARK: - Settings (kept here since it's small)
 
-struct AssetsView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "folder").font(.largeTitle)
-            Text("Assets").font(.title2.weight(.semibold))
-            Text("File browser for Documents/Assets — coming soon")
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bgPrimary)
-    }
-}
-struct PackagesView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "shippingbox").font(.largeTitle)
-            Text("Packages").font(.title2.weight(.semibold))
-            Text("Browse the embedded Python's installed packages")
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bgPrimary)
-    }
-}
-struct HistoryView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "clock.arrow.circlepath").font(.largeTitle)
-            Text("Render History").font(.title2.weight(.semibold))
-            Text("Past renders with thumbnails and share/delete")
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bgPrimary)
-    }
-}
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var venv: VenvManager
+
     var body: some View {
         Form {
             Section("Editor") {
@@ -235,12 +326,49 @@ struct SettingsView: View {
                 }
                 Button("Clear terminal output") { app.clearTerminal() }
             }
+            Section("Environment") {
+                LabeledContent("Status") {
+                    HStack {
+                        StatusDot(state: venv.status == .ready ? .ok : .idle)
+                        Text(envStatusText)
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                }
+                if let py = venv.pythonInVenv {
+                    LabeledContent("Python") {
+                        Text(py.path)
+                            .font(.system(.caption, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                Button("Re-run setup wizard") {
+                    NotificationCenter.default.post(
+                        name: .reopenWelcome, object: nil)
+                }
+            }
         }
         .formStyle(.grouped)
         .background(Theme.bgPrimary)
     }
+
+    private var envStatusText: String {
+        switch venv.status {
+        case .ready:    return "ready · manim \(venv.manimVersion)"
+        case .missing:  return "not set up"
+        case .unknown:  return "checking…"
+        case .creating, .installing: return "installing…"
+        case .failed:   return "failed"
+        }
+    }
+}
+
+extension Notification.Name {
+    static let reopenWelcome = Notification.Name("manimstudio.welcome.reopen")
 }
 
 #Preview {
-    ContentView().environmentObject(AppState())
+    ContentView()
+        .environmentObject(AppState())
+        .environmentObject(VenvManager())
 }

@@ -1,26 +1,33 @@
-// ManimStudio_macosApp.swift — @main entry for the native macOS
-// rewrite. Pure SwiftUI; no embedded Python interpreter, no
-// WKWebView shell. The render pipeline shells out to a host
-// python3.* via RenderManager (Process), reading bundled
-// site-packages from <App>.app/Contents/Resources/site-packages/.
-//
-// Shares ZERO code with the iOS target — only the AppIcon asset
-// is regenerated from the iOS 1024×1024 master.
+// ManimStudio_macosApp.swift — @main entry. Boots VenvManager, gates
+// the main UI behind the welcome wizard until the per-app venv is
+// ready (or the user explicitly dismissed it).
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct ManimStudio_macosApp: App {
     @StateObject private var appState = AppState()
+    @StateObject private var venv     = VenvManager()
+    @State private var welcomeDismissed = false
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootGate(welcomeDismissed: $welcomeDismissed)
                 .environmentObject(appState)
+                .environmentObject(venv)
+                .task {
+                    await venv.probe()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .welcomeDone)) { _ in
+                    welcomeDismissed = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .reopenWelcome)) { _ in
+                    welcomeDismissed = false
+                    Task { await venv.probe() }
+                }
         }
         .windowResizability(.contentMinSize)
         .commands {
-            // ── File menu — replace the default New / Open / Save
-            // with handlers wired to AppState.
             CommandGroup(replacing: .newItem) {
                 Button("New Scene") {
                     appState.sourceCode = ""
@@ -38,7 +45,18 @@ struct ManimStudio_macosApp: App {
                     .keyboardShortcut("s", modifiers: [.command])
             }
 
-            // ── View menu shortcuts for sidebar navigation.
+            CommandMenu("Render") {
+                Button("Render (Final)") {
+                    NotificationCenter.default.post(name: .renderFinal, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command])
+
+                Button("Quick Preview") {
+                    NotificationCenter.default.post(name: .renderPreview, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+
             CommandMenu("View") {
                 Button("Workspace") { appState.sidebarSection = .workspace }
                     .keyboardShortcut("1", modifiers: [.command])
@@ -51,10 +69,15 @@ struct ManimStudio_macosApp: App {
                 Button("Settings")  { appState.sidebarSection = .settings }
                     .keyboardShortcut(",", modifiers: [.command])
             }
+
+            CommandGroup(replacing: .help) {
+                Button("Set Up Environment…") {
+                    NotificationCenter.default.post(
+                        name: .reopenWelcome, object: nil)
+                }
+            }
         }
     }
-
-    // MARK: file IO
 
     private func openFile() {
         let panel = NSOpenPanel()
@@ -85,9 +108,39 @@ struct ManimStudio_macosApp: App {
     }
 }
 
-// MARK: - small UTType helper
+// MARK: - root gate
 
-import UniformTypeIdentifiers
+/// Routes between the welcome wizard and the main ContentView.
+struct RootGate: View {
+    @EnvironmentObject var venv: VenvManager
+    @Binding var welcomeDismissed: Bool
+
+    var body: some View {
+        // Show the wizard until the venv is ready — unless the user
+        // explicitly dismissed it (Skip / Open ManimStudio).
+        if shouldShowWelcome {
+            WelcomeView(venv: venv)
+        } else {
+            ContentView()
+        }
+    }
+
+    private var shouldShowWelcome: Bool {
+        if welcomeDismissed { return false }
+        switch venv.status {
+        case .ready:                       return false
+        case .missing, .failed,
+             .creating, .installing,
+             .unknown:
+            return true
+        }
+    }
+}
+
+extension Notification.Name {
+    static let renderFinal   = Notification.Name("manimstudio.render.final")
+    static let renderPreview = Notification.Name("manimstudio.render.preview")
+}
 
 extension UTType {
     /// Either the system-registered Python script type, or plain

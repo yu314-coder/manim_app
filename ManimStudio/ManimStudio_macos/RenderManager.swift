@@ -38,10 +38,15 @@ final class RenderManager {
 
     private func run(quality: RenderQuality, fps: Int) {
         guard !app.isRendering else { return }
-        guard let pyURL = PythonResolver.pythonURL else {
+        // Prefer the per-app venv's python (created by the welcome
+        // wizard via VenvManager) so renders use a pinned manim
+        // instead of whatever happens to be on the user's PATH.
+        // Fall back to host python if the venv isn't ready yet.
+        guard let pyURL = VenvManager.venvPython ?? PythonResolver.pythonURL else {
             app.appendTerminal(
-                "[render] no python3.* on PATH — install Python 3.14 from python.org or " +
-                "`brew install python@3.14`, then try again.\n")
+                "[render] no Python found. Open the welcome wizard from Help → " +
+                "Set Up Environment, or install Python 3.14 (python.org / " +
+                "`brew install python@3.14`).\n")
             return
         }
 
@@ -55,9 +60,19 @@ final class RenderManager {
             return
         }
 
-        // 2. Stage the source + output dir under a temp run dir.
+        // 2. Stage the source + output under
+        //    Documents/ManimStudio/Renders/manim_<id>/
+        // (same path HistoryView walks). Persistent so the user can
+        // find the .mp4 across launches; runDir is deleted only when
+        // they hit "Clear all" in History.
         let runID  = UUID().uuidString.prefix(8)
-        let runDir = FileManager.default.temporaryDirectory
+        let docs = FileManager.default.urls(
+            for: .documentDirectory, in: .userDomainMask).first!
+        let rendersRoot = docs.appendingPathComponent(
+            "ManimStudio/Renders", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: rendersRoot, withIntermediateDirectories: true)
+        let runDir = rendersRoot
             .appendingPathComponent("manim_\(runID)", isDirectory: true)
         try? FileManager.default.createDirectory(
             at: runDir, withIntermediateDirectories: true)
