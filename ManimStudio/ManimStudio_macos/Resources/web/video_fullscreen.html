@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Studio - Video Player</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000000;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+        }
+
+        /* Header - Hidden completely */
+        .header {
+            display: none;
+        }
+
+        /* Video Container - Full viewport */
+        .video-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            outline: none;
+        }
+
+        /* Hide fullscreen button from video controls */
+        video::-webkit-media-controls-fullscreen-button {
+            display: none !important;
+        }
+
+        video::-moz-media-controls-fullscreen-button {
+            display: none !important;
+        }
+
+        video::-ms-media-controls-fullscreen-button {
+            display: none !important;
+        }
+
+        /* Loading State */
+        .loading {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #4a90e2;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Error State */
+        .error {
+            color: rgba(255, 100, 100, 0.95);
+            font-size: 18px;
+            background: rgba(50, 0, 0, 0.8);
+            padding: 30px 40px;
+            border-radius: 15px;
+            border: 2px solid rgba(255, 0, 0, 0.4);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .error i {
+            font-size: 48px;
+        }
+
+        /* Info Bar - Overlay at bottom */
+        .info-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 2px 10px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 8px;
+            text-align: center;
+            z-index: 10;
+            opacity: 0.2;
+            transition: opacity 0.3s ease;
+        }
+
+        .info-bar:hover {
+            opacity: 1;
+        }
+
+        .info-bar kbd {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1px 2px;
+            border-radius: 2px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-family: monospace;
+            font-size: 7px;
+            margin: 0 1px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Video Container -->
+    <div class="video-container">
+        <div id="loadingState" class="loading">
+            <div class="spinner"></div>
+            <span>Loading video...</span>
+        </div>
+        <video id="videoPlayer" controls autoplay loop style="display:none;"></video>
+    </div>
+
+    <!-- Info Bar -->
+    <div class="info-bar">
+        Press <kbd>Space</kbd> to play/pause | <kbd>ESC</kbd> to close
+    </div>
+
+    <script>
+        console.log('[FULLSCREEN] Video fullscreen window initialized');
+
+        // Get video source from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoSrc = urlParams.get('src');
+
+        const videoPlayer = document.getElementById('videoPlayer');
+        const loadingState = document.getElementById('loadingState');
+
+        if (videoSrc) {
+            console.log('[FULLSCREEN] Loading video:', videoSrc);
+            videoPlayer.src = decodeURIComponent(videoSrc);
+
+            // Show video when loaded
+            videoPlayer.addEventListener('loadeddata', () => {
+                console.log('[FULLSCREEN] Video loaded successfully');
+                loadingState.style.display = 'none';
+                videoPlayer.style.display = 'block';
+            });
+
+            // Handle load errors
+            videoPlayer.addEventListener('error', (e) => {
+                console.error('[FULLSCREEN] Video load error:', e);
+                loadingState.innerHTML = `
+                    <div class="error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <div>Failed to load video</div>
+                    </div>
+                `;
+            });
+        } else {
+            console.error('[FULLSCREEN] No video source provided');
+            loadingState.innerHTML = `
+                <div class="error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div>No video source provided</div>
+                </div>
+            `;
+        }
+
+        // Close window
+        function closeWindow() {
+            console.log('[FULLSCREEN] Closing window');
+            window.close();
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // ESC to close window
+            if (e.key === 'Escape') {
+                console.log('[FULLSCREEN] ESC pressed, closing window');
+                closeWindow();
+            }
+
+            // Space to play/pause
+            if (e.key === ' ' && e.target === document.body) {
+                e.preventDefault();
+                if (videoPlayer.paused) {
+                    videoPlayer.play();
+                } else {
+                    videoPlayer.pause();
+                }
+            }
+        });
+
+        // Focus video on load
+        if (videoPlayer) {
+            window.addEventListener('load', () => {
+                videoPlayer.focus();
+                console.log('[FULLSCREEN] Video player ready');
+            });
+        }
+    </script>
+</body>
+</html>

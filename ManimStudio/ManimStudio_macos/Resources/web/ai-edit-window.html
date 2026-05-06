@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manim Studio - AI Edit (Beta)</title>
+    <link rel="stylesheet" href="fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="xterm/xterm.css">
+    <link rel="stylesheet" href="ai-edit.css">
+    <style>
+        /* Window-mode base reset */
+        :root {
+            --bg-primary: #1e1e2e;
+            --bg-secondary: #181825;
+            --bg-tertiary: #11111b;
+            --text-primary: #cdd6f4;
+            --text-secondary: #a6adc8;
+            --border-color: #313244;
+            --accent-purple: #a78bfa;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-info: #61afef;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header bar with model selector (ChatGPT style) -->
+    <div class="aiw-header">
+        <div class="aiw-header-left">
+            <div class="aiw-pill-toggle" id="aiwProviderToggle">
+                <button class="aiw-pill active" data-provider="claude">
+                    <i class="fas fa-robot"></i> Claude
+                </button>
+                <button class="aiw-pill" data-provider="codex">
+                    <i class="fas fa-code"></i> Codex
+                </button>
+            </div>
+            <span class="aip-beta-badge">Beta</span>
+        </div>
+        <!-- Model selector: ChatGPT style "Model Name >" -->
+        <div class="aiw-model-selector" id="aiwModelSelector">
+            <button class="aiw-model-btn" id="aiwModelBtn">
+                <span id="aiwModelLabel">Default</span>
+                <i class="fas fa-chevron-down"></i>
+            </button>
+            <div class="aiw-model-dropdown" id="aiwModelDropdown">
+                <!-- populated by JS -->
+            </div>
+        </div>
+        <button class="aiw-header-close" id="aiwCloseBtn" title="Close window">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <!-- Main two-column layout -->
+    <div class="aiw-body">
+        <!-- Left column: controls -->
+        <div class="aiw-controls">
+            <!-- Prompt -->
+            <div class="aiw-card">
+                <label class="aiw-label">Prompt</label>
+                <textarea id="aiwPrompt" class="aiw-textarea" rows="6"
+                    placeholder="Describe what you want to change..."></textarea>
+            </div>
+
+            <!-- Image upload -->
+            <div class="aiw-card">
+                <label class="aiw-label">Images</label>
+                <div class="aiw-drop-zone" id="aiwDropZone">
+                    <i class="fas fa-cloud-arrow-up"></i>
+                    <span>Drop images or PDFs to attach</span>
+                    <input type="file" id="aiwImageInput" accept="image/*,.pdf" multiple style="display:none;">
+                </div>
+                <div class="aiw-thumb-grid" id="aiwThumbGrid"></div>
+            </div>
+
+            <!-- Web search toggle -->
+            <div class="aiw-card aiw-row">
+                <div class="aiw-toggle-label">
+                    <i class="fas fa-globe" style="color: var(--accent-info);"></i>
+                    <span>Web Search</span>
+                </div>
+                <label class="aiw-ios-toggle">
+                    <input type="checkbox" id="aiwSearchToggle">
+                    <span class="aiw-ios-track"></span>
+                </label>
+            </div>
+
+            <!-- Send button -->
+            <button id="aiwSendBtn" class="aiw-send-btn">
+                <i class="fas fa-paper-plane"></i> Send
+            </button>
+
+            <!-- Status -->
+            <div id="aiwStatus" class="aiw-status" style="display:none;">
+                <i class="fas fa-circle-notch fa-spin"></i>
+                <span id="aiwStatusMsg">Working...</span>
+            </div>
+        </div>
+
+        <!-- Right column: terminal output -->
+        <div class="aiw-output">
+            <div class="aiw-output-header">
+                <span><i class="fas fa-terminal"></i> Output</span>
+            </div>
+            <div id="aiwTerminal" class="aiw-terminal"></div>
+            <!-- Accept / Reject bar -->
+            <div id="aiwDiffBar" class="aiw-diff-bar" style="display:none;">
+                <span id="aiwDiffStats" class="aiw-diff-stats"></span>
+                <div class="aiw-diff-buttons">
+                    <button id="aiwAcceptBtn" class="aiw-accept-btn">
+                        <i class="fas fa-check"></i> Accept
+                    </button>
+                    <button id="aiwRejectBtn" class="aiw-reject-btn">
+                        <i class="fas fa-times"></i> Reject
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="xterm/xterm.js"></script>
+    <script>
+        // Mark this as window mode for ai-edit.js
+        window._aiEditWindowMode = true;
+    </script>
+    <script src="ai-edit.js"></script>
+</body>
+</html>

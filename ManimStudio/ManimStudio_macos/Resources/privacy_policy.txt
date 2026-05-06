@@ -1,0 +1,59 @@
+PRIVACY POLICY FOR MANIM STUDIO
+
+Last Updated: January 2025
+
+1. INTRODUCTION
+
+Manim Studio is a desktop application for creating mathematical animations using the Manim library. This privacy policy explains how the application handles your data.
+
+2. DATA COLLECTION
+
+Manim Studio does NOT collect, transmit, or share any personal data. All operations are performed locally on your computer.
+
+3. LOCAL DATA STORAGE
+
+The application stores the following data locally on your device:
+
+- User Settings: Application preferences are saved in a local settings.json file
+- Autosave Files: Code is automatically saved to a local autosave directory for recovery purposes
+- Project Files: Any Python scripts or media files you create are stored in locations you choose
+- Rendered Media: Animation outputs (videos, images) are stored locally in temporary or user-specified directories
+
+4. NO INTERNET DATA TRANSMISSION
+
+Manim Studio operates entirely offline. The application does not:
+- Send any data to external servers
+- Collect analytics or usage statistics
+- Require user accounts or registration
+- Access cloud storage services
+
+5. THIRD-PARTY SERVICES
+
+This application does not integrate with any third-party services that would collect your data.
+
+6. DATA SECURITY
+
+Since all data remains on your local machine, security is maintained through your operating system's file permissions and security measures.
+
+7. USER CONTROL
+
+You have full control over your data:
+- Delete autosave files at any time through the application
+- Remove settings by deleting the settings.json file
+- All project files are stored in locations you specify
+
+8. CHILDREN'S PRIVACY
+
+Manim Studio does not collect any personal information from anyone, including children.
+
+9. CHANGES TO THIS POLICY
+
+Any updates to this privacy policy will be reflected in the "Last Updated" date above.
+
+10. CONTACT
+
+For questions about this privacy policy, please visit the project repository or contact the developer.
+
+---
+
+This application respects your privacy by design. Your code, animations, and creative work remain entirely yours.

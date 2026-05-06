@@ -29,6 +29,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B91A87332FAAF63D00F66109 /* ManimStudio_macos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ManimStudio_macos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B94E95742FA04EFA00CF9138 /* ManimStudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ManimStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B9ACCEL002FB00010000ABCDE /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		B9F1A0012FAA0001000A0001 /* Python.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Python.xcframework; path = ../_vendor/beeware/Python.xcframework; sourceTree = SOURCE_ROOT; };
@@ -45,6 +46,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		B91A87342FAAF63D00F66109 /* ManimStudio_macos */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ManimStudio_macos;
+			sourceTree = "<group>";
+		};
 		B94E95762FA04EFA00CF9138 /* ManimStudio */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -56,6 +62,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		B91A87302FAAF63D00F66109 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B94E95712FA04EFA00CF9138 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -83,6 +96,7 @@
 			isa = PBXGroup;
 			children = (
 				B94E95762FA04EFA00CF9138 /* ManimStudio */,
+				B91A87342FAAF63D00F66109 /* ManimStudio_macos */,
 				B945F3A82FA0579500854121 /* Frameworks */,
 				B94E95752FA04EFA00CF9138 /* Products */,
 			);
@@ -92,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				B94E95742FA04EFA00CF9138 /* ManimStudio.app */,
+				B91A87332FAAF63D00F66109 /* ManimStudio_macos.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -99,6 +114,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		B91A87322FAAF63D00F66109 /* ManimStudio_macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B91A873D2FAAF63E00F66109 /* Build configuration list for PBXNativeTarget "ManimStudio_macos" */;
+			buildPhases = (
+				B91A872F2FAAF63D00F66109 /* Sources */,
+				B91A87302FAAF63D00F66109 /* Frameworks */,
+				B91A87312FAAF63D00F66109 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B91A87342FAAF63D00F66109 /* ManimStudio_macos */,
+			);
+			name = ManimStudio_macos;
+			packageProductDependencies = (
+			);
+			productName = ManimStudio_macos;
+			productReference = B91A87332FAAF63D00F66109 /* ManimStudio_macos.app */;
+			productType = "com.apple.product-type.application";
+		};
 		B94E95732FA04EFA00CF9138 /* ManimStudio */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B94E957F2FA04EFA00CF9138 /* Build configuration list for PBXNativeTarget "ManimStudio" */;
@@ -137,6 +174,9 @@
 				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					B91A87322FAAF63D00F66109 = {
+						CreatedOnToolsVersion = 26.3;
+					};
 					B94E95732FA04EFA00CF9138 = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -161,11 +201,19 @@
 			projectRoot = "";
 			targets = (
 				B94E95732FA04EFA00CF9138 /* ManimStudio */,
+				B91A87322FAAF63D00F66109 /* ManimStudio_macos */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		B91A87312FAAF63D00F66109 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B94E95722FA04EFA00CF9138 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -236,6 +284,13 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		B91A872F2FAAF63D00F66109 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B94E95702FA04EFA00CF9138 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -246,6 +301,80 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		B91A873B2FAAF63E00F66109 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LYK4LV2859;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = euleryu;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "euler.ManimStudio-macos";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B91A873C2FAAF63E00F66109 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LYK4LV2859;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = euleryu;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "euler.ManimStudio-macos";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		B94E957D2FA04EFA00CF9138 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -430,6 +559,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		B91A873D2FAAF63E00F66109 /* Build configuration list for PBXNativeTarget "ManimStudio_macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B91A873B2FAAF63E00F66109 /* Debug */,
+				B91A873C2FAAF63E00F66109 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		B94E956F2FA04EFA00CF9138 /* Build configuration list for PBXProject "ManimStudio" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
