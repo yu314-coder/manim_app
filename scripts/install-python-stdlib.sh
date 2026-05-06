@@ -212,6 +212,28 @@ done
 shopt -u nullglob
 echo "note: consolidated $CONSOLIDATED entries into $SITE (SwiftPM bundles flattened to BeeWare layout)"
 
+# ── 9b. Scrub URLs from U.S.-embargoed countries out of the bundled
+#       site-packages. Apple's App Review scans the binary for any
+#       string starting with "https://" and pointing at a top-level
+#       domain on the OFAC list (.ir, .kp, .sy, .cu, …). Even a
+#       blog citation in a docstring is enough for a Guideline 5
+#       Legal rejection (see networkx/algorithms/operators/product.py
+#       which cites a Persian math blog on graph theory).
+#
+# We sed each .py and METADATA file replacing the URL prefix with a
+# neutral "[redacted]" placeholder. The change is idempotent and
+# affects only string contents the user never reads — the docstrings
+# still document what the function does.
+SCRUB_COUNT=0
+EMBARGOED_TLDS='\.ir|\.kp|\.sy|\.cu'
+while IFS= read -r -d '' f; do
+  if grep -qE "https?://[^[:space:]\"')]*($EMBARGOED_TLDS)[/[:space:]\"')]" "$f" 2>/dev/null; then
+    sed -i '' -E "s|https?://[^[:space:]\"')]*($EMBARGOED_TLDS)[^[:space:]\"')]*|[redacted-embargoed-url]|g" "$f"
+    SCRUB_COUNT=$((SCRUB_COUNT + 1))
+  fi
+done < <(find "$SITE" "$META_DST" \( -name "*.py" -o -name "METADATA" -o -name "*.rst" -o -name "*.txt" -o -name "*.md" \) -type f -print0 2>/dev/null)
+echo "note: scrubbed embargoed-TLD URLs from $SCRUB_COUNT bundled file(s)"
+
 # ── 10. Wrap every .so into <name>.framework + .fwork pointer.
 # This mirrors BeeWare's `install_dylib` from Python.xcframework/build/utils.sh.
 # App Store rejects raw .so files anywhere in the bundle; they MUST be
