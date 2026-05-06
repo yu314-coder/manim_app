@@ -17,8 +17,8 @@ on-device without an internet connection.
 | | |
 |---|---|
 | 🐍 **Embedded Python stack** | [yu314-coder/python-ios-lib](https://github.com/yu314-coder/python-ios-lib) — manim · numpy · scipy · matplotlib · plotly · PyAV · pycairo · pangocairo · busytex, all `arm64-iphoneos` |
-| 📦 **Reference desktop app** | [yu314-coder/CodeBench (offlinai)](https://github.com/yu314-coder/CodeBench) — sister iOS Python IDE that pioneered the App Store layout this app follows |
-| 🐚 **Embedded shell** | `offlinai_shell` (rebranded `ManimStudio shell`) — bundled inside python-ios-lib |
+| 📦 **Reference iOS app** | [yu314-coder/CodeBench](https://github.com/yu314-coder/CodeBench) (ships on the App Store as **BenchCode**) — sister iOS Python IDE that pioneered the App Store-compliant layout, the wrap-loose-dylibs pipeline, and the `offlinai_shell` builtin set this app reuses |
+| 🐚 **Embedded shell** | `offlinai_shell` from [BenchCode / CodeBench](https://github.com/yu314-coder/CodeBench) (rebranded `ManimStudio shell` at install time) — full POSIX-style builtins (`ls`, `cd`, `cat`, `top`, `find`, `grep`, …) bundled inside python-ios-lib |
 | 🔤 **Editor** | [microsoft/monaco-editor](https://github.com/microsoft/monaco-editor) in WKWebView |
 | 🖥 **Terminal** | [migueldeicaza/SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) bridged to Python via PTY |
 | 🎬 **Manim** | [3b1b/manim](https://github.com/ManimCommunity/manim) (Community edition, patched for iOS Cairo + h264_videotoolbox) |
@@ -51,11 +51,13 @@ on-device without an internet connection.
 ### Terminal
 
 - **SwiftTerm** xterm-256color emulator backed by a real PTY pair.
-- The bundled **`offlinai_shell`** (rebranded `ManimStudio shell` at install
-  time via `sed`) provides ~150 builtins — `ls`, `cd`, `cat`, `top`, `find`,
-  `grep`, `clear`, `python`, `tree`, etc. `pip` is intentionally hidden:
-  iOS sandboxes have no writable site-packages, and most wheels need a
-  toolchain iOS forbids.
+- The bundled **`offlinai_shell`** (originally written for
+  [CodeBench / BenchCode](https://github.com/yu314-coder/CodeBench),
+  rebranded to `ManimStudio shell` at install time via `sed`) provides
+  ~150 builtins — `ls`, `cd`, `cat`, `top`, `find`, `grep`, `clear`,
+  `python`, `tree`, etc. `pip` is intentionally hidden: iOS sandboxes
+  have no writable site-packages, and most wheels need a toolchain iOS
+  forbids.
 - **Custom `top`** built on `sysctlbyname` (kern.boottime, hw.memsize,
   hw.ncpu, hw.machine) + `resource.getrusage` so process / system stats
   work without psutil's private-API native module.
@@ -335,10 +337,13 @@ User taps **Render** or **Preview** (header) → `ContentView.triggerRender(quic
   (manim, numpy, scipy, matplotlib, plotly, PyAV, pycairo, busytex, ffmpeg)
   is built and signed by that repo's pipelines. The build phases here
   consume its SwiftPM products + `wrap-loose-dylibs.sh` script.
-- **[CodeBench / offlinai](https://github.com/yu314-coder/CodeBench)** — sister iOS Python IDE that pioneered
-  the App Store-compliant layout (the consolidated `app_packages/` tree,
-  the .so → .framework wrap pattern, the offlinai_shell builtin). This
-  app's build pipeline closely follows CodeBench's known-working order.
+- **[CodeBench](https://github.com/yu314-coder/CodeBench)** (App Store: **BenchCode**) — sister iOS Python IDE
+  that pioneered the App Store-compliant layout (the consolidated
+  `app_packages/` tree, the `.so → .framework` wrap pattern, the
+  `offlinai_shell` builtin set used here for ManimStudio's terminal).
+  This app's build pipeline closely follows CodeBench's known-working
+  order, and the terminal experience is essentially BenchCode's shell
+  hosted inside ManimStudio's render-focused UI.
 - **[BeeWare](https://beeware.org/)** — Python.xcframework embedding shape and stdlib loader.
 - **[Manim Community](https://www.manim.community/)** — the engine itself.
 - **[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)** — terminal emulator.
