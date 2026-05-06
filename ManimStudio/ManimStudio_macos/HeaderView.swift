@@ -9,6 +9,7 @@ import AppKit
 struct HeaderView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var venv: VenvManager
+    @StateObject private var latex = LaTeXProbe.shared
     var onRender:  () -> Void
     var onPreview: () -> Void
     var onStop:    () -> Void
@@ -19,6 +20,7 @@ struct HeaderView: View {
     @State private var gpuOn = true
     @State private var showSettings = false
     @State private var showHelp = false
+    @State private var showLatexPopover = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -84,6 +86,7 @@ struct HeaderView: View {
             HelpSheet()
                 .frame(minWidth: 540, minHeight: 540)
         }
+        .onAppear { latex.probe() }
     }
 
     // MARK: bg
@@ -242,14 +245,47 @@ struct HeaderView: View {
     }
 
     private var latexStatus: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "function").font(.system(size: 10))
-            Text("LaTeX").font(.system(size: 10, weight: .medium))
+        let tint: Color
+        let label: String
+        let icon: String
+        switch latex.status {
+        case .found(let name, _):
+            tint = Theme.success; label = name; icon = "checkmark.seal"
+        case .missing:
+            tint = Theme.amber;   label = "LaTeX missing"; icon = "exclamationmark.triangle"
+        case .unknown:
+            tint = Theme.textDim; label = "LaTeX"; icon = "function"
         }
-        .foregroundStyle(Theme.success)
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(Capsule().fill(Theme.success.opacity(0.12)))
-        .overlay(Capsule().stroke(Theme.success.opacity(0.4), lineWidth: 1))
+        return Button {
+            // Re-probe in case the user just installed BasicTeX, then
+            // pop the install instructions popover.
+            latex.probe()
+            showLatexPopover.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 10))
+                Text(label).font(.system(size: 10, weight: .medium))
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Capsule().fill(tint.opacity(0.12)))
+            .overlay(Capsule().stroke(tint.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help(latexHelpText)
+        .popover(isPresented: $showLatexPopover, arrowEdge: .bottom) {
+            LatexInstallPopover(status: latex.status,
+                                onRefresh: { latex.probe() })
+                .frame(width: 360)
+        }
+    }
+
+    private var latexHelpText: String {
+        switch latex.status {
+        case .found(_, let url):  return "Found at \(url.path)"
+        case .missing:            return "Click to see how to install BasicTeX"
+        case .unknown:            return "Probing PATH for LaTeX…"
+        }
     }
 
     @ViewBuilder
@@ -270,6 +306,141 @@ struct HeaderView: View {
     }
 
     private var canRender: Bool { venv.phase == .ready }
+}
+
+// MARK: - LaTeX install popover
+
+private struct LatexInstallPopover: View {
+    let status: LaTeXProbe.Status
+    let onRefresh: () -> Void
+
+    private static let brewCommand = "brew install --cask basictex"
+    private static let tlmgrCommand =
+        "sudo tlmgr update --self && sudo tlmgr install standalone preview doublestroke ms relsize setspace rsfs"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: statusIcon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(statusTint)
+                Text(headline).font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button {
+                    onRefresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Re-check PATH")
+            }
+
+            switch status {
+            case .found(let name, let url):
+                Text("Manim will use **\(name)** from:")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Text(url.path)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6)
+                        .fill(Theme.bgTertiary))
+            case .missing, .unknown:
+                Text("Manim's `Text(...)`, `MathTex(...)` and `Tex(...)` mobjects compile via `pdflatex`. None of pdflatex/latex/xelatex/lualatex were found on PATH or in /Library/TeX/texbin.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                stepLabel("1. Install BasicTeX (~80 MB)")
+                copyableCommand(Self.brewCommand)
+
+                stepLabel("2. Install the manim TeX packages")
+                copyableCommand(Self.tlmgrCommand)
+
+                Text("After installing, restart this app or click the refresh icon above. Or skip LaTeX entirely by using `Text(\"…\", use_svg=True)` / non-text mobjects.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+    }
+
+    @ViewBuilder
+    private func stepLabel(_ s: String) -> some View {
+        Text(s)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private func copyableCommand(_ cmd: String) -> some View {
+        HStack(spacing: 6) {
+            Text(cmd)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(2)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(cmd, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 22, height: 22)
+                    .background(RoundedRectangle(cornerRadius: 5)
+                        .fill(Theme.bgSecondary))
+            }
+            .buttonStyle(.plain)
+            .help("Copy command")
+
+            Button {
+                TerminalBridge.shared.runInShell(cmd)
+            } label: {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(RoundedRectangle(cornerRadius: 5)
+                        .fill(Theme.indigo))
+            }
+            .buttonStyle(.plain)
+            .help("Run in integrated terminal")
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.bgTertiary))
+    }
+
+    private var statusIcon: String {
+        switch status {
+        case .found:   return "checkmark.seal.fill"
+        case .missing: return "exclamationmark.triangle.fill"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+    private var statusTint: Color {
+        switch status {
+        case .found:   return Theme.success
+        case .missing: return Theme.amber
+        case .unknown: return Theme.textDim
+        }
+    }
+    private var headline: String {
+        switch status {
+        case .found:   return "LaTeX detected"
+        case .missing: return "LaTeX not installed"
+        case .unknown: return "Probing for LaTeX…"
+        }
+    }
 }
 
 // Tiny help sheet — keeps the header completely self-contained.
