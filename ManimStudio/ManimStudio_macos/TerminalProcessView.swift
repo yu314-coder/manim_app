@@ -244,6 +244,11 @@ private final class _TerminalHostView: NSView {
     let term = LocalProcessTerminalView(frame: .zero)
     private static let inset: CGFloat = 6
 
+    // Autoscroll-during-drag plumbing — see comment block before the
+    // monitor closure for the full rationale.
+    private var dragMonitor: Any?
+    private var dragScrollTimer: Timer?
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
@@ -260,8 +265,15 @@ private final class _TerminalHostView: NSView {
             term.topAnchor.constraint(equalTo: topAnchor, constant: i),
             term.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -i),
         ])
+
+        installDragAutoscrollMonitor()
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    deinit {
+        if let m = dragMonitor { NSEvent.removeMonitor(m) }
+        dragScrollTimer?.invalidate()
+    }
 
     /// Hover I-beam over the terminal so the user knows they can
     /// drag-select. SwiftTerm sets it during selection but not on
@@ -269,6 +281,85 @@ private final class _TerminalHostView: NSView {
     override func resetCursorRects() {
         super.resetCursorRects()
         addCursorRect(bounds, cursor: .iBeam)
+    }
+
+    // MARK: drag-select autoscroll
+    //
+    // SwiftTerm's mouseDragged correctly computes an autoscroll delta
+    // when the cursor leaves the visible area, but the timer that
+    // consumes it is never scheduled (verified — scrollingTimerElapsed
+    // has no callers in MacTerminalView.swift). The class's mouse
+    // methods are `public`, not `open`, so we can't subclass to fix.
+    //
+    // Instead we install a local NSEvent monitor that observes
+    // leftMouse{Down,Dragged,Up} events without consuming them, and
+    // run our own 50 ms timer that scrolls the buffer while a drag
+    // is active and the cursor is past the top/bottom of the view.
+    private func installDragAutoscrollMonitor() {
+        dragMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+        ) { [weak self] event in
+            self?.handleMouseEvent(event)
+            return event  // never consume — let SwiftTerm see it
+        }
+    }
+
+    private func handleMouseEvent(_ event: NSEvent) {
+        // Only act on events targeting our terminal subview.
+        guard let win = window, event.window === win else { return }
+        let pInWindow = event.locationInWindow
+        let pInTerm = term.convert(pInWindow, from: nil)
+        let initiallyInside = term.bounds.contains(pInTerm)
+
+        switch event.type {
+        case .leftMouseDown:
+            // Only start on a click that lands inside the terminal.
+            if initiallyInside { startDragScrollTimer() }
+        case .leftMouseDragged:
+            if dragScrollTimer == nil && initiallyInside {
+                // Some drags begin without a leftMouseDown coming
+                // through the monitor (e.g. focus changes). Start lazy.
+                startDragScrollTimer()
+            }
+        case .leftMouseUp:
+            stopDragScrollTimer()
+        default:
+            break
+        }
+    }
+
+    private func startDragScrollTimer() {
+        guard dragScrollTimer == nil else { return }
+        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.dragTick()
+        }
+        // .eventTracking so the timer fires WHILE a mouse drag is
+        // happening (the default mode is suspended during tracking).
+        RunLoop.main.add(t, forMode: .eventTracking)
+        RunLoop.main.add(t, forMode: .common)
+        dragScrollTimer = t
+    }
+    private func stopDragScrollTimer() {
+        dragScrollTimer?.invalidate()
+        dragScrollTimer = nil
+    }
+
+    private func dragTick() {
+        guard let win = window else { stopDragScrollTimer(); return }
+        let pInWindow = win.mouseLocationOutsideOfEventStream
+        let p = term.convert(pInWindow, from: nil)
+        let h = term.bounds.height
+
+        // SwiftTerm's view uses non-flipped coordinates: y > h means
+        // the cursor went above the top edge → user wants to extend
+        // selection upward → reveal older lines via scrollUp.
+        if p.y > h {
+            let over = max(1, Int((p.y - h) / 16))
+            term.scrollUp(lines: min(over, 6))
+        } else if p.y < 0 {
+            let over = max(1, Int(-p.y / 16))
+            term.scrollDown(lines: min(over, 6))
+        }
     }
 }
 
@@ -290,18 +381,37 @@ extension TerminalProcessView {
     /// `which python` then resolves to the venv binary.
     static func cleanEnvironment(forVenv venv: VenvManager) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
+
+        // Inject the dirs where common LaTeX / dvisvgm / Homebrew
+        // tools live. macOS GUI apps (launchd-spawned) get a tiny
+        // $PATH (/usr/bin:/bin:…), missing /opt/homebrew/bin and
+        // /Library/TeX/texbin even though the user's interactive
+        // shell has them. Without this, `manim` finds latex but then
+        // `dvisvgm` fails — which is exactly the .dvi → .svg error
+        // the user hit. Order: venv bin > brew > tex > system.
+        var pathDirs: [String] = []
         if let py = VenvManager.venvPython {
-            let bin = py.deletingLastPathComponent().path
-            env["PATH"] = "\(bin):" + (env["PATH"] ?? "")
+            pathDirs.append(py.deletingLastPathComponent().path)
             env["VIRTUAL_ENV"] = VenvManager.venvURL.path
             env["VIRTUAL_ENV_PROMPT"] = "manimstudio"
         }
-        // Surface Homebrew Cairo paths so manim renders work in the
-        // terminal too.
+        for dir in ["/opt/homebrew/bin", "/opt/homebrew/sbin",
+                    "/usr/local/bin", "/usr/local/sbin",
+                    "/Library/TeX/texbin"] {
+            if FileManager.default.fileExists(atPath: dir) {
+                pathDirs.append(dir)
+            }
+        }
+        let existing = env["PATH"] ?? ""
+        env["PATH"] = (pathDirs + existing.split(separator: ":").map(String.init))
+            .reduce(into: [String]()) { acc, d in
+                if !acc.contains(d) { acc.append(d) }  // de-dup, preserve order
+            }
+            .joined(separator: ":")
+
         if let prefix = VenvManager.cairoBrewPrefix {
             env["PKG_CONFIG_PATH"] = "\(prefix.path)/lib/pkgconfig:" +
                 (env["PKG_CONFIG_PATH"] ?? "")
-            env["PATH"] = "\(prefix.path)/bin:" + (env["PATH"] ?? "")
         }
         env["TERM"]      = "xterm-256color"
         env["LC_ALL"]    = env["LC_ALL"] ?? "en_US.UTF-8"

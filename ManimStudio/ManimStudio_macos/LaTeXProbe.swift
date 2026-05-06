@@ -34,15 +34,27 @@ final class LaTeXProbe: ObservableObject {
         }
     }
 
+    /// Primary LaTeX engine status (pdflatex preferred).
     @Published private(set) var status: Status = .unknown
+    /// dvisvgm status — manim needs this *in addition to* latex to
+    /// produce the .svg files used by Tex/MathTex/Text mobjects.
+    /// BasicTeX does not include it; the user typically has it via
+    /// Homebrew (`brew install dvisvgm`).
+    @Published private(set) var dvisvgm: Status = .unknown
+
+    /// True only when both pieces of the manim TeX pipeline are
+    /// available — used by views that gate "TeX rendering will work".
+    var fullyReady: Bool { status.isReady && dvisvgm.isReady }
 
     /// Probes asynchronously; publishes the result on the main actor.
     /// Safe to call repeatedly — each call overwrites the result.
     func probe() {
         Task.detached(priority: .userInitiated) {
-            let result = Self.findFirst()
+            let latex   = Self.findFirst(in: Self.candidates)
+            let dvisvgm = Self.findFirst(in: ["dvisvgm"])
             await MainActor.run {
-                self.status = result
+                self.status = latex
+                self.dvisvgm = dvisvgm
             }
         }
     }
@@ -73,8 +85,8 @@ final class LaTeXProbe: ObservableObject {
         return dirs.filter { seen.insert($0).inserted }
     }
 
-    private nonisolated static func findFirst() -> Status {
-        for name in candidates {
+    private nonisolated static func findFirst(in names: [String]) -> Status {
+        for name in names {
             for dir in searchDirs {
                 let url = URL(fileURLWithPath: dir).appendingPathComponent(name)
                 if FileManager.default.isExecutableFile(atPath: url.path) {

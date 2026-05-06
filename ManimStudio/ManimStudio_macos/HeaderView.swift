@@ -245,19 +245,25 @@ struct HeaderView: View {
     }
 
     private var latexStatus: some View {
+        // Composite status: both pieces of the manim TeX pipeline
+        // need to be present for `Tex(...)` / `Text(...)` to render.
         let tint: Color
         let label: String
         let icon: String
-        switch latex.status {
-        case .found(let name, _):
+        switch (latex.status, latex.dvisvgm) {
+        case (.found(let name, _), .found):
             tint = Theme.success; label = name; icon = "checkmark.seal"
-        case .missing:
-            tint = Theme.amber;   label = "LaTeX missing"; icon = "exclamationmark.triangle"
-        case .unknown:
+        case (.found, _):
+            tint = Theme.amber; label = "dvisvgm missing"
+            icon = "exclamationmark.triangle"
+        case (.missing, _), (.unknown, _) where latex.status == .missing:
+            tint = Theme.amber; label = "LaTeX missing"
+            icon = "exclamationmark.triangle"
+        default:
             tint = Theme.textDim; label = "LaTeX"; icon = "function"
         }
         return Button {
-            // Re-probe in case the user just installed BasicTeX, then
+            // Re-probe in case the user just installed something, then
             // pop the install instructions popover.
             latex.probe()
             showLatexPopover.toggle()
@@ -274,17 +280,23 @@ struct HeaderView: View {
         .buttonStyle(.plain)
         .help(latexHelpText)
         .popover(isPresented: $showLatexPopover, arrowEdge: .bottom) {
-            LatexInstallPopover(status: latex.status,
+            LatexInstallPopover(latex: latex.status,
+                                dvisvgm: latex.dvisvgm,
                                 onRefresh: { latex.probe() })
-                .frame(width: 360)
+                .frame(width: 380)
         }
     }
 
     private var latexHelpText: String {
-        switch latex.status {
-        case .found(_, let url):  return "Found at \(url.path)"
-        case .missing:            return "Click to see how to install BasicTeX"
-        case .unknown:            return "Probing PATH for LaTeX…"
+        switch (latex.status, latex.dvisvgm) {
+        case (.found(_, let l), .found(_, let d)):
+            return "latex: \(l.path)\ndvisvgm: \(d.path)"
+        case (.found, .missing):
+            return "Found latex but dvisvgm is missing — click to fix"
+        case (.missing, _):
+            return "Click to install BasicTeX"
+        default:
+            return "Probing PATH for LaTeX…"
         }
     }
 
@@ -311,11 +323,13 @@ struct HeaderView: View {
 // MARK: - LaTeX install popover
 
 private struct LatexInstallPopover: View {
-    let status: LaTeXProbe.Status
+    let latex: LaTeXProbe.Status
+    let dvisvgm: LaTeXProbe.Status
     let onRefresh: () -> Void
 
-    private static let brewCommand = "brew install --cask basictex"
-    private static let tlmgrCommand =
+    private static let installLatex   = "brew install --cask basictex"
+    private static let installDvisvgm = "brew install dvisvgm"
+    private static let installTexPkgs =
         "sudo tlmgr update --self && sudo tlmgr install standalone preview doublestroke ms relsize setspace rsfs"
 
     var body: some View {
@@ -327,9 +341,7 @@ private struct LatexInstallPopover: View {
                     .foregroundStyle(statusTint)
                 Text(headline).font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Button {
-                    onRefresh()
-                } label: {
+                Button { onRefresh() } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.textSecondary)
@@ -338,37 +350,66 @@ private struct LatexInstallPopover: View {
                 .help("Re-check PATH")
             }
 
-            switch status {
-            case .found(let name, let url):
-                Text("Manim will use **\(name)** from:")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.textSecondary)
-                Text(url.path)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 6)
-                        .fill(Theme.bgTertiary))
-            case .missing, .unknown:
-                Text("Manim's `Text(...)`, `MathTex(...)` and `Tex(...)` mobjects compile via `pdflatex`. None of pdflatex/latex/xelatex/lualatex were found on PATH or in /Library/TeX/texbin.")
+            // ── Found path summary
+            statusRow("LaTeX", latex)
+            statusRow("dvisvgm", dvisvgm)
+
+            // ── Action items, only when something's missing
+            let needLatex   = !latex.isReady
+            let needDvisvgm = !dvisvgm.isReady
+            if needLatex || needDvisvgm {
+                Divider().padding(.vertical, 2)
+                Text("Manim's `Text(...)`, `MathTex(...)` and `Tex(...)` mobjects need both `pdflatex` AND `dvisvgm` to compile to SVG.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-
-                stepLabel("1. Install BasicTeX (~80 MB)")
-                copyableCommand(Self.brewCommand)
-
-                stepLabel("2. Install the manim TeX packages")
-                copyableCommand(Self.tlmgrCommand)
-
-                Text("After installing, restart this app or click the refresh icon above. Or skip LaTeX entirely by using `Text(\"…\", use_svg=True)` / non-text mobjects.")
+            }
+            if needLatex {
+                stepLabel("Install BasicTeX (~80 MB)")
+                copyableCommand(Self.installLatex)
+                stepLabel("…then install the manim TeX packages")
+                copyableCommand(Self.installTexPkgs)
+            }
+            if needDvisvgm {
+                stepLabel("Install dvisvgm")
+                copyableCommand(Self.installDvisvgm)
+            }
+            if needLatex || needDvisvgm {
+                Text("After installing, click the refresh icon above. Or skip TeX entirely by using non-text mobjects (Circle, Square, Dot, …).")
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(14)
+    }
+
+    @ViewBuilder
+    private func statusRow(_ label: String, _ s: LaTeXProbe.Status) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: s.isReady ? "checkmark.circle.fill"
+                                        : "xmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(s.isReady ? Theme.success : Theme.amber)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(detail(of: s))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(2).truncationMode(.middle)
+            }
+            Spacer()
+        }
+    }
+
+    private func detail(of s: LaTeXProbe.Status) -> String {
+        switch s {
+        case .found(let name, let url): return "\(name) — \(url.path)"
+        case .missing:                  return "not found on PATH"
+        case .unknown:                  return "probing…"
+        }
     }
 
     @ViewBuilder
@@ -420,26 +461,25 @@ private struct LatexInstallPopover: View {
         .background(RoundedRectangle(cornerRadius: 6).fill(Theme.bgTertiary))
     }
 
+    /// Worst-of-the-two — drives the popover header.
     private var statusIcon: String {
-        switch status {
-        case .found:   return "checkmark.seal.fill"
-        case .missing: return "exclamationmark.triangle.fill"
-        case .unknown: return "questionmark.circle"
+        if latex.isReady && dvisvgm.isReady { return "checkmark.seal.fill" }
+        if latex == .unknown || dvisvgm == .unknown {
+            return "questionmark.circle"
         }
+        return "exclamationmark.triangle.fill"
     }
     private var statusTint: Color {
-        switch status {
-        case .found:   return Theme.success
-        case .missing: return Theme.amber
-        case .unknown: return Theme.textDim
-        }
+        if latex.isReady && dvisvgm.isReady { return Theme.success }
+        if latex == .unknown || dvisvgm == .unknown { return Theme.textDim }
+        return Theme.amber
     }
     private var headline: String {
-        switch status {
-        case .found:   return "LaTeX detected"
-        case .missing: return "LaTeX not installed"
-        case .unknown: return "Probing for LaTeX…"
-        }
+        if latex.isReady && dvisvgm.isReady { return "TeX pipeline ready" }
+        if latex == .unknown || dvisvgm == .unknown { return "Probing…" }
+        if !latex.isReady && !dvisvgm.isReady { return "LaTeX + dvisvgm missing" }
+        if !latex.isReady { return "LaTeX missing" }
+        return "dvisvgm missing"
     }
 }
 

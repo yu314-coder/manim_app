@@ -242,65 +242,92 @@ struct SettingsView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var venv: VenvManager
     @Environment(\.dismiss) private var dismiss
+    @State private var tab: Tab = .general
+
+    enum Tab: Hashable { case general, system }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 12) {
                 Text("Settings").font(.system(size: 18, weight: .bold))
+                Picker("", selection: $tab) {
+                    Text("General").tag(Tab.general)
+                    Text("System info").tag(Tab.system)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 240)
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.escape, modifiers: [])
             }
             .padding(16)
             Divider()
-            Form {
-                Section("Editor") {
+
+            switch tab {
+            case .general: generalForm
+            case .system:  SystemInfoView()
+                .environmentObject(venv)
+            }
+        }
+    }
+
+    private var generalForm: some View {
+        Form {
+            Section("Editor") {
+                HStack {
+                    Text("Font size")
+                    Slider(value: $app.editorFontSize, in: 9...22, step: 1)
+                    Text("\(Int(app.editorFontSize))pt")
+                        .frame(width: 44, alignment: .trailing)
+                        .font(.system(.caption, design: .monospaced))
+                }
+            }
+            Section("Terminal") {
+                HStack {
+                    Text("Font size")
+                    Slider(value: $app.terminalFontSize, in: 9...22, step: 1)
+                    Text("\(Int(app.terminalFontSize))pt")
+                        .frame(width: 44, alignment: .trailing)
+                        .font(.system(.caption, design: .monospaced))
+                }
+            }
+            Section("Render") {
+                Picker("Quality", selection: $app.renderQuality) {
+                    ForEach(RenderQuality.allCases) { q in
+                        Text(q.label).tag(q)
+                    }
+                }
+                Picker("Format", selection: $app.renderFormat) {
+                    ForEach(RenderFormat.allCases) { f in
+                        Text(f.label).tag(f)
+                    }
+                }
+                Stepper(value: $app.renderFPS, in: 12...120, step: 6) {
+                    Text("FPS: \(app.renderFPS)")
+                }
+            }
+            Section("Environment") {
+                LabeledContent("Status") {
                     HStack {
-                        Text("Font size")
-                        Slider(value: $app.editorFontSize, in: 9...22, step: 1)
-                        Text("\(Int(app.editorFontSize))pt")
-                            .frame(width: 44, alignment: .trailing)
+                        StatusDot(state: venv.phase == .ready ? .ok : .idle)
+                        Text(envStatusText)
                             .font(.system(.caption, design: .monospaced))
                     }
                 }
-                Section("Render") {
-                    Picker("Quality", selection: $app.renderQuality) {
-                        ForEach(RenderQuality.allCases) { q in
-                            Text(q.label).tag(q)
-                        }
-                    }
-                    Picker("Format", selection: $app.renderFormat) {
-                        ForEach(RenderFormat.allCases) { f in
-                            Text(f.label).tag(f)
-                        }
-                    }
-                    Stepper(value: $app.renderFPS, in: 12...120, step: 6) {
-                        Text("FPS: \(app.renderFPS)")
+                if let py = venv.pythonInVenv {
+                    LabeledContent("Python") {
+                        Text(py.path)
+                            .font(.system(.caption, design: .monospaced))
+                            .lineLimit(1).truncationMode(.middle)
                     }
                 }
-                Section("Environment") {
-                    LabeledContent("Status") {
-                        HStack {
-                            StatusDot(state: venv.phase == .ready ? .ok : .idle)
-                            Text(envStatusText)
-                                .font(.system(.caption, design: .monospaced))
-                        }
-                    }
-                    if let py = venv.pythonInVenv {
-                        LabeledContent("Python") {
-                            Text(py.path)
-                                .font(.system(.caption, design: .monospaced))
-                                .lineLimit(1).truncationMode(.middle)
-                        }
-                    }
-                    Button("Re-run setup wizard") {
-                        NotificationCenter.default.post(
-                            name: .reopenWelcome, object: nil)
-                    }
+                Button("Re-run setup wizard") {
+                    NotificationCenter.default.post(
+                        name: .reopenWelcome, object: nil)
                 }
             }
-            .formStyle(.grouped)
         }
+        .formStyle(.grouped)
     }
 
     private var envStatusText: String {
