@@ -11,7 +11,13 @@
 import Foundation
 import SwiftUI
 
-@MainActor
+/// Drops the class-level @MainActor — Swift 6's strict-isolation
+/// synthesis of ObservableObject's objectWillChange publisher
+/// conflicts with @MainActor when no explicit override is given.
+/// All callers (SwiftUI Tasks) default to MainActor anyway, so the
+/// @Published mutations land on main; the streaming onLine
+/// callbacks inside setupFromScratch explicitly hop to MainActor
+/// before mutating .status.
 final class VenvManager: ObservableObject {
 
     enum Status: Equatable {

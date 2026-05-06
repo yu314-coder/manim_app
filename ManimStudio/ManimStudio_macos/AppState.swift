@@ -9,7 +9,10 @@
 import SwiftUI
 import Combine
 
-@MainActor
+// Class-level @MainActor dropped — Swift 6's strict-isolation
+// ObservableObject synthesis can't reconcile @MainActor with the
+// nonisolated objectWillChange requirement. SwiftUI views call
+// this from the main actor, so @Published mutations happen there.
 final class AppState: ObservableObject {
     // ── Editor buffer
     @Published var sourceCode: String = AppState.defaultScene
