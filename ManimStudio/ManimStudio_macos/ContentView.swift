@@ -30,6 +30,12 @@ struct ContentView: View {
             )
             TabBarView(selection: $app.sidebarSection)
 
+            // Auto-setup banner — only renders something if the
+            // TeX pipeline isn't ready. Hidden entirely on a working
+            // setup so it's not visual noise for users who don't
+            // need TeX rendering.
+            LaTeXSetupBanner()
+
             ZStack {
                 VisualEffectBackground(material: .underWindowBackground)
                     .ignoresSafeArea()

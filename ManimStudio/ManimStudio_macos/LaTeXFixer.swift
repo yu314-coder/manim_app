@@ -38,6 +38,19 @@ final class LaTeXFixer: ObservableObject {
     @Published private(set) var test: TestResult = .unknown
     @Published private(set) var brewPath: String? = nil
 
+    // ── full-setup chain — drives the workspace banner.
+    enum SetupPhase: String, Equatable {
+        case idle
+        case installingBasicTeX
+        case installingDvisvgm
+        case installingPackages
+        case testing
+        case ready
+        case failed
+    }
+    @Published private(set) var setupPhase: SetupPhase = .idle
+    @Published private(set) var setupDetail: String = ""
+
     /// The next concrete action the user can take to make MathTex
     /// renders work. Computed from the current state of LaTeXProbe
     /// + the end-to-end test result.
@@ -104,6 +117,157 @@ final class LaTeXFixer: ObservableObject {
             }
         }
         return .allGood
+    }
+
+    /// One-click full setup chain. Detects what's missing and
+    /// chains the installs in order:
+    ///   1. brew install --cask basictex   (admin password dialog)
+    ///   2. brew install dvisvgm
+    ///   3. sudo tlmgr install standalone preview …  (terminal sudo)
+    ///   4. end-to-end pipeline test
+    /// Each step is dispatched into the integrated terminal so the
+    /// user can see progress and respond to password / y/N prompts.
+    /// We poll for binary / .cls appearance every 3 s to advance
+    /// without needing to parse stdout.
+    func runFullSetup(latex: LaTeXProbe.Status,
+                      dvisvgm: LaTeXProbe.Status,
+                      onProbeRefresh: @escaping () -> Void) {
+        guard setupPhase == .idle ||
+              setupPhase == .ready ||
+              setupPhase == .failed else {
+            return  // already running
+        }
+        Task.detached(priority: .userInitiated) { [weak self] in
+            await self?.runSetupChain(latex: latex,
+                                      dvisvgm: dvisvgm,
+                                      onProbeRefresh: onProbeRefresh)
+        }
+    }
+
+    private nonisolated func runSetupChain(
+        latex: LaTeXProbe.Status,
+        dvisvgm: LaTeXProbe.Status,
+        onProbeRefresh: @escaping () -> Void) async
+    {
+        // 1. BasicTeX
+        if !latex.isReady {
+            await MainActor.run {
+                self.setupPhase = .installingBasicTeX
+                self.setupDetail = "running: brew install --cask basictex"
+                TerminalBridge.shared.runInShell(
+                    "brew install --cask basictex")
+            }
+            // BasicTeX cask put pdflatex into /Library/TeX/texbin.
+            let ok = await Self.waitForBinary("pdflatex", timeoutMin: 8)
+            if !ok {
+                await self.fail("Timed out waiting for pdflatex install. " +
+                                "Check the terminal — brew may have asked " +
+                                "for your admin password.")
+                return
+            }
+            await MainActor.run { onProbeRefresh() }
+        }
+
+        // 2. dvisvgm
+        if !dvisvgm.isReady {
+            await MainActor.run {
+                self.setupPhase = .installingDvisvgm
+                self.setupDetail = "running: brew install dvisvgm"
+                TerminalBridge.shared.runInShell("brew install dvisvgm")
+            }
+            let ok = await Self.waitForBinary("dvisvgm", timeoutMin: 5)
+            if !ok {
+                await self.fail("Timed out waiting for dvisvgm install.")
+                return
+            }
+            await MainActor.run { onProbeRefresh() }
+        }
+
+        // 3. tlmgr packages — needed for standalone.cls + manim's
+        // other macros. sudo prompts in the terminal; user enters
+        // password once and the rest happens.
+        await MainActor.run {
+            self.setupPhase = .installingPackages
+            self.setupDetail =
+                "running: sudo tlmgr install standalone preview …"
+            TerminalBridge.shared.runInShell(
+                "sudo tlmgr update --self && " +
+                "sudo tlmgr install standalone preview doublestroke ms relsize setspace rsfs")
+        }
+        // tlmgr writes to ~/Library/texmf/tex/latex/standalone/.
+        let pkgsOK = await Self.waitForUserTexPackage("standalone.cls",
+                                                       timeoutMin: 6)
+        if !pkgsOK {
+            await self.fail("Timed out waiting for tlmgr to install. " +
+                            "Make sure you entered your password in the terminal.")
+            return
+        }
+
+        // 4. End-to-end pipeline test (runs the same compileAndConvert
+        // the popover uses — actually exercises pdflatex + dvisvgm).
+        await MainActor.run {
+            self.setupPhase = .testing
+            self.setupDetail = "compiling test MathTex…"
+        }
+        let result = Self.compileAndConvert()
+        await MainActor.run {
+            self.test = result
+            switch result {
+            case .passed:
+                self.setupPhase = .ready
+                self.setupDetail = "Pipeline test passed — TeX renders work."
+                onProbeRefresh()
+            case .failed(let stage, let msg):
+                self.setupPhase = .failed
+                self.setupDetail = "\(stage.rawValue): \(msg)"
+            case .running, .unknown:
+                self.setupPhase = .failed
+                self.setupDetail = "test produced unexpected state"
+            }
+        }
+    }
+
+    private nonisolated func fail(_ msg: String) async {
+        await MainActor.run {
+            self.setupPhase = .failed
+            self.setupDetail = msg
+        }
+    }
+
+    /// Polls every 3 s for `name` to appear on PATH. Returns false
+    /// after `timeoutMin` minutes. Used to detect when brew finishes.
+    private nonisolated static func waitForBinary(_ name: String,
+                                                  timeoutMin: Int) async
+        -> Bool
+    {
+        let deadline = Date().addingTimeInterval(TimeInterval(timeoutMin * 60))
+        while Date() < deadline {
+            if findOnPath(name) != nil { return true }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
+        return false
+    }
+    /// Polls for a TeX class / style file in the user-local tree
+    /// at $HOME/Library/texmf — that's where unprivileged tlmgr
+    /// installs files.
+    private nonisolated static func waitForUserTexPackage(_ name: String,
+                                                          timeoutMin: Int) async
+        -> Bool
+    {
+        let deadline = Date().addingTimeInterval(TimeInterval(timeoutMin * 60))
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let tree = home.appendingPathComponent("Library/texmf",
+                                                isDirectory: true)
+        while Date() < deadline {
+            if let walker = FileManager.default.enumerator(
+                at: tree, includingPropertiesForKeys: nil) {
+                for case let url as URL in walker {
+                    if url.lastPathComponent == name { return true }
+                }
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
+        return false
     }
 
     /// Compile a tiny `\(x^2\)` MathTex equivalent through
