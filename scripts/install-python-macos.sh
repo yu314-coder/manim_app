@@ -64,18 +64,39 @@ echo "note: stdlib bundled (slice=$(basename $SLICE))"
 #       then rsync'd into the .app at build time. The cache lives
 #       at _vendor/macos-site-packages/ so we don't pip-install on
 #       every build.
+#
+# Pip needs an *executable* Python interpreter, which BeeWare's
+# embed-only macOS slice doesn't ship — its framework is just
+# Python.framework/Versions/3.14/Python (the dylib). So we use a
+# host python3.14 from PATH for the pip step. As long as both are
+# CPython 3.14 with the same ABI flags, the installed wheels load
+# fine inside the embedded interpreter.
 VENDOR_SITE="${SRCROOT}/../_vendor/macos-site-packages"
 REQS="${SRCROOT}/../requirements-macos.txt"
 if [ ! -d "$VENDOR_SITE" ] && [ -f "$REQS" ]; then
-  echo "note: priming $VENDOR_SITE via pip (one-time, ~5 min)"
-  PYBIN="$SLICE/bin/python3.14"
-  [ ! -x "$PYBIN" ] && PYBIN="$SLICE/Python.framework/Versions/3.14/bin/python3.14"
-  if [ -x "$PYBIN" ]; then
-    "$PYBIN" -m pip install --no-warn-script-location \
-        --target "$VENDOR_SITE" -r "$REQS" \
-      || echo "warning: pip install failed; continuing without site-packages"
+  HOST_PY=""
+  for cand in python3.14 python3.13 python3.12 python3 ; do
+    if command -v "$cand" >/dev/null 2>&1; then
+      HOST_PY="$(command -v $cand)"
+      break
+    fi
+  done
+  if [ -z "$HOST_PY" ]; then
+    echo "warning: no python3.* on PATH — pip-install skipped."
+    echo "         Install Python 3.14 from python.org or 'brew install python@3.14'"
+    echo "         and rebuild to populate $VENDOR_SITE."
   else
-    echo "warning: no python binary in slice for pip install"
+    PY_VER=$("$HOST_PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+    if [ "$PY_VER" != "3.14" ]; then
+      echo "warning: host Python is $PY_VER, BeeWare slice is 3.14 — ABI mismatch likely."
+      echo "         pip-install proceeds but C extensions may fail at runtime."
+      echo "         Install python3.14 (brew install python@3.14) for clean wheels."
+    fi
+    echo "note: priming $VENDOR_SITE via $HOST_PY (one-time, ~5 min)"
+    "$HOST_PY" -m pip install --no-warn-script-location \
+        --target "$VENDOR_SITE" -r "$REQS" \
+      && echo "note: pip install OK" \
+      || echo "warning: pip install failed; continuing without site-packages"
   fi
 fi
 if [ -d "$VENDOR_SITE" ]; then
