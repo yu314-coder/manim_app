@@ -413,11 +413,49 @@ extension TerminalProcessView {
             env["PKG_CONFIG_PATH"] = "\(prefix.path)/lib/pkgconfig:" +
                 (env["PKG_CONFIG_PATH"] ?? "")
         }
+
+        // Surface the user's TeX Live root so Homebrew's dvisvgm
+        // can find texmf.cnf + fontmaps. Without TEXMFROOT/TEXMFCNF,
+        // brew dvisvgm exits silently with code 254 because its
+        // bundled libkpathsea only searches under /opt/homebrew/Cellar
+        // — completely missing /usr/local/texlive/<year>basic. Manim
+        // then reports "Your installation does not support converting
+        // .dvi files to SVG" with no clue why.
+        if let texRoot = detectTeXMFRoot() {
+            env["TEXMFROOT"] = texRoot.path
+            env["TEXMFCNF"] = texRoot
+                .appendingPathComponent("texmf-dist/web2c").path
+        }
+
         env["TERM"]      = "xterm-256color"
         env["LC_ALL"]    = env["LC_ALL"] ?? "en_US.UTF-8"
         env["LANG"]      = env["LANG"] ?? "en_US.UTF-8"
         env["COLORTERM"] = "truecolor"
         return env
+    }
+
+    /// Finds the user's TeX Live root by scanning /usr/local/texlive
+    /// for the newest year-stamped directory that contains
+    /// texmf-dist/web2c/texmf.cnf. Works for both BasicTeX
+    /// ("2025basic") and full MacTeX ("2025"). Returns nil if no
+    /// install is present.
+    static func detectTeXMFRoot() -> URL? {
+        let base = URL(fileURLWithPath: "/usr/local/texlive")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: base, includingPropertiesForKeys: nil)
+        else { return nil }
+        // Newest first — directory names sort lexicographically by year.
+        let sorted = entries.sorted {
+            $0.lastPathComponent > $1.lastPathComponent
+        }
+        for url in sorted {
+            let cnf = url.appendingPathComponent(
+                "texmf-dist/web2c/texmf.cnf")
+            if FileManager.default.fileExists(atPath: cnf.path) {
+                return url
+            }
+        }
+        return nil
     }
 
     /// `bin/activate` for the per-app venv if it exists.

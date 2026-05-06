@@ -36,6 +36,8 @@ struct SystemInfoView: View {
                         kv("pdflatex version", info.pdflatex.version ?? info.pdflatex.error ?? "probing…")
                         kv("dvisvgm path",  info.dvisvgm.path  ?? "—")
                         kv("dvisvgm version", info.dvisvgm.version ?? info.dvisvgm.error ?? "probing…")
+                        kv("TEXMFROOT",
+                           TerminalProcessView.detectTeXMFRoot()?.path ?? "not detected")
                     }
 
                     if !info.pipList.isEmpty {
