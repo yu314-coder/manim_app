@@ -15,21 +15,38 @@ struct TerminalPane: View {
                 Text("Console & Terminal").font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Circle().fill(Theme.success).frame(width: 6, height: 6)
-                Text("offlinai_shell")
+                Text("manimstudio_shell")
                     .font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
                 Spacer()
+                // Copy — grab the terminal's current selection (or all
+                // visible text if nothing is selected) onto the system
+                // clipboard, so the user can paste output elsewhere.
                 Button {
-                    PTYBridge.shared.send(data: [0x03])      // Ctrl-C
+                    if let tv = PTYBridge.shared.terminalView,
+                       let sel = tv.getSelection(), !sel.isEmpty {
+                        UIPasteboard.general.string = sel
+                    } else if let tv = PTYBridge.shared.terminalView {
+                        // No selection — fall back to the visible viewport.
+                        let term = tv.getTerminal()
+                        var lines: [String] = []
+                        for r in 0..<term.rows {
+                            if let line = term.getLine(row: r) {
+                                lines.append(line.translateToString(trimRight: true))
+                            }
+                        }
+                        UIPasteboard.general.string = lines.joined(separator: "\n")
+                    }
                 } label: {
-                    Image(systemName: "xmark.octagon")
-                        .font(.system(size: 11)).foregroundStyle(Theme.error)
-                }.buttonStyle(.plain).help("Send Ctrl-C")
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+                }.buttonStyle(.plain).help("Copy")
+                // Del — clear the terminal screen + scrollback (ESC[2J + ESC[H + ESC[3J).
                 Button {
-                    PTYBridge.shared.terminalView?.feed(text: "\u{1b}[2J\u{1b}[H")
+                    PTYBridge.shared.terminalView?.feed(text: "\u{1b}[2J\u{1b}[3J\u{1b}[H")
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-                }.buttonStyle(.plain).help("Clear")
+                }.buttonStyle(.plain).help("Del")
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(Theme.bgSecondary)

@@ -63,8 +63,11 @@ final class TerminalPaneViewController: UIViewController {
     // MARK: - UI construction
 
     private func buildUI() {
-        buildTitleBar()
-        view.addSubview(titleBar)
+        // Inner title bar (traffic lights + Terminal · xterm-256color
+        // strip + interrupt/font/menu/clear buttons) was removed — the
+        // outer SwiftUI TerminalPane already exposes Copy + Del, and
+        // the duplicate row was eating vertical space + showing extra
+        // controls the user explicitly asked to drop.
 
         terminal.translatesAutoresizingMaskIntoConstraints = false
         terminal.backgroundColor = UIColor(red: 0.020, green: 0.024, blue: 0.032, alpha: 1.0)
@@ -73,12 +76,7 @@ final class TerminalPaneViewController: UIViewController {
         view.addSubview(terminal)
 
         NSLayoutConstraint.activate([
-            titleBar.topAnchor.constraint(equalTo: view.topAnchor),
-            titleBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            titleBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            titleBar.heightAnchor.constraint(equalToConstant: 32),
-
-            terminal.topAnchor.constraint(equalTo: titleBar.bottomAnchor),
+            terminal.topAnchor.constraint(equalTo: view.topAnchor),
             terminal.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             terminal.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             terminal.bottomAnchor.constraint(equalTo: view.bottomAnchor),

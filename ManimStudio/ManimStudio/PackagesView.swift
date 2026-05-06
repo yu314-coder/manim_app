@@ -63,6 +63,14 @@ struct PackagesView: View {
         .padding(16).background(Theme.bgPrimary)
         .onAppear {
             if inspector.packages.isEmpty && !inspector.isLoading { inspector.refresh() }
+            // First time the user opens this tab is a good moment to
+            // also build Monaco's symbol index (imports manim/numpy/
+            // scipy/matplotlib once, caches the JSON for next launch).
+            // We piggyback on this tab because the user is already
+            // committing to a "scan all packages" wait — running both
+            // passes back-to-back keeps the editor feeling instant on
+            // future launches.
+            LibrarySymbolBuilder.shared.build { _ in /* cached for next launch */ }
         }
     }
 

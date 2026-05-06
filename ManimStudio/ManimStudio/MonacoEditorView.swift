@@ -288,6 +288,29 @@ final class MonacoEditorView: UIView {
     /// payload (built by `LibrarySymbolBuilder` after Python boots) into
     /// Monaco. The completion provider merges this with its hardcoded
     /// LIB_SYMBOLS so introspection-discovered names show up in suggest.
+    /// Push a list of error markers (one per offending line) into
+    /// Monaco. Each marker shows a red gutter dot + a tooltip and
+    /// shows up in Monaco's problems counter. Pass an empty array
+    /// to clear all markers.
+    struct EditorMarker {
+        let line: Int
+        let column: Int
+        let message: String
+    }
+    func setMarkers(_ markers: [EditorMarker]) {
+        guard isReady, Self.monacoEnabled else { return }
+        let payload: [[String: Any]] = markers.map {
+            [
+                "line": $0.line,
+                "column": $0.column,
+                "message": $0.message,
+            ]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.__editor && window.__editor.setMarkers(\(json));")
+    }
+
     func setSymbolIndexJSON(_ json: String) {
         guard isReady, Self.monacoEnabled else { return }
         webView.evaluateJavaScript("window.__editor.setSymbolIndex(\(json))")
@@ -300,22 +323,15 @@ final class MonacoEditorView: UIView {
     func runEditorAction(_ id: String) {
         guard isReady, Self.monacoEnabled else { return }
         webView.becomeFirstResponder()
+        // window.__editor is the Swift-facing API wrapper. The inner
+        // `editor` reference is captured in a closure inside editor.html
+        // and isn't exposed as a property — earlier code that probed
+        // `window.__editor.editor || .monacoEditor` always whiffed,
+        // making Find/Replace silently no-op. Call the explicit
+        // runAction method that editor.html exposes.
         let escaped = id.replacingOccurrences(of: "'", with: "\\'")
         webView.evaluateJavaScript("""
-            (function(){
-              if (!window.__editor) return;
-              var ed = window.__editor.editor || window.__editor.monacoEditor;
-              if (!ed) ed = window.__editor;
-              try {
-                if (ed.focus) ed.focus();
-                if (ed.getAction) {
-                  var a = ed.getAction('\(escaped)');
-                  if (a) a.run();
-                } else if (ed.trigger) {
-                  ed.trigger('source', '\(escaped)', null);
-                }
-              } catch(e) { console.error(e); }
-            })();
+            window.__editor && window.__editor.runAction && window.__editor.runAction('\(escaped)');
             """)
     }
 

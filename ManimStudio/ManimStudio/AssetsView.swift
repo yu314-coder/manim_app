@@ -67,11 +67,17 @@ struct AssetsView: View {
                            startPoint: .topLeading, endPoint: .bottomTrailing)
         )
         .onAppear { reload() }
-        .fileImporter(isPresented: $showImporter,
-                      allowedContentTypes: [.item],
-                      allowsMultipleSelection: true) { result in
-            handleImport(result)
-        }
+        // .fileImporter is unreliable when attached deep inside a
+        // ScrollView (it sometimes silently fails to present on iPad
+        // because the SwiftUI presentation controller can't find a
+        // window). Use a direct UIDocumentPickerViewController bridge
+        // instead — it always presents from the key window's root.
+        .background(
+            DocumentPicker(
+                isPresented: $showImporter,
+                onPick: { urls in handleImport(.success(urls)) }
+            )
+        )
         .alert("New folder", isPresented: $showNewFolder) {
             TextField("Folder name", text: $newFolderName)
                 .textInputAutocapitalization(.never)
@@ -261,4 +267,47 @@ private struct Identified: Identifiable {
     let url: URL
     init(_ u: URL) { url = u }
     var id: URL { url }
+}
+
+/// UIDocumentPickerViewController bridge for file import.
+/// Replaces SwiftUI's .fileImporter which has a long history of
+/// silently no-op'ing when attached inside ScrollView / sheet
+/// hierarchies on iPadOS. Presented from the host VC's hierarchy
+/// every time, so it always shows up.
+struct DocumentPicker: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    var contentTypes: [UTType] = [.item]
+    var allowsMultiple: Bool = true
+    let onPick: ([URL]) -> Void
+
+    func makeCoordinator() -> Coord { Coord(self) }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        UIViewController()  // host view; we present off it
+    }
+
+    func updateUIViewController(_ host: UIViewController, context: Context) {
+        guard isPresented, host.presentedViewController == nil else { return }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: true)
+        picker.allowsMultipleSelection = allowsMultiple
+        picker.delegate = context.coordinator
+        // Defer to next runloop so SwiftUI has finished its layout pass —
+        // presenting during updateUIViewController itself can be ignored.
+        DispatchQueue.main.async {
+            host.present(picker, animated: true)
+        }
+    }
+
+    final class Coord: NSObject, UIDocumentPickerDelegate {
+        let parent: DocumentPicker
+        init(_ p: DocumentPicker) { parent = p }
+        func documentPicker(_ controller: UIDocumentPickerViewController,
+                            didPickDocumentsAt urls: [URL]) {
+            parent.onPick(urls)
+            parent.isPresented = false
+        }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            parent.isPresented = false
+        }
+    }
 }

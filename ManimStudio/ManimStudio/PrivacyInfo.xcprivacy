@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Apple's required-reason API manifest. Each "required reason
+         API" we touch needs a declared reason; submissions without
+         this file (or with un-declared reasons) get rejected as of
+         Spring 2024. -->
+
+    <key>NSPrivacyTracking</key>
+    <false/>
+
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <!-- UserDefaults: settings persistence (theme, accent, render
+             quality, GPU toggle, etc.). Reason CA92.1 = "Read or
+             write to user defaults that are accessible only to the
+             app itself". -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+
+        <!-- File timestamps: Documents/ToolOutputs/ scanning for the
+             History tab + Logs/ rotation by mtime. Reason C617.1 =
+             "Display the file timestamp to the person using the
+             device". -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+                <string>0A2A.1</string>
+            </array>
+        </dict>
+
+        <!-- System uptime: shown in `top` builtin via sysctl
+             kern.boottime. Reason 35F9.1 = "Measure the amount of
+             time that has elapsed between events that occurred
+             within the app, or between user actions and events". -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+
+        <!-- Disk space: ByteCountFormatter use in Settings → Storage
+             section + History/Assets size displays. Reason 85F4.1 =
+             "Display disk space information to the person using the
+             device". -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>85F4.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

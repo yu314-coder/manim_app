@@ -139,7 +139,15 @@ if [ -f "$SHELL_SRC/offlinai_shell.py" ]; then
     rm -rf "$META_DST/offlinai_shell-0.1.0.dist-info"
     cp -R "$SHELL_SRC/offlinai_shell-0.1.0.dist-info" "$META_DST/"
   fi
-  echo "note: bundled offlinai_shell.py into python-metadata/"
+  # Hard rebrand: rewrite "CodeBench shell" → "ManimStudio shell"
+  # directly in the bundled source. The runtime monkey-patch on
+  # builtins.print was unreliable (something about __builtins__ in
+  # the offlinai_shell module's globals), so we just sed the literal
+  # at install time and skip the dance entirely. Two banner sites in
+  # the file (line ~504 in `python` builtin help, ~6286 in repl()
+  # banner) — sed catches both.
+  sed -i '' 's/CodeBench shell/ManimStudio shell/g' "$META_DST/offlinai_shell.py"
+  echo "note: bundled offlinai_shell.py into python-metadata/ (rebranded)"
 fi
 
 # ── 7. Copy Monaco editor bundle (14 MB). Has duplicate filenames in
@@ -463,4 +471,144 @@ elif [ "$IS_ARCHIVE" = "1" ]; then
   echo "warning: fix-macho-type.py not found at $FIX_PY — App Store will reject MH_BUNDLE"
 else
   echo "note: dev/Run build (ACTION=$ACTION) — skipping fix-macho-type.py to keep dlopen working"
+fi
+
+# ── 15. Compile + bundle a BLAS stub framework for scipy.
+#
+# scipy.linalg.cython_blas.so links Accelerate.framework (which ships
+# the bulk of BLAS / LAPACK) but references two Fortran-mangled symbols
+# Apple's iOS Accelerate doesn't export:
+#   _dcabs1_   — |Re(z)| + |Im(z)| for complex double
+#   _lsame_    — case-insensitive single-char compare
+# Both are tiny BLAS reference helpers. Without them dyld fails the
+# load with "symbol not found in flat namespace '_dcabs1_'" the moment
+# Python runs `from scipy.linalg import get_lapack_funcs` (or any
+# scipy import that pulls cython_blas through scipy.sparse.linalg).
+#
+# Fix: compile a 10-line stub dylib that exports both symbols, wrap it
+# as a .framework so iOS embeds it normally, and let dyld find them in
+# the flat namespace. The framework is loaded eagerly by PythonRuntime
+# at startup (see preloadBlasStubs) so symbols are visible before any
+# `import scipy` runs.
+BLAS_STUB_FW="$FRAMEWORKS/libscipy_blas_stubs.framework"
+BLAS_STUB_BIN="$BLAS_STUB_FW/libscipy_blas_stubs"
+if [ ! -f "$BLAS_STUB_BIN" ] || [ ! -f "$BLAS_STUB_FW/Info.plist" ]; then
+  echo "note: building BLAS stub framework (libscipy_blas_stubs)"
+  mkdir -p "$BLAS_STUB_FW"
+  BLAS_STUB_C="${TEMP_DIR:-/tmp}/scipy_blas_stub.c"
+  cat > "$BLAS_STUB_C" <<'STUB_EOF'
+// libscipy_blas_stubs — provides the two Fortran-named BLAS reference
+// helpers iOS Accelerate doesn't export. scipy.linalg.cython_blas.so
+// references both via flat-namespace lookup; without these stubs the
+// .so fails to load with "symbol not found in flat namespace".
+#include <math.h>
+#include <ctype.h>
+
+// dcabs1(z) = |Re(z)| + |Im(z)|. Complex passed by reference as a
+// 2-double struct (Fortran calling convention). Used by zaxpy / zrotg
+// argument validation paths on tiny inputs.
+double dcabs1_(const double *z) {
+    return fabs(z[0]) + fabs(z[1]);
+}
+
+// lsame(ca, cb) — case-insensitive char compare returning Fortran
+// LOGICAL (int 0/1). Called constantly by every BLAS routine to
+// branch on UPLO / TRANS / DIAG flags ('U'/'L', 'N'/'T'/'C', etc.).
+int lsame_(const char *ca, const char *cb) {
+    if (!ca || !cb) return 0;
+    return (toupper((unsigned char)*ca) == toupper((unsigned char)*cb)) ? 1 : 0;
+}
+STUB_EOF
+  XCRUN_SDK="$(xcrun --sdk "$PLATFORM_NAME" --show-sdk-path)"
+  if xcrun --sdk "$PLATFORM_NAME" clang \
+      -arch "$ARCH" \
+      -isysroot "$XCRUN_SDK" \
+      -mios-version-min="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}" \
+      -dynamiclib \
+      -install_name "@rpath/libscipy_blas_stubs.framework/libscipy_blas_stubs" \
+      -o "$BLAS_STUB_BIN" \
+      "$BLAS_STUB_C"; then
+    cat > "$BLAS_STUB_FW/Info.plist" <<STUB_PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDevelopmentRegion</key>      <string>en</string>
+  <key>CFBundleExecutable</key>             <string>libscipy_blas_stubs</string>
+  <key>CFBundleIdentifier</key>             <string>com.manimstudio.dylib.libscipy-blas-stubs</string>
+  <key>CFBundleInfoDictionaryVersion</key>  <string>6.0</string>
+  <key>CFBundleName</key>                   <string>libscipy_blas_stubs</string>
+  <key>CFBundlePackageType</key>            <string>FMWK</string>
+  <key>CFBundleShortVersionString</key>     <string>1.0</string>
+  <key>CFBundleVersion</key>                <string>1</string>
+  <key>MinimumOSVersion</key>               <string>${IPHONEOS_DEPLOYMENT_TARGET:-17.0}</string>
+  <key>CFBundleSupportedPlatforms</key>     <array><string>iPhoneOS</string></array>
+</dict></plist>
+STUB_PLIST_EOF
+    codesign --remove-signature "$BLAS_STUB_BIN" 2>/dev/null || true
+    codesign --force --sign "$IDENT" --timestamp=none \
+      --identifier "com.manimstudio.dylib.libscipy-blas-stubs" "$BLAS_STUB_BIN" || true
+    echo "note: built libscipy_blas_stubs.framework"
+  else
+    echo "warning: failed to build libscipy_blas_stubs — scipy.linalg will trip flat-namespace lookup"
+    rm -rf "$BLAS_STUB_FW"
+  fi
+fi
+
+# ── 16. Bundle libfortran_io_stubs as a framework for scipy arpack/propack.
+#
+# scipy.sparse.linalg._eigen.arpack._arpack.so was compiled against
+# the LLVM Flang Fortran runtime. It references symbols like
+#   __FortranAioBeginExternalFormattedOutput
+#   __FortranAStopStatement
+# that are NOT in iOS Accelerate or libSystem. python-ios-lib ships a
+# pre-built `libfortran_io_stubs.dylib` (66 KB) that provides every
+# `__FortranA*` symbol arpack/propack pull in. Wrap it as a framework
+# so iOS embeds it, then dlopen-preload at app launch (see
+# preloadFortranStubs in PythonRuntime).
+FORTRAN_STUB_LOOSE="$FRAMEWORKS/libfortran_io_stubs.dylib"
+FORTRAN_STUB_SRC="${SRCROOT}/../_vendor/python-ios-lib/fortran/libfortran_io_stubs.dylib"
+FORTRAN_STUB_FW="$FRAMEWORKS/libfortran_io_stubs.framework"
+FORTRAN_STUB_BIN="$FORTRAN_STUB_FW/libfortran_io_stubs"
+# Step 3 placed the loose dylib into Frameworks/. Promote it to a
+# .framework here (App Store rejects raw dylibs at top level), then
+# delete the loose form so wrap-loose-dylibs.sh doesn't double-wrap.
+if [ ! -f "$FORTRAN_STUB_BIN" ] || [ ! -f "$FORTRAN_STUB_FW/Info.plist" ]; then
+  echo "note: bundling libfortran_io_stubs.framework"
+  mkdir -p "$FORTRAN_STUB_FW"
+  if [ -f "$FORTRAN_STUB_LOOSE" ]; then
+    mv -f "$FORTRAN_STUB_LOOSE" "$FORTRAN_STUB_BIN"
+  elif [ -f "$FORTRAN_STUB_SRC" ]; then
+    cp "$FORTRAN_STUB_SRC" "$FORTRAN_STUB_BIN"
+  else
+    echo "warning: libfortran_io_stubs.dylib not found at $FORTRAN_STUB_SRC; arpack/propack will fail to load"
+    rm -rf "$FORTRAN_STUB_FW"
+  fi
+fi
+# Always remove any leftover loose copy (idempotent across rebuilds).
+rm -f "$FORTRAN_STUB_LOOSE"
+# Only finalize the framework if we actually populated the binary.
+if [ -f "$FORTRAN_STUB_BIN" ] && [ ! -f "$FORTRAN_STUB_FW/Info.plist" ]; then
+  install_name_tool -id \
+    "@rpath/libfortran_io_stubs.framework/libfortran_io_stubs" \
+    "$FORTRAN_STUB_BIN" 2>/dev/null || true
+  cat > "$FORTRAN_STUB_FW/Info.plist" <<FORTRAN_PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDevelopmentRegion</key>      <string>en</string>
+  <key>CFBundleExecutable</key>             <string>libfortran_io_stubs</string>
+  <key>CFBundleIdentifier</key>             <string>com.manimstudio.dylib.libfortran-io-stubs</string>
+  <key>CFBundleInfoDictionaryVersion</key>  <string>6.0</string>
+  <key>CFBundleName</key>                   <string>libfortran_io_stubs</string>
+  <key>CFBundlePackageType</key>            <string>FMWK</string>
+  <key>CFBundleShortVersionString</key>     <string>1.0</string>
+  <key>CFBundleVersion</key>                <string>1</string>
+  <key>MinimumOSVersion</key>               <string>${IPHONEOS_DEPLOYMENT_TARGET:-17.0}</string>
+  <key>CFBundleSupportedPlatforms</key>     <array><string>iPhoneOS</string></array>
+</dict></plist>
+FORTRAN_PLIST_EOF
+  codesign --remove-signature "$FORTRAN_STUB_BIN" 2>/dev/null || true
+  codesign --force --sign "$IDENT" --timestamp=none \
+    --identifier "com.manimstudio.dylib.libfortran-io-stubs" "$FORTRAN_STUB_BIN" || true
+  echo "note: bundled libfortran_io_stubs.framework"
 fi

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B9ABCD012FB00001000ABCDE /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = B9ABCD002FB00001000ABCDE /* SwiftTerm */; };
+		B9ACCEL012FB00010000ABCDE /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9ACCEL002FB00010000ABCDE /* Accelerate.framework */; };
 		B9E7BABB2FA0BCD9004329BB /* Manim in Frameworks */ = {isa = PBXBuildFile; productRef = B9E7BABA2FA0BCD9004329BB /* Manim */; };
 		B9F1A0022FAA0001000A0001 /* Python.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; };
 		B9F1A0032FAA0001000A0001 /* Python.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -29,6 +30,7 @@
 
 /* Begin PBXFileReference section */
 		B94E95742FA04EFA00CF9138 /* ManimStudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ManimStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9ACCEL002FB00010000ABCDE /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		B9F1A0012FAA0001000A0001 /* Python.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Python.xcframework; path = ../_vendor/beeware/Python.xcframework; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -61,6 +63,7 @@
 				B9F1A0022FAA0001000A0001 /* Python.xcframework in Frameworks */,
 				B9E7BABB2FA0BCD9004329BB /* Manim in Frameworks */,
 				B9ABCD012FB00001000ABCDE /* SwiftTerm in Frameworks */,
+				B9ACCEL012FB00010000ABCDE /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				B9F1A0012FAA0001000A0001 /* Python.xcframework */,
+				B9ACCEL002FB00010000ABCDE /* Accelerate.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -105,6 +109,7 @@
 				B9F1A0052FAA0001000A0001 /* Install Python stdlib */,
 				B9F1A0062FAA0002000A0001 /* Wrap loose dylibs (App Store) */,
 				B9F1A0042FAA0001000A0001 /* Embed Frameworks */,
+				B9F1A0072FAA0003000A0001 /* Normalize Python .fwork (post-embed) */,
 			);
 			buildRules = (
 			);
@@ -208,6 +213,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
 			shellScript = "set -e\n# Archive-only guard: wrap-loose-dylibs.sh Step 0b3 rewrites .fwork files\n# to prepend @executable_path/ — required for App Store hardened mode\n# (which rejects relative paths) but breaks dev/Run builds because\n# @executable_path only resolves in LC_LOAD_DYLIB, not in dlopen string args.\nIS_ARCHIVE=0\n[ \"$ACTION\" = \"install\" ] && IS_ARCHIVE=1\n[ -n \"$ARCHIVE_PATH\" ] && IS_ARCHIVE=1\nif [ \"$IS_ARCHIVE\" != \"1\" ]; then\n  echo \"wrap-loose-dylibs: dev/Run build (ACTION=$ACTION) — skipping\"\n  exit 0\nfi\nWRAP=\"\"\nfor cand in \\\n  \"${BUILD_ROOT}/../../SourcePackages/checkouts/python-ios-lib/scripts/appstore/wrap-loose-dylibs.sh\" \\\n  \"${SRCROOT}/../_vendor/python-ios-lib/scripts/appstore/wrap-loose-dylibs.sh\" \\\n  ; do\n  if [ -f \"$cand\" ]; then\n    WRAP=\"$cand\"\n    echo \"wrap-loose-dylibs: archive build — using $WRAP\"\n    break\n  fi\ndone\nif [ -n \"$WRAP\" ]; then\n  bash \"$WRAP\"\nelse\n  echo \"❌ wrap-loose-dylibs.sh not found — App Store will reject\"\n  exit 1\nfi\n";
+		};
+		B9F1A0072FAA0003000A0001 /* Normalize Python .fwork (post-embed) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Normalize Python .fwork (post-embed)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${SRCROOT}/../scripts/normalize-fwork-postembed.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -353,7 +377,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = ManimStudio/ManimStudio.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 40;
+				CURRENT_PROJECT_VERSION = 73;
 				DEVELOPMENT_TEAM = LYK4LV2859;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ManimStudio/Info.plist;
@@ -382,7 +406,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = ManimStudio/ManimStudio.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 40;
+				CURRENT_PROJECT_VERSION = 73;
 				DEVELOPMENT_TEAM = LYK4LV2859;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ManimStudio/Info.plist;

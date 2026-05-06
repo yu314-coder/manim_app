@@ -416,6 +416,57 @@
                 triggerSuggest() {
                     editor.trigger('kbd', 'editor.action.triggerSuggest', {});
                 },
+                /**
+                 * Run any registered Monaco editor action by ID.
+                 * Used by Swift's MonacoController.showFind() etc. so the
+                 * Swift layer doesn't need to know about the inner
+                 * `editor` reference (which used to live as a closure
+                 * variable and was unreachable from getAction calls).
+                 * Falls back to editor.trigger for actions that aren't
+                 * registered through getAction (rare).
+                 */
+                /**
+                 * Replace the diagnostic markers on the buffer.
+                 * `markers` is an array of {line, column, message,
+                 * severity?}. severity defaults to Error (8).
+                 * Pass an empty array to clear.
+                 */
+                setMarkers(markers) {
+                    var model = editor.getModel();
+                    if (!model) return;
+                    var owner = 'manim-render';
+                    if (!Array.isArray(markers) || markers.length === 0) {
+                        monaco.editor.setModelMarkers(model, owner, []);
+                        return;
+                    }
+                    var sev = (monaco.MarkerSeverity && monaco.MarkerSeverity.Error) || 8;
+                    var out = markers.map(function(m) {
+                        var line = Math.max(1, m.line | 0);
+                        var col  = Math.max(1, (m.column | 0) || 1);
+                        return {
+                            startLineNumber: line,
+                            endLineNumber:   line,
+                            startColumn:     col,
+                            endColumn:       col + 1,
+                            message:         String(m.message || 'Error'),
+                            severity:        m.severity || sev,
+                        };
+                    });
+                    monaco.editor.setModelMarkers(model, owner, out);
+                    // Reveal the first marker so the gutter dot is in view.
+                    if (out.length > 0) {
+                        editor.revealLineInCenterIfOutsideViewport(out[0].startLineNumber);
+                    }
+                },
+                runAction(actionId) {
+                    if (!actionId) return;
+                    try {
+                        editor.focus();
+                        var a = editor.getAction(actionId);
+                        if (a) { a.run(); return; }
+                        editor.trigger('source', actionId, null);
+                    } catch (e) { console.error('runAction', actionId, e); }
+                },
                 // Called by Swift's WKScriptMessageHandler in response
                 // to a clipboardPasteRequest: inserts `text` at the
                 // current selection/cursor. Used by the Cmd+V handler

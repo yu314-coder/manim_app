@@ -54,6 +54,10 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
 
     /// Our background read source — pulls bytes off the master FD.
     private var readSource: DispatchSourceRead?
+    /// Tail of an incoming PTY chunk that didn't end on a newline.
+    /// Held over to the next read so the [manim-debug] line filter
+    /// can match across chunk boundaries.
+    private var debugFilterCarry: [UInt8] = []
 
     /// Bytes that arrived from Python's stdout BEFORE terminalView was
     /// set. Without this buffer, the REPL's boot banner ("CodeBench shell
@@ -173,10 +177,14 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
         isReady = true
         NSLog("[PTY] ready (pipes): stdin_w=\(stdinPipe[1]) stdout_r=\(stdoutPipe[0])")
 
-        // Write one visible line through the stdout pipe's write end
-        // directly (NOT fd 1 — that's Swift's print() territory and we
-        // don't want to hijack it anymore).
-        let banner = "\u{1b}[38;5;244m[terminal ready — type to Python]\u{1b}[0m\r\n"
+        // Status line shown the moment the terminal pane appears, so
+        // the user isn't staring at an empty black box. The real
+        // shell banner + prompt land on fresh lines below as soon as
+        // offlinai_shell.repl() finishes booting — no overlap because
+        // this line ends in \r\n. Boot is kicked off from
+        // ManimStudioApp.init so by the time the user lands in
+        // Workspace, the prompt is usually already there.
+        let banner = "\u{1b}[38;5;244m[terminal ready — booting Python REPL...]\u{1b}[0m\r\n"
         banner.withCString { cs in
             _ = Darwin.write(stdoutPipeWriteFD, cs, strlen(cs))
         }
@@ -228,7 +236,23 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
                 Darwin.read(readFD, bp.baseAddress, bp.count)
             }
             guard n > 0 else { return }
-            let raw = Array(buffer[0..<n])
+            let rawUnfiltered = Array(buffer[0..<n])
+
+            // Tee every byte the PTY emits into the persistent log
+            // file BEFORE filtering. Captures the [manim-debug] /
+            // tqdm / Python tracebacks unfiltered so the log file
+            // retains the raw stream for crash diagnosis.
+            CrashLogger.shared.appendRaw(Data(rawUnfiltered))
+
+            // Strip [manim-debug] lines before SwiftTerm sees them.
+            // The wrapper script peppers these prints throughout the
+            // render pipeline (codec init, encoded-batch counters,
+            // stream-close events) — useful in the log for failure
+            // diagnosis, but pure noise on the terminal pane during
+            // normal use. The filter buffers across reads because a
+            // chunk boundary can land mid-line.
+            let raw = self.stripDebugLines(rawUnfiltered)
+            guard !raw.isEmpty else { return }
 
             // First pass: detect + strip our private OSC mode-switch
             // sequences. TUI apps (ncdu, vim, …) write
@@ -341,6 +365,73 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
 
         source.resume()
         readSource = source
+    }
+
+    /// Drop any line that begins with the literal "[manim-debug]" from
+    /// the byte stream before SwiftTerm sees it. Lines that don't match
+    /// pass through untouched — including tqdm progress bars (which
+    /// only use \r, no \n, so they're emitted as a single growing
+    /// buffer the user sees animate normally).
+    ///
+    /// Buffering: input is split on \n. The final fragment (which may
+    /// not end on \n yet) is held in `debugFilterCarry` and prepended
+    /// to the next chunk so a `[manim-debug]` line spanning a chunk
+    /// boundary is still caught. tqdm-style updates that use only \r
+    /// stay in the carry until a real \n flushes them — fine for our
+    /// purpose because tqdm rewrites the same line via \r within one
+    /// "Animation N: …" prefix that always finishes with \n eventually.
+    fileprivate func stripDebugLines(_ input: [UInt8]) -> [UInt8] {
+        let prefix: [UInt8] = Array("[manim-debug]".utf8)
+        var work = debugFilterCarry + input
+        debugFilterCarry.removeAll(keepingCapacity: true)
+        var out: [UInt8] = []
+        out.reserveCapacity(work.count)
+        var lineStart = 0
+        var i = 0
+        while i < work.count {
+            if work[i] == 0x0A {  // '\n'
+                let length = i - lineStart + 1
+                if length >= prefix.count + 1 {
+                    var matches = true
+                    for k in 0..<prefix.count {
+                        if work[lineStart + k] != prefix[k] { matches = false; break }
+                    }
+                    if matches { lineStart = i + 1; i += 1; continue }
+                }
+                // Keep this line.
+                out.append(contentsOf: work[lineStart...i])
+                lineStart = i + 1
+            }
+            i += 1
+        }
+        // Unterminated remainder. Critical: only carry it forward if
+        // it COULD still be the start of a "[manim-debug]" line. If
+        // the bytes already disqualify it from matching the prefix,
+        // flush them out immediately. The shell prompt is a notable
+        // case: "mobile@iPad ~/Workspace % " never ends in \n, and
+        // unconditionally carrying held the prompt hostage forever.
+        if lineStart < work.count {
+            let tail = Array(work[lineStart..<work.count])
+            if isPrefixOfDebugMarker(tail, marker: prefix), tail.count <= 4096 {
+                debugFilterCarry = tail
+            } else {
+                out.append(contentsOf: tail)
+            }
+        }
+        return out
+    }
+
+    /// True iff `tail` is a (proper or full) byte-prefix of `marker`.
+    /// `tail = "[manim-d"` → true (could grow into "[manim-debug]").
+    /// `tail = "mobile@i"` → false (definitely not — flush now).
+    /// Empty tail → true (any future bytes could begin the marker).
+    private func isPrefixOfDebugMarker(_ tail: [UInt8],
+                                       marker: [UInt8]) -> Bool {
+        if tail.count > marker.count { return false }
+        for i in 0..<tail.count {
+            if tail[i] != marker[i] { return false }
+        }
+        return true
     }
 
     /// Return true iff `haystack[at...]` starts with `needle`. Used by

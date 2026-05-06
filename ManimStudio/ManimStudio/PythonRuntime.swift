@@ -224,9 +224,21 @@ final class PythonRuntime {
                     try:
                         _fd = \(pipeFD)
                         if _fd >= 0:
-                            _w = os.fdopen(_fd, 'w', buffering=1,
-                                           encoding='utf-8', errors='replace',
-                                           closefd=False)
+                            # Build an unbuffered text writer that
+                            # cannot get stuck on partial-line output
+                            # (the shell prompt is "% " — no newline,
+                            # so any line-buffered wrapper holds it).
+                            # io.FileIO + io.TextIOWrapper(write_through=
+                            # True, line_buffering=False) bypasses both
+                            # the BufferedWriter buffer AND the text
+                            # buffer — every write reaches the fd
+                            # immediately. Tested working on iOS.
+                            _raw = io.FileIO(_fd, mode='wb', closefd=False)
+                            _w = io.TextIOWrapper(_raw,
+                                                  encoding='utf-8',
+                                                  errors='replace',
+                                                  line_buffering=False,
+                                                  write_through=True)
                             sys.stdout = _w
                             sys.stderr = _w
                     except Exception as _e:
@@ -292,18 +304,30 @@ final class PythonRuntime {
             # Enable faulthandler at the bootstrap level so any C-level
             # crash during `import offlinai_shell` (or its transitive
             # imports — manimpango, torch, av, …) prints a Python stack
-            # trace to stderr instead of surfacing as a bare
+            # trace to stderr instead of surfacing as a bare  
             # EXC_BAD_ACCESS in the codebench-repl thread with no clue
             # where it came from. The shell's repl() re-enables it
             # later with all_threads=True; this earlier call covers
             # the import window.
             try:
-                faulthandler.enable(file=sys.stderr, all_threads=True)
+                # Prefer the persistent log file at
+                # Documents/Logs/manim_studio.log so a Python C-extension
+                # segfault (manim → cairo, scipy → fortran, av → ffmpeg)
+                # leaves a traceback the user can read in the Files app
+                # after iOS reaps the process. If the path is unavailable
+                # for any reason, fall back to stderr (the terminal pane).
+                _faultlog_path = r"\(CrashLogger.shared.pythonFaultlogPath)"
+                _fault_target = sys.stderr
+                if _faultlog_path:
+                    try:
+                        _fault_target = open(_faultlog_path, "a", buffering=1)
+                    except Exception:
+                        _fault_target = sys.stderr
+                faulthandler.enable(file=_fault_target, all_threads=True)
             except Exception:
-                # iOS sandbox often blocks faulthandler.enable (no fileno
-                # on the redirected stderr). Harmless — the shell's repl()
-                # re-tries with all_threads=True later. Silenced because
-                # users were seeing the warning on every launch.
+                # iOS sandbox occasionally blocks faulthandler.enable when
+                # the underlying stream lacks fileno(). Harmless — the
+                # shell's repl() re-tries later with the cooked stream.
                 pass
             # Suppress noisy third-party warnings that fire during bootstrap
             # imports (pydub's "couldn't find ffmpeg" — ffmpeg is bundled
@@ -314,9 +338,234 @@ final class PythonRuntime {
                 _w.filterwarnings("ignore", category=RuntimeWarning, module=r"pydub\\..*")
             except Exception:
                 pass
+            # Rebrand the bundled shell's banner from "CodeBench shell"
+            # to "ManimStudio shell" without forking the package. The
+            # literal lives inside an f-string at two sites in
+            # offlinai_shell.py (banner emit + `python` builtin help),
+            # so we wrap builtins.print with a filter that rewrites the
+            # phrase wherever it appears. The filter is a no-op for any
+            # other output (only one literal substitution), and it stays
+            # in place for the lifetime of the interpreter — covering
+            # both the initial banner and any later help-text print.
+            #
+            # We rebrand at the print() level rather than monkey-patching
+            # offlinai_shell.repl because repl() is one giant function:
+            # subclassing or replacing it would mean copying ~150 lines
+            # of REPL machinery (PS1/PS2 cycling, async cancellation,
+            # multi-line buffering, raw-mode key handling). Filtering
+            # one phrase is a 6-line patch.
+            # Set HOME + drop the user into a writable Documents/Workspace
+            # directory before the shell prompt appears. Without this, the
+            # interpreter starts at "/" (the read-only iOS sandbox root)
+            # and EVERY filesystem builtin (ls, cd, cat, mkdir, touch, cp,
+            # mv, rm, find, tree, grep, wc, …) hits PermissionError or
+            # operates on a directory the app can't read. The shell has
+            # an auto-chdir-to-Workspace fallback in its constructor, but
+            # it only fires if the directory already exists — on a fresh
+            # install it doesn't, so the fallback no-ops and cwd stays at
+            # "/". Create the directory explicitly here so every shell
+            # session starts in a writable place where commands work.
+            try:
+                import os as _os, pathlib as _pl
+                _docs = _pl.Path.home() / "Documents"
+                _ws   = _docs / "Workspace"
+                _ws.mkdir(parents=True, exist_ok=True)
+                # Mirror HOME → Documents so `~` in the prompt and
+                # Path.home() in user code both resolve to a writable
+                # location. iOS's default HOME points one level above
+                # Documents (the container dir, which is read-only at
+                # the top — Documents is the writable subdir).
+                _os.environ["HOME"] = str(_docs)
+                _os.chdir(str(_ws))
+            except Exception:
+                pass
+
+            try:
+                import builtins as _b
+                _orig_print = _b.print
+                def _ms_print(*args, **kwargs):
+                    new_args = tuple(
+                        a.replace("CodeBench shell", "ManimStudio shell")
+                          .replace("CodeBench", "ManimStudio")
+                        if isinstance(a, str) else a
+                        for a in args
+                    )
+                    return _orig_print(*new_args, **kwargs)
+                _b.print = _ms_print
+            except Exception:
+                pass
             def _codebench_start_repl():
                 try:
                     import offlinai_shell  # module name kept (renaming would cascade-break dist-info + all `import` sites)
+                    # Hide builtins that don't have a working backend on
+                    # this build. pip in particular: the C extensions
+                    # needed for compiled-wheel installs aren't shipped,
+                    # and the iOS app sandbox doesn't expose a writable
+                    # site-packages anyway, so the command would only
+                    # ever fail. Removing from BUILTINS drops it from
+                    # `help` output AND makes the dispatcher treat the
+                    # word as a Python expression, which fails cleanly
+                    # with NameError instead of a confusing
+                    # "pip: not available: No module named 'pip'".
+                    # Every pip-flavored builtin in the bundled shell.
+                    # Earlier list missed the hyphenated forms — the
+                    # decorator registers each as a separate dispatch
+                    # key, so popping just "pip"/"pip3" left pip-list,
+                    # pip-show, pip-install, pip-uninstall, pip-freeze,
+                    # pip-check still visible in `help` and still
+                    # routing to broken handlers.
+                    try:
+                        for _name in ("pip", "pip3",
+                                      "pip-install", "pip-uninstall",
+                                      "pip-list", "pip-show",
+                                      "pip-freeze", "pip-check"):
+                            offlinai_shell.BUILTINS.pop(_name, None)
+                    except Exception:
+                        pass
+
+                    # Replace `top` / `htop` with implementations that
+                    # don't need psutil. The bundled python-ios-lib
+                    # build deletes psutil._psutil_osx (Apple private
+                    # API rejection — ITMS-90338), so the shipped
+                    # builtins fall through to "psutil not available".
+                    # Apple's public sysctl + mach_task_basic_info
+                    # + os.times() + platform are enough to show CPU,
+                    # RSS memory, uptime, machine model, hostname, etc.
+                    # All public APIs — no mach trap calls, no
+                    # libSystem variable lookups (mach_task_self_ is a
+                    # variable not a function and calling it via ctypes
+                    # corrupts the stack), no private symbols. Pure
+                    # stdlib + sysctlbyname for hardware stats.
+                    try:
+                        import ctypes, ctypes.util, struct, time as _t, os as _os
+                        import platform as _plat, socket as _sock
+                        import resource as _res
+
+                        _libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.dylib")
+                        _libc.sysctlbyname.argtypes = [
+                            ctypes.c_char_p, ctypes.c_void_p,
+                            ctypes.POINTER(ctypes.c_size_t),
+                            ctypes.c_void_p, ctypes.c_size_t]
+                        _libc.sysctlbyname.restype = ctypes.c_int
+
+                        def _sysctl_str(name):
+                            try:
+                                sz = ctypes.c_size_t(0)
+                                if _libc.sysctlbyname(name.encode(), None,
+                                                       ctypes.byref(sz),
+                                                       None, 0) != 0:
+                                    return ""
+                                if sz.value == 0:
+                                    return ""
+                                buf = ctypes.create_string_buffer(sz.value)
+                                if _libc.sysctlbyname(name.encode(), buf,
+                                                       ctypes.byref(sz),
+                                                       None, 0) != 0:
+                                    return ""
+                                return buf.value.decode("utf-8", "replace")
+                            except Exception:
+                                return ""
+
+                        def _sysctl_u64(name):
+                            try:
+                                v = ctypes.c_uint64(0)
+                                sz = ctypes.c_size_t(8)
+                                if _libc.sysctlbyname(name.encode(),
+                                                       ctypes.byref(v),
+                                                       ctypes.byref(sz),
+                                                       None, 0) != 0:
+                                    return 0
+                                return v.value
+                            except Exception:
+                                return 0
+
+                        def _fmt_bytes(n):
+                            try:
+                                n = float(n)
+                            except Exception:
+                                return "—"
+                            for u in ("B", "KiB", "MiB", "GiB"):
+                                if n < 1024: return f"{n:.1f} {u}"
+                                n /= 1024
+                            return f"{n:.1f} TiB"
+
+                        def _uptime_seconds():
+                            # kern.boottime returns a `struct timeval`
+                            # (8-byte time_t + 8-byte suseconds_t on
+                            # arm64). Wrap in try/except — sysctl is
+                            # readable from app sandbox but the layout
+                            # could shift in a future iOS major.
+                            try:
+                                sz = ctypes.c_size_t(16)
+                                buf = ctypes.create_string_buffer(16)
+                                if _libc.sysctlbyname(b"kern.boottime",
+                                                       buf,
+                                                       ctypes.byref(sz),
+                                                       None, 0) != 0:
+                                    return 0
+                                sec, usec = struct.unpack_from("<qq", buf.raw, 0)
+                                return max(0, _t.time() - sec - usec / 1e6)
+                            except Exception:
+                                return 0
+
+                        def _fmt_uptime(s):
+                            s = int(s); m, s = divmod(s, 60)
+                            h, m = divmod(m, 60); d, h = divmod(h, 24)
+                            if d: return f"{d}d {h}h {m}m"
+                            if h: return f"{h}h {m}m {s}s"
+                            if m: return f"{m}m {s}s"
+                            return f"{s}s"
+
+                        def _ms_top(_sh, _argv):
+                            BOLD = "\\x1b[1m"; DIM  = "\\x1b[2m"
+                            CYN  = "\\x1b[36m"; YLW = "\\x1b[33m"
+                            GRN  = "\\x1b[32m"; RST = "\\x1b[0m"
+
+                            ru = _os.times()
+                            try:
+                                rusage = _res.getrusage(_res.RUSAGE_SELF)
+                                # ru_maxrss is in BYTES on Darwin (kilobytes
+                                # on Linux). Display as peak RSS — that's
+                                # close enough to "current memory" for a
+                                # single-process iOS app where peak ≈ now
+                                # most of the time.
+                                rss_peak = int(rusage.ru_maxrss)
+                            except Exception:
+                                rss_peak = 0
+
+                            total_ram = _sysctl_u64("hw.memsize")
+                            ncpu = _sysctl_u64("hw.ncpu") or _sysctl_u64("hw.activecpu")
+                            machine = _sysctl_str("hw.machine") or _plat.machine() or "—"
+                            os_ver = _plat.platform()
+                            try:
+                                host = _sock.gethostname() or "device"
+                            except Exception:
+                                host = "device"
+                            uptime_s = _uptime_seconds()
+                            cpu_s = ru[0] + ru[1]
+
+                            print(f"{BOLD}ManimStudio · top{RST}  {DIM}{host} ({machine}){RST}")
+                            print(f"{DIM}OS{RST}         {os_ver}")
+                            if uptime_s > 0:
+                                print(f"{DIM}Uptime{RST}     {_fmt_uptime(uptime_s)}")
+                            if ncpu:
+                                print(f"{DIM}CPUs{RST}       {ncpu}")
+                            if total_ram:
+                                print(f"{DIM}RAM total{RST}  {_fmt_bytes(total_ram)}")
+                            print("")
+                            print(f"{BOLD}This process{RST}")
+                            print(f"{DIM}PID{RST}        {_os.getpid()}")
+                            if rss_peak:
+                                print(f"{DIM}RSS peak{RST}   {GRN}{_fmt_bytes(rss_peak)}{RST}")
+                            print(f"{DIM}CPU time{RST}   "
+                                  f"{CYN}user {ru[0]:.2f}s · "
+                                  f"sys {ru[1]:.2f}s "
+                                  f"(total {cpu_s:.2f}s){RST}")
+
+                        offlinai_shell.BUILTINS["top"]  = _ms_top
+                        offlinai_shell.BUILTINS["htop"] = _ms_top
+                    except Exception:
+                        pass
                     offlinai_shell.repl()
                 except Exception:
                     traceback.print_exc()
@@ -479,11 +728,35 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             try setGlobalString(String(PTYBridge.shared.stdoutPipeWriteFD),
                                 key: "__codebench_pty_fd", globals: globals)
 
-            // Pass manim quality settings
-            let manimQuality = UserDefaults.standard.integer(forKey: "manim_quality") // 0=low, 1=med, 2=high
-            let manimFPS = UserDefaults.standard.integer(forKey: "manim_fps")
+            // Pass manim quality settings.
+            //
+            // Preview-vs-Render dispatch: ContentView sets the env var
+            // OFFLINAI_MANIM_QUALITY = "low_quality" | "high_quality"
+            // before each call. When that env var is "low_quality" we
+            // FORCE quality=0 / fps=15 regardless of what ControlsSidebar
+            // wrote into UserDefaults["manim_quality"|"manim_fps"]. The
+            // user explicitly tapped Preview to iterate quickly — they
+            // don't want a 1080p60 render. Without this override the
+            // wrapper script reads the UserDefault straight, which is
+            // always the FINAL render setting, so Preview rendered at
+            // 1080p60 too.
+            let envQuality: String = {
+                guard let p = getenv("OFFLINAI_MANIM_QUALITY") else { return "" }
+                return String(cString: p)
+            }()
+            let isPreview = envQuality == "low_quality"
+            let manimQuality: Int
+            let manimFPS: Int
+            if isPreview {
+                manimQuality = 0
+                manimFPS     = 15
+            } else {
+                manimQuality = UserDefaults.standard.integer(forKey: "manim_quality")  // 0=low / 1=med / 2=high
+                let storedFPS = UserDefaults.standard.integer(forKey: "manim_fps")
+                manimFPS     = storedFPS > 0 ? storedFPS : 24
+            }
             try setGlobalString(String(manimQuality), key: "__codebench_manim_quality", globals: globals)
-            try setGlobalString(String(manimFPS > 0 ? manimFPS : 24), key: "__codebench_manim_fps", globals: globals)
+            try setGlobalString(String(manimFPS),    key: "__codebench_manim_fps",     globals: globals)
 
             // Class-picker selection (set by execute(targetScene:)). "" /
             // "*" = render all detected Scene subclasses (legacy); a
@@ -792,8 +1065,47 @@ os.environ.setdefault("MPLCONFIGDIR", \(pythonQuoted(toolDir)))
         pathsConfigured = true
     }
 
+    /// Eagerly dlopen the BLAS stub framework so its `_dcabs1_` and
+    /// `_lsame_` symbols enter the process flat namespace before any
+    /// scipy import. scipy.linalg.cython_blas.so was built linking
+    /// Accelerate.framework, but iOS Accelerate doesn't export those
+    /// two Fortran-mangled BLAS reference helpers; without this preload
+    /// dyld fails the load with "symbol not found in flat namespace
+    /// '_dcabs1_'" at the first `from scipy.linalg import …` and any
+    /// downstream import (manim → scipy.spatial → scipy.sparse.linalg)
+    /// dies with that traceback.
+    ///
+    /// install-python-stdlib.sh's Step 15 builds the stub framework and
+    /// drops it at <App>.app/Frameworks/libscipy_blas_stubs.framework/.
+    /// It's a 10-line C dylib, so the dlopen cost is negligible.
+    /// dlopen a stub framework with RTLD_GLOBAL so its symbols join the
+    /// process-wide flat namespace before any scipy import runs.
+    private func preloadStubFramework(_ fwName: String) {
+        let path = Bundle.main.bundleURL
+            .appendingPathComponent("Frameworks", isDirectory: true)
+            .appendingPathComponent("\(fwName).framework", isDirectory: true)
+            .appendingPathComponent(fwName).path
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        if dlopen(path, RTLD_NOW | RTLD_GLOBAL) == nil,
+           let cstr = dlerror() {
+            NSLog("[python] %s preload failed: %s", fwName, cstr)
+        }
+    }
+
+    /// Two stub frameworks must be in the flat namespace before scipy
+    /// gets imported:
+    ///   • libscipy_blas_stubs   — _dcabs1_, _lsame_ for cython_blas
+    ///   • libfortran_io_stubs   — __FortranA* for arpack / propack
+    /// Both ship as .frameworks under <App>.app/Frameworks/. Order
+    /// doesn't matter; their symbol sets are disjoint.
+    private func preloadScipySupportFrameworks() {
+        preloadStubFramework("libscipy_blas_stubs")
+        preloadStubFramework("libfortran_io_stubs")
+    }
+
     private func configureEnvironmentBeforeInitialize() throws {
         guard !environmentConfigured else { return }
+        preloadScipySupportFrameworks()
 
         let fileManager = FileManager.default
         let bundleURL = Bundle.main.bundleURL
@@ -2720,8 +3032,18 @@ try:
                                 pass
 
                             _out_ct = _av.open(_combined_path, mode="w")
+                            # GPU toggle (header bolt button). When the
+                            # user has it off, ContentView.triggerRender
+                            # sets OFFLINAI_MANIM_GPU=0 so we drop to
+                            # software libx264. Default-on (=hardware
+                            # videotoolbox) because it's ~5× faster.
+                            import os as _os_gpu
+                            _gpu_codec = ("h264_videotoolbox"
+                                          if _os_gpu.environ.get(
+                                              "OFFLINAI_MANIM_GPU", "1") != "0"
+                                          else "libx264")
                             _concat_stream = _out_ct.add_stream(
-                                "h264_videotoolbox", rate=int(_max_rate))
+                                _gpu_codec, rate=int(_max_rate))
                             _concat_stream.width = _max_w
                             _concat_stream.height = _max_h
                             _concat_stream.pix_fmt = "yuv420p"

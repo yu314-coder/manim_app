@@ -18,6 +18,20 @@ final class MonacoController {
     func showFindAndReplace() {
         view?.runEditorAction("editor.action.startFindReplaceAction")
     }
+    /// Generic passthrough — used by menu-bar commands that pick from
+    /// Monaco's published action IDs (commentLine, indentLines, etc).
+    func runAction(_ id: String) {
+        view?.runEditorAction(id)
+    }
+    /// Render-error markers parsed from a Python traceback. Pass an
+    /// empty array to clear them after a fresh render.
+    func setMarkers(_ markers: [MonacoEditorView.EditorMarker]) {
+        view?.setMarkers(markers)
+    }
+    /// Insert a string at the current cursor position.
+    func insertCode(_ text: String) {
+        view?.insertCode(text)
+    }
     /// Re-focus the editor (returns keyboard).
     func refocus() { view?.refocus() }
 }
@@ -45,14 +59,18 @@ struct MonacoEditor: UIViewRepresentable {
             DispatchQueue.main.async {
                 v.setCode(self.text, language: "python")
                 context.coordinator.lastReportedText = self.text
-                // Defer LibrarySymbolBuilder by 4 s so app launch isn't
-                // blocked, the terminal pane finishes booting Python +
-                // offlinai_shell, and any crash inside `import moderngl*`
-                // (OpenGL context init aborts the process on iOS) hits
-                // after the UI is interactive — at which point the
-                // introspection script's skip-list catches it cleanly.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                    LibrarySymbolBuilder.shared.build { json in
+
+                // If the introspection JSON is already on disk from a
+                // previous run of this build, push it immediately —
+                // reading the file is a cheap I/O hit, not a full
+                // import-everything Python pass. On a cache MISS we do
+                // NOT kick off the build here: that pass takes 10–30 s
+                // and races with REPL bootstrap for the GIL, which is
+                // the freeze the user reports at app open. The packages
+                // tab triggers it on demand instead (see PackagesView)
+                // and the user sees a spinner so it's not surprising.
+                LibrarySymbolBuilder.shared.loadIfCached { json in
+                    if let json = json {
                         v.setSymbolIndexJSON(json)
                     }
                 }

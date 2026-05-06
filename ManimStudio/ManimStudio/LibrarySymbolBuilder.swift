@@ -28,6 +28,23 @@ final class LibrarySymbolBuilder {
         return dir.appendingPathComponent("manim_studio_symindex_v\(ver).json")
     }
 
+    /// Cheap path: hand back whatever's already in memory or on disk
+    /// without kicking off an introspection pass. Used at editor-ready
+    /// time so the JSON is wired up the moment Monaco loads, but launch
+    /// doesn't pay the import-everything cost on a cache miss.
+    /// `completion` receives nil when no cache exists yet — caller
+    /// should leave the editor with no extra symbol hints in that case.
+    func loadIfCached(completion: @escaping (String?) -> Void) {
+        if let cached = payloadJSON { completion(cached); return }
+        let onDisk = (try? String(contentsOfFile: Self.cachePath(), encoding: .utf8)) ?? ""
+        if !onDisk.isEmpty {
+            payloadJSON = onDisk
+            completion(onDisk)
+        } else {
+            completion(nil)
+        }
+    }
+
     func build(completion: @escaping (String) -> Void) {
         if let cached = payloadJSON {
             completion(cached)
