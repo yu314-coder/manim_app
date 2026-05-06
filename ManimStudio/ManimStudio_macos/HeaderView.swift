@@ -498,7 +498,7 @@ private struct LatexInstallPopover: View {
             // Leave a hint in the terminal so they can fix the
             // running shell without restarting the app.
             TerminalBridge.shared.runInShell(
-                "export TEXMFROOT=$(ls -1d /usr/local/texlive/*basic 2>/dev/null | sort -r | head -1) && export TEXMFCNF=\"$TEXMFROOT/texmf-dist/web2c\" && echo set TEXMFROOT=$TEXMFROOT")
+                "export TEXMFROOT=$(ls -1d /usr/local/texlive/*basic 2>/dev/null | sort -r | head -1) && export TEXMFCNF=\"$TEXMFROOT/texmf-dist/web2c\" && export TEXMFHOME=\"$HOME/Library/texmf\" && echo set TEXMFROOT=$TEXMFROOT TEXMFHOME=$TEXMFHOME")
         case .allGood, .noFixerAvailable:
             break
         }

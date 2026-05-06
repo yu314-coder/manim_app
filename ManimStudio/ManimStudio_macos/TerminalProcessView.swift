@@ -421,10 +421,20 @@ extension TerminalProcessView {
         // — completely missing /usr/local/texlive/<year>basic. Manim
         // then reports "Your installation does not support converting
         // .dvi files to SVG" with no clue why.
+        //
+        // CRITICAL: also export TEXMFHOME explicitly. Setting
+        // TEXMFROOT/TEXMFCNF without TEXMFHOME makes kpathsea ignore
+        // the user-local tree at $HOME/Library/texmf, where TeX Live
+        // installs *.cls files for unprivileged tlmgr installs.
+        // Without it, even an installed `standalone.cls` is invisible
+        // to pdflatex spawned from this shell.
         if let texRoot = detectTeXMFRoot() {
             env["TEXMFROOT"] = texRoot.path
             env["TEXMFCNF"] = texRoot
                 .appendingPathComponent("texmf-dist/web2c").path
+            if let home = env["HOME"] {
+                env["TEXMFHOME"] = "\(home)/Library/texmf"
+            }
         }
 
         env["TERM"]      = "xterm-256color"

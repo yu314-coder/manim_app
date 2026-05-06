@@ -246,11 +246,16 @@ final class LaTeXFixer: ObservableObject {
                                                    .map(String.init))
             .joined(separator: ":")
         // Match the runtime env fix from cleanEnvironment so the
-        // test reflects what real renders see.
+        // test reflects what real renders see — including TEXMFHOME
+        // so kpathsea still walks the user-local tree at
+        // $HOME/Library/texmf where tlmgr installs to.
         if let texRoot = detectTeXMFRoot() {
             env["TEXMFROOT"] = texRoot.path
             env["TEXMFCNF"] = texRoot
                 .appendingPathComponent("texmf-dist/web2c").path
+            if let home = env["HOME"] {
+                env["TEXMFHOME"] = "\(home)/Library/texmf"
+            }
         }
         proc.environment = env
 
