@@ -142,30 +142,32 @@ fi
 #       from the synchronized group via membershipExceptions in
 #       project.pbxproj and rsync them in here instead, where the
 #       directory hierarchy is preserved verbatim.
-SRC_DIR="${SRCROOT}/ManimStudio_macos"
+# Resource trees live as siblings of ManimStudio_macos/ (NOT inside
+# it) so Xcode's PBXFileSystemSynchronizedRootGroup never sees them
+# and can't try to flatten their nested files. We rsync them in
+# preserving directory structure verbatim.
+RES_SRC="${SRCROOT}/ManimStudio_macos_resources"
+PY_SRC="${SRCROOT}/ManimStudio_macos_python"
+
 for tree in web prompts ; do
-  src="$SRC_DIR/Resources/$tree"
+  src="$RES_SRC/$tree"
   if [ -d "$src" ]; then
     dst="$APP_RESOURCES/$tree"
     rsync -a --delete --exclude '__pycache__' --exclude '.DS_Store' \
         "$src/" "$dst/"
-    echo "note: copied Resources/$tree (preserving directory structure)"
+    echo "note: copied $tree/ (preserving directory structure)"
   fi
 done
 
-# Single-file Resources items that the exclusion list also covers
-# (these wouldn't trip 'multiple commands' but we excluded them in
-# the synchronized group for clarity / to keep all of Resources/
-# under script control).
-for f in Resources/icon.ico Resources/privacy_policy.txt ; do
-  [ -f "$SRC_DIR/$f" ] && cp -f "$SRC_DIR/$f" "$APP_RESOURCES/" || true
+for f in icon.ico privacy_policy.txt ; do
+  [ -f "$RES_SRC/$f" ] && cp -f "$RES_SRC/$f" "$APP_RESOURCES/" || true
 done
 
 # PythonApp/ — the desktop app's Python sources. PythonHost.swift
 # expects them at <App>.app/Contents/Resources/PythonApp/.
-if [ -d "$SRC_DIR/PythonApp" ]; then
+if [ -d "$PY_SRC" ]; then
   rsync -a --delete --exclude '__pycache__' --exclude '.DS_Store' \
-      "$SRC_DIR/PythonApp/" "$APP_RESOURCES/PythonApp/"
+      "$PY_SRC/" "$APP_RESOURCES/PythonApp/"
   echo "note: copied PythonApp/"
 fi
 
