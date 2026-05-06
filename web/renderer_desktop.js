@@ -1115,8 +1115,33 @@ async function renderAnimation() {
 
     setTerminalStatus('Rendering...', 'warning');
     updateAppState({ render: 'rendering', state: 'busy' });
+
+    // (F-12 Render Farm routing removed by user request 2026-05-06.
+    // All renders go straight through the standard single-process path.)
+
     try {
-        const res = await pywebview.api.render_animation(code, quality, fps, gpuEnabled, format, null, null, null);
+        let res = await pywebview.api.render_animation(code, quality, fps, gpuEnabled, format, null, null, null);
+
+        // Multi-scene file — backend returned a picker response. Ask the user
+        // which scene(s) to render, then retry. The picker can return either
+        // a single name (string) or an array of names for batch-rendering.
+        if (res && res.status === 'choose_scene') {
+            const chosen = await pickScene(res.scenes, res.message || 'Pick a scene to render');
+            if (!chosen) {
+                updateAppState({ render: 'none' });
+                setTerminalStatus('Render cancelled', 'info');
+                return;
+            }
+            if (Array.isArray(chosen)) {
+                // Batch render — loop sequentially so the user sees each
+                // result in the preview pane as it completes.
+                await renderSceneList(chosen, code, quality, fps, gpuEnabled, format, 'render');
+                return;
+            }
+            _renderMeta.sceneName = chosen;
+            setTerminalStatus(`Rendering ${chosen}…`, 'warning');
+            res = await pywebview.api.render_animation(code, quality, fps, gpuEnabled, format, null, null, chosen);
+        }
 
         if (res.status === 'error') {
             setTerminalStatus('Error', 'error');
@@ -1131,6 +1156,116 @@ async function renderAnimation() {
         setTerminalStatus('Error', 'error');
         updateAppState({ render: 'error' });
         toast(`Render error: ${err.message}`, 'error');
+    }
+}
+
+// Wait for the in-flight render/preview to signal completion. The API
+// call that starts a render returns almost immediately ({status:'started'})
+// — the actual finish fires window.renderCompleted() or window.previewCompleted()
+// (success) or window.renderFailed() / window.previewFailed() (error). We
+// temporarily wrap those callbacks so the batch loop can await each one.
+function waitForJobCompletion(mode, timeoutMs = 20 * 60 * 1000) {
+    return new Promise((resolve) => {
+        const completeKey = mode === 'render' ? 'renderCompleted' : 'previewCompleted';
+        const failKey     = mode === 'render' ? 'renderFailed'    : 'previewFailed';
+
+        const origComplete = window[completeKey];
+        const origFail     = window[failKey];
+        let settled = false;
+
+        const cleanup = () => {
+            if (settled) return;
+            settled = true;
+            window[completeKey] = origComplete;
+            window[failKey]     = origFail;
+            if (timer) clearTimeout(timer);
+        };
+
+        window[completeKey] = function (...args) {
+            try { if (typeof origComplete === 'function') origComplete.apply(this, args); }
+            finally { cleanup(); resolve({ ok: true, outputPath: args[0] }); }
+        };
+        window[failKey] = function (...args) {
+            try { if (typeof origFail === 'function') origFail.apply(this, args); }
+            finally { cleanup(); resolve({ ok: false, message: args[0] }); }
+        };
+
+        // Defensive timeout so the loop can't deadlock on a stuck render.
+        const timer = setTimeout(() => {
+            cleanup();
+            resolve({ ok: false, message: 'timeout waiting for completion signal' });
+        }, timeoutMs);
+    });
+}
+
+// Render or preview a list of scenes as ONE combined video. Replaces the
+// older per-scene loop that fired N separate manim subprocesses (each one
+// wiped the preview folder, so only the last scene survived). The new
+// backend method runs a single manim invocation listing every scene as a
+// positional arg, then ffmpeg-concats the per-scene outputs into one
+// standalone video. See multi_scene.py.
+//
+// Reference: https://docs.manim.community/en/stable/tutorials/output_and_config.html
+//   "If your file contains multiple Scene classes, and you want to render
+//    them all, you can use the -a flag" — but each scene still produces
+//    its own .mp4. We pass scene names explicitly so the user's picker
+//    selection is respected, and we ffmpeg-concat after.
+async function renderSceneList(names, code, quality, fps, gpuEnabled, format, mode) {
+    if (!Array.isArray(names) || names.length === 0) return;
+
+    const total = names.length;
+    setTerminalStatus(
+        `${mode === 'render' ? 'Rendering' : 'Previewing'} ${total} scenes as one video…`,
+        'warning'
+    );
+    updateAppState({ render: mode === 'render' ? 'rendering' : 'previewing' });
+    _renderMeta.sceneName = `${total}-scene combined`;
+
+    // Register completion listener BEFORE starting so a fast finish doesn't
+    // race past us. The combined render fires renderCompleted /
+    // previewCompleted exactly once with the path to the final ffmpeg-
+    // concatenated video.
+    const completionPromise = waitForJobCompletion(mode);
+
+    let startRes;
+    try {
+        if (mode === 'render') {
+            startRes = await pywebview.api.render_combined_scenes(
+                code, names, quality, fps, gpuEnabled, format);
+        } else {
+            startRes = await pywebview.api.quick_preview_combined_scenes(
+                code, names, quality, fps, gpuEnabled, 'mp4');
+        }
+    } catch (err) {
+        const msg = err && err.message ? err.message : String(err);
+        toast(`Combined ${mode} failed: ${msg}`, 'error');
+        updateAppState({ render: 'error' });
+        setTerminalStatus('Error', 'error');
+        // Settle the listener so it cleans up.
+        const failCb = mode === 'render' ? 'renderFailed' : 'previewFailed';
+        if (typeof window[failCb] === 'function') window[failCb](msg);
+        return;
+    }
+
+    if (startRes && startRes.status === 'error') {
+        toast(`Combined ${mode} error: ${startRes.message}`, 'error');
+        updateAppState({ render: 'error' });
+        setTerminalStatus('Error', 'error');
+        const failCb = mode === 'render' ? 'renderFailed' : 'previewFailed';
+        if (typeof window[failCb] === 'function') window[failCb](startRes.message);
+        return;
+    }
+
+    // Wait for manim + ffmpeg concat to finish.
+    const result = await completionPromise;
+    if (result.ok) {
+        toast(`All ${total} scenes combined into one video`, 'success');
+    } else {
+        const msg = result.message || 'unknown error';
+        showToastWithAction(`Combined ${mode} failed`, 'error', 'Details', () => {
+            console.error('[COMBINED RENDER]', msg);
+            alert(msg);
+        });
     }
 }
 
@@ -1176,7 +1311,23 @@ async function quickPreview() {
     // Just run the command in terminal - no UI messages
     updateAppState({ render: 'previewing' });
     try {
-        const res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled, 'mp4', null);
+        let res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled, 'mp4', null);
+
+        if (res && res.status === 'choose_scene') {
+            const chosen = await pickScene(res.scenes, res.message || 'Pick a scene to preview');
+            if (!chosen) {
+                updateAppState({ render: 'none' });
+                job.running = false;
+                return;
+            }
+            if (Array.isArray(chosen)) {
+                await renderSceneList(chosen, code, quality, fps, gpuEnabled, 'mp4', 'preview');
+                job.running = false;
+                return;
+            }
+            _renderMeta.sceneName = chosen;
+            res = await pywebview.api.quick_preview(code, quality, fps, gpuEnabled, 'mp4', chosen);
+        }
 
         if (res.status === 'error') {
             updateAppState({ render: 'error' });
@@ -1192,6 +1343,143 @@ async function quickPreview() {
         setTerminalStatus('Error', 'error');
         updateAppState({ render: 'error' });
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Scene picker — shown when a multi-scene file is rendered/previewed.
+// Resolves to:
+//   null          — user cancelled
+//   '<name>'      — single scene chosen
+//   ['<a>','<b>'] — array of names (checkbox selection / "Render all")
+// ═══════════════════════════════════════════════════════════════════
+function pickScene(scenes, title) {
+    return new Promise((resolve) => {
+        if (!Array.isArray(scenes) || scenes.length === 0) { resolve(null); return; }
+        if (scenes.length === 1) { resolve(scenes[0].name); return; }
+
+        // Reuse the modal if it already exists (avoids rebuilds on repeat).
+        let modal = document.getElementById('scenePickerModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'scenePickerModal';
+            modal.className = 'feat-modal';
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.setAttribute('aria-labelledby', 'scenePickerTitle');
+            modal.setAttribute('data-testid', 'scene-picker-modal');
+            modal.innerHTML = `
+                <div class="feat-backdrop" data-scene-cancel></div>
+                <div class="feat-card" style="width:min(560px,92vw);height:auto;max-height:78vh;">
+                    <div class="feat-header">
+                        <h3 id="scenePickerTitle"><i class="fas fa-cube"></i> <span id="scenePickerTitleText">Pick a scene</span></h3>
+                        <button class="feat-close" data-scene-cancel aria-label="Cancel" title="Cancel"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="feat-body" style="gap:10px;">
+                        <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-secondary);">
+                            <button class="feat-btn" id="scenePickerAll" data-testid="scene-pick-all-btn" title="Select every scene for sequential render"><i class="fas fa-check-double"></i> Select all</button>
+                            <button class="feat-btn" id="scenePickerNone" title="Clear selection">Clear</button>
+                            <span id="scenePickerCount" style="margin-left:auto;font-family:'IBM Plex Mono',monospace;"></span>
+                        </div>
+                        <div id="scenePickerList" role="listbox" aria-label="Scene list" aria-multiselectable="true" style="display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:42vh;"></div>
+                        <div style="display:flex;gap:8px;align-items:center;border-top:1px solid var(--border-color);padding-top:10px;">
+                            <span style="flex:1;font-size:11px;color:var(--text-secondary);">Click a row to render just that one, or tick boxes + "Render selected" for multiple.</span>
+                            <button class="feat-btn primary" id="scenePickerRenderSelected" data-testid="scene-pick-render-btn" disabled>Render selected</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+
+        const titleEl = modal.querySelector('#scenePickerTitleText');
+        const list = modal.querySelector('#scenePickerList');
+        const countEl = modal.querySelector('#scenePickerCount');
+        const allBtn = modal.querySelector('#scenePickerAll');
+        const noneBtn = modal.querySelector('#scenePickerNone');
+        const renderBtn = modal.querySelector('#scenePickerRenderSelected');
+        titleEl.textContent = title || 'Pick a scene';
+
+        list.innerHTML = scenes.map((s, i) => {
+            const name = (s && s.name) || `Scene${i}`;
+            const parent = s && s.parent ? `<span style="color:var(--text-secondary);font-size:10px;margin-left:auto;">&lt;- ${_escHtml(s.parent)}</span>` : '';
+            const line = s && s.line ? `<span style="color:var(--text-secondary);font-size:10px;margin-right:8px;">L${s.line}</span>` : '';
+            return `<div class="scene-pick-row" data-name="${_escHtml(name)}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-secondary);cursor:pointer;">
+                <input type="checkbox" class="scene-pick-check" data-name="${_escHtml(name)}" aria-label="Select ${_escHtml(name)}" style="margin:0;cursor:pointer;flex-shrink:0;">
+                <button class="scene-pick-item" data-name="${_escHtml(name)}" data-testid="scene-pick-${_escHtml(name)}" style="flex:1;background:transparent;border:none;color:var(--text-primary);text-align:left;display:flex;align-items:center;gap:8px;cursor:pointer;padding:2px 0;">
+                    <i class="fas fa-cube" style="color:#f59e0b;"></i>
+                    <span class="t">${_escHtml(name)}</span>
+                    ${line}${parent}
+                </button>
+            </div>`;
+        }).join('');
+
+        function selectedNames() {
+            return Array.from(list.querySelectorAll('.scene-pick-check:checked'))
+                .map(el => el.dataset.name);
+        }
+        function refreshCount() {
+            const n = selectedNames().length;
+            countEl.textContent = n > 0 ? `${n} / ${scenes.length} selected` : '';
+            renderBtn.disabled = n === 0;
+            renderBtn.textContent = n <= 1 ? 'Render selected' : `Render ${n} scenes`;
+        }
+        refreshCount();
+
+        function done(val) {
+            modal.hidden = true;
+            modal.removeEventListener('click', handler);
+            list.removeEventListener('change', refreshCount);
+            document.removeEventListener('keydown', keyHandler);
+            resolve(val);
+        }
+        function handler(e) {
+            if (e.target.closest('[data-scene-cancel]')) { done(null); return; }
+            if (e.target === allBtn || allBtn.contains(e.target)) {
+                list.querySelectorAll('.scene-pick-check').forEach(c => c.checked = true);
+                refreshCount();
+                return;
+            }
+            if (e.target === noneBtn || noneBtn.contains(e.target)) {
+                list.querySelectorAll('.scene-pick-check').forEach(c => c.checked = false);
+                refreshCount();
+                return;
+            }
+            if (e.target === renderBtn || renderBtn.contains(e.target)) {
+                if (renderBtn.disabled) return;
+                const names = selectedNames();
+                if (names.length === 0) return;
+                done(names.length === 1 ? names[0] : names);
+                return;
+            }
+            // Checkbox click — don't treat as row-pick (let the native toggle happen)
+            if (e.target.classList.contains('scene-pick-check')) {
+                refreshCount();
+                return;
+            }
+            // Row click (outside checkbox) → single-render shortcut
+            const btn = e.target.closest('.scene-pick-item');
+            if (btn) { done(btn.dataset.name); return; }
+            const row = e.target.closest('.scene-pick-row');
+            if (row) { done(row.dataset.name); return; }
+        }
+        function keyHandler(e) {
+            if (e.key === 'Escape') done(null);
+            else if (e.key === 'Enter' && !renderBtn.disabled) {
+                const names = selectedNames();
+                if (names.length) done(names.length === 1 ? names[0] : names);
+            }
+        }
+        modal.addEventListener('click', handler);
+        list.addEventListener('change', refreshCount);
+        document.addEventListener('keydown', keyHandler);
+        modal.hidden = false;
+        setTimeout(() => list.querySelector('.scene-pick-check')?.focus(), 10);
+    });
+}
+
+function _escHtml(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 async function stopActiveRender() {
@@ -1555,6 +1843,11 @@ window.renderCompleted = function(outputPath, autoSave = false, suggestedName = 
 
     // Record in render history
     _recordRenderHistory(outputPath, 'render');
+
+    // F-03: hash frames, diff against baseline, open review if flagged.
+    if (outputPath && typeof window._visualDiffAfterRender === 'function') {
+        window._visualDiffAfterRender(outputPath);
+    }
 
     // Auto-show in main preview box and switch to workspace tab
     if (outputPath) {
@@ -2788,25 +3081,9 @@ function loadRenderSidebarSettings() {
         console.error('[SETTINGS] Failed to load render sidebar settings:', err);
     }
 
-    // ── Narration voice & speed: restore from localStorage ──
-    try {
-        const voiceSel = document.getElementById('narrationVoiceSelect');
-        const speedSel = document.getElementById('narrationSpeedSelect');
-        if (voiceSel) {
-            const saved = localStorage.getItem('narration_voice');
-            if (saved) voiceSel.value = saved;
-            voiceSel.addEventListener('change', () => {
-                localStorage.setItem('narration_voice', voiceSel.value);
-            });
-        }
-        if (speedSel) {
-            const saved = localStorage.getItem('narration_speed');
-            if (saved) speedSel.value = saved;
-            speedSel.addEventListener('change', () => {
-                localStorage.setItem('narration_speed', speedSel.value);
-            });
-        }
-    } catch(e) {}
+    // (Narration voice/speed selectors were removed from the sidebar;
+    // narration.js still reads `narration_voice` / `narration_speed` from
+    // localStorage with sensible defaults, so this hook is no longer needed.)
 }
 
 // ─── App version (Fix 4) ────────────────────────────────────────────────────

@@ -2,3 +2,5 @@ dist_nuitka/
 nuitka/
 __pycache__/
 .claude/
+*.pyc
+web/temp_assets/

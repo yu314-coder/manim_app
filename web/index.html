@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manim Studio - Professional Edition</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="ai-edit.css?v=2025-02-28">
+    <link rel="stylesheet" href="styles.css?v=2026-05-06-codex-discovery">
+    <link rel="stylesheet" href="ai-edit.css?v=2026-05-06-codex-discovery">
     <link rel="stylesheet" href="ui-enhancements.css?v=2025-02-25-ai-edit">
     <link rel="stylesheet" href="monaco/vs/editor/editor.main.css">
     <link rel="stylesheet" href="app_features.css?v=2025-01-26-v13">
@@ -872,6 +872,11 @@
                 <i class="fas fa-palette"></i>
                 <span>Colors</span>
             </button>
+            <!-- (F-01 Timeline removed by user request 2026-05-05.
+                 Sketch + Inspector launchers also removed earlier this
+                 session. Their backend modules (timeline.py, ai_sketch.py,
+                 inspector.py) remain on disk but the toolbar is now back
+                 to its pre-experimental layout.) -->
         </div>
 
         <div class="header-right">
@@ -1012,6 +1017,7 @@
                                             <div class="aip-header-right">
                                                 <button class="aip-icon-btn" id="aiEditHistoryBtn" title="Chat History" data-testid="ai-history-btn"><i class="fas fa-clock-rotate-left"></i></button>
                                                 <div class="aip-history-dropdown" id="aiEditHistoryDropdown" role="menu" aria-label="Chat session history"></div>
+                                                <button class="aip-icon-btn" id="aiEditMemoryBtn" title="Style Memory" data-testid="ai-memory-btn"><i class="fas fa-brain"></i><span class="aip-memory-dot" id="aiEditMemoryDot" style="display:none;" aria-label="Pending memory proposals"></span></button>
                                                 <button class="aip-icon-btn" id="aiEditNewChatBtn" title="New Chat" data-testid="ai-new-chat-btn"><i class="fas fa-plus"></i></button>
                                                 <button class="aip-icon-btn" id="aiEditPopoutBtn" title="Open in window" data-testid="ai-popout-btn"><i class="fas fa-arrow-up-right-from-square"></i></button>
                                                 <button class="aip-icon-btn" id="aiEditPanelClose" title="Close" data-testid="ai-panel-close-btn"><i class="fas fa-times"></i></button>
@@ -1081,6 +1087,36 @@
                                                 </button>
                                             </div>
                                         </div>
+
+                                        <!-- F-09: Style Memory modal -->
+                                        <div id="aiEditMemoryModal" class="aip-memory-modal" role="dialog" aria-modal="true" aria-labelledby="aiEditMemoryTitle" data-testid="ai-memory-modal" hidden>
+                                            <div class="aip-memory-backdrop" data-memory-close></div>
+                                            <div class="aip-memory-card">
+                                                <div class="aip-memory-header">
+                                                    <h3 id="aiEditMemoryTitle"><i class="fas fa-brain"></i> Style Memory</h3>
+                                                    <div class="aip-memory-path" id="aiEditMemoryPath" title="Where style.md lives">—</div>
+                                                    <button class="aip-icon-btn" data-memory-close title="Close" data-testid="ai-memory-close-btn" aria-label="Close memory panel"><i class="fas fa-times"></i></button>
+                                                </div>
+                                                <div class="aip-memory-body">
+                                                    <div class="aip-memory-col aip-memory-col-left">
+                                                        <div class="aip-memory-sub">Pending proposals</div>
+                                                        <div class="aip-memory-proposals" id="aiEditMemoryProposals" role="list" aria-label="Pending memory proposals">
+                                                            <div class="aip-memory-empty">No proposals yet. Correct the AI in a chat and a proposal will appear here.</div>
+                                                        </div>
+                                                        <div class="aip-memory-hint">Prefix a message with <code>#ignore-style</code> to skip memory for one turn.</div>
+                                                    </div>
+                                                    <div class="aip-memory-col aip-memory-col-right">
+                                                        <div class="aip-memory-sub">style.md (editable)</div>
+                                                        <textarea id="aiEditMemoryEditor" class="aip-memory-editor" spellcheck="false" aria-label="Style memory markdown editor" data-testid="ai-memory-editor" placeholder="Add style preferences as markdown..."></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="aip-memory-footer">
+                                                    <span class="aip-memory-status" id="aiEditMemoryStatus" role="status" aria-live="polite"></span>
+                                                    <button class="aip-icon-btn" id="aiEditMemoryRefresh" title="Reload from disk" data-testid="ai-memory-refresh-btn" aria-label="Reload memory from disk"><i class="fas fa-rotate"></i></button>
+                                                    <button class="aip-memory-save-btn" id="aiEditMemorySave" data-testid="ai-memory-save-btn">Save</button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1096,6 +1132,9 @@
                                     <div class="workspace-tools">
                                         <button class="icon-btn small" id="screenshotBtn" title="Screenshot current frame (Ctrl+Shift+S)" data-testid="screenshot-btn">
                                             <i class="fas fa-camera"></i>
+                                        </button>
+                                        <button class="icon-btn small" id="diffReviewBtn" title="Diff Review (visual drift detection)" data-testid="diff-review-btn" style="display:none;">
+                                            <i class="fas fa-code-compare"></i><span class="diff-badge" id="diffReviewBadge" style="display:none;"></span>
                                         </button>
                                     </div>
                                 </div>
@@ -1264,40 +1303,10 @@
                                             <option value="png">PNG</option>
                                         </select>
                                     </div>
+                                    <!-- (F-12 Render Farm toggle removed by user request 2026-05-06.) -->
                                 </div>
                             </div>
 
-                            <!-- Narration Settings Section -->
-                            <div class="sidebar-section">
-                                <div class="sidebar-section-header">
-                                    <i class="fas fa-microphone"></i>
-                                    <span>Narration (TTS)</span>
-                                </div>
-                                <div class="sidebar-section-body">
-                                    <div class="sidebar-control">
-                                        <label>Voice</label>
-                                        <select id="narrationVoiceSelect" aria-label="Narration voice" data-testid="narration-voice-select">
-                                            <option value="af_heart">Heart (Female)</option>
-                                            <option value="af_bella">Bella (Female)</option>
-                                            <option value="af_nicole">Nicole (Female)</option>
-                                            <option value="af_sarah">Sarah (Female)</option>
-                                            <option value="am_adam">Adam (Male)</option>
-                                            <option value="am_michael">Michael (Male)</option>
-                                            <option value="bf_emma">Emma (Female, British)</option>
-                                            <option value="bm_george">George (Male, British)</option>
-                                        </select>
-                                    </div>
-                                    <div class="sidebar-control">
-                                        <label>Speed</label>
-                                        <select id="narrationSpeedSelect" aria-label="Narration speed" data-testid="narration-speed-select">
-                                            <option value="0.75">0.75x</option>
-                                            <option value="1.0" selected>1.0x</option>
-                                            <option value="1.25">1.25x</option>
-                                            <option value="1.5">1.5x</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                         <!-- End controls sidebar -->
                     </div>
@@ -2384,10 +2393,10 @@
 
     <!-- Main Application Script - Load renderer_desktop.js directly -->
     <!-- Cache buster added to force reload after fixes - change version to force reload -->
-    <script defer src="renderer_desktop.js?v=2025-02-19-completions"></script>
+    <script defer src="renderer_desktop.js?v=2026-05-06-codex-discovery"></script>
 
     <!-- AI Edit Panel (Claude Code + OpenAI Codex) -->
-    <script defer src="ai-edit.js?v=2025-02-28"></script>
+    <script defer src="ai-edit.js?v=2026-05-06-codex-discovery"></script>
 
     <!-- Narration: auto TTS on render/preview when code has narrate() calls -->
     <script defer src="narration.js?v=2025-02-28"></script>
@@ -2396,12 +2405,96 @@
     <script defer src="new_features.js?v=2025-01-26-windows-details-view"></script>
 
     <!-- App Features: Theme Toggle, Help Modal, Settings Dialog -->
-    <script defer src="app_features.js?v=2025-01-26-v14-pywebview-ready-fix"></script>
+    <script defer src="app_features.js?v=2026-05-06-codex-discovery"></script>
 
     <!-- SIMPLE ASSETS -->
     <script defer src="simple_assets.js?v=2026-03-06"></script>
 
     <!-- Responsive Scaling & DPI Detection -->
     <script defer src="responsive_scaling.js?v=2025-02-05"></script>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         F-03 / F-08 / F-04 / F-01 / F-12 — Advanced feature modals
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <!-- F-03: Visual Diff Review modal -->
+    <div id="diffReviewModal" class="feat-modal" role="dialog" aria-modal="true" aria-labelledby="diffReviewTitle" data-testid="diff-review-modal" hidden>
+        <div class="feat-backdrop" data-feat-close></div>
+        <div class="feat-card feat-card-wide">
+            <div class="feat-header">
+                <h3 id="diffReviewTitle"><i class="fas fa-code-compare"></i> Diff Review</h3>
+                <div class="feat-subtitle" id="diffReviewSubtitle">Comparing against baseline…</div>
+                <button class="feat-close" data-feat-close aria-label="Close diff review" title="Close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="feat-body feat-diff-body">
+                <aside class="feat-diff-sidebar" aria-label="Render history">
+                    <div class="feat-sub">Recent renders</div>
+                    <div class="feat-diff-list" id="diffReviewList" role="list"></div>
+                </aside>
+                <section class="feat-diff-viewer">
+                    <div class="feat-diff-ab" id="diffReviewAB">
+                        <figure class="feat-diff-pane"><figcaption>Baseline</figcaption><img id="diffReviewBaseImg" alt="Baseline frame" /></figure>
+                        <figure class="feat-diff-pane"><figcaption>Current</figcaption><img id="diffReviewCurImg" alt="Current frame" /></figure>
+                    </div>
+                    <div class="feat-diff-scrubber">
+                        <input type="range" id="diffReviewScrubber" min="0" max="0" value="0" step="1" aria-label="Frame scrubber" data-testid="diff-scrubber" />
+                        <span class="feat-diff-frame-label" id="diffReviewFrameLabel">0 / 0</span>
+                    </div>
+                    <div class="feat-diff-strip" id="diffReviewStrip" aria-label="Frame drift strip" role="img"></div>
+                    <div class="feat-diff-actions">
+                        <span class="feat-diff-stats" id="diffReviewStats" role="status" aria-live="polite"></span>
+                        <button class="feat-btn" id="diffReviewRevert" data-testid="diff-revert-btn" title="Mark as reverted (R)">Revert</button>
+                        <button class="feat-btn" id="diffReviewBlock" data-testid="diff-block-btn" title="Block this render (B)">Block</button>
+                        <button class="feat-btn primary" id="diffReviewAccept" data-testid="diff-accept-btn" title="Accept as new baseline (A)">Accept</button>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- F-08: AI Sketch mode modal -->
+    <div id="sketchModal" class="feat-modal" role="dialog" aria-modal="true" aria-labelledby="sketchTitle" data-testid="sketch-modal" hidden>
+        <div class="feat-backdrop" data-feat-close></div>
+        <div class="feat-card feat-card-wide">
+            <div class="feat-header">
+                <h3 id="sketchTitle"><i class="fas fa-wand-magic-sparkles"></i> AI Sketches</h3>
+                <div class="feat-subtitle">Lightweight 3-second loops to pick a direction.</div>
+                <button class="feat-close" data-feat-close aria-label="Close sketches" title="Close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="feat-body feat-sketch-body">
+                <div class="feat-sketch-prompt-row">
+                    <input type="text" id="sketchPrompt" class="feat-sketch-prompt" placeholder="Describe what you want to see (e.g. convolution of two gaussians)" aria-label="Sketch prompt" data-testid="sketch-prompt" />
+                    <button class="feat-btn primary" id="sketchGenerate" data-testid="sketch-generate-btn">Generate</button>
+                </div>
+                <div class="feat-sketch-grid" id="sketchGrid" role="list" aria-label="Sketch variants"></div>
+                <details class="feat-sketch-log-wrap" id="sketchLogWrap">
+                    <summary>Live AI / manim output</summary>
+                    <pre class="feat-sketch-log" id="sketchLog" aria-label="Live generation log"></pre>
+                </details>
+                <div class="feat-sketch-status" id="sketchStatus" role="status" aria-live="polite"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- F-04: Inspector side panel (docked right, not a modal) -->
+    <aside id="inspectorPanel" class="feat-inspector" role="complementary" aria-label="Mobject inspector" data-testid="inspector-panel" hidden>
+        <div class="feat-inspector-header">
+            <i class="fas fa-crosshairs"></i>
+            <span class="feat-inspector-title" id="inspectorTitle">Inspector</span>
+            <span class="feat-inspector-bound" id="inspectorBound" title="Two-way binding indicator"></span>
+            <button class="feat-close" id="inspectorClose" aria-label="Close inspector" title="Close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="feat-inspector-body" id="inspectorBody">
+            <div class="feat-inspector-empty">Alt-click a mobject in the preview to inspect it.</div>
+        </div>
+        <div class="feat-inspector-src" id="inspectorSrc" aria-label="Affected source"></div>
+    </aside>
+
+    <!-- (F-01 Timeline dock removed by user request 2026-05-05.) -->
+
+    <!-- (F-12 Render Farm modal removed by user request 2026-05-06.) -->
+
+    <link rel="stylesheet" href="features.css?v=2026-05-06-codex-discovery">
+    <script defer src="features.js?v=2026-05-06-codex-discovery"></script>
 </body>
 </html>

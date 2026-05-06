@@ -572,6 +572,29 @@ class AudioExample(Scene):
                 </div>
             </div>
 
+            <!-- Experimental Features -->
+            <div class="settings-group">
+                <h3><i class="fas fa-flask"></i> Experimental Features</h3>
+                <p class="settings-description" style="margin-bottom: 12px;">Toggle in-progress features. Changes take effect on next app launch.</p>
+
+                <div class="settings-checkbox">
+                    <input type="checkbox" id="settingFeatVisualDiff">
+                    <label for="settingFeatVisualDiff">
+                        Visual Diff (F-03)
+                        <div class="settings-description">pHash every render frame and flag drift > 1% against the baseline render.</div>
+                    </label>
+                </div>
+                <!-- Sketch (F-08), Inspector (F-04), Timeline (F-01),
+                     and Render Farm (F-12) UI toggles all removed per
+                     user requests 2026-05-05/06. Their backend APIs
+                     remain available for programmatic use; no toolbar
+                     UI surfaces them. Only Visual Diff (above) is still
+                     user-configurable. -->
+                <div class="settings-description" style="font-style: italic; padding: 6px 0;">
+                    Sketch, Inspector, Timeline, and Render Farm toolbar features have been removed. Only Visual Diff remains.
+                </div>
+            </div>
+
             <!-- Editor Settings -->
             <div class="settings-group">
                 <h3><i class="fas fa-code"></i> Editor Settings</h3>

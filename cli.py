@@ -88,13 +88,63 @@ def get_clean_environment():
     return env
 
 
+def extract_all_scene_classes(code):
+    """Return every Scene-subclass class in ``code`` as
+    ``[{name, line, parent}]``. AST-first with a regex fallback so
+    partially-edited files still produce useful output.
+
+    Previously the module used ``re.search`` which returned only the
+    first match — meaning files with 2+ scenes only ever had the first
+    one detected. Fixed April 2026."""
+
+    def _parent_contains_scene(base_node) -> bool:
+        if isinstance(base_node, ast.Name):
+            return 'Scene' in base_node.id
+        if isinstance(base_node, ast.Attribute):
+            return 'Scene' in base_node.attr
+        if isinstance(base_node, ast.Subscript):
+            return _parent_contains_scene(base_node.value)
+        if isinstance(base_node, ast.Call):
+            return _parent_contains_scene(base_node.func)
+        return False
+
+    def _parent_label(base_node) -> str:
+        try:
+            return ast.unparse(base_node)
+        except Exception:
+            return '?'
+
+    scenes = []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        for m in re.finditer(
+                r'^[ \t]*class\s+(\w+)\s*\(([^)]*)\)\s*:',
+                code, flags=re.MULTILINE):
+            parents = m.group(2)
+            if 'Scene' in parents:
+                line = code.count('\n', 0, m.start()) + 1
+                scenes.append({'name': m.group(1), 'line': line,
+                                'parent': parents.strip()})
+        return scenes
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        if any(_parent_contains_scene(b) for b in node.bases):
+            scenes.append({'name': node.name, 'line': node.lineno,
+                            'parent': ', '.join(_parent_label(b) for b in node.bases)})
+    return scenes
+
+
 def extract_scene_name(code):
-    """Extract the first Scene subclass name from code."""
-    match = re.search(r'class\s+(\w+)\s*\([^)]*Scene[^)]*\):', code)
-    if match:
-        return match.group(1)
-    match = re.search(r'class\s+(\w+)\s*\([^)]*\):', code)
-    return match.group(1) if match else None
+    """Return the first Scene subclass name — or None. CLI users
+    expect silent-pick-first, so this keeps that behaviour."""
+    scenes = extract_all_scene_classes(code)
+    if scenes:
+        return scenes[0]['name']
+    m = re.search(r'^[ \t]*class\s+(\w+)\s*\(', code, flags=re.MULTILINE)
+    return m.group(1) if m else None
 
 
 def validate_code(code):
@@ -337,6 +387,19 @@ class MCPServer:
                 'required': ['code'],
             },
         },
+        'list_scenes': {
+            'description': 'List every Scene-subclass class in the provided Manim code (name, line, parent).',
+            'inputSchema': {
+                'type': 'object',
+                'properties': {
+                    'code': {
+                        'type': 'string',
+                        'description': 'Manim Python code to scan',
+                    },
+                },
+                'required': ['code'],
+            },
+        },
         'list_quality_presets': {
             'description': 'List all available quality presets with their default width, height, and manim flag.',
             'inputSchema': {
@@ -457,10 +520,25 @@ class MCPServer:
 
             if name == 'validate_scene':
                 err = validate_code(args['code'])
-                scene = extract_scene_name(args['code'])
-                res = {'valid': err is None, 'error': err, 'scene_name': scene}
+                all_scenes = extract_all_scene_classes(args['code'])
+                scene = all_scenes[0]['name'] if all_scenes else extract_scene_name(args['code'])
+                res = {
+                    'valid': err is None,
+                    'error': err,
+                    'scene_name': scene,
+                    'scene_count': len(all_scenes),
+                    'scenes': all_scenes,
+                }
                 return self._result(req_id, {
                     'content': [{'type': 'text', 'text': json.dumps(res)}],
+                })
+
+            if name == 'list_scenes':
+                scenes = extract_all_scene_classes(args['code'])
+                return self._result(req_id, {
+                    'content': [{'type': 'text', 'text': json.dumps({
+                        'count': len(scenes), 'scenes': scenes,
+                    }, indent=2)}],
                 })
 
             if name == 'list_quality_presets':

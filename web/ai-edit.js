@@ -236,9 +236,10 @@
             modelDropdown.innerHTML = '';
 
             const tierIcons = {
-                premium:  { icon: 'fa-gem',      color: '#c084fc', label: 'Premium' },
-                standard: { icon: 'fa-bolt',     color: '#60a5fa', label: 'Standard' },
-                economy:  { icon: 'fa-feather',  color: '#34d399', label: 'Fast' },
+                premium:    { icon: 'fa-gem',              color: '#c084fc', label: 'Premium' },
+                standard:   { icon: 'fa-bolt',             color: '#60a5fa', label: 'Standard' },
+                economy:    { icon: 'fa-feather',          color: '#34d399', label: 'Fast' },
+                discovered: { icon: 'fa-magnifying-glass', color: '#f59e0b', label: 'Discovered (auto-detected from Claude CLI history)' },
             };
 
             // Default option
@@ -266,7 +267,7 @@
                 grouped[tier].push(m);
             }
 
-            for (const tier of ['premium', 'standard', 'economy']) {
+            for (const tier of ['premium', 'standard', 'economy', 'discovered']) {
                 const models = grouped[tier];
                 if (!models || !models.length) continue;
                 const t = tierIcons[tier] || tierIcons.standard;
@@ -543,6 +544,197 @@
         // Close history dropdown when clicking elsewhere
         document.addEventListener('click', () => historyDrop?.classList.remove('show'));
 
+        // ══════════════════════════════════════════════════════════════
+        // F-09: Style Memory modal
+        // ══════════════════════════════════════════════════════════════
+        const memoryBtn    = document.getElementById('aiEditMemoryBtn');
+        const memoryModal  = document.getElementById('aiEditMemoryModal');
+        const memoryEditor = document.getElementById('aiEditMemoryEditor');
+        const memoryPath   = document.getElementById('aiEditMemoryPath');
+        const memoryProps  = document.getElementById('aiEditMemoryProposals');
+        const memorySave   = document.getElementById('aiEditMemorySave');
+        const memoryRefresh = document.getElementById('aiEditMemoryRefresh');
+        const memoryStatus = document.getElementById('aiEditMemoryStatus');
+        const memoryDot    = document.getElementById('aiEditMemoryDot');
+
+        function setMemoryStatus(msg, kind) {
+            if (!memoryStatus) return;
+            memoryStatus.textContent = msg || '';
+            memoryStatus.style.color = kind === 'error' ? '#f87171'
+                : kind === 'ok' ? '#86efac'
+                : 'var(--text-secondary)';
+        }
+
+        function renderProposal(p) {
+            const wrap = document.createElement('div');
+            wrap.className = 'aip-memory-prop';
+            wrap.dataset.pid = p.id;
+            wrap.setAttribute('role', 'listitem');
+            wrap.innerHTML = `
+                <div class="aip-memory-prop-trigger">trigger: ${esc(p.trigger || '')}</div>
+                <div class="aip-memory-prop-rule">${esc(p.suggested_rule || p.correction_text || '')}</div>
+                <div class="aip-memory-prop-actions">
+                    <button class="aip-memory-prop-btn" data-action="dismiss">Dismiss</button>
+                    <button class="aip-memory-prop-btn accept" data-action="accept">Add to memory</button>
+                </div>`;
+            return wrap;
+        }
+
+        async function loadMemory() {
+            if (!await waitForApi()) return;
+            try {
+                const res = await pywebview.api.ai_edit_get_memory();
+                if (!res || res.status !== 'ok') {
+                    setMemoryStatus(res?.message || 'Failed to load memory', 'error');
+                    return;
+                }
+                if (memoryEditor) memoryEditor.value = res.style_md || '';
+                if (memoryPath) memoryPath.textContent = res.path || '';
+                if (memoryProps) {
+                    memoryProps.innerHTML = '';
+                    const proposals = res.proposals || [];
+                    if (proposals.length === 0) {
+                        memoryProps.innerHTML = '<div class="aip-memory-empty">No proposals yet. Correct the AI in a chat and a proposal will appear here.</div>';
+                    } else {
+                        proposals.forEach(p => memoryProps.appendChild(renderProposal(p)));
+                    }
+                }
+                updateMemoryDot(res.proposals?.length || 0);
+                setMemoryStatus('Loaded', 'ok');
+            } catch (err) {
+                console.error('[AI EDIT] Memory load error:', err);
+                setMemoryStatus(String(err), 'error');
+            }
+        }
+
+        function updateMemoryDot(count) {
+            if (!memoryDot) return;
+            memoryDot.style.display = count > 0 ? 'block' : 'none';
+            memoryDot.title = count > 0 ? `${count} pending proposal${count > 1 ? 's' : ''}` : '';
+        }
+
+        async function refreshProposalBadge() {
+            if (!await waitForApi()) return;
+            try {
+                const res = await pywebview.api.ai_edit_list_memory_proposals();
+                if (res?.status === 'ok') updateMemoryDot((res.proposals || []).length);
+            } catch (e) { /* silent */ }
+        }
+
+        // Hide the preview video element completely while the memory
+        // modal is open. Pausing alone still leaves the last frame
+        // composited on its own GPU layer, which Chromium can paint OVER
+        // the modal regardless of z-index — that's the "video overlay
+        // bug" the user kept hitting. visibility:hidden removes the
+        // element from the compositor entirely.
+        let _videoStateForMemory = null;  // { wasPlaying, prevVisibility, prevDisplay }
+        function _hidePreviewForMemory() {
+            const v = document.getElementById('previewVideo');
+            if (!v) return;
+            _videoStateForMemory = {
+                wasPlaying: !v.paused && !v.ended,
+                prevVisibility: v.style.visibility || '',
+                prevDisplay: v.style.display || '',
+            };
+            try { v.pause(); } catch (e) {}
+            // visibility:hidden keeps layout (so the placeholder space
+            // stays the same) but removes the compositor layer.
+            v.style.visibility = 'hidden';
+        }
+        function _restorePreviewAfterMemory() {
+            if (!_videoStateForMemory) return;
+            const v = document.getElementById('previewVideo');
+            const state = _videoStateForMemory;
+            _videoStateForMemory = null;
+            if (!v) return;
+            v.style.visibility = state.prevVisibility;
+            v.style.display = state.prevDisplay;
+            if (state.wasPlaying) v.play().catch(() => {});
+        }
+
+        memoryBtn?.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!memoryModal) return;
+            _hidePreviewForMemory();
+            memoryModal.hidden = false;
+            await loadMemory();
+            memoryEditor?.focus();
+        });
+
+        memoryModal?.addEventListener('click', (e) => {
+            if (e.target.closest('[data-memory-close]')) {
+                memoryModal.hidden = true;
+                _restorePreviewAfterMemory();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && memoryModal && !memoryModal.hidden) {
+                memoryModal.hidden = true;
+                _restorePreviewAfterMemory();
+            }
+        });
+
+        memorySave?.addEventListener('click', async () => {
+            if (!await waitForApi()) return;
+            memorySave.disabled = true;
+            setMemoryStatus('Saving…');
+            try {
+                const res = await pywebview.api.ai_edit_save_memory(memoryEditor?.value || '');
+                if (res?.status === 'ok') {
+                    setMemoryStatus('Saved ✓', 'ok');
+                    if (typeof toast === 'function') toast('Style memory saved', 'success');
+                } else {
+                    setMemoryStatus(res?.message || 'Save failed', 'error');
+                }
+            } catch (err) {
+                setMemoryStatus(String(err), 'error');
+            } finally {
+                memorySave.disabled = false;
+            }
+        });
+
+        memoryRefresh?.addEventListener('click', loadMemory);
+
+        // Proposal accept / dismiss
+        memoryProps?.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.aip-memory-prop-btn');
+            if (!btn) return;
+            const card = btn.closest('.aip-memory-prop');
+            const pid = card?.dataset.pid;
+            if (!pid || !await waitForApi()) return;
+            const action = btn.dataset.action;
+            try {
+                if (action === 'accept') {
+                    const res = await pywebview.api.ai_edit_accept_memory_proposal(pid);
+                    if (res?.status === 'ok') {
+                        card.remove();
+                        await loadMemory();
+                        if (typeof toast === 'function') toast('Rule added to memory', 'success');
+                    } else {
+                        setMemoryStatus(res?.message || 'Accept failed', 'error');
+                    }
+                } else if (action === 'dismiss') {
+                    const res = await pywebview.api.ai_edit_dismiss_memory_proposal(pid);
+                    if (res?.status === 'ok') {
+                        card.remove();
+                        await refreshProposalBadge();
+                        if (!memoryProps.querySelector('.aip-memory-prop')) {
+                            memoryProps.innerHTML = '<div class="aip-memory-empty">No proposals yet. Correct the AI in a chat and a proposal will appear here.</div>';
+                        }
+                    }
+                }
+            } catch (err) {
+                setMemoryStatus(String(err), 'error');
+            }
+        });
+
+        // Expose for the streaming-done hook (resetSendBtn).
+        window._aiEditRefreshMemoryBadge = refreshProposalBadge;
+
+        // Poll once on panel init so the badge reflects any stale proposals.
+        refreshProposalBadge();
+
         // ── Popout button → open separate window ──
         popoutBtn?.addEventListener('click', async () => {
             if (!await waitForApi()) return;
@@ -615,6 +807,11 @@
                 sendBtn.innerHTML = '<i class="fas fa-arrow-up"></i>';
             }
             if (statusText) statusText.style.display = 'none';
+            // F-09: a turn just ended — check whether a memory proposal was
+            // staged by the backend and light up the brain-icon dot.
+            if (typeof window._aiEditRefreshMemoryBadge === 'function') {
+                setTimeout(() => window._aiEditRefreshMemoryBadge(), 300);
+            }
         }
 
         // ── Send / Cancel ──
@@ -944,10 +1141,38 @@
                 if (typeof editor !== 'undefined' && editor) {
                     editor.setValue(action.code);
                 }
-                // Trigger preview and listen for result
+                // ── Wait for any in-flight preview/render to finish ──
+                // Before this fix, the agent fired quickPreview() while a
+                // previous render was still running. quickPreview's
+                // `if (job.running) return` guard silently rejected the
+                // call, so monitorPreviewForAgent ended up listening for
+                // a preview that never started — agent hung forever.
+                // Now we explicitly poll until the previous job finishes
+                // (or we hit a 5-minute safety cap).
+                if (typeof job !== 'undefined' && job) {
+                    let waited = 0;
+                    const POLL_MS = 200;
+                    const MAX_WAIT_MS = 5 * 60 * 1000;
+                    while (job.running && waited < MAX_WAIT_MS) {
+                        await new Promise(r => setTimeout(r, POLL_MS));
+                        waited += POLL_MS;
+                    }
+                    if (job.running) {
+                        console.warn('[AGENT] Previous job still running after 5min — forcing through anyway');
+                    } else if (waited > 0) {
+                        console.log(`[AGENT] Waited ${waited}ms for previous job to finish before agent preview`);
+                    }
+                }
+                // Install completion hooks BEFORE triggering preview so
+                // we don't miss a fast finish.
                 monitorPreviewForAgent();
                 if (typeof quickPreview === 'function') {
-                    quickPreview();
+                    // Await the preview kick-off; quickPreview itself
+                    // returns once the API call is dispatched (the actual
+                    // render completes later via the watcher → previewCompleted
+                    // hook the monitor installed above).
+                    try { await quickPreview(); }
+                    catch (e) { console.error('[AGENT] quickPreview error:', e); }
                 }
             }
 
@@ -1002,28 +1227,48 @@
 
         // ── Monitor preview/render completion for agent feedback ──
         function monitorPreviewForAgent() {
-            // Temporarily hook into the global callbacks
             const origComplete = window.previewCompleted;
             const origFailed = window.previewFailed;
             const origRenderComplete = window.renderCompleted;
             const origRenderFailed = window.renderFailed;
+
+            // 10-minute defensive timeout: if neither completion nor
+            // failure callback fires (e.g. manim hung, watcher crashed),
+            // force a render_error so the agent can break out of its
+            // wait loop and try to recover or stop cleanly.
+            let settled = false;
+            const SAFETY_MS = 10 * 60 * 1000;
+            const safetyTimer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                console.warn('[AGENT] preview/render safety timeout fired — sending render_error to unblock');
+                try {
+                    pywebview.api.ai_agent_feedback({
+                        type: 'render_error',
+                        error: 'Preview/render did not complete within 10 minutes (safety timeout). Possible causes: hung manim subprocess, missed completion event, or stuck PTY.'
+                    });
+                } catch (e) {}
+            }, SAFETY_MS);
 
             function cleanup() {
                 window.previewCompleted = origComplete;
                 window.previewFailed = origFailed;
                 window.renderCompleted = origRenderComplete;
                 window.renderFailed = origRenderFailed;
+                clearTimeout(safetyTimer);
             }
 
             window.previewCompleted = function(outputPath) {
+                if (settled) return; settled = true;
                 cleanup();
                 if (origComplete) origComplete(outputPath);
-                // Send success feedback to agent
                 try {
                     pywebview.api.ai_agent_feedback({ type: 'render_success', path: outputPath });
                 } catch (e) {}
             };
             window.previewFailed = function(error) {
+                if (settled) return; settled = true;
                 cleanup();
                 if (origFailed) origFailed(error);
                 try {
@@ -1031,6 +1276,7 @@
                 } catch (e) {}
             };
             window.renderCompleted = function(outputPath, autoSave, suggestedName) {
+                if (settled) return; settled = true;
                 cleanup();
                 if (origRenderComplete) origRenderComplete(outputPath, autoSave, suggestedName);
                 try {
@@ -1038,6 +1284,7 @@
                 } catch (e) {}
             };
             window.renderFailed = function(error) {
+                if (settled) return; settled = true;
                 cleanup();
                 if (origRenderFailed) origRenderFailed(error);
                 try {
@@ -1045,15 +1292,10 @@
                 } catch (e) {}
             };
 
-            // Timeout safety — if neither fires within 3 min, send error
-            setTimeout(() => {
-                if (window.previewCompleted !== origComplete) {
-                    cleanup();
-                    try {
-                        pywebview.api.ai_agent_feedback({ type: 'render_error', error: 'Render timeout' });
-                    } catch (e) {}
-                }
-            }, 600000); // 10 min safety — agent itself never times out
+            // (Old 10-min safety timer removed — replaced by the
+            // settled-flag safetyTimer at the top of this function which
+            // properly clears itself on success/failure and avoids a
+            // double-fire if both completion and the timer race.)
         }
 
         // ── Capture screenshots from preview video ──
@@ -1239,9 +1481,10 @@
             modelDropdown.innerHTML = '';
 
             const tierIcons = {
-                premium:  { icon: 'fa-gem',      color: '#c084fc', label: 'Premium' },
-                standard: { icon: 'fa-bolt',     color: '#60a5fa', label: 'Standard' },
-                economy:  { icon: 'fa-feather',  color: '#34d399', label: 'Fast' },
+                premium:    { icon: 'fa-gem',              color: '#c084fc', label: 'Premium' },
+                standard:   { icon: 'fa-bolt',             color: '#60a5fa', label: 'Standard' },
+                economy:    { icon: 'fa-feather',          color: '#34d399', label: 'Fast' },
+                discovered: { icon: 'fa-magnifying-glass', color: '#f59e0b', label: 'Discovered (auto-detected from Claude CLI history)' },
             };
 
             const defOpt = document.createElement('button');
@@ -1264,7 +1507,7 @@
                 grouped[tier].push(m);
             }
 
-            for (const tier of ['premium', 'standard', 'economy']) {
+            for (const tier of ['premium', 'standard', 'economy', 'discovered']) {
                 const models = grouped[tier];
                 if (!models || !models.length) continue;
                 const t = tierIcons[tier] || tierIcons.standard;

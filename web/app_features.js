@@ -235,6 +235,18 @@ function showSettingsModal() {
         document.getElementById('settingAutoOpenOutput').checked = appSettings.autoOpenOutput === true;
         document.getElementById('settingDisableCache').checked = appSettings.disableCache !== false;
 
+        // Experimental feature flags — read from appSettings.features.*
+        const features = (appSettings && appSettings.features) || {};
+        const setIfExists = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.checked = !!val;
+        };
+        setIfExists('settingFeatVisualDiff',  features.visual_diff !== false); // default true
+        // (F-12 Render Farm checkbox removed 2026-05-06.)
+        // AI Sketch + Inspector + Timeline UI removed (2026-05-05); flags
+        // are still preserved on disk so the backend APIs work but no
+        // checkbox is rendered.
+
         modal.classList.add('active');
         console.log('[SETTINGS] Added active class to modal');
         console.log('[SETTINGS] Modal classes:', modal.className);
@@ -314,6 +326,19 @@ async function applySettings() {
         if (autoSaveCheck) appSettings.autoSave = autoSaveCheck.checked;
         if (autoOpenCheck) appSettings.autoOpenOutput = autoOpenCheck.checked;
         if (disableCacheCheck) appSettings.disableCache = disableCacheCheck.checked;
+
+        // Experimental feature flags. We only persist the toggles that
+        // still have UI; AI Sketch / Inspector / Timeline flags are left
+        // untouched on disk so the backend APIs continue to work if
+        // reached programmatically.
+        const featChecks = {
+            visual_diff: 'settingFeatVisualDiff',
+        };
+        appSettings.features = appSettings.features || {};
+        for (const [flag, id] of Object.entries(featChecks)) {
+            const el = document.getElementById(id);
+            if (el) appSettings.features[flag] = el.checked;
+        }
 
         console.log('[SETTINGS] Settings updated:', appSettings);
 

@@ -248,7 +248,17 @@ div[style*="font-family"] {
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
+    /* Allow overflow buttons to scroll horizontally instead of being
+       clipped invisibly by body{overflow:hidden}. flex-shrink:0 below
+       on the buttons keeps them from squishing into illegibility. */
+    overflow-x: auto;
+    overflow-y: hidden;
+    min-width: 0;
+    /* Hide the scrollbar but keep wheel scrolling functional. */
+    scrollbar-width: none;
 }
+.header-left::-webkit-scrollbar { display: none; }
+.header-left > * { flex-shrink: 0; }
 
 .logo {
     font-size: 32px;

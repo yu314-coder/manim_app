@@ -151,7 +151,15 @@ def get_clean_environment():
     return env
 
 # ── Init feature modules ──
-init_ai_edit(PREVIEW_DIR, get_clean_environment, assets_dir=ASSETS_DIR, venv_dir=VENV_DIR)
+# app_state is defined later in the file; the lambda resolves it lazily at
+# call time so AgentMemory can read the currently open file's path.
+init_ai_edit(
+    PREVIEW_DIR,
+    get_clean_environment,
+    assets_dir=ASSETS_DIR,
+    venv_dir=VENV_DIR,
+    current_file_path_getter=lambda: app_state.get('current_file_path'),
+)
 init_narration(PREVIEW_DIR, get_clean_environment, VENV_DIR, USER_DATA_DIR)
 
 # Function to check GPU detection dependencies (no auto-install)
@@ -1145,7 +1153,23 @@ app_state = {
         'preview_quality': 'Medium',
         'theme': 'Dark+',
         'font_size': 14,
-        'intellisense_enabled': True
+        'intellisense_enabled': True,
+        # Feature flags (F-03 / F-12 / F-08 / F-04 / F-01). Experimental
+        # flags default off per the feature spec.
+        'features': {
+            'visual_diff': True,       # F-03
+            'render_farm': True,       # F-12
+            'ai_sketch': True,         # F-08
+            'inspector': False,        # F-04 (experimental)
+            'timeline': False,         # F-01 (experimental)
+        },
+        'diff': {
+            'threshold': 0.01,
+            'autopromote_below_threshold': True,
+        },
+        'farm': {
+            'workers_local': 4,
+        },
     },
     'lsp_process': None,    # basedpyright-langserver subprocess
     'lsp_running': False,   # LSP stdout reader thread active flag
@@ -1184,6 +1208,80 @@ def safe_evaluate_js(window, js_code):
         else:
             print(f"[WINDOW] Error evaluating JS: {e}")
             raise  # Re-raise if it's not a disposal error
+
+
+# ANSI escape sequences (used by Manim's coloured terminal output) and other
+# control characters break the JS string we splice into evaluate_js. Strip
+# them before sending the error to the frontend.
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+_OSC_RE  = re.compile(r'\x1b\][^\x07]*\x07')          # OSC sequences (window title)
+_CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')  # other control chars
+
+
+def js_safe_string(text, max_len=2000):
+    """Strip ANSI/OSC/control codes and JSON-escape so the result is safe
+    to splice between double quotes in evaluate_js. Returns a plain str."""
+    if text is None:
+        return ''
+    s = str(text)
+    s = _ANSI_RE.sub('', s)
+    s = _OSC_RE.sub('', s)
+    s = _CTRL_RE.sub('', s)
+    if len(s) > max_len:
+        s = s[:max_len] + '\n…(truncated)'
+    # json.dumps gives us a properly-escaped JS string literal *with* the
+    # surrounding quotes — we strip them so callers can keep their existing
+    # f'window.foo("…")' templates unchanged.
+    return json.dumps(s)[1:-1]
+
+
+def read_latex_log_excerpt(error_text, max_lines=25):
+    """If ``error_text`` references a LaTeX .log file path, read the file
+    and return the most relevant excerpt (the lines around the first '! '
+    error marker). Returns '' if no log path is present or the file can't
+    be read. Used to surface real LaTeX errors rather than the bare
+    ``ValueError: latex error converting to dvi`` shell."""
+    if not error_text:
+        return ''
+    m = re.search(r'([A-Za-z]:[\\/][^"\'<>|?\r\n]+?\.log)', error_text)
+    if not m:
+        return ''
+    log_path = m.group(1).rstrip('. ').strip()
+    try:
+        if not os.path.isfile(log_path):
+            return ''
+        with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+    except OSError:
+        return ''
+    if not lines:
+        return ''
+    # LaTeX errors start with '! '. Show the first one + ~12 surrounding
+    # lines so the user sees the actual undefined-control-sequence /
+    # missing-package / runaway-argument message.
+    for i, ln in enumerate(lines):
+        if ln.startswith('! '):
+            start = max(0, i - 2)
+            end = min(len(lines), i + max_lines)
+            excerpt = ''.join(lines[start:end]).rstrip()
+            return f'\n\n--- LaTeX log excerpt ({os.path.basename(log_path)}) ---\n{excerpt}'
+    # No '! ' marker — just show the last few lines, which usually carry
+    # the diagnostic message anyway.
+    tail = ''.join(lines[-max_lines:]).rstrip()
+    return f'\n\n--- LaTeX log tail ({os.path.basename(log_path)}) ---\n{tail}'
+
+
+def enrich_error_for_user(error_text):
+    """Take a raw error captured from the Manim subprocess and return a
+    cleaner version for the UI: ANSI-stripped, with an inline LaTeX log
+    excerpt if one was referenced."""
+    if not error_text:
+        return error_text
+    cleaned = _ANSI_RE.sub('', _OSC_RE.sub('', str(error_text)))
+    excerpt = read_latex_log_excerpt(cleaned)
+    if excerpt:
+        cleaned = cleaned.rstrip() + excerpt
+    return cleaned
 
 def sanitize_code_for_latex(code):
     """
@@ -1257,7 +1355,119 @@ def sanitize_code_for_latex(code):
     else:
         print(f"[LATEX SANITIZE] No invisible characters found in code")
 
+    # ── CJK auto-fix ──────────────────────────────────────────────────
+    # If the code uses MathTex/Tex with CJK characters (Chinese/Japanese/
+    # Korean), pdflatex (Manim's default engine) errors with
+    # "! LaTeX Error: Unicode character X not set up for use with LaTeX."
+    # Manim ships TexTemplateLibrary.ctex which uses xelatex + the ctex
+    # package and handles CJK natively. If we detect the pattern AND the
+    # user hasn't already configured a custom tex_template, inject one
+    # automatic line so the render Just Works.
+    cleaned = _maybe_inject_ctex_template(cleaned)
+
     return cleaned
+
+
+# CJK ranges (broad enough for Chinese, Japanese kanji/kana, Korean hangul,
+# CJK extension blocks A-G). Excludes ASCII, Latin, and common math symbols.
+_CJK_RE = re.compile(
+    r'[　-ヿ㐀-䶿一-鿿ꀀ-꓏가-힯'
+    r'豈-﫿︰-﹏＀-￯]'
+)
+# Match Tex(/MathTex(/BulletedList(/SingleStringMathTex( call openings, then
+# scan their string-literal arguments for CJK. We don't need a full Python
+# parser — a heuristic is enough since false positives just add a harmless
+# config line.
+_TEX_CALL_RE = re.compile(
+    r'\b(?:Tex|MathTex|BulletedList|SingleStringMathTex|TexMobject)\s*\('
+)
+
+
+def _has_cjk_in_tex_calls(code: str) -> bool:
+    """True if any Tex/MathTex/etc. call contains a CJK code point inside
+    its first string argument(s). Walks each call site and scans the next
+    chunk of source for both CJK chars and the closing `)` to bound the
+    search."""
+    for m in _TEX_CALL_RE.finditer(code):
+        # Look at up to 4000 chars after the call opening — covers
+        # multi-line MathTex calls comfortably.
+        window = code[m.end(): m.end() + 4000]
+        depth = 1
+        for i, ch in enumerate(window):
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+                if depth == 0:
+                    if _CJK_RE.search(window[:i]):
+                        return True
+                    break
+        # If we ran off the end without closing, still check what we have.
+        if depth > 0 and _CJK_RE.search(window):
+            return True
+    return False
+
+
+def _maybe_inject_ctex_template(code: str) -> str:
+    """Prepend ``config.tex_template = TexTemplateLibrary.ctex`` after the
+    manim import if (and only if) the code contains CJK inside Tex/MathTex
+    calls and doesn't already configure a custom template."""
+    if not _has_cjk_in_tex_calls(code):
+        return code
+    # Already configured — respect user choice.
+    if re.search(r'\bconfig\.tex_template\b', code):
+        print("[LATEX SANITIZE] CJK detected in Tex/MathTex but user already configures tex_template — leaving as-is")
+        return code
+    if 'TexTemplateLibrary.ctex' in code:
+        return code
+    # Find the first manim import line so we insert AFTER it. Falls back
+    # to top-of-file if no import is found (rare).
+    import_re = re.compile(r'^\s*from\s+manim(?:\.\w+)?\s+import\b.*$', re.MULTILINE)
+    m = import_re.search(code)
+    # Why subclasses, not just `config.tex_template = ...`? Manim 0.20.1
+    # has a config-deepcopy bug: `config.copy()` does NOT preserve the
+    # ``_tex_template`` instance attribute, so the per-scene
+    # ``tempconfig({})`` context wipes ctex back to default LaTeX between
+    # scenes. The first scene renders fine, every subsequent scene fails
+    # with "Unicode character X not set up for use with LaTeX".
+    # Workaround: rebind `Tex`/`MathTex` to subclasses that pass
+    # ``tex_template=ctex`` by default. This bypasses the global config
+    # entirely and survives tempconfig.
+    inject_line = (
+        '\n'
+        '# ── [Manim Studio] auto-injected ─────────────────────────────\n'
+        '# CJK (Chinese/Japanese/Korean) detected in MathTex/Tex calls.\n'
+        '# Manim 0.20.1\'s tempconfig({}) loses tex_template between\n'
+        '# scenes, so a global config.tex_template = ctex isn\'t enough.\n'
+        '# Instead, rebind Tex/MathTex to subclasses that always pass\n'
+        '# tex_template=TexTemplateLibrary.ctex by default. Remove this\n'
+        '# block if you want to manage the engine yourself.\n'
+        'config.tex_template = TexTemplateLibrary.ctex\n'
+        '_MS_CTEX_TEMPLATE = TexTemplateLibrary.ctex\n'
+        '_MS_OrigMathTex = MathTex\n'
+        '_MS_OrigTex = Tex\n'
+        'class MathTex(_MS_OrigMathTex):\n'
+        '    def __init__(self, *a, tex_template=None, **kw):\n'
+        '        super().__init__(*a, tex_template=tex_template or _MS_CTEX_TEMPLATE, **kw)\n'
+        'class Tex(_MS_OrigTex):\n'
+        '    def __init__(self, *a, tex_template=None, **kw):\n'
+        '        super().__init__(*a, tex_template=tex_template or _MS_CTEX_TEMPLATE, **kw)\n'
+        '# ─────────────────────────────────────────────────────────────\n'
+    )
+    if m:
+        # Insert just after the import line.
+        end = m.end()
+        # Skip past any trailing newline so the injection lands cleanly.
+        if end < len(code) and code[end] == '\n':
+            end += 1
+        new_code = code[:end] + inject_line + code[end:]
+        print("[LATEX SANITIZE] ✨ CJK detected in Tex/MathTex — auto-injecting "
+              "config.tex_template = TexTemplateLibrary.ctex (after manim import)")
+    else:
+        new_code = inject_line + code
+        print("[LATEX SANITIZE] ✨ CJK detected in Tex/MathTex but no `from manim import` "
+              "found — prepended ctex template at top of file")
+    return new_code
 
 
 def _inject_narrate_stub(code):
@@ -1305,25 +1515,43 @@ input_file_encoding = utf-8
         return False
 
 def clear_preview_folder():
-    """Clear all files in the preview folder before each preview"""
+    """Clear OLD files in the preview folder. Skips anything modified in
+    the last 60s so a double-click on Preview doesn't wipe the in-flight
+    previous render's temp .py file before manim has finished reading it.
+
+    (This was the cause of the recurring
+    ``FileNotFoundError: temp_preview_*.py not found`` traceback when the
+    user previewed twice rapidly.)"""
     import shutil
+    RECENT_THRESHOLD_S = 60.0
     try:
-        if os.path.exists(PREVIEW_DIR):
-            # Remove all contents
-            for item in os.listdir(PREVIEW_DIR):
-                item_path = os.path.join(PREVIEW_DIR, item)
-                try:
-                    if os.path.isfile(item_path) or os.path.islink(item_path):
-                        os.unlink(item_path)
-                    elif os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
-                except Exception as e:
-                    print(f"[WARNING] Failed to delete {item_path}: {e}")
-            print(f"[OK] Cleared preview folder: {PREVIEW_DIR}")
-        else:
-            # Create if doesn't exist
+        if not os.path.exists(PREVIEW_DIR):
             os.makedirs(PREVIEW_DIR, exist_ok=True)
             print(f"[OK] Created preview folder: {PREVIEW_DIR}")
+            return True
+        now = time.time()
+        kept = 0
+        deleted = 0
+        for item in os.listdir(PREVIEW_DIR):
+            item_path = os.path.join(PREVIEW_DIR, item)
+            try:
+                mtime = os.path.getmtime(item_path)
+            except OSError:
+                mtime = 0
+            age = now - mtime
+            if age < RECENT_THRESHOLD_S:
+                kept += 1
+                continue  # in-flight render's files — leave alone
+            try:
+                if os.path.isfile(item_path) or os.path.islink(item_path):
+                    os.unlink(item_path)
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                deleted += 1
+            except Exception as e:
+                print(f"[WARNING] Failed to delete {item_path}: {e}")
+        print(f"[OK] Cleared preview folder: {deleted} old item(s) deleted, "
+              f"{kept} recent item(s) kept (< {int(RECENT_THRESHOLD_S)}s old)")
         return True
     except Exception as e:
         print(f"[ERROR] Failed to clear preview folder: {e}")
@@ -1355,15 +1583,28 @@ def clear_render_folder():
         return False
 
 def load_settings():
-    """Load settings from file"""
+    """Load settings from file. Deep-merges sub-dicts so new feature flags
+    added in later releases appear without wiping user customisations."""
     settings_file = os.path.join(USER_DATA_DIR, 'settings.json')
     try:
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:
                 saved = json.load(f)
-                app_state['settings'].update(saved)
+            for k, v in saved.items():
+                if isinstance(v, dict) and isinstance(app_state['settings'].get(k), dict):
+                    app_state['settings'][k].update(v)
+                else:
+                    app_state['settings'][k] = v
     except Exception as e:
         print(f"Error loading settings: {e}")
+
+
+def feature_enabled(name):
+    """Check a feature flag. Returns False for unknown names."""
+    try:
+        return bool(app_state['settings'].get('features', {}).get(name, False))
+    except Exception:
+        return False
 
 def save_settings():
     """Save settings to file"""
@@ -1480,42 +1721,120 @@ def check_terminal_output_for_errors():
                                 break
                         if not has_user_code:
                             continue  # skip this internal traceback
-                    # Get this line and the next few lines for context
-                    error_msg = line.strip()
-                    # Get up to 2 more lines for context
-                    for j in range(1, min(3, len(lines) - i)):
-                        next_line = lines[i + j].strip()
-                        if next_line:
-                            error_msg += ' ' + next_line
+                    # Get this line and enough following lines to capture
+                    # the complete traceback + final error type. Previously
+                    # we grabbed only 3 lines, which truncated LaTeX /
+                    # pyparsing / import errors to a useless "Traceback ..."
+                    # stub. Now we scan up to 40 lines, stopping once we
+                    # hit a blank line AFTER the terminating error type.
+                    error_msg_parts = [line.strip()]
+                    saw_error_line = False
+                    for j in range(1, min(40, len(lines) - i)):
+                        next_line = lines[i + j].rstrip()
+                        if not next_line.strip():
+                            if saw_error_line:
+                                break  # done — empty line after error
+                            else:
+                                continue
+                        error_msg_parts.append(next_line)
+                        # Recognise the final "ErrorType: message" line that
+                        # closes a Python traceback. After that, one more
+                        # blank line ends the block.
+                        stripped = next_line.strip()
+                        if (re.match(r'^\w+(Error|Exception|Warning):', stripped)
+                                or stripped.startswith('LaTeX Error:')
+                                or 'latex' in stripped.lower() and 'error' in stripped.lower()):
+                            saw_error_line = True
+                    error_msg = '\n'.join(error_msg_parts)
                     break
 
             if not error_msg:
                 continue  # pattern matched but was filtered out (internal)
 
             print(f"[ERROR CHECK] Found error pattern: {pattern}")
-            print(f"[ERROR CHECK] Error message extracted: {error_msg[:100]}")
-            return (True, error_msg[:200])  # Limit error message length
+            # Log FULL error to backend console so we can debug cleanly,
+            # while still returning a reasonable-sized string to the UI.
+            print(f"[ERROR CHECK] Full error ({len(error_msg)} chars):")
+            for _ln in error_msg.split('\n')[:30]:
+                print(f"[ERROR CHECK]   {_ln}")
+            return (True, error_msg[:2000])  # was 200 — too small for tracebacks
 
     return (False, None)
 
 
-def extract_scene_name(code):
-    """
-    Extract the first Scene subclass name from code using regex only.
-    Avoids executing user code in the main process (which is unsafe and
-    fails anyway since Manim lives in the venv, not the host Python).
-    Handles all standard Manim scene types: Scene, ThreeDScene,
-    MovingCameraScene, ZoomedScene, VectorScene, etc.
-    """
-    # Priority 1: class that inherits from anything containing 'Scene'
-    # Covers Scene, ThreeDScene, MovingCameraScene, ZoomedScene, etc.
-    match = re.search(r'class\s+(\w+)\s*\([^)]*Scene[^)]*\):', code)
-    if match:
-        return match.group(1)
+def extract_all_scene_classes(code):
+    """Return a list of every Scene-subclass class in ``code``.
 
-    # Priority 2: first class definition in the file as a last resort
-    match = re.search(r'class\s+(\w+)\s*\([^)]*\):', code)
-    return match.group(1) if match else None
+    Output: ``[{name, line, parent}]`` — one entry per class whose direct
+    parent (or any parent in the ``(...)`` inheritance list) has ``Scene``
+    in its identifier. Works via ``ast`` parsing; falls back to a regex
+    line-scan if AST parsing fails (e.g. in the middle of an edit).
+
+    Fixes the long-standing "only the first scene is detected" bug: we no
+    longer use ``re.search`` (which stops at the first hit) anywhere in
+    the detection path.
+    """
+    import ast as _ast
+
+    def _parent_contains_scene(base_node) -> bool:
+        # Accept any base whose name string contains 'Scene'. Covers Scene,
+        # ThreeDScene, MovingCameraScene, ZoomedScene, VectorScene,
+        # ReconfigurableScene, SpecialThreeDScene, InteractiveScene, and
+        # user subclasses that embed the word.
+        if isinstance(base_node, _ast.Name):
+            return 'Scene' in base_node.id
+        if isinstance(base_node, _ast.Attribute):
+            return 'Scene' in base_node.attr
+        if isinstance(base_node, _ast.Subscript):
+            return _parent_contains_scene(base_node.value)
+        if isinstance(base_node, _ast.Call):
+            return _parent_contains_scene(base_node.func)
+        return False
+
+    def _parent_label(base_node) -> str:
+        try:
+            return _ast.unparse(base_node)
+        except Exception:
+            return '?'
+
+    scenes = []
+    try:
+        tree = _ast.parse(code)
+    except SyntaxError:
+        # Regex fallback for partial/mid-edit code. Iterates ALL matches
+        # (the old bug was using re.search which stops at match 1).
+        for m in re.finditer(
+                r'^[ \t]*class\s+(\w+)\s*\(([^)]*)\)\s*:',
+                code, flags=re.MULTILINE):
+            parents = m.group(2)
+            if 'Scene' in parents:
+                line = code.count('\n', 0, m.start()) + 1
+                scenes.append({'name': m.group(1), 'line': line,
+                                'parent': parents.strip()})
+        return scenes
+
+    for node in _ast.walk(tree):
+        if not isinstance(node, _ast.ClassDef):
+            continue
+        if any(_parent_contains_scene(b) for b in node.bases):
+            scenes.append({
+                'name': node.name,
+                'line': node.lineno,
+                'parent': ', '.join(_parent_label(b) for b in node.bases),
+            })
+    return scenes
+
+
+def extract_scene_name(code):
+    """Return the FIRST Scene subclass name, or None. Backward-compatible
+    shim over ``extract_all_scene_classes``. Preserve-if-possible rule: if
+    no Scene-subclass class is found, fall back to the first class in the
+    file (old behaviour) so malformed inheritance lines still render."""
+    scenes = extract_all_scene_classes(code)
+    if scenes:
+        return scenes[0]['name']
+    m = re.search(r'^[ \t]*class\s+(\w+)\s*\(', code, flags=re.MULTILINE)
+    return m.group(1) if m else None
 
 class ManimAPI(AIEditMixin, NarrationMixin):
     """
@@ -2150,6 +2469,15 @@ class MyScene(Scene):
             create_manim_config(RENDER_DIR)
 
             if not scene_name:
+                all_scenes = extract_all_scene_classes(code)
+                if len(all_scenes) > 1:
+                    # Multi-scene file — ask the user which one to render
+                    # instead of silently picking the first. (Bug fix: before
+                    # this change, files with 2+ scenes would always render
+                    # just the first one with no visible feedback.)
+                    return {'status': 'choose_scene',
+                            'scenes': all_scenes,
+                            'message': f'{len(all_scenes)} scenes found — pick one to render'}
                 scene_name = extract_scene_name(code)
             if not scene_name:
                 return {'status': 'error', 'message': 'No scene class found'}
@@ -2317,10 +2645,15 @@ class MyScene(Scene):
                                 except Exception as cleanup_err:
                                     print(f"[RENDER WATCHER] Error cleaning temp file: {cleanup_err}")
 
-                                # Notify frontend of failure
+                                # Notify frontend of failure (enriched with
+                                # LaTeX log excerpt when applicable).
                                 if app_state['window']:
                                     try:
-                                        safe_error = error_msg.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'")
+                                        enriched = enrich_error_for_user(error_msg)
+                                        print(f"[RENDER WATCHER] Enriched error ({len(enriched)} chars):")
+                                        for _ln in enriched.split('\n')[:30]:
+                                            print(f"[RENDER WATCHER]   {_ln}")
+                                        safe_error = js_safe_string(enriched, max_len=3000)
                                         safe_evaluate_js(
                                             app_state['window'],
                                             f'if(window.renderFailed){{window.renderFailed("{safe_error}")}}'
@@ -2665,7 +2998,8 @@ class MyScene(Scene):
                         }
                     else:
                         if app_state['window']:
-                            error_msg = f"Render failed with code {process.returncode}".replace('"', '\\"')
+                            error_msg = js_safe_string(
+                                f"Render failed with code {process.returncode}")
                             app_state['window'].evaluate_js(
                                 f'if(window.renderFailed){{window.renderFailed("{error_msg}")}}'
                             )
@@ -2678,7 +3012,7 @@ class MyScene(Scene):
                 except Exception as e:
                     print(f"Render error: {e}")
                     if app_state['window']:
-                        safe_error = str(e).replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'")
+                        safe_error = js_safe_string(enrich_error_for_user(str(e)))
                         app_state['window'].evaluate_js(
                             f'if(window.renderFailed){{window.renderFailed("{safe_error}")}}'
                         )
@@ -2718,6 +3052,206 @@ class MyScene(Scene):
                 # Invalid quality - fallback to 720p
                 print(f"[WARNING] Invalid quality '{quality}', using 720p fallback")
                 return QUALITY_PRESETS["720p"][0]
+
+    def render_combined_scenes(self, code, scene_names, quality='720p',
+                                fps=None, gpu_accelerate=False, format='mp4'):
+        """Render multiple scenes in ONE manim subprocess and ffmpeg-concat
+        the outputs into a single standalone video.
+
+        This is the fix for the "render-all" bug where the per-scene loop
+        produced one video per scene and only the last one stayed on disk
+        (the preview folder got wiped between iterations). Now:
+          1. one manim invocation lists every scene name as a positional
+          2. all per-scene mp4s land in the same media_dir
+          3. ffmpeg concat-demuxer stitches them losslessly
+          4. the combined.mp4 fires renderCompleted exactly once
+        """
+        return self._run_combined_scenes(
+            mode='render', code=code, scene_names=scene_names,
+            quality=quality, fps=fps or app_state['settings'].get('fps', 30),
+            gpu_accelerate=gpu_accelerate, format=format,
+        )
+
+    def quick_preview_combined_scenes(self, code, scene_names, quality='480p',
+                                       fps=15, gpu_accelerate=False, format='mp4'):
+        """Preview-mode counterpart to ``render_combined_scenes``."""
+        return self._run_combined_scenes(
+            mode='preview', code=code, scene_names=scene_names,
+            quality=quality, fps=fps or 15,
+            gpu_accelerate=gpu_accelerate, format=format,
+        )
+
+    def _run_combined_scenes(self, mode, code, scene_names,
+                              quality, fps, gpu_accelerate, format):
+        """Shared driver for render_combined_scenes / quick_preview_combined.
+        Spawns a worker thread that:
+          - writes the temp file
+          - calls multi_scene.render_combined() (which runs ONE manim
+            subprocess, then ffmpeg-concats every scene's mp4)
+          - fires window.previewCompleted / renderCompleted with the
+            combined path on success, or *Failed with the enriched error.
+        Returns immediately so the UI doesn't block."""
+        if not scene_names or not isinstance(scene_names, list):
+            return {'status': 'error', 'message': 'no scene_names provided'}
+
+        # Validate code & sanitize for LaTeX-toxic Unicode (mirrors single-scene path).
+        code = sanitize_code_for_latex(code or '')
+
+        # Build the temp file in the appropriate folder so manim's media_dir layout
+        # matches the existing single-scene behaviour.
+        target_dir = RENDER_DIR if mode == 'render' else PREVIEW_DIR
+        try:
+            clear_render_folder() if mode == 'render' else clear_preview_folder()
+        except Exception as e:
+            print(f"[COMBINED] folder clear failed: {e}")
+        os.makedirs(target_dir, exist_ok=True)
+
+        ts = int(time.time() * 1000)
+        temp_file = os.path.join(target_dir, f'temp_{mode}_combined_{ts}.py')
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            f.write(code)
+        create_manim_config(target_dir)
+
+        # Resolve manim executable (same precedence as the single-scene path).
+        if os.name == 'nt':
+            manim_exe = os.path.join(VENV_DIR, 'Scripts', 'manim.exe')
+        else:
+            manim_exe = os.path.join(VENV_DIR, 'bin', 'manim')
+        if not os.path.exists(manim_exe):
+            manim_exe = 'manim'  # let PATH resolve it
+
+        # Quality flag — reuse the existing helper.
+        try:
+            quality_flag = self._get_quality_flag(quality)
+        except Exception:
+            quality_flag = '-qm'
+
+        out_filename = f'combined_{mode}_{ts}.{format or "mp4"}'
+        output_path = os.path.join(target_dir, out_filename)
+
+        print('=' * 80)
+        print(f'[COMBINED] {mode} for {len(scene_names)} scenes:')
+        for s in scene_names:
+            print(f'[COMBINED]   - {s}')
+        print(f'[COMBINED] quality={quality} ({quality_flag}) fps={fps} gpu={gpu_accelerate}')
+        print(f'[COMBINED] output={output_path}')
+        print('=' * 80)
+
+        if mode == 'render':
+            app_state['is_rendering'] = True
+        else:
+            app_state['is_previewing'] = True
+
+        def _worker():
+            try:
+                import multi_scene
+
+                # Reset error buffer so detection is fresh.
+                app_state['terminal_error_buffer'] = []
+
+                # Stream every manim line to the on-screen terminal so the
+                # user can watch progress just like a regular render.
+                term = app_state.get('terminal_process')
+
+                def _on_terminal(line):
+                    # Push into the error buffer (for traceback detection)
+                    # and also print to the host stdout for the log.
+                    app_state['terminal_error_buffer'].append(line)
+                    if len(app_state['terminal_error_buffer']) > 5000:
+                        app_state['terminal_error_buffer'] = \
+                            app_state['terminal_error_buffer'][-5000:]
+                    # Mirror to xterm.js by injecting the line directly.
+                    if app_state.get('window'):
+                        try:
+                            safe = js_safe_string(line.rstrip('\n'), max_len=500)
+                            safe_evaluate_js(
+                                app_state['window'],
+                                f'if(window.appendConsole){{window.appendConsole("{safe}", "info")}}'
+                            )
+                        except Exception:
+                            pass
+
+                def _on_progress(idx, name):
+                    if app_state.get('window'):
+                        msg = f'[{idx + 1}/{len(scene_names)}] Rendering {name}…'
+                        safe = js_safe_string(msg, max_len=200)
+                        try:
+                            safe_evaluate_js(
+                                app_state['window'],
+                                f'if(window.setTerminalStatus){{window.setTerminalStatus("{safe}", "warning")}}'
+                            )
+                        except Exception:
+                            pass
+
+                result = multi_scene.render_combined(
+                    code_file=temp_file,
+                    scene_names=scene_names,
+                    output_path=output_path,
+                    quality_flag=quality_flag,
+                    fps=fps,
+                    gpu=gpu_accelerate,
+                    manim_exe=manim_exe,
+                    media_dir=target_dir,
+                    on_terminal=_on_terminal,
+                    on_progress=_on_progress,
+                )
+
+                if result.get('ok'):
+                    final = result['output']
+                    print(f'[COMBINED] OK -> {final}')
+                    if app_state.get('window'):
+                        safe_path = js_safe_string(
+                            final.replace('\\', '/'), max_len=600)
+                        cb = 'renderCompleted' if mode == 'render' else 'previewCompleted'
+                        safe_evaluate_js(
+                            app_state['window'],
+                            f'if(window.{cb}){{window.{cb}("{safe_path}")}}'
+                        )
+                else:
+                    err_text = result.get('error', 'unknown error')
+                    full_log = result.get('output', '')
+                    if full_log:
+                        # Detect tracebacks in the captured output and
+                        # enrich with LaTeX log excerpt if applicable.
+                        check = check_terminal_output_for_errors()
+                        if check[0]:
+                            err_text = check[1]
+                    enriched = enrich_error_for_user(err_text)
+                    print(f'[COMBINED] FAIL: {enriched[:500]}')
+                    if app_state.get('window'):
+                        safe_err = js_safe_string(enriched, max_len=3000)
+                        cb = 'renderFailed' if mode == 'render' else 'previewFailed'
+                        safe_evaluate_js(
+                            app_state['window'],
+                            f'if(window.{cb}){{window.{cb}("{safe_err}")}}'
+                        )
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                if app_state.get('window'):
+                    safe_err = js_safe_string(str(e), max_len=600)
+                    cb = 'renderFailed' if mode == 'render' else 'previewFailed'
+                    safe_evaluate_js(
+                        app_state['window'],
+                        f'if(window.{cb}){{window.{cb}("{safe_err}")}}'
+                    )
+            finally:
+                if mode == 'render':
+                    app_state['is_rendering'] = False
+                else:
+                    app_state['is_previewing'] = False
+                # Clean up the temp scene file (manim already moved outputs).
+                try:
+                    if os.path.isfile(temp_file):
+                        os.remove(temp_file)
+                except OSError:
+                    pass
+
+        threading.Thread(target=_worker, daemon=True).start()
+        return {'status': 'started',
+                'message': f'Rendering {len(scene_names)} scenes into one video…',
+                'output_path': output_path,
+                'scenes': scene_names}
 
     def quick_preview(self, code, quality='480p', fps=15, gpu_accelerate=False, format='mp4', scene_name=None):
         """Quick preview the animation with customizable quality settings"""
@@ -2827,6 +3361,11 @@ class MyScene(Scene):
             create_manim_config(PREVIEW_DIR)
 
             if not scene_name:
+                all_scenes = extract_all_scene_classes(code)
+                if len(all_scenes) > 1:
+                    return {'status': 'choose_scene',
+                            'scenes': all_scenes,
+                            'message': f'{len(all_scenes)} scenes found — pick one to preview'}
                 scene_name = extract_scene_name(code)
             if not scene_name:
                 return {'status': 'error', 'message': 'No scene class found'}
@@ -3001,10 +3540,19 @@ class MyScene(Scene):
                                 except Exception as cleanup_err:
                                     print(f"[PREVIEW WATCHER] Error cleaning temp file: {cleanup_err}")
 
-                                # Notify frontend of failure
+                                # Notify frontend of failure. Enrich with the
+                                # actual LaTeX log excerpt when applicable so
+                                # the user sees the real "! Undefined control
+                                # sequence" / "! Missing $ inserted" message
+                                # instead of the cryptic shell wrapper.
                                 if app_state['window']:
                                     try:
-                                        safe_error = error_msg.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'")
+                                        enriched = enrich_error_for_user(error_msg)
+                                        # Log full enriched error for debugging
+                                        print(f"[PREVIEW WATCHER] Enriched error ({len(enriched)} chars):")
+                                        for _ln in enriched.split('\n')[:30]:
+                                            print(f"[PREVIEW WATCHER]   {_ln}")
+                                        safe_error = js_safe_string(enriched, max_len=3000)
                                         safe_evaluate_js(
                                             app_state['window'],
                                             f'if(window.previewFailed){{window.previewFailed("{safe_error}")}}'
@@ -3428,7 +3976,8 @@ class MyScene(Scene):
                                 )
                     else:
                         if app_state['window']:
-                            error_msg = f"Preview failed with code {process.returncode}".replace('"', '\\"')
+                            error_msg = js_safe_string(
+                                f"Preview failed with code {process.returncode}")
                             app_state['window'].evaluate_js(
                                 f'if(window.previewFailed){{window.previewFailed("{error_msg}")}}'
                             )
@@ -3436,7 +3985,7 @@ class MyScene(Scene):
                 except Exception as e:
                     print(f"Preview error: {e}")
                     if app_state['window']:
-                        safe_error = str(e).replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'")
+                        safe_error = js_safe_string(enrich_error_for_user(str(e)))
                         app_state['window'].evaluate_js(
                             f'if(window.previewFailed){{window.previewFailed("{safe_error}")}}'
                         )
@@ -3710,6 +4259,389 @@ class MyScene(Scene):
             import traceback
             traceback.print_exc()
             return None
+
+    # ══════════════════════════════════════════════════════════════════
+    # F-03 — Visual Diff (feature-flagged)
+    # ══════════════════════════════════════════════════════════════════
+
+    def visual_diff_record(self, video_path, scene_file='', baseline_id=None):
+        """Hash frames of a completed render, persist metadata, and diff
+        against the current baseline. The frontend calls this right after
+        renderCompleted so the Diff Review tab can open if drift was found.
+        Returns {status, record, diff}."""
+        if not feature_enabled('visual_diff'):
+            return {'status': 'skipped', 'reason': 'feature disabled'}
+        try:
+            import visual_diff
+            thr = app_state['settings'].get('diff', {}).get('threshold', 0.01)
+            auto = app_state['settings'].get('diff', {}).get(
+                'autopromote_below_threshold', True)
+            rec = visual_diff.record_render(
+                uuid.uuid4().hex[:12], video_path, scene_file)
+            if not rec.get('ok'):
+                return {'status': 'error', 'message': rec.get('error')}
+            render_id = rec['render_id']
+            diff = visual_diff.diff_against_baseline(
+                render_id, baseline_id=baseline_id, threshold=thr)
+            if diff.get('ok') and diff.get('auto_accepted') and auto:
+                visual_diff.accept(render_id)
+                diff['promoted'] = True
+            return {'status': 'ok', 'render_id': render_id, 'diff': diff}
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
+
+    def visual_diff_list(self, limit=40):
+        try:
+            import visual_diff
+            return {'status': 'ok', 'renders': visual_diff.list_renders(limit)}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def visual_diff_fetch(self, render_id, baseline_id=None):
+        """Re-run the diff for an existing render (e.g. when user picks a
+        different baseline)."""
+        try:
+            import visual_diff
+            thr = app_state['settings'].get('diff', {}).get('threshold', 0.01)
+            diff = visual_diff.diff_against_baseline(
+                render_id, baseline_id=baseline_id, threshold=thr)
+            return {'status': 'ok', 'diff': diff}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def visual_diff_accept(self, render_id):
+        try:
+            import visual_diff
+            return {'status': 'ok', **visual_diff.accept(render_id)}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def visual_diff_revert(self, render_id):
+        try:
+            import visual_diff
+            return {'status': 'ok', **visual_diff.revert(render_id)}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def visual_diff_block(self, render_id):
+        try:
+            import visual_diff
+            return {'status': 'ok', **visual_diff.block(render_id)}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def visual_diff_thumb(self, render_id, frame_idx):
+        """Return a file:// URL the frontend can use in <img src>."""
+        try:
+            import visual_diff
+            p = visual_diff.get_frame_thumb(render_id, int(frame_idx))
+            if not p:
+                return {'status': 'error', 'message': 'no thumb'}
+            return {'status': 'ok', 'url': 'file:///' + p.replace('\\', '/')}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def get_feature_flags(self):
+        """Expose feature flags to the frontend for conditional UI."""
+        return {'status': 'ok',
+                'features': app_state['settings'].get('features', {})}
+
+    # ══════════════════════════════════════════════════════════════════
+    # F-12 — Render Farm
+    # ══════════════════════════════════════════════════════════════════
+
+    def farm_start(self, scene_file=None, output_path=None,
+                   quality='720p', fps=None, scene_name=None):
+        """Start a farm render. If scene_file is None, uses the currently
+        open file. Returns either {status: 'started'} or {status: 'fallback'}."""
+        if not feature_enabled('render_farm'):
+            return {'status': 'skipped', 'reason': 'feature disabled'}
+        try:
+            import render_farm
+            scene_file = scene_file or app_state.get('current_file_path')
+            if not scene_file:
+                return {'status': 'error', 'message': 'no scene file'}
+            q = QUALITY_PRESETS.get(quality) or ('-qm', 1280, 720)
+            flag = q[0]
+            if not fps:
+                fps = app_state['settings'].get('fps', 30)
+            if not output_path:
+                output_path = os.path.join(RENDER_DIR,
+                                           f'farm_{int(time.time())}.mp4')
+            manim_cmd = [PYTHON_EXE, '-m', 'manim'] if PYTHON_EXE else ['manim']
+            workers = app_state['settings'].get('farm', {}).get('workers_local', 4)
+            res = render_farm.farm_render(
+                scene_file, output_path, flag, fps, scene_name,
+                manim_cmd=manim_cmd, workers=workers,
+            )
+            return res
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
+
+    def farm_status(self):
+        try:
+            import render_farm
+            return render_farm.farm_status()
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def farm_cancel(self):
+        try:
+            import render_farm
+            return render_farm.farm_cancel()
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def farm_analyse(self, scene_file=None, scene_name=None):
+        """Dry-run the splitter and return the analysis without rendering."""
+        try:
+            import render_farm
+            scene_file = scene_file or app_state.get('current_file_path')
+            if not scene_file:
+                return {'status': 'error', 'message': 'no scene file'}
+            res = render_farm.analyse(scene_file, scene_name)
+            return {'status': 'ok', 'analysis': res}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    # ══════════════════════════════════════════════════════════════════
+    # F-08 — AI Concept Sketches
+    # ══════════════════════════════════════════════════════════════════
+
+    def _resolve_manim_cmd(self):
+        """Resolve a working manim invocation. Prefers the venv manim.exe
+        (matches the rest of the render pipeline); falls back to PATH."""
+        manim_exe = os.path.join(VENV_DIR, 'Scripts',
+                                 'manim.exe' if os.name == 'nt' else 'manim')
+        if not os.path.exists(manim_exe):
+            manim_exe = os.path.join(VENV_DIR,
+                                     'Scripts' if os.name == 'nt' else 'bin',
+                                     'manim')
+        if os.path.exists(manim_exe):
+            return [manim_exe]
+        # Final fallback: python -m manim using the venv python
+        venv_py = os.path.join(VENV_DIR,
+                               'Scripts' if os.name == 'nt' else 'bin',
+                               'python.exe' if os.name == 'nt' else 'python')
+        if os.path.exists(venv_py):
+            return [venv_py, '-m', 'manim']
+        # Last resort
+        return ['manim']
+
+    def sketch_generate(self, prompt):
+        if not feature_enabled('ai_sketch'):
+            return {'status': 'skipped', 'reason': 'feature disabled'}
+        try:
+            import ai_sketch
+            manim_cmd = self._resolve_manim_cmd()
+            print(f'[SKETCH] manim cmd: {manim_cmd}')
+            return ai_sketch.generate(PREVIEW_DIR, prompt, manim_cmd=manim_cmd)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
+
+    def sketch_reroll(self, idx, prompt):
+        if not feature_enabled('ai_sketch'):
+            return {'status': 'skipped', 'reason': 'feature disabled'}
+        try:
+            import ai_sketch
+            manim_cmd = self._resolve_manim_cmd()
+            return ai_sketch.reroll(PREVIEW_DIR, int(idx), prompt,
+                                    manim_cmd=manim_cmd)
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def sketch_status(self):
+        """Poll endpoint for the running sketch generation. Frontend
+        calls this every ~500ms to update the modal as Claude finishes
+        and each variant renders.
+
+        Rewrites each card's ``video`` URL: file:// URLs are blocked by
+        the webview's CSP, so we copy the rendered MP4 into web/temp_assets/
+        and return an HTTP-served relative path (same pattern the main
+        preview pipeline uses)."""
+        try:
+            import ai_sketch
+            import shutil
+            state = ai_sketch.sketch_status()
+            web_temp = os.path.join(BASE_DIR, 'web', 'temp_assets')
+            os.makedirs(web_temp, exist_ok=True)
+            cards = state.get('cards') or []
+            for c in cards:
+                v = c.get('video') or ''
+                if not v.startswith('file:///'):
+                    continue
+                src = v[len('file:///'):].replace('/', os.sep)
+                if not os.path.isfile(src):
+                    continue
+                # Make a stable per-session filename so we don't redownload
+                # on every poll.
+                sess = state.get('session_id') or 'sketch'
+                fname = f"{sess}_{os.path.basename(src)}"
+                dst = os.path.join(web_temp, fname)
+                try:
+                    if not os.path.isfile(dst) or os.path.getsize(dst) != os.path.getsize(src):
+                        shutil.copy2(src, dst)
+                except OSError as e:
+                    print(f"[SKETCH] copy to temp_assets failed: {e}")
+                    continue
+                c['video'] = f'temp_assets/{fname}'
+            return {'status': 'ok', **state}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
+
+    def sketch_fork(self, idx):
+        try:
+            import ai_sketch
+            cur = app_state.get('current_file_path')
+            dest_dir = os.path.dirname(cur) if cur else os.path.expanduser('~')
+            return ai_sketch.fork(int(idx), dest_dir)
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    # ══════════════════════════════════════════════════════════════════
+    # F-04 — Inspector
+    # ══════════════════════════════════════════════════════════════════
+
+    def _inspector_target_file(self, code=None):
+        """Pick an inspectable file. Prefers the currently open file (so
+        edits persist to the user's source). Falls back to a temp scratch
+        file written from the editor's current code so Inspector still
+        works on unsaved buffers — flagged so the UI can warn that edits
+        are sandboxed."""
+        cur = app_state.get('current_file_path')
+        if cur and os.path.isfile(cur):
+            return cur, False  # (path, is_scratch)
+        if not code:
+            return None, False
+        scratch = os.path.join(USER_DATA_DIR, 'inspector_scratch.py')
+        try:
+            with open(scratch, 'w', encoding='utf-8') as f:
+                f.write(code)
+            return scratch, True
+        except OSError:
+            return None, False
+
+    def inspector_resolve(self, object_path, code=None):
+        if not feature_enabled('inspector'):
+            return {'status': 'skipped', 'reason': 'feature disabled'}
+        try:
+            import inspector as ins_mod
+            target, is_scratch = self._inspector_target_file(code)
+            if not target:
+                return {'status': 'error',
+                        'message': 'no scene file open and no editor code provided'}
+            res = ins_mod.resolve(target, object_path)
+            if is_scratch and res.get('status') == 'ok':
+                res['scratch'] = True
+                res['hint'] = 'Editing a scratch copy — open the file in Manim Studio to persist mutations.'
+            return res
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
+
+    def inspector_mutate(self, object_path, kwarg_name, new_value,
+                         decimals=2, code=None):
+        if not feature_enabled('inspector'):
+            return {'status': 'skipped', 'reason': 'feature disabled'}
+        try:
+            import inspector as ins_mod
+            target, is_scratch = self._inspector_target_file(code)
+            if not target:
+                return {'status': 'error',
+                        'message': 'no scene file open and no editor code provided'}
+            res = ins_mod.mutate(target, object_path, kwarg_name, new_value,
+                                 decimals=int(decimals) if decimals else 2)
+            if is_scratch and res.get('status') == 'ok':
+                res['scratch'] = True
+                # Also return the modified code so the frontend can update
+                # the editor buffer.
+                try:
+                    with open(target, 'r', encoding='utf-8') as f:
+                        res['updated_code'] = f.read()
+                except OSError:
+                    pass
+            return res
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    # ══════════════════════════════════════════════════════════════════
+    # F-01 — Timeline
+    # ══════════════════════════════════════════════════════════════════
+
+    def _timeline_target_file(self, code=None):
+        """Like _inspector_target_file but for timeline.py."""
+        cur = app_state.get('current_file_path')
+        if cur and os.path.isfile(cur):
+            return cur, False
+        if not code:
+            return None, False
+        scratch = os.path.join(USER_DATA_DIR, 'timeline_scratch.py')
+        try:
+            with open(scratch, 'w', encoding='utf-8') as f:
+                f.write(code)
+            return scratch, True
+        except OSError:
+            return None, False
+
+    def timeline_parse(self, scene_name=None, code=None):
+        """Parse timeline from the editor's current code string. Always
+        operates on the in-memory buffer; never reads from disk. The
+        caller (frontend) passes the editor contents."""
+        if not feature_enabled('timeline'):
+            return {'status': 'skipped', 'reason': 'feature disabled'}
+        if not code:
+            # Fallback to the saved file if the frontend forgot to send code.
+            cur = app_state.get('current_file_path')
+            if cur and os.path.isfile(cur):
+                try:
+                    with open(cur, 'r', encoding='utf-8') as f:
+                        code = f.read()
+                except OSError:
+                    return {'status': 'error', 'message': f'cannot read {cur}'}
+            else:
+                return {'status': 'error',
+                        'message': 'no editor code and no saved file'}
+        try:
+            import timeline as tl_mod
+            return tl_mod.parse_string(code, scene_name)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
+
+    def timeline_apply_edits(self, edits, code=None):
+        """Apply retime edits to the editor's current code string and
+        return the updated code. The frontend pushes ``updated_code``
+        back into the Monaco editor — no disk I/O, no save nag."""
+        if not feature_enabled('timeline'):
+            return {'status': 'skipped', 'reason': 'feature disabled'}
+        if not code:
+            cur = app_state.get('current_file_path')
+            if cur and os.path.isfile(cur):
+                try:
+                    with open(cur, 'r', encoding='utf-8') as f:
+                        code = f.read()
+                except OSError:
+                    return {'status': 'error', 'message': f'cannot read {cur}'}
+            else:
+                return {'status': 'error',
+                        'message': 'no editor code provided'}
+        try:
+            import timeline as tl_mod
+            res = tl_mod.apply_edits_to_source(code, edits or [])
+            if res.get('status') == 'ok':
+                # Frontend always pushes the new code back into Monaco;
+                # this also writes the file iff one is open and the user
+                # has it on disk (the editor's save flow handles that).
+                res['updated_code'] = res.pop('code', code)
+            return res
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
 
     def save_rendered_file(self, source_path, suggested_name):
         """
@@ -5955,44 +6887,20 @@ class MyScene(Scene):
         return {'version': APP_VERSION}
 
     def get_scene_names(self, code):
-        """Extract all scene class names from the provided code"""
-        import inspect
-        import importlib.util
+        """Return a list of every Scene-subclass name in ``code``.
 
-        temp_module_name = None
-        try:
-            temp_module_name = f"_temp_manim_scenes_{int(time.time() * 1000000)}"
-            spec = importlib.util.spec_from_loader(temp_module_name, loader=None)
-            if spec is None:
-                matches = re.findall(r'class\s+(\w+)\s*\([^)]*\):', code)
-                return matches
+        Rewritten (April 2026) to use the AST-based ``extract_all_scene_classes``.
+        The previous implementation ``exec``'d user code in the host Python
+        — which was both unsafe and unreliable because Manim isn't on the
+        host interpreter. It fell through to a regex fallback that still
+        worked for most files, but the safer path is always AST first."""
+        scenes = extract_all_scene_classes(code)
+        return [s['name'] for s in scenes]
 
-            temp_module = importlib.util.module_from_spec(spec)
-            import sys as _sys
-            _sys.modules[temp_module_name] = temp_module
-            exec(code, temp_module.__dict__)
-
-            try:
-                from manim import Scene
-                scene_classes = []
-                for name, obj in inspect.getmembers(temp_module, inspect.isclass):
-                    try:
-                        if obj != Scene and issubclass(obj, Scene) and obj.__module__ == temp_module_name:
-                            scene_classes.append(name)
-                    except TypeError:
-                        continue
-                return scene_classes
-            except ImportError:
-                matches = re.findall(r'class\s+(\w+)\s*\([^)]*\):', code)
-                return matches
-
-        except Exception:
-            matches = re.findall(r'class\s+(\w+)\s*\([^)]*\):', code)
-            return matches
-        finally:
-            if temp_module_name:
-                import sys as _sys
-                _sys.modules.pop(temp_module_name, None)
+    def get_scene_info(self, code):
+        """Like get_scene_names but with line numbers and parent class
+        info — used by the scene picker modal when multiple scenes exist."""
+        return {'status': 'ok', 'scenes': extract_all_scene_classes(code)}
 
     def get_gpu_info(self):
         """Get GPU information and availability for OpenGL rendering"""

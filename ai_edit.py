@@ -25,11 +25,23 @@ import gc
 import uuid
 import traceback
 
+from agent_memory import AgentMemory
+
 # ── Module-level refs injected by init_ai_edit() ──
 _preview_dir = None
 _get_clean_env = None
 _assets_dir = None
 _venv_python = None  # Path to venv Python for subprocess tasks
+_get_current_file_path = None  # Callable returning the currently open file's path (or None)
+
+
+def _current_file_path():
+    """Safe getter for the currently open file's path. Returns None if
+    no file is open or the getter wasn't injected."""
+    try:
+        return _get_current_file_path() if _get_current_file_path else None
+    except Exception:
+        return None
 
 # ── Streaming robustness constants (inspired by Claude Code internals) ──
 STALL_TIMEOUT_S = 90       # Kill hung CLI after 90s of no output (non-agent mode only)
@@ -65,12 +77,12 @@ class ModelRegistry:
     # id → {display, provider, family, aliases, context, max_output,
     #        thinking, effort, fast, cost_input, cost_output, tier}
     MODELS = {
-        # ── Claude (via Claude Code CLI) ──
-        'claude-opus-4-6': {
-            'display': 'Claude Opus 4.6',
+        # ── Claude 4.7 family (current — released early 2026) ──
+        'claude-opus-4-7': {
+            'display': 'Claude Opus 4.7',
             'provider': 'claude',
             'family': 'opus',
-            'aliases': ['opus', 'opus-4-6', 'opus4.6', 'best'],
+            'aliases': ['opus', 'opus-4-7', 'opus4.7', 'best', 'latest'],
             'context': 200_000,
             'context_1m': True,
             'max_output': 128_000,
@@ -82,27 +94,27 @@ class ModelRegistry:
             'tier': 'premium',
             'recommended_for': ['complex_edits', 'agent', 'review'],
         },
-        'claude-sonnet-4-6': {
-            'display': 'Claude Sonnet 4.6',
+        'claude-sonnet-4-7': {
+            'display': 'Claude Sonnet 4.7',
             'provider': 'claude',
             'family': 'sonnet',
-            'aliases': ['sonnet', 'sonnet-4-6', 'sonnet4.6'],
+            'aliases': ['sonnet', 'sonnet-4-7', 'sonnet4.7'],
             'context': 200_000,
             'context_1m': True,
             'max_output': 64_000,
             'thinking': 'adaptive',
             'effort': True,
-            'fast_mode': False,
+            'fast_mode': True,
             'cost_input': 3.0,
             'cost_output': 15.0,
             'tier': 'standard',
-            'recommended_for': ['edits', 'balanced'],
+            'recommended_for': ['edits', 'balanced', 'agent'],
         },
-        'claude-haiku-4-5-20251001': {
-            'display': 'Claude Haiku 4.5',
+        'claude-haiku-4-7': {
+            'display': 'Claude Haiku 4.7',
             'provider': 'claude',
             'family': 'haiku',
-            'aliases': ['haiku', 'haiku-4-5', 'haiku4.5', 'fast', 'cheap'],
+            'aliases': ['haiku', 'haiku-4-7', 'haiku4.7', 'fast', 'cheap'],
             'context': 200_000,
             'context_1m': False,
             'max_output': 64_000,
@@ -113,6 +125,55 @@ class ModelRegistry:
             'cost_output': 5.0,
             'tier': 'economy',
             'recommended_for': ['autocomplete', 'quick_fix', 'review'],
+        },
+        # ── Claude 4.6 family (previous gen — kept for stability) ──
+        'claude-opus-4-6': {
+            'display': 'Claude Opus 4.6 (previous)',
+            'provider': 'claude',
+            'family': 'opus',
+            'aliases': ['opus-4-6', 'opus4.6'],
+            'context': 200_000,
+            'context_1m': True,
+            'max_output': 128_000,
+            'thinking': 'adaptive',
+            'effort': True,
+            'fast_mode': True,
+            'cost_input': 5.0,
+            'cost_output': 25.0,
+            'tier': 'premium',
+            'recommended_for': ['complex_edits'],
+        },
+        'claude-sonnet-4-6': {
+            'display': 'Claude Sonnet 4.6 (previous)',
+            'provider': 'claude',
+            'family': 'sonnet',
+            'aliases': ['sonnet-4-6', 'sonnet4.6'],
+            'context': 200_000,
+            'context_1m': True,
+            'max_output': 64_000,
+            'thinking': 'adaptive',
+            'effort': True,
+            'fast_mode': False,
+            'cost_input': 3.0,
+            'cost_output': 15.0,
+            'tier': 'standard',
+            'recommended_for': ['edits'],
+        },
+        'claude-haiku-4-5-20251001': {
+            'display': 'Claude Haiku 4.5 (previous)',
+            'provider': 'claude',
+            'family': 'haiku',
+            'aliases': ['haiku-4-5', 'haiku4.5'],
+            'context': 200_000,
+            'context_1m': False,
+            'max_output': 64_000,
+            'thinking': 'budget',
+            'effort': False,
+            'fast_mode': False,
+            'cost_input': 1.0,
+            'cost_output': 5.0,
+            'tier': 'economy',
+            'recommended_for': ['quick_fix'],
         },
         'claude-sonnet-4-5': {
             'display': 'Claude Sonnet 4.5',
@@ -181,33 +242,48 @@ class ModelRegistry:
 
     # ── Fallback chains (model → fallback when rate-limited/error) ──
     FALLBACK = {
-        'claude-opus-4-6': 'claude-sonnet-4-6',
-        'claude-opus-4-5': 'claude-sonnet-4-5',
-        'claude-sonnet-4-6': 'claude-haiku-4-5-20251001',
-        'claude-sonnet-4-5': 'claude-haiku-4-5-20251001',
-        'gpt-5.4': 'gpt-5.3-codex',
+        'claude-opus-4-7':    'claude-sonnet-4-7',
+        'claude-sonnet-4-7':  'claude-haiku-4-7',
+        'claude-haiku-4-7':   'claude-haiku-4-5-20251001',
+        # Previous gen chain (kept so users on old defaults still fail-over)
+        'claude-opus-4-6':    'claude-sonnet-4-6',
+        'claude-opus-4-5':    'claude-sonnet-4-5',
+        'claude-sonnet-4-6':  'claude-haiku-4-5-20251001',
+        'claude-sonnet-4-5':  'claude-haiku-4-5-20251001',
+        'gpt-5.4':            'gpt-5.3-codex',
     }
 
     # ── Smart defaults per task type ──
+    # Updated 2026-05-06: 4.7 is now the current Claude generation, so we
+    # default everything to it. Sonnet 4.7 has adaptive thinking + 1M
+    # context, so it's the right balance of capability and cost for the
+    # main edit & agent paths.
     TASK_DEFAULTS = {
-        'edit': 'claude-sonnet-4-6',       # Balanced for code edits
-        'agent': 'claude-sonnet-4-6',      # Agent loop (many turns)
-        'autocomplete': 'claude-haiku-4-5-20251001',  # Fast completions
-        'review': 'claude-haiku-4-5-20251001',         # Screenshot review
-        'complex': 'claude-opus-4-6',      # Complex generation
+        'edit': 'claude-sonnet-4-7',       # Balanced for code edits
+        'agent': 'claude-sonnet-4-7',      # Agent loop (many turns)
+        'autocomplete': 'claude-haiku-4-7',  # Fast completions
+        'review': 'claude-haiku-4-7',        # Screenshot review
+        'complex': 'claude-opus-4-7',      # Complex generation
     }
 
     # ── Legacy model migrations ──
+    # Walk old, no-longer-listed IDs forward to the closest current 4.7
+    # sibling. Note: 4.6 / 4.5 / 4.5-dated IDs are still in MODELS above
+    # (previous-gen kept for stability), so they're NOT migrated — if a
+    # user explicitly picked them, we respect that. Only IDs that have
+    # no entry in MODELS land here.
     MIGRATIONS = {
-        'claude-sonnet-4-5-20250514': 'claude-sonnet-4-5',
-        'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
-        'claude-opus-4-5-20251101': 'claude-opus-4-5',
-        'claude-opus-4-1-20250805': 'claude-opus-4-6',
-        'claude-opus-4-20250514': 'claude-opus-4-6',
-        'claude-sonnet-4-20250514': 'claude-sonnet-4-6',
-        'claude-3-7-sonnet-20250219': 'claude-sonnet-4-6',
-        'claude-3-5-sonnet-20241022': 'claude-sonnet-4-6',
-        'claude-3-5-haiku-20241022': 'claude-haiku-4-5-20251001',
+        # 4.5 dated IDs → 4.7 (the bare 'claude-sonnet-4-5' is still in MODELS)
+        'claude-sonnet-4-5-20250514': 'claude-sonnet-4-7',
+        'claude-sonnet-4-5-20250929': 'claude-sonnet-4-7',
+        'claude-opus-4-5-20251101':   'claude-opus-4-7',
+        # Older Claude generations (3.x and 4.0/4.1) — bring all the way forward
+        'claude-opus-4-1-20250805':   'claude-opus-4-7',
+        'claude-opus-4-20250514':     'claude-opus-4-7',
+        'claude-sonnet-4-20250514':   'claude-sonnet-4-7',
+        'claude-3-7-sonnet-20250219': 'claude-sonnet-4-7',
+        'claude-3-5-sonnet-20241022': 'claude-sonnet-4-7',
+        'claude-3-5-haiku-20241022':  'claude-haiku-4-7',
     }
 
     @classmethod
@@ -219,7 +295,7 @@ class ModelRegistry:
         Returns (model_id, was_migrated).
         """
         if not model_input or not model_input.strip():
-            default = cls.TASK_DEFAULTS.get(task, 'claude-sonnet-4-6')
+            default = cls.TASK_DEFAULTS.get(task, 'claude-sonnet-4-7')
             return default, False
 
         raw = model_input.strip()
@@ -282,15 +358,199 @@ class ModelRegistry:
                 + output_tokens * co)
         return round(cost, 6)
 
+    # ── Auto-discovery of models the user has actually used ─────────
+    # Cache so we don't rescan on every dropdown open. Cleared on app
+    # launch (process restart) so a brand-new model the user invokes
+    # via CLI will appear next time the app starts.
+    _discovered_cache = None
+    _discovered_codex_cache = None
+
+    @classmethod
+    def discover_local_codex_models(cls):
+        """Return the authoritative OpenAI Codex model list as cached by
+        the Codex CLI itself (``~/.codex/models_cache.json``). Way more
+        reliable than scanning session files because OpenAI publishes a
+        canonical list which the CLI refreshes on its own schedule.
+
+        Returns a list of dicts with rich metadata: ``slug``,
+        ``display_name``, ``description``, ``default_reasoning_level``,
+        ``visibility``."""
+        import json as _json
+        if cls._discovered_codex_cache is not None:
+            return cls._discovered_codex_cache
+
+        candidates = [
+            os.path.join(os.path.expanduser('~'), '.codex', 'models_cache.json'),
+            os.path.join(os.path.expanduser('~'), '.config', 'codex', 'models_cache.json'),
+        ]
+        for path in candidates:
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = _json.load(f)
+            except (OSError, _json.JSONDecodeError) as e:
+                print(f'[MODEL DISCOVERY] codex: failed to read {path}: {e}')
+                continue
+            models = data.get('models') or []
+            # Drop hidden/deprecated rows.
+            visible = [m for m in models if isinstance(m, dict)
+                       and m.get('visibility', 'list') in ('list', 'visible')
+                       and m.get('slug')]
+            if visible:
+                slugs = [m['slug'] for m in visible]
+                print(f'[MODEL DISCOVERY] codex: {len(visible)} models from '
+                      f'{path} (fetched_at={data.get("fetched_at", "?")}): {slugs}')
+            cls._discovered_codex_cache = visible
+            return cls._discovered_codex_cache
+        print('[MODEL DISCOVERY] codex: no models_cache.json found')
+        cls._discovered_codex_cache = []
+        return cls._discovered_codex_cache
+
+    @classmethod
+    def discover_local_claude_models(cls):
+        """Scan Claude Code CLI's session storage at ``~/.claude/projects/``
+        for any model IDs the user has actually invoked. Returns a list of
+        unique model strings. Used to surface models that the CLI accepts
+        but our hardcoded MODELS dict doesn't yet know about.
+
+        How it works: Claude Code stores each conversation as a JSONL
+        file under ``~/.claude/projects/<projectId>/<sessionId>.jsonl``.
+        Each turn record has a ``model`` field. We collect distinct
+        non-empty values from recent files."""
+        import json as _json
+        import glob as _glob
+        if cls._discovered_cache is not None:
+            return cls._discovered_cache
+
+        import re as _re
+        roots = [
+            os.path.join(os.path.expanduser('~'), '.claude', 'projects'),
+            os.path.join(os.path.expanduser('~'), '.config', 'claude', 'projects'),
+        ]
+        discovered = set()
+        files_scanned = 0
+        # Match `"model":"claude-..."` substrings directly. Cheaper than
+        # JSON-parsing every line and works regardless of where the
+        # field sits in the file.
+        model_re = _re.compile(r'"model"\s*:\s*"(claude-[^"]+)"')
+        for root in roots:
+            if not os.path.isdir(root):
+                continue
+            try:
+                jsonls = _glob.glob(os.path.join(root, '*', '*.jsonl'))
+                # Sort by mtime descending — recent sessions first.
+                jsonls.sort(key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0,
+                            reverse=True)
+                for fp in jsonls[:200]:
+                    files_scanned += 1
+                    try:
+                        # Read up to 1 MB per file — covers most full
+                        # sessions but bounded so we don't OOM on
+                        # extreme cases. Model fields appear early
+                        # (assistant message metadata) so 1 MB is
+                        # plenty in practice.
+                        with open(fp, 'r', encoding='utf-8', errors='replace') as f:
+                            content = f.read(1_048_576)
+                    except OSError:
+                        continue
+                    for m in model_re.finditer(content):
+                        mid = m.group(1)
+                        if mid != '<synthetic>':
+                            discovered.add(mid)
+            except OSError:
+                continue
+        if files_scanned:
+            print(f'[MODEL DISCOVERY] scanned {files_scanned} sessions, '
+                  f'found {len(discovered)} distinct model(s): {sorted(discovered)}')
+        cls._discovered_cache = sorted(discovered)
+        return cls._discovered_cache
+
     @classmethod
     def list_for_provider(cls, provider):
-        """List all models for a given provider, sorted by tier."""
-        tier_order = {'premium': 0, 'standard': 1, 'economy': 2}
+        """List all models for a given provider, sorted by tier.
+
+        Augments the hardcoded MODELS dict with anything discovered in
+        the user's local Claude CLI session storage — so a model the
+        user has actually run via ``claude --model X`` appears in the
+        dropdown even if we haven't hardcoded it yet."""
+        tier_order = {'premium': 0, 'standard': 1, 'economy': 2, 'discovered': 3}
         models = [
             {'id': mid, **info}
             for mid, info in cls.MODELS.items()
             if info['provider'] == provider
         ]
+
+        # Merge discovered models for the Claude provider.
+        if provider == 'claude':
+            existing_ids = {m['id'] for m in models}
+            existing_ids |= set(cls.MIGRATIONS.keys())
+            # Treat aliases as "already covered" too
+            for info in cls.MODELS.values():
+                for a in info.get('aliases', []):
+                    existing_ids.add(a)
+            for did in cls.discover_local_claude_models():
+                if did in existing_ids:
+                    continue
+                pretty = did.replace('claude-', '').replace('-', ' ').title()
+                family = ('opus' if 'opus' in did else
+                          'sonnet' if 'sonnet' in did else
+                          'haiku' if 'haiku' in did else 'other')
+                models.append({
+                    'id': did,
+                    'display': f'{pretty} (discovered)',
+                    'provider': 'claude',
+                    'family': family,
+                    'aliases': [],
+                    'context': 200_000,
+                    'context_1m': False,
+                    'max_output': 64_000,
+                    'thinking': 'auto',
+                    'effort': False,
+                    'fast_mode': False,
+                    'cost_input': 0,
+                    'cost_output': 0,
+                    'tier': 'discovered',
+                    'recommended_for': [],
+                })
+
+        # Merge discovered models for the Codex provider. Source: the
+        # Codex CLI's own ``~/.codex/models_cache.json`` — the
+        # authoritative list OpenAI publishes for the CLI. Way more
+        # reliable than scanning session files.
+        if provider == 'codex':
+            existing_ids = {m['id'] for m in models}
+            for info in cls.MODELS.values():
+                for a in info.get('aliases', []):
+                    existing_ids.add(a)
+            for entry in cls.discover_local_codex_models():
+                slug = entry.get('slug')
+                if not slug or slug in existing_ids:
+                    continue
+                display = entry.get('display_name') or slug
+                desc = entry.get('description', '')
+                # Prefer fast_mode if a `fast` speed tier is advertised.
+                speed_tiers = entry.get('additional_speed_tiers', []) or []
+                models.append({
+                    'id': slug,
+                    'display': f'{display} (discovered)',
+                    'provider': 'codex',
+                    'family': 'gpt5' if 'gpt-5' in slug else
+                              'codex' if 'codex' in slug else 'gpt',
+                    'aliases': [],
+                    'context': 200_000,
+                    'context_1m': False,
+                    'max_output': 32_000,
+                    'thinking': entry.get('default_reasoning_level', 'auto'),
+                    'effort': bool(entry.get('supported_reasoning_levels')),
+                    'fast_mode': 'fast' in speed_tiers,
+                    'cost_input': 0,
+                    'cost_output': 0,
+                    'tier': 'discovered',
+                    'recommended_for': [],
+                    'description': desc,
+                })
+
         models.sort(key=lambda m: tier_order.get(m.get('tier', 'standard'), 9))
         return models
 
@@ -367,12 +627,19 @@ def _append_assets_list(md_content):
     return md_content
 
 
-def init_ai_edit(preview_dir, get_clean_env_func, assets_dir=None, venv_dir=None):
-    """Initialise module-level dependencies (called once from app.py)."""
+def init_ai_edit(preview_dir, get_clean_env_func, assets_dir=None,
+                 venv_dir=None, current_file_path_getter=None):
+    """Initialise module-level dependencies (called once from app.py).
+
+    ``current_file_path_getter`` is an optional callable returning the
+    path of the currently open file (used by AgentMemory to resolve the
+    per-project .manim_studio directory)."""
     global _preview_dir, _get_clean_env, _assets_dir, _venv_python
+    global _get_current_file_path
     _preview_dir = preview_dir
     _get_clean_env = get_clean_env_func
     _assets_dir = assets_dir
+    _get_current_file_path = current_file_path_getter
     if venv_dir:
         if os.name == 'nt':
             _venv_python = os.path.join(venv_dir, 'Scripts', 'python.exe')
@@ -994,6 +1261,10 @@ class AIEditMixin:
                               selection_end, search, image_paths):
         """Build the instruction string used by both Codex and Claude.
         Does NOT embed code — AI reads scene.py from disk to save tokens."""
+        # Honour the #ignore-style prefix BEFORE anything else — strips the
+        # marker from the user's prompt and disables the style preamble for
+        # this single turn. (F-09 Agent Memory.)
+        prompt, _skip_memory = AgentMemory.strip_ignore_marker(prompt)
         has_selection = bool(selected_code and selected_code.strip())
         search_hint = ("\nUse web search to look up any documentation, APIs, "
                        "or examples you need to complete this task." if search else "")
@@ -1032,6 +1303,10 @@ class AIEditMixin:
                         f"Extract ALL relevant content, formulas, and structure. Then use that to code.")
             image_hint = "\n\n" + " ".join(parts)
 
+        # Style memory preamble (F-09). Empty string if no memory or the
+        # user opted out via #ignore-style on this turn.
+        preamble = '' if _skip_memory else AgentMemory.load(_current_file_path())
+
         # Load from prompts/ folder (claude and codex share the same non-agent prompt)
         prompt_file = 'claude_non_agent.md'
         if has_selection:
@@ -1042,15 +1317,15 @@ class AIEditMixin:
                     .replace('{{SEL_END}}', str(selection_end))
                     .replace('{{SELECTED_CODE}}', selected_code)
                     .replace('{{PROMPT}}', prompt))
-                return result + search_hint + image_hint
+                return preamble + result + search_hint + image_hint
         else:
             tpl = _load_prompt_section(prompt_file, 'Without Selection')
             if tpl:
                 result = tpl.replace('{{PROMPT}}', prompt)
-                return result + image_hint + search_hint
+                return preamble + result + image_hint + search_hint
 
         # Fallback if prompt file missing
-        return f"Read `scene.py` first, then edit it.\nInstruction: {prompt}{image_hint}{search_hint}"
+        return preamble + f"Read `scene.py` first, then edit it.\nInstruction: {prompt}{image_hint}{search_hint}"
 
     def _setup_ai_workspace(self, code, image_paths):
         """Create isolated workspace with scene.py, AGENTS.md, and images.
@@ -1633,6 +1908,25 @@ class AIEditMixin:
                 except Exception as _e:
                     print(f"[CHAT HISTORY] Auto-save failed: {_e}")
 
+                # ── F-09: detect whether this turn was a user correction and
+                # stage a memory-update proposal for the UI. Only runs after
+                # the first turn (turn_index ≥ 1). ──
+                try:
+                    _session = ChatHistory.load_session(
+                        AIEditMixin._ai_chat_session_id) or {}
+                    _turn_index = max(0, len(_session.get('turns', [])) - 1)
+                    _prop = AgentMemory.propose_update(
+                        _current_file_path(),
+                        last_user_prompt=AIEditMixin._ai_current_prompt or '',
+                        last_response_text='',
+                        turn_index=_turn_index,
+                    )
+                    if _prop:
+                        print(f"[AGENT MEMORY] Proposal staged: "
+                              f"{_prop['id']} ({_prop['trigger']!r})")
+                except Exception as _e:
+                    print(f"[AGENT MEMORY] Proposal detection failed: {_e}")
+
                 AIEditMixin._ai_claude_done = True
 
             threading.Thread(target=_reader, daemon=True).start()
@@ -1855,6 +2149,60 @@ class AIEditMixin:
             'session': data,
             'message': f"Resumed session ({len(data.get('turns', []))} turns)"
         }
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Agent Memory (F-09) — per-project style.md injected into every prompt
+    # ══════════════════════════════════════════════════════════════════════
+
+    def ai_edit_get_memory(self):
+        """Return {style_md, path, project_dir, proposals} for the UI panel.
+        Creates a default scaffold on first read."""
+        try:
+            return {'status': 'ok', **AgentMemory.read_raw(_current_file_path())}
+        except Exception as e:
+            traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
+
+    def ai_edit_save_memory(self, content):
+        """Overwrite style.md for the current project."""
+        try:
+            result = AgentMemory.write_style(_current_file_path(), content or '')
+            if result.get('ok'):
+                return {'status': 'ok', 'path': result.get('path')}
+            return {'status': 'error', 'message': result.get('error', 'unknown')}
+        except Exception as e:
+            traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}
+
+    def ai_edit_list_memory_proposals(self):
+        """List all pending proposals for the current project."""
+        try:
+            return {
+                'status': 'ok',
+                'proposals': AgentMemory.list_proposals(_current_file_path()),
+            }
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def ai_edit_accept_memory_proposal(self, proposal_id):
+        """Accept a proposal: append its rule to style.md, remove from queue."""
+        try:
+            result = AgentMemory.accept_proposal(_current_file_path(), proposal_id)
+            if result.get('ok'):
+                return {'status': 'ok', 'rule': result.get('rule')}
+            return {'status': 'error', 'message': result.get('error', 'unknown')}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def ai_edit_dismiss_memory_proposal(self, proposal_id):
+        """Dismiss a proposal: remove from queue without applying."""
+        try:
+            result = AgentMemory.dismiss_proposal(_current_file_path(), proposal_id)
+            if result.get('ok'):
+                return {'status': 'ok'}
+            return {'status': 'error', 'message': result.get('error', 'unknown')}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
 
     # ══════════════════════════════════════════════════════════════════════
     # OpenAI Codex CLI
@@ -2427,6 +2775,14 @@ class AIEditMixin:
             code = str(code) if code else ''
         if not isinstance(instruction, str):
             instruction = str(instruction) if instruction else ''
+        # F-09: prepend project style memory to every agent-loop instruction.
+        # Honour #ignore-style marker; apply preamble only on first edit of the
+        # session so it doesn't blow up cached context on every iteration.
+        instruction, _skip_memory = AgentMemory.strip_ignore_marker(instruction)
+        if (not _skip_memory) and AIEditMixin._ai_agent_first_edit:
+            preamble = AgentMemory.load(_current_file_path())
+            if preamble:
+                instruction = preamble + instruction
         if AIEditMixin._ai_agent_provider == 'codex':
             return self._ai_agent_edit_codex(code, instruction)
         try:
