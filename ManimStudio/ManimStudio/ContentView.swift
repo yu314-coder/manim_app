@@ -18,6 +18,14 @@ struct ContentView: View {
     """
     @State private var isRendering = false
     @State private var renderedVideoURL: URL? = nil
+    /// Timer that walks Documents/ToolOutputs/ during a render and
+    /// promotes the newest produced .mp4/.gif/.png to
+    /// `renderedVideoURL` so the preview pane shows partial movie
+    /// segments mid-render instead of staying empty until the
+    /// terminal handler fires (which can be minutes on a 1080p run).
+    @State private var renderOutputPoller: Timer? = nil
+    @State private var renderStartedAt: Date = .distantPast
+    @State private var renderSurfacedURLs: Set<URL> = []
     @State private var selectedScene: String = ""
     @State private var confirmNew = false
     @State private var showOpener  = false
@@ -150,6 +158,9 @@ struct ContentView: View {
         renderErrorMarkers = []
         NotificationCenter.default.post(name: .editorClearMarkers, object: nil)
         isRendering = true
+        renderStartedAt = Date()
+        renderSurfacedURLs.removeAll()
+        startRenderOutputPoller()
         // Keep the render going if the user switches apps or locks the
         // screen mid-render. iOS gives backgrounded apps ~30 s by
         // default; beginBackgroundTask extends that to a few minutes
@@ -202,6 +213,7 @@ struct ContentView: View {
     }
 
     private func logStream_done(label: String, result: PythonRuntime.ExecutionResult) {
+        stopRenderOutputPoller()
         if let img = result.imagePath,
            FileManager.default.fileExists(atPath: img) {
             let url = URL(fileURLWithPath: img)
@@ -332,6 +344,71 @@ struct ContentView: View {
         PTYBridge.shared.send(data: [0x03])
         PythonRuntime.shared.interruptPythonMainThread()
         BackgroundTaskGuard.shared.end()
+        stopRenderOutputPoller()
+    }
+
+    // MARK: live-preview polling
+
+    /// Walks Documents/ToolOutputs/ every ~1.5 s while a render is
+    /// running, looking for any .mp4/.gif/.png/.webm that's been
+    /// modified since the render began. Promotes the newest one to
+    /// `renderedVideoURL` so the preview pane updates with each
+    /// partial movie file as manim writes them, instead of staying
+    /// empty for the entire 5-10 minutes a 1080p high-quality render
+    /// can take. The PreviewPane re-loads its AVPlayer when the URL
+    /// changes, so the user sees real-time render progress.
+    private func startRenderOutputPoller() {
+        stopRenderOutputPoller()
+        guard let docs = FileManager.default.urls(
+            for: .documentDirectory, in: .userDomainMask).first
+        else { return }
+        let outputs = docs.appendingPathComponent("ToolOutputs",
+                                                   isDirectory: true)
+        renderOutputPoller = Timer.scheduledTimer(
+            withTimeInterval: 1.5, repeats: true) { _ in
+            DispatchQueue.main.async {
+                self.scanForFreshOutput(under: outputs)
+            }
+        }
+        if let t = renderOutputPoller {
+            RunLoop.main.add(t, forMode: .common)
+        }
+    }
+
+    private func stopRenderOutputPoller() {
+        renderOutputPoller?.invalidate()
+        renderOutputPoller = nil
+    }
+
+    private func scanForFreshOutput(under outputs: URL) {
+        let exts: Set<String> = ["mp4", "mov", "m4v", "webm", "gif", "png"]
+        guard let walker = FileManager.default.enumerator(
+            at: outputs,
+            includingPropertiesForKeys: [.contentModificationDateKey,
+                                          .isRegularFileKey,
+                                          .fileSizeKey],
+            options: [.skipsHiddenFiles])
+        else { return }
+        var best: (URL, Date)?
+        for case let url as URL in walker {
+            let v = try? url.resourceValues(forKeys: [
+                .isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
+            guard v?.isRegularFile == true,
+                  exts.contains(url.pathExtension.lowercased()),
+                  // Ignore zero-byte placeholders manim creates
+                  // before encoding starts.
+                  (v?.fileSize ?? 0) > 0,
+                  let mtime = v?.contentModificationDate,
+                  // Only consider files newer than the render start —
+                  // skip leftovers from previous runs.
+                  mtime >= renderStartedAt
+            else { continue }
+            if best == nil || mtime > best!.1 { best = (url, mtime) }
+        }
+        if let (url, _) = best, !renderSurfacedURLs.contains(url) {
+            renderSurfacedURLs.insert(url)
+            renderedVideoURL = url
+        }
     }
 }
 
