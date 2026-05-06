@@ -127,13 +127,10 @@ struct RootGate: View {
 
     private var shouldShowWelcome: Bool {
         if welcomeDismissed { return false }
-        switch venv.phase {
-        case .ready:                       return false
-        case .missing, .failed,
-             .creating, .installing,
-             .unknown:
-            return true
-        }
+        // Show the wizard for every phase except `.ready` — including
+        // mid-install phases so the user follows along instead of
+        // landing in the empty workspace.
+        return venv.phase != .ready
     }
 }
 
