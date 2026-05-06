@@ -132,4 +132,41 @@ if [ -n "$FRAMEWORK_SRC" ]; then
   fi
 fi
 
+# ── 4. Copy the resource trees Xcode's synchronized group can't
+#       handle. The web/ folder has many nested files that share
+#       the same basename (e.g. monaco.contribution.js exists in
+#       ~50 sibling dirs under web/monaco/vs/basic-languages/) —
+#       Xcode's flat resource-copy phase aliases them all onto a
+#       single Resources/foo.js path, producing the dreaded
+#       "multiple commands produce" error. We exclude these trees
+#       from the synchronized group via membershipExceptions in
+#       project.pbxproj and rsync them in here instead, where the
+#       directory hierarchy is preserved verbatim.
+SRC_DIR="${SRCROOT}/ManimStudio_macos"
+for tree in web prompts ; do
+  src="$SRC_DIR/Resources/$tree"
+  if [ -d "$src" ]; then
+    dst="$APP_RESOURCES/$tree"
+    rsync -a --delete --exclude '__pycache__' --exclude '.DS_Store' \
+        "$src/" "$dst/"
+    echo "note: copied Resources/$tree (preserving directory structure)"
+  fi
+done
+
+# Single-file Resources items that the exclusion list also covers
+# (these wouldn't trip 'multiple commands' but we excluded them in
+# the synchronized group for clarity / to keep all of Resources/
+# under script control).
+for f in Resources/icon.ico Resources/privacy_policy.txt ; do
+  [ -f "$SRC_DIR/$f" ] && cp -f "$SRC_DIR/$f" "$APP_RESOURCES/" || true
+done
+
+# PythonApp/ — the desktop app's Python sources. PythonHost.swift
+# expects them at <App>.app/Contents/Resources/PythonApp/.
+if [ -d "$SRC_DIR/PythonApp" ]; then
+  rsync -a --delete --exclude '__pycache__' --exclude '.DS_Store' \
+      "$SRC_DIR/PythonApp/" "$APP_RESOURCES/PythonApp/"
+  echo "note: copied PythonApp/"
+fi
+
 echo "note: install-python-macos.sh done"

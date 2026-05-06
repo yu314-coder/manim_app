@@ -56,11 +56,25 @@
 			);
 			target = B94E95732FA04EFA00CF9138 /* ManimStudio */;
 		};
+		B9MA01052FAB0001000ABCDE /* Exceptions for "ManimStudio_macos" folder in "ManimStudio_macos" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/web,
+				Resources/prompts,
+				Resources/icon.ico,
+				Resources/privacy_policy.txt,
+				PythonApp,
+			);
+			target = B91A87322FAAF63D00F66109 /* ManimStudio_macos */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B91A87342FAAF63D00F66109 /* ManimStudio_macos */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B9MA01052FAB0001000ABCDE /* Exceptions for "ManimStudio_macos" folder in "ManimStudio_macos" target */,
+			);
 			path = ManimStudio_macos;
 			sourceTree = "<group>";
 		};
