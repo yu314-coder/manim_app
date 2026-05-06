@@ -188,23 +188,27 @@ final class VenvManager: ObservableObject {
         proc.standardError  = stderr
 
         // Buffer per-pipe so we can split on \n safely.
-        nonisolated(unsafe) var bufOut = ""
-        nonisolated(unsafe) var bufErr = ""
-        let drain = { (pipe: Pipe, buf: inout String) in
+        // Wrap the buffers in a reference type so the escaping
+        // readabilityHandler can mutate them — `inout String` would
+        // be captured by an escaping closure, which Swift forbids.
+        final class LineBuf { var s = "" }
+        let bufOut = LineBuf()
+        let bufErr = LineBuf()
+        func drain(_ pipe: Pipe, into buf: LineBuf) {
             pipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
                 if data.isEmpty { return }
-                let s = String(data: data, encoding: .utf8) ?? ""
-                buf += s
-                while let nl = buf.firstIndex(of: "\n") {
-                    let line = String(buf[..<nl])
-                    buf = String(buf[buf.index(after: nl)...])
+                let chunk = String(data: data, encoding: .utf8) ?? ""
+                buf.s += chunk
+                while let nl = buf.s.firstIndex(of: "\n") {
+                    let line = String(buf.s[..<nl])
+                    buf.s = String(buf.s[buf.s.index(after: nl)...])
                     onLine(line)
                 }
             }
         }
-        drain(stdout, &bufOut)
-        drain(stderr, &bufErr)
+        drain(stdout, into: bufOut)
+        drain(stderr, into: bufErr)
 
         do {
             try proc.run()
@@ -221,8 +225,8 @@ final class VenvManager: ObservableObject {
 
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil
-        if !bufOut.isEmpty { onLine(bufOut) }
-        if !bufErr.isEmpty { onLine(bufErr) }
+        if !bufOut.s.isEmpty { onLine(bufOut.s) }
+        if !bufErr.s.isEmpty { onLine(bufErr.s) }
 
         return proc.terminationStatus == 0
     }
