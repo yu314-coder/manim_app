@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Sandbox is OFF for ManimStudio (macOS).
+         The embedded Python interpreter dlopens manim/numpy/scipy
+         C extensions, spawns /bin/zsh for the integrated terminal,
+         runs the manim CLI as a subprocess, reads/writes anywhere
+         the user picks via NSOpenPanel. Sandboxing all of that
+         would require ~20 separate entitlements + app-group dance,
+         and the Windows/Linux desktop app is unsandboxed too — so
+         this matches user expectations. App Store distribution
+         will need re-evaluation; direct distribution is fine. -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- Hardened Runtime stays ON (notarization requirement) but
+         we relax library validation so unsigned C extensions
+         from pip can load. The .so files inside site-packages/
+         are not signed by Apple-trusted authorities — signed by
+         the build at install time, but with our developer cert. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Allow JIT-style executable memory: ctypes / cffi /
+         certain numpy paths allocate executable pages. -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Allow loading dynamic libraries from arbitrary signed
+         paths (the pip-installed extensions live under
+         <App>.app/Contents/Resources/site-packages/, not the
+         standard /usr/lib paths). -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+</dict>
+</plist>

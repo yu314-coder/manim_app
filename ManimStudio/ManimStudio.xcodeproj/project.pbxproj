@@ -12,6 +12,8 @@
 		B9E7BABB2FA0BCD9004329BB /* Manim in Frameworks */ = {isa = PBXBuildFile; productRef = B9E7BABA2FA0BCD9004329BB /* Manim */; };
 		B9F1A0022FAA0001000A0001 /* Python.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; };
 		B9F1A0032FAA0001000A0001 /* Python.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B9MA01012FAB0001000ABCDE /* Python.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; };
+		B9MA01022FAB0001000ABCDE /* Python.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -22,6 +24,17 @@
 			dstSubfolderSpec = 10;
 			files = (
 				B9F1A0032FAA0001000A0001 /* Python.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B9MA01032FAB0001000ABCDE /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				B9MA01022FAB0001000ABCDE /* Python.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -66,6 +79,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B9MA01012FAB0001000ABCDE /* Python.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -121,6 +135,8 @@
 				B91A872F2FAAF63D00F66109 /* Sources */,
 				B91A87302FAAF63D00F66109 /* Frameworks */,
 				B91A87312FAAF63D00F66109 /* Resources */,
+				B9MA01042FAB0001000ABCDE /* Install Python (macOS) */,
+				B9MA01032FAB0001000ABCDE /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -281,6 +297,25 @@
 			shellPath = /bin/bash;
 			shellScript = "\"${SRCROOT}/../scripts/normalize-fwork-postembed.sh\"\n";
 		};
+		B9MA01042FAB0001000ABCDE /* Install Python (macOS) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Install Python (macOS)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${SRCROOT}/../scripts/install-python-macos.sh\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -310,10 +345,10 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = LYK4LV2859;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = euleryu;
@@ -323,6 +358,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				CODE_SIGN_ENTITLEMENTS = ManimStudio_macos/ManimStudio_macos.entitlements;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "euler.ManimStudio-macos";
@@ -347,10 +383,10 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = LYK4LV2859;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = euleryu;
@@ -360,6 +396,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				CODE_SIGN_ENTITLEMENTS = ManimStudio_macos/ManimStudio_macos.entitlements;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "euler.ManimStudio-macos";
