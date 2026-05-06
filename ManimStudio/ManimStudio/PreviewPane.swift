@@ -4,6 +4,15 @@ import AVKit
 
 struct PreviewPane: View {
     @Binding var videoURL: URL?
+    /// Stable AVPlayer instance kept across SwiftUI redraws. Building
+    /// `AVPlayer(url:)` inline in `body` recreates the player on
+    /// every state change (e.g. each terminalText update during a
+    /// render) — that drops in-flight asset loading and sometimes
+    /// shows a black screen even though the URL is valid. Holding
+    /// the player in @State and only swapping the AVPlayerItem when
+    /// the URL changes keeps playback steady.
+    @State private var player = AVPlayer()
+    @State private var loadedURL: URL? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,8 +46,10 @@ struct PreviewPane: View {
 
             // Viewport
             Group {
-                if let url = videoURL {
-                    VideoPlayer(player: AVPlayer(url: url))
+                if videoURL != nil {
+                    VideoPlayer(player: player)
+                        .onAppear { syncPlayer() }
+                        .onChange(of: videoURL) { _, _ in syncPlayer() }
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "film")
@@ -57,6 +68,29 @@ struct PreviewPane: View {
             }
         }
         .background(Theme.bgPrimary)
+    }
+
+    /// Replace the player's currentItem when the URL changes,
+    /// rather than rebuilding the AVPlayer itself. Kicks off
+    /// playback immediately on the new file. If the URL points at
+    /// a deleted file (e.g. a partial that was cleaned up after
+    /// concat), clear the binding so the empty state re-renders.
+    private func syncPlayer() {
+        guard let url = videoURL else {
+            player.replaceCurrentItem(with: nil)
+            loadedURL = nil
+            return
+        }
+        if loadedURL == url { return }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            DispatchQueue.main.async { videoURL = nil }
+            return
+        }
+        let item = AVPlayerItem(asset: AVURLAsset(url: url))
+        player.replaceCurrentItem(with: item)
+        player.seek(to: .zero)
+        player.play()
+        loadedURL = url
     }
 
     @ViewBuilder

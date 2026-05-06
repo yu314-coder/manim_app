@@ -214,8 +214,20 @@ struct ContentView: View {
 
     private func logStream_done(label: String, result: PythonRuntime.ExecutionResult) {
         stopRenderOutputPoller()
-        if let img = result.imagePath,
-           FileManager.default.fileExists(atPath: img) {
+        // Path resolution priority:
+        //   1. result.imagePath — what the wrapper script wrote to
+        //      __codebench_plot_path. Usually populated.
+        //   2. fallback walk — Documents/ToolOutputs/manim_*/videos/
+        //      */<scene>.mp4 — the newest non-partial mp4 since the
+        //      render started. Covers cases where the wrapper failed
+        //      to set the global but manim DID produce the file.
+        let imgPath: String? = {
+            if let p = result.imagePath, FileManager.default.fileExists(atPath: p) {
+                return p
+            }
+            return Self.findFinalRenderURL(after: renderStartedAt)?.path
+        }()
+        if let img = imgPath {
             let url = URL(fileURLWithPath: img)
             renderedVideoURL = url
 
@@ -380,6 +392,39 @@ struct ContentView: View {
         renderOutputPoller = nil
     }
 
+    /// Static fallback — walk Documents/ToolOutputs/ for the newest
+    /// non-partial mp4/.gif/.png modified after `start`. Used when
+    /// result.imagePath is empty so the user still sees their video
+    /// even if the wrapper script's global lookup misfired.
+    static func findFinalRenderURL(after start: Date) -> URL? {
+        guard let docs = FileManager.default.urls(
+            for: .documentDirectory, in: .userDomainMask).first
+        else { return nil }
+        let outputs = docs.appendingPathComponent("ToolOutputs", isDirectory: true)
+        guard let walker = FileManager.default.enumerator(
+            at: outputs,
+            includingPropertiesForKeys: [.contentModificationDateKey,
+                                          .isRegularFileKey,
+                                          .fileSizeKey],
+            options: [.skipsHiddenFiles])
+        else { return nil }
+        let exts: Set<String> = ["mp4", "mov", "m4v", "webm", "gif", "png"]
+        var best: (URL, Date)?
+        for case let url as URL in walker {
+            if url.pathComponents.contains("partial_movie_files") { continue }
+            let v = try? url.resourceValues(forKeys: [
+                .isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
+            guard v?.isRegularFile == true,
+                  exts.contains(url.pathExtension.lowercased()),
+                  (v?.fileSize ?? 0) > 0,
+                  let mtime = v?.contentModificationDate,
+                  mtime >= start
+            else { continue }
+            if best == nil || mtime > best!.1 { best = (url, mtime) }
+        }
+        return best?.0
+    }
+
     private func scanForFreshOutput(under outputs: URL) {
         let exts: Set<String> = ["mp4", "mov", "m4v", "webm", "gif", "png"]
         guard let walker = FileManager.default.enumerator(
@@ -391,6 +436,14 @@ struct ContentView: View {
         else { return }
         var best: (URL, Date)?
         for case let url as URL in walker {
+            // CRITICAL: skip files inside partial_movie_files/ — those
+            // are per-animation chunks manim deletes once the final
+            // concat finishes (cleanupPartials() runs on success).
+            // If we set renderedVideoURL to a partial, AVPlayer then
+            // points at a deleted file and shows nothing. Keep the
+            // poller restricted to the final video tree:
+            //   <run>/videos/<res>/<scene>.mp4
+            if url.pathComponents.contains("partial_movie_files") { continue }
             let v = try? url.resourceValues(forKeys: [
                 .isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
             guard v?.isRegularFile == true,
