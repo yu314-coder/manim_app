@@ -123,33 +123,45 @@ fi
 }
 echo "▸ macOS slice source:  $MACOS_SLICE_SRC"
 
-# ── Reconstruct the xcframework with both old + new slices.
-# `xcodebuild -create-xcframework` writes a new xcframework directory
-# containing the supplied slices and a fresh Info.plist describing them.
-NEW_XCF="$WORK/Python.xcframework"
-rm -rf "$NEW_XCF"
-
-CREATE_ARGS=()
-for ios_slice in "$XCF"/ios-* ; do
-  [ -d "$ios_slice" ] || continue
-  fw="$ios_slice/Python.framework"
-  [ ! -d "$fw" ] && fw="$ios_slice"  # some layouts put .framework loose
-  CREATE_ARGS+=("-framework" "$fw")
-done
-fw_macos="$MACOS_SLICE_SRC/Python.framework"
-[ ! -d "$fw_macos" ] && fw_macos="$MACOS_SLICE_SRC"
-CREATE_ARGS+=("-framework" "$fw_macos")
-
-echo "▸ creating new xcframework with $((${#CREATE_ARGS[@]} / 2)) slices…"
-xcodebuild -create-xcframework \
-    "${CREATE_ARGS[@]}" \
-    -output "$NEW_XCF" \
-    >/dev/null
-
-# ── Replace the vendored xcframework atomically.
+# ── Surgical merge: copy the macOS slice INTO the existing
+# xcframework and patch its Info.plist by hand.
+#
+# We deliberately do NOT use `xcodebuild -create-xcframework` here —
+# that command only preserves each slice's `.framework` directory
+# and strips the per-arch trees BeeWare's iOS slices need
+# (`lib/python3.14/`, `lib-arm64/python3.14/`, `bin/`,
+# `platform-config/`). Without those, install-python-stdlib.sh's
+# rsync sources don't exist and the iOS build phase aborts with
+#   rsync: (l)stat: No such file or directory
+# Surgical merge keeps every iOS file in place and just adds the
+# macOS slice alongside.
 BACKUP="$VENDOR/Python.xcframework.bak.$(date +%s)"
-mv "$XCF" "$BACKUP"
-mv "$NEW_XCF" "$XCF"
-echo "▸ done — old xcframework backed up at $(basename $BACKUP)"
+cp -R "$XCF" "$BACKUP"
+echo "▸ backup at $(basename "$BACKUP")"
+
+DEST_MACOS_DIR="$XCF/macos-arm64_x86_64"
+rm -rf "$DEST_MACOS_DIR"
+cp -R "$MACOS_SLICE_SRC" "$DEST_MACOS_DIR"
+echo "▸ macOS slice copied into existing xcframework"
+
+# Patch Info.plist to advertise the new slice. Idempotent: if the
+# macOS slice was already listed (manual prior merge), skip.
+INFO="$XCF/Info.plist"
+if ! /usr/libexec/PlistBuddy -c "Print :AvailableLibraries" "$INFO" 2>&1 | \
+     grep -q "macos-arm64_x86_64" ; then
+    LAST_IDX=$(/usr/libexec/PlistBuddy -c "Print :AvailableLibraries" "$INFO" \
+               | grep -c "Dict")
+    /usr/libexec/PlistBuddy -c "Add :AvailableLibraries: dict" "$INFO"
+    /usr/libexec/PlistBuddy -c "Add :AvailableLibraries:${LAST_IDX}:LibraryIdentifier string macos-arm64_x86_64" "$INFO"
+    /usr/libexec/PlistBuddy -c "Add :AvailableLibraries:${LAST_IDX}:LibraryPath string Python.framework" "$INFO"
+    /usr/libexec/PlistBuddy -c "Add :AvailableLibraries:${LAST_IDX}:BinaryPath string Python.framework/Versions/3.14/Python" "$INFO"
+    /usr/libexec/PlistBuddy -c "Add :AvailableLibraries:${LAST_IDX}:SupportedPlatform string macos" "$INFO"
+    /usr/libexec/PlistBuddy -c "Add :AvailableLibraries:${LAST_IDX}:SupportedArchitectures array" "$INFO"
+    /usr/libexec/PlistBuddy -c "Add :AvailableLibraries:${LAST_IDX}:SupportedArchitectures: string arm64" "$INFO"
+    /usr/libexec/PlistBuddy -c "Add :AvailableLibraries:${LAST_IDX}:SupportedArchitectures: string x86_64" "$INFO"
+fi
+plutil -lint "$INFO" >/dev/null
+
+echo "▸ done — Info.plist patched, iOS layout untouched"
 echo "▸ slices now present:"
 ls "$XCF" | grep -E '^(ios|macos)-' | sed 's/^/      /'
