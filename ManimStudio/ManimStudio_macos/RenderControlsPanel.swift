@@ -57,7 +57,7 @@ struct RenderControlsPanel: View {
                 Spacer()
                 StatusDot(state: venvDotState)
             }
-            switch venv.status {
+            switch venv.phase {
             case .ready:
                 rowKV("manim", venv.manimVersion)
                 if let py = venv.pythonInVenv {
@@ -65,16 +65,16 @@ struct RenderControlsPanel: View {
                             .deletingLastPathComponent()
                             .lastPathComponent)
                 }
-            case .missing, .unknown:
+            case .idle:
                 Text("Not set up yet — open the welcome wizard from the menu bar.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textSecondary)
-            case .creating, .installing:
+            case .creatingVenv, .upgradingPip, .installingPackages, .verifying:
                 Text("Setting up…")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.indigo)
-            case .failed(let why):
-                Text(why)
+            case .failed:
+                Text(venv.failureReason.isEmpty ? "Setup failed." : venv.failureReason)
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.error)
             }
@@ -84,9 +84,9 @@ struct RenderControlsPanel: View {
     }
 
     private var venvDotState: StatusDot.DotState {
-        switch venv.status {
+        switch venv.phase {
         case .ready:           return .ok
-        case .creating, .installing: return .active
+        case .creatingVenv, .upgradingPip, .installingPackages, .verifying: return .active
         case .failed:          return .error
         default:               return .idle
         }

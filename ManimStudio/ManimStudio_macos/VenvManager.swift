@@ -1,38 +1,69 @@
-// VenvManager.swift — manages the virtualenv ManimStudio uses for
-// renders. Mirrors the desktop app's `manim_studio_default` venv
-// concept on macOS.
+// VenvManager.swift — manages the per-app virtualenv ManimStudio
+// uses for renders. Mirrors the Windows desktop app's
+// `manim_studio_default` venv concept.
 //
 // Default location: ~/Library/Application Support/ManimStudio/venv/
-// First-run wizard creates it, pip-installs `manim` + `manim-fonts`
-// + `numpy` + `scipy` + `matplotlib` + `kokoro-onnx` (optional).
-// RenderManager prefers this venv's `bin/python` over the host
-// python3 found by PythonResolver, so the user can pin a known-good
-// manim version per-app instead of fighting with their system Python.
+// First-run wizard (WelcomeView) walks the user through:
+//   1. picking a host Python
+//   2. python -m venv  …
+//   3. pip install --upgrade pip
+//   4. pip install manim, manim-fonts, numpy, scipy, matplotlib,
+//      Pillow [+ kokoro-onnx + webvtt-py if Kokoro toggled]
+//   5. import-test manim
+//
+// Status updates: published once per ~100 ms via a coalescing
+// timer so SwiftUI doesn't get hit with hundreds of state changes
+// per second when pip is chattering. Solves
+// "onChange action tried to update multiple times per frame".
 import Foundation
 import SwiftUI
 import Combine
 
-/// Drops the class-level @MainActor — Swift 6's strict-isolation
-/// synthesis of ObservableObject's objectWillChange publisher
-/// conflicts with @MainActor when no explicit override is given.
-/// All callers (SwiftUI Tasks) default to MainActor anyway, so the
-/// @Published mutations land on main; the streaming onLine
-/// callbacks inside setupFromScratch explicitly hop to MainActor
-/// before mutating .status.
 final class VenvManager: ObservableObject {
 
-    enum Status: Equatable {
-        case unknown
-        case missing
-        case creating(progress: Double, log: String)
-        case installing(progress: Double, log: String)
-        case ready
-        case failed(String)
+    // ── Phase-aware status with rich progress info.
+    enum Phase: String, Equatable {
+        case idle, creatingVenv, upgradingPip,
+             installingPackages, verifying, ready, failed
+        var label: String {
+            switch self {
+            case .idle:               return "Idle"
+            case .creatingVenv:       return "Creating virtualenv"
+            case .upgradingPip:       return "Upgrading pip"
+            case .installingPackages: return "Installing packages"
+            case .verifying:          return "Verifying manim"
+            case .ready:              return "Ready"
+            case .failed:             return "Failed"
+            }
+        }
     }
 
-    @Published var status: Status = .unknown
+    /// Per-package install state — the wizard renders a checklist.
+    struct PackageProgress: Identifiable, Equatable {
+        let name: String
+        var status: PackageStatus
+        var id: String { name }
+    }
+    enum PackageStatus: Equatable {
+        case pending, installing, done, failed(String)
+    }
+
+    @Published var phase: Phase = .idle
+    @Published var progress: Double = 0
+    @Published var currentLine: String = ""
+    @Published var log: String = ""
+    @Published var packages: [PackageProgress] = []
     @Published var pythonInVenv: URL? = nil
     @Published var manimVersion: String = ""
+    @Published var failureReason: String = ""
+
+    /// Coalescing flush — pending state mutations land here, then
+    /// `_flush()` fires every ~80 ms to publish them. Without this
+    /// SwiftUI's onChange handlers complain about multiple updates
+    /// per frame when pip emits hundreds of lines in a burst.
+    private var pendingLog: String = ""
+    private var pendingLine: String = ""
+    private var flushTimer: Timer?
 
     /// `~/Library/Application Support/ManimStudio/venv/`
     static let venvURL: URL = {
@@ -45,114 +76,179 @@ final class VenvManager: ObservableObject {
         return appSup.appendingPathComponent("venv", isDirectory: true)
     }()
 
-    /// Path to the venv python (if it exists and is executable).
     static var venvPython: URL? {
         let url = venvURL.appendingPathComponent("bin/python", isDirectory: false)
         return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
     }
 
-    /// Probe the venv: does it exist? Does it have manim?
+    // Convenience for views that previously used `.status` enum.
+    var statusLabel: String { phase.label }
+    var isReady: Bool { phase == .ready }
+
+    // MARK: probe
+
     func probe() async {
         if Self.venvPython == nil {
-            status = .missing
+            await MainActor.run { self.phase = .idle }
             return
         }
-        // Run `python -c "import manim; print(manim.__version__)"`.
         if let v = await runProbeManim() {
-            pythonInVenv = Self.venvPython
-            manimVersion = v
-            status = .ready
+            await MainActor.run {
+                self.pythonInVenv = Self.venvPython
+                self.manimVersion = v
+                self.phase = .ready
+                self.progress = 1
+            }
         } else {
-            status = .missing  // venv exists but manim missing — re-install
+            await MainActor.run { self.phase = .idle }
         }
     }
 
-    /// First-run wizard target: create the venv, then pip-install manim.
-    func setupFromScratch(
-        host hostPython: URL,
-        installKokoro: Bool = false
-    ) async {
+    // MARK: setup
+
+    /// Drives the entire wizard pipeline. Errors are reported via
+    /// `phase = .failed` + `failureReason` rather than thrown.
+    func setupFromScratch(host hostPython: URL, installKokoro: Bool = false) async {
+        await MainActor.run {
+            self.log = ""
+            self.failureReason = ""
+            self.progress = 0
+            self.startFlushTimer()
+        }
+
         // 1. Wipe any half-baked venv.
         try? FileManager.default.removeItem(at: Self.venvURL)
         try? FileManager.default.createDirectory(
             at: Self.venvURL.deletingLastPathComponent(),
             withIntermediateDirectories: true)
 
-        status = .creating(progress: 0.05,
-                           log: "creating virtualenv at \(Self.venvURL.path)…\n")
+        // ── Step 1: create the virtualenv.
+        await MainActor.run {
+            self.phase = .creatingVenv
+            self.progress = 0.05
+            self.appendLog("creating virtualenv at \(Self.venvURL.path)")
+        }
         let createOK = await runProcess(
             executable: hostPython,
-            args: ["-m", "venv", "--clear", Self.venvURL.path],
-            onLine: { [weak self] line in
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    if case .creating(let p, let log) = self.status {
-                        self.status = .creating(progress: p, log: log + line + "\n")
-                    }
-                }
-            }
-        )
+            args: ["-m", "venv", "--clear", Self.venvURL.path])
         guard createOK, let venvPy = Self.venvPython else {
-            status = .failed("`python -m venv` did not produce a runnable interpreter")
+            await fail("`python -m venv` did not produce a runnable interpreter at \(Self.venvURL.path).")
             return
         }
+        await MainActor.run { self.progress = 0.15 }
 
-        // 2. pip install --upgrade pip
-        status = .installing(progress: 0.15, log: "")
+        // ── Step 2: upgrade pip.
+        await MainActor.run {
+            self.phase = .upgradingPip
+            self.appendLog("upgrading pip in venv")
+        }
         _ = await runProcess(
             executable: venvPy,
             args: ["-m", "pip", "install", "--upgrade", "pip",
-                   "--disable-pip-version-check"],
-            onLine: { [weak self] line in
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    if case .installing(let p, let log) = self.status {
-                        self.status = .installing(progress: p, log: log + line + "\n")
-                    }
-                }
-            }
-        )
+                   "--disable-pip-version-check"])
+        await MainActor.run { self.progress = 0.25 }
 
-        // 3. The big one: manim + numpy + scipy + matplotlib + Pillow.
-        var packages = ["manim", "numpy", "scipy", "matplotlib", "Pillow",
-                        "manim-fonts"]
+        // ── Step 3: install packages, one at a time, so the wizard
+        // can show per-package progress.
+        var pkgs = ["manim", "manim-fonts",
+                    "numpy", "scipy", "matplotlib", "Pillow"]
         if installKokoro {
-            packages.append(contentsOf: ["kokoro-onnx", "webvtt-py"])
+            pkgs.append(contentsOf: ["kokoro-onnx", "webvtt-py"])
         }
-        status = .installing(
-            progress: 0.30,
-            log: "installing \(packages.joined(separator: ", "))…\n")
-        let pipOK = await runProcess(
-            executable: venvPy,
-            args: ["-m", "pip", "install",
-                   "--no-warn-script-location",
-                   "--disable-pip-version-check"] + packages,
-            onLine: { [weak self] line in
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    if case .installing(let p, let log) = self.status {
-                        let bumped = min(0.95, p + 0.001)
-                        self.status = .installing(
-                            progress: bumped, log: log + line + "\n")
-                    }
-                }
+        await MainActor.run {
+            self.packages = pkgs.map { .init(name: $0, status: .pending) }
+            self.phase = .installingPackages
+        }
+        for (i, name) in pkgs.enumerated() {
+            await MainActor.run {
+                self.markPackage(name, status: .installing)
+                self.appendLog("pip install \(name)")
             }
-        )
-        if !pipOK {
-            status = .failed("pip install failed — check the log above")
-            return
+            let ok = await runProcess(
+                executable: venvPy,
+                args: ["-m", "pip", "install",
+                       "--no-warn-script-location",
+                       "--disable-pip-version-check", name])
+            await MainActor.run {
+                self.markPackage(name, status: ok ? .done
+                                          : .failed("pip install failed"))
+                let perPackage = 0.65 / Double(pkgs.count)
+                self.progress = 0.25 + perPackage * Double(i + 1)
+            }
+            if !ok && (name == "manim" || name == "numpy") {
+                // manim and numpy are non-optional — a failure here
+                // means the rest will cascade.
+                await fail("pip failed to install \(name). See log for details.")
+                return
+            }
         }
 
-        // 4. Verify manim is importable.
+        // ── Step 4: verify manim importable.
+        await MainActor.run {
+            self.phase = .verifying
+            self.progress = 0.95
+            self.appendLog("verifying `import manim` …")
+        }
         await probe()
-        if case .ready = status {
-            // happy path
-        } else {
-            status = .failed("manim installed but failed to import — likely a binary wheel ABI mismatch")
+        await MainActor.run { self.stopFlushTimer() }
+        if phase != .ready {
+            await fail("manim installed but failed to import — likely a binary wheel ABI mismatch.")
         }
     }
 
-    // MARK: process runner
+    private func fail(_ reason: String) async {
+        await MainActor.run {
+            self.failureReason = reason
+            self.phase = .failed
+            self.appendLog("[error] \(reason)")
+            self.stopFlushTimer()
+        }
+    }
+
+    // MARK: package list helper
+
+    private func markPackage(_ name: String, status: PackageStatus) {
+        guard let i = packages.firstIndex(where: { $0.name == name }) else { return }
+        packages[i].status = status
+    }
+
+    // MARK: log batching
+
+    private func startFlushTimer() {
+        stopFlushTimer()
+        flushTimer = Timer.scheduledTimer(withTimeInterval: 0.08,
+                                          repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.flush() }
+        }
+        if let t = flushTimer { RunLoop.main.add(t, forMode: .common) }
+    }
+    private func stopFlushTimer() {
+        flushTimer?.invalidate()
+        flushTimer = nil
+        flush()  // one last drain
+    }
+    @MainActor
+    private func flush() {
+        if !pendingLog.isEmpty {
+            log += pendingLog
+            pendingLog = ""
+        }
+        if !pendingLine.isEmpty {
+            currentLine = pendingLine
+            pendingLine = ""
+        }
+        // Cap log to last ~80 KB so SwiftUI's text view doesn't
+        // re-layout megabytes per pip burst.
+        if log.count > 80_000 {
+            log = String(log.suffix(60_000))
+        }
+    }
+    private func appendLog(_ s: String) {
+        pendingLog += s
+        if !s.hasSuffix("\n") { pendingLog += "\n" }
+    }
+
+    // MARK: subprocess
 
     private func runProbeManim() async -> String? {
         guard let py = Self.venvPython else { return nil }
@@ -174,11 +270,9 @@ final class VenvManager: ObservableObject {
         return nil
     }
 
-    private func runProcess(
-        executable: URL,
-        args: [String],
-        onLine: @escaping (String) -> Void
-    ) async -> Bool {
+    /// Runs a subprocess, streaming stdout/stderr line-by-line into
+    /// the pendingLog/pendingLine buffers. Returns true on exit 0.
+    private func runProcess(executable: URL, args: [String]) async -> Bool {
         let proc = Process()
         proc.executableURL = executable
         proc.arguments = args
@@ -187,14 +281,13 @@ final class VenvManager: ObservableObject {
         proc.standardOutput = stdout
         proc.standardError  = stderr
 
-        // Buffer per-pipe so we can split on \n safely.
-        // Wrap the buffers in a reference type so the escaping
-        // readabilityHandler can mutate them — `inout String` would
-        // be captured by an escaping closure, which Swift forbids.
+        // Reference-typed line buffers so the escaping
+        // readabilityHandler can mutate them across calls.
         final class LineBuf { var s = "" }
         let bufOut = LineBuf()
         let bufErr = LineBuf()
-        func drain(_ pipe: Pipe, into buf: LineBuf) {
+
+        let drain: (Pipe, LineBuf) -> Void = { [weak self] pipe, buf in
             pipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
                 if data.isEmpty { return }
@@ -203,30 +296,37 @@ final class VenvManager: ObservableObject {
                 while let nl = buf.s.firstIndex(of: "\n") {
                     let line = String(buf.s[..<nl])
                     buf.s = String(buf.s[buf.s.index(after: nl)...])
-                    onLine(line)
+                    Task { @MainActor [weak self] in
+                        self?.pendingLog += line + "\n"
+                        self?.pendingLine = line
+                    }
                 }
             }
         }
-        drain(stdout, into: bufOut)
-        drain(stderr, into: bufErr)
+        drain(stdout, bufOut)
+        drain(stderr, bufErr)
 
         do {
             try proc.run()
-            // Spin until it exits — Process doesn't have an async wait.
-            await withCheckedContinuation { continuation in
-                proc.terminationHandler = { _ in
-                    continuation.resume()
-                }
-            }
         } catch {
-            onLine("[venv] failed to launch \(executable.lastPathComponent): \(error)")
+            await MainActor.run {
+                self.appendLog("[venv] failed to launch \(executable.lastPathComponent): \(error)")
+            }
             return false
+        }
+
+        await withCheckedContinuation { continuation in
+            proc.terminationHandler = { _ in continuation.resume() }
         }
 
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil
-        if !bufOut.s.isEmpty { onLine(bufOut.s) }
-        if !bufErr.s.isEmpty { onLine(bufErr.s) }
+        if !bufOut.s.isEmpty {
+            await MainActor.run { self.pendingLog += bufOut.s + "\n" }
+        }
+        if !bufErr.s.isEmpty {
+            await MainActor.run { self.pendingLog += bufErr.s + "\n" }
+        }
 
         return proc.terminationStatus == 0
     }

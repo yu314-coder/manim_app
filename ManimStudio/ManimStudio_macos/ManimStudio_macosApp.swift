@@ -127,7 +127,7 @@ struct RootGate: View {
 
     private var shouldShowWelcome: Bool {
         if welcomeDismissed { return false }
-        switch venv.status {
+        switch venv.phase {
         case .ready:                       return false
         case .missing, .failed,
              .creating, .installing,

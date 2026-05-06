@@ -127,7 +127,7 @@ struct ContentView: View {
 
     private var dotState: StatusDot.DotState {
         if app.isRendering { return .active }
-        switch venv.status {
+        switch venv.phase {
         case .ready:  return .ok
         case .failed: return .error
         default:      return .idle
@@ -135,10 +135,10 @@ struct ContentView: View {
     }
     private var statusText: String {
         if app.isRendering { return "rendering…" }
-        switch venv.status {
+        switch venv.phase {
         case .ready:  return "manim \(venv.manimVersion)"
-        case .missing, .unknown: return "venv not set up"
-        case .creating, .installing: return "installing…"
+        case .idle: return "venv not set up"
+        case .creatingVenv, .upgradingPip, .installingPackages, .verifying: return "installing…"
         case .failed:  return "venv error"
         }
     }
@@ -329,7 +329,7 @@ struct SettingsView: View {
             Section("Environment") {
                 LabeledContent("Status") {
                     HStack {
-                        StatusDot(state: venv.status == .ready ? .ok : .idle)
+                        StatusDot(state: venv.phase == .ready ? .ok : .idle)
                         Text(envStatusText)
                             .font(.system(.caption, design: .monospaced))
                     }
@@ -353,11 +353,11 @@ struct SettingsView: View {
     }
 
     private var envStatusText: String {
-        switch venv.status {
+        switch venv.phase {
         case .ready:    return "ready · manim \(venv.manimVersion)"
         case .missing:  return "not set up"
         case .unknown:  return "checking…"
-        case .creating, .installing: return "installing…"
+        case .creatingVenv, .upgradingPip, .installingPackages, .verifying: return "installing…"
         case .failed:   return "failed"
         }
     }

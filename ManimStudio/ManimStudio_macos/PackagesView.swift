@@ -38,7 +38,7 @@ struct PackagesView: View {
                 .foregroundStyle(Theme.violet)
             Text("Packages").font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Theme.textPrimary)
-            StatusDot(state: venv.status == .ready ? .ok : .idle)
+            StatusDot(state: venv.phase == .ready ? .ok : .idle)
             Spacer()
             TextField("Search…", text: $query)
                 .textFieldStyle(.roundedBorder)
@@ -179,7 +179,7 @@ struct PackagesView: View {
     // MARK: data
 
     private var canRun: Bool {
-        if case .ready = venv.status { return true }
+        if case .ready = venv.phase { return true }
         return false
     }
     private var filtered: [PipPackage] {
