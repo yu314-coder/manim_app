@@ -68,7 +68,8 @@ struct WelcomeView: View {
             switch newValue {
             case .ready:                                page = .done
             case .failed:                               page = .failed
-            case .creatingVenv, .upgradingPip,
+            case .checkingDeps, .installingDeps,
+                 .creatingVenv, .upgradingPip,
                  .installingPackages, .verifying:       page = .installing
             default: break
             }
@@ -333,6 +334,8 @@ struct WelcomeView: View {
 
     private var phaseIcon: String {
         switch venv.phase {
+        case .checkingDeps:       return "magnifyingglass.circle.fill"
+        case .installingDeps:     return "mug.fill"          // Homebrew :)
         case .creatingVenv:       return "hammer.fill"
         case .upgradingPip:       return "arrow.up.circle.fill"
         case .installingPackages: return "shippingbox.fill"

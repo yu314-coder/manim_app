@@ -14,6 +14,7 @@
 		B9F1A0032FAA0001000A0001 /* Python.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B9MA01012FAB0001000ABCDE /* Python.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; };
 		B9MA01022FAB0001000ABCDE /* Python.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B9MA02012FAB0002000ABCDE /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = B9MA02002FAB0002000ABCDE /* SwiftTerm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -80,6 +81,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9MA01012FAB0001000ABCDE /* Python.xcframework in Frameworks */,
+				B9MA02012FAB0002000ABCDE /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -147,6 +149,7 @@
 			);
 			name = ManimStudio_macos;
 			packageProductDependencies = (
+				B9MA02002FAB0002000ABCDE /* SwiftTerm */,
 			);
 			productName = ManimStudio_macos;
 			productReference = B91A87332FAAF63D00F66109 /* ManimStudio_macos.app */;
@@ -341,6 +344,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = ManimStudio_macos/ManimStudio_macos.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -352,7 +356,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = euleryu;
+				INFOPLIST_KEY_CFBundleDisplayName = ManimStudio;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -379,6 +383,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = ManimStudio_macos/ManimStudio_macos.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -390,7 +395,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = euleryu;
+				INFOPLIST_KEY_CFBundleDisplayName = ManimStudio;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -654,6 +659,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B9E7BAB92FA0BCD9004329BB /* XCRemoteSwiftPackageReference "python-ios-lib" */;
 			productName = Manim;
+		};
+		B9MA02002FAB0002000ABCDE /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B9ABCDFE2FB00001000ABCDE /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,22 +1,9 @@
-// ContentView.swift — root SwiftUI view for the macOS app.
+// ContentView.swift — root macOS view. Layout mirrors the iOS
+// design (HeaderView at top, TabBar below, content swap based on
+// selected tab) while staying purely native AppKit/SwiftUI.
 //
-// Layout (high-tech glassmorphic theme):
-//   ┌──────┬─────────────────────────────────────────┬────────┐
-//   │      │ ┌── Top toolbar ──────────────────────┐ │        │
-//   │      │ │ logo · scene-picker · render/preview │ │        │
-//   │      │ └─────────────────────────────────────┘ │        │
-//   │ side │ ┌──── Editor ───┐  ┌──── Preview ───┐  │ render │
-//   │  bar │ │               │  │                │  │  ctrl  │
-//   │      │ │   NSTextView  │  │  AVKit Player  │  │ panel  │
-//   │      │ └───────────────┘  └────────────────┘  │        │
-//   │      │ ┌── Terminal (read-only) ───────────┐  │        │
-//   │      │ │  manim subprocess output…         │  │        │
-//   │      │ └───────────────────────────────────┘  │        │
-//   └──────┴─────────────────────────────────────────┴────────┘
-//
-// The right-side render-controls panel can collapse via the slider
-// button. Workspace, Assets, Packages, History, Settings live in
-// the left sidebar.
+// Workspace tab = Monaco editor + AVPlayer preview + real PTY
+// terminal + collapsible right-side render controls.
 import SwiftUI
 import AppKit
 
@@ -25,125 +12,50 @@ struct ContentView: View {
     @EnvironmentObject var venv: VenvManager
 
     @State private var renderManager: RenderManager?
+    @State private var monaco = MonacoController()
     @State private var controlsOpen = true
+    @State private var openPanelShown = false
+    @State private var savePanelShown = false
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
-        } detail: {
+        VStack(spacing: 0) {
+            HeaderView(
+                onRender:  { renderManager?.renderFinal()  },
+                onPreview: { renderManager?.renderPreview() },
+                onStop:    { renderManager?.stop()         },
+                onNew:     { newScene() },
+                onOpen:    { openFile() },
+                onSave:    { saveFile() }
+            )
+            TabBarView(selection: $app.sidebarSection)
+
             ZStack {
-                // Window-wide blur underlay for the high-tech feel.
                 VisualEffectBackground(material: .underWindowBackground)
                     .ignoresSafeArea()
                 Theme.bgPrimary.opacity(0.85).ignoresSafeArea()
-
                 detailPane
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 1200, minHeight: 760)
+        .frame(minWidth: 1280, minHeight: 800)
         .preferredColorScheme(.dark)
         .onAppear {
             if renderManager == nil {
                 renderManager = RenderManager(app: app)
             }
         }
-        .toolbar { toolbarContent }
-    }
-
-    // MARK: sidebar (high-tech list)
-
-    private var sidebar: some View {
-        ZStack {
-            VisualEffectBackground(material: .sidebar).ignoresSafeArea()
-            VStack(spacing: 0) {
-                logoHeader
-                Divider().background(Theme.borderSubtle)
-                List(selection: $app.sidebarSection) {
-                    Section {
-                        ForEach(SidebarSection.allCases) { section in
-                            HStack(spacing: 10) {
-                                Image(systemName: section.icon)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(app.sidebarSection == section
-                                                     ? Color.white
-                                                     : Theme.indigo)
-                                    .frame(width: 22)
-                                Text(section.label)
-                                    .font(.system(size: 13, weight: app.sidebarSection == section
-                                                  ? .semibold : .regular))
-                            }
-                            .padding(.vertical, 2)
-                            .tag(section)
-                        }
-                    } header: {
-                        SectionHeader(title: "Navigate", icon: "square.grid.2x2")
-                            .padding(.top, 6)
-                    }
-                }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-
-                Divider().background(Theme.borderSubtle)
-                statusBar
-            }
+        .onReceive(NotificationCenter.default.publisher(for: .renderFinal)) { _ in
+            renderManager?.renderFinal()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .renderPreview)) { _ in
+            renderManager?.renderPreview()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .renderStop)) { _ in
+            renderManager?.stop()
         }
     }
 
-    private var logoHeader: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(Theme.signatureGradient)
-                    .frame(width: 34, height: 34)
-                    .shadow(color: Theme.glowPrimary, radius: 8)
-                Text("🎬").font(.system(size: 18))
-            }
-            VStack(alignment: .leading, spacing: 0) {
-                Text("ManimStudio")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary)
-                Text("Native · macOS")
-                    .font(.system(size: 9, weight: .medium))
-                    .tracking(1)
-                    .foregroundStyle(Theme.textDim)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 14).padding(.vertical, 14)
-    }
-
-    private var statusBar: some View {
-        HStack(spacing: 8) {
-            StatusDot(state: dotState)
-            Text(statusText)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(Theme.textSecondary)
-                .lineLimit(1).truncationMode(.middle)
-            Spacer()
-        }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-    }
-
-    private var dotState: StatusDot.DotState {
-        if app.isRendering { return .active }
-        switch venv.phase {
-        case .ready:  return .ok
-        case .failed: return .error
-        default:      return .idle
-        }
-    }
-    private var statusText: String {
-        if app.isRendering { return "rendering…" }
-        switch venv.phase {
-        case .ready:  return "manim \(venv.manimVersion)"
-        case .idle: return "venv not set up"
-        case .creatingVenv, .upgradingPip, .installingPackages, .verifying: return "installing…"
-        case .failed:  return "venv error"
-        }
-    }
-
-    // MARK: detail
+    // MARK: detail pane
 
     @ViewBuilder
     private var detailPane: some View {
@@ -161,17 +73,15 @@ struct ContentView: View {
         HStack(spacing: 0) {
             VSplitView {
                 HSplitView {
-                    EditorView(text: $app.sourceCode,
-                               fontSize: CGFloat(app.editorFontSize))
-                        .frame(minWidth: 320)
+                    EditorPane(monaco: monaco)
+                        .frame(minWidth: 360)
                     PreviewView(url: app.lastRenderURL)
-                        .frame(minWidth: 240)
+                        .frame(minWidth: 280)
                 }
-                .frame(minHeight: 240)
+                .frame(minHeight: 260)
 
-                TerminalView(text: $app.terminalText,
-                             fontSize: CGFloat(app.terminalFontSize))
-                    .frame(minHeight: 100)
+                TerminalProcessView(venv: venv)
+                    .frame(minHeight: 120)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -196,175 +106,197 @@ struct ContentView: View {
         }
     }
 
-    // MARK: toolbar
+    // MARK: file ops
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            scenePicker
+    private func newScene() {
+        app.sourceCode = ""
+        app.openedFileURL = nil
+        app.selectedScene = ""
+    }
+
+    private func openFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pythonScript, .plainText, .text]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            app.sourceCode = try String(contentsOf: url, encoding: .utf8)
+            app.openedFileURL = url
+            app.selectedScene = ""
+        } catch {
+            NSLog("[file] open failed: %@", error.localizedDescription)
         }
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                renderManager?.renderFinal()
-            } label: {
-                Label("Render", systemImage: "play.fill")
-            }
-            .keyboardShortcut("r", modifiers: [.command])
-            .help("Render (⌘R)")
-            .disabled(app.isRendering)
+    }
 
-            Button {
-                renderManager?.renderPreview()
-            } label: {
-                Label("Preview", systemImage: "eye")
-            }
-            .keyboardShortcut("r", modifiers: [.command, .shift])
-            .help("Preview low-quality (⇧⌘R)")
-            .disabled(app.isRendering)
+    private func saveFile() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pythonScript]
+        panel.nameFieldStringValue = app.openedFileURL?.lastPathComponent ?? "scene.py"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try app.sourceCode.write(to: url, atomically: true, encoding: .utf8)
+            app.openedFileURL = url
+        } catch {
+            NSLog("[file] save failed: %@", error.localizedDescription)
+        }
+    }
+}
 
-            if app.isRendering {
-                Button(role: .destructive) {
-                    renderManager?.stop()
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
+// MARK: - Editor pane (Monaco + small toolbar)
+
+struct EditorPane: View {
+    @EnvironmentObject var app: AppState
+    let monaco: MonacoController
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Editor mini toolbar — Find / Format / Comment + filename
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.indigo)
+                Text(app.openedFileURL?.lastPathComponent ?? "Code Editor")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1).truncationMode(.middle)
+                Spacer()
+
+                editorToolBtn("magnifyingglass", "Find (⌘F)") {
+                    monaco.showFind()
                 }
-                .keyboardShortcut(".", modifiers: [.command])
-                .help("Stop (⌘.)")
+                editorToolBtn("text.alignleft",  "Format (⌥⌘L)") {
+                    monaco.format()
+                }
+                editorToolBtn("text.bubble",     "Toggle comment (⌘/)") {
+                    monaco.toggleComment()
+                }
+                Menu {
+                    ForEach([10, 12, 13, 14, 16, 18, 20, 24], id: \.self) { sz in
+                        Button("\(sz)px") { app.editorFontSize = Double(sz) }
+                    }
+                } label: {
+                    Text("\(Int(app.editorFontSize))px")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 5)
+                            .fill(Theme.bgTertiary))
+                }
+                .menuStyle(.borderlessButton)
+                .frame(width: 50)
             }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Theme.bgSecondary)
+            .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1),
+                     alignment: .bottom)
 
-            Button {
-                withAnimation(.spring) { controlsOpen.toggle() }
-            } label: {
-                Image(systemName: controlsOpen ? "sidebar.right" : "slider.horizontal.3")
-            }
-            .help("Toggle render controls")
+            MonacoEditorView(text: $app.sourceCode,
+                             fontSize: CGFloat(app.editorFontSize),
+                             controller: monaco)
+                .background(Color(red: 0.055, green: 0.060, blue: 0.095))
         }
     }
 
     @ViewBuilder
-    private var scenePicker: some View {
-        let scenes = app.detectedScenes
-        Menu {
-            Button {
-                app.selectedScene = ""
-            } label: {
-                if app.selectedScene.isEmpty {
-                    Label(scenes.isEmpty ? "First detected"
-                          : "First detected (\(scenes.first ?? ""))",
-                          systemImage: "checkmark")
-                } else {
-                    Text(scenes.isEmpty ? "First detected"
-                         : "First detected (\(scenes.first ?? ""))")
-                }
-            }
-            if !scenes.isEmpty { Divider() }
-            ForEach(scenes, id: \.self) { name in
-                Button {
-                    app.selectedScene = name
-                } label: {
-                    if app.selectedScene == name {
-                        Label(name, systemImage: "checkmark")
-                    } else {
-                        Text(name)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "rectangle.stack")
-                Text(label(for: scenes))
-            }
+    private func editorToolBtn(_ icon: String, _ tip: String,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 26, height: 26)
+                .background(RoundedRectangle(cornerRadius: 6)
+                    .fill(Theme.bgTertiary))
         }
-        .help("Choose which Scene class to render")
-    }
-
-    private func label(for scenes: [String]) -> String {
-        if !app.selectedScene.isEmpty { return app.selectedScene }
-        return scenes.isEmpty ? "No Scene" : (scenes.first ?? "")
+        .buttonStyle(.plain)
+        .help(tip)
     }
 }
 
-// MARK: - Settings (kept here since it's small)
+// MARK: - Settings (modal sheet)
 
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var venv: VenvManager
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        Form {
-            Section("Editor") {
-                HStack {
-                    Text("Font size")
-                    Slider(value: $app.editorFontSize, in: 9...22, step: 1)
-                    Text("\(Int(app.editorFontSize))pt")
-                        .frame(width: 44, alignment: .trailing)
-                        .font(.system(.caption, design: .monospaced))
-                }
+        VStack(spacing: 0) {
+            HStack {
+                Text("Settings").font(.system(size: 18, weight: .bold))
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.escape, modifiers: [])
             }
-            Section("Render") {
-                Picker("Quality", selection: $app.renderQuality) {
-                    ForEach(RenderQuality.allCases) { q in
-                        Text(q.label).tag(q)
-                    }
-                }
-                Picker("Format", selection: $app.renderFormat) {
-                    ForEach(RenderFormat.allCases) { f in
-                        Text(f.label).tag(f)
-                    }
-                }
-                Stepper(value: $app.renderFPS, in: 12...120, step: 6) {
-                    Text("FPS: \(app.renderFPS)")
-                }
-            }
-            Section("Terminal") {
-                HStack {
-                    Text("Font size")
-                    Slider(value: $app.terminalFontSize, in: 9...18, step: 1)
-                    Text("\(Int(app.terminalFontSize))pt")
-                        .frame(width: 44, alignment: .trailing)
-                        .font(.system(.caption, design: .monospaced))
-                }
-                Button("Clear terminal output") { app.clearTerminal() }
-            }
-            Section("Environment") {
-                LabeledContent("Status") {
+            .padding(16)
+            Divider()
+            Form {
+                Section("Editor") {
                     HStack {
-                        StatusDot(state: venv.phase == .ready ? .ok : .idle)
-                        Text(envStatusText)
+                        Text("Font size")
+                        Slider(value: $app.editorFontSize, in: 9...22, step: 1)
+                        Text("\(Int(app.editorFontSize))pt")
+                            .frame(width: 44, alignment: .trailing)
                             .font(.system(.caption, design: .monospaced))
                     }
                 }
-                if let py = venv.pythonInVenv {
-                    LabeledContent("Python") {
-                        Text(py.path)
-                            .font(.system(.caption, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                Section("Render") {
+                    Picker("Quality", selection: $app.renderQuality) {
+                        ForEach(RenderQuality.allCases) { q in
+                            Text(q.label).tag(q)
+                        }
+                    }
+                    Picker("Format", selection: $app.renderFormat) {
+                        ForEach(RenderFormat.allCases) { f in
+                            Text(f.label).tag(f)
+                        }
+                    }
+                    Stepper(value: $app.renderFPS, in: 12...120, step: 6) {
+                        Text("FPS: \(app.renderFPS)")
                     }
                 }
-                Button("Re-run setup wizard") {
-                    NotificationCenter.default.post(
-                        name: .reopenWelcome, object: nil)
+                Section("Environment") {
+                    LabeledContent("Status") {
+                        HStack {
+                            StatusDot(state: venv.phase == .ready ? .ok : .idle)
+                            Text(envStatusText)
+                                .font(.system(.caption, design: .monospaced))
+                        }
+                    }
+                    if let py = venv.pythonInVenv {
+                        LabeledContent("Python") {
+                            Text(py.path)
+                                .font(.system(.caption, design: .monospaced))
+                                .lineLimit(1).truncationMode(.middle)
+                        }
+                    }
+                    Button("Re-run setup wizard") {
+                        NotificationCenter.default.post(
+                            name: .reopenWelcome, object: nil)
+                    }
                 }
             }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
-        .background(Theme.bgPrimary)
     }
 
     private var envStatusText: String {
         switch venv.phase {
-        case .ready:    return "ready · manim \(venv.manimVersion)"
-        case .missing:  return "not set up"
-        case .unknown:  return "checking…"
-        case .creatingVenv, .upgradingPip, .installingPackages, .verifying: return "installing…"
-        case .failed:   return "failed"
+        case .ready:           return "ready · manim \(venv.manimVersion)"
+        case .idle:            return "not set up"
+        case .checkingDeps:    return "checking system deps…"
+        case .installingDeps:  return "installing Cairo via brew…"
+        case .creatingVenv, .upgradingPip,
+             .installingPackages, .verifying: return "installing…"
+        case .failed:          return "failed"
         }
     }
 }
 
 extension Notification.Name {
-    static let reopenWelcome = Notification.Name("manimstudio.welcome.reopen")
+    static let renderStop      = Notification.Name("manimstudio.render.stop")
+    static let reopenWelcome   = Notification.Name("manimstudio.welcome.reopen")
 }
 
 #Preview {

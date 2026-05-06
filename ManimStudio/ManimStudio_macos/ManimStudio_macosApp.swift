@@ -27,6 +27,11 @@ struct ManimStudio_macosApp: App {
                 }
         }
         .windowResizability(.contentMinSize)
+        // Sensible default size on first launch — large enough that
+        // the 220-pt sidebar + workspace + 290-pt controls panel all
+        // fit comfortably on a 14" / 16" MacBook display without
+        // immediate resizing.
+        .defaultSize(width: 1480, height: 920)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Scene") {

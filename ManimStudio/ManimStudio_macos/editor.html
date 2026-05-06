@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Monaco</title>
+<style>
+html, body, #editor {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    overflow: hidden;
+    background: #0E0F18;
+    font-family: -apple-system, system-ui, sans-serif;
+}
+#editor { position: absolute; inset: 0; }
+.loading {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: #aaa; font-size: 13px;
+}
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/editor/editor.main.css">
+</head>
+<body>
+<div id="editor"><div class="loading">Loading Monaco editor…</div></div>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
+<script>
+require.config({
+    paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs" }
+});
+require(["vs/editor/editor.main"], function () {
+    // Custom dark theme that matches the rest of ManimStudio's UI.
+    monaco.editor.defineTheme("manimstudio-dark", {
+        base: "vs-dark",
+        inherit: true,
+        rules: [
+            { token: "comment",   foreground: "858585", fontStyle: "italic" },
+            { token: "keyword",   foreground: "C49AFF" },
+            { token: "string",    foreground: "8FD86A" },
+            { token: "number",    foreground: "F5A031" },
+            { token: "type.identifier", foreground: "5BBCFF" },
+            { token: "delimiter", foreground: "B0B6C8" },
+        ],
+        colors: {
+            "editor.background":            "#0E0F18",
+            "editor.foreground":            "#ECECF1",
+            "editor.lineHighlightBackground": "#161824",
+            "editor.selectionBackground":   "#3A3D75",
+            "editorLineNumber.foreground":  "#5A5E70",
+            "editorLineNumber.activeForeground": "#A8AECF",
+            "editorIndentGuide.background":  "#1B1D2A",
+            "editorIndentGuide.activeBackground": "#2C2F44",
+            "editorCursor.foreground":      "#7B86FF",
+            "scrollbarSlider.background":   "#1F2236",
+            "scrollbarSlider.hoverBackground": "#2C3050",
+            "scrollbarSlider.activeBackground": "#3A3F70",
+            "minimap.background":           "#0B0C14",
+        },
+    });
+
+    const target = document.getElementById("editor");
+    target.innerHTML = "";  // clear loading text
+    const editor = monaco.editor.create(target, {
+        value: "",
+        language: "python",
+        theme: "manimstudio-dark",
+        fontSize: 13,
+        fontFamily: "ui-monospace, 'SF Mono', Menlo, Monaco, monospace",
+        automaticLayout: true,
+        minimap: { enabled: true, scale: 1 },
+        scrollBeyondLastLine: false,
+        smoothScrolling: true,
+        cursorBlinking: "smooth",
+        cursorSmoothCaretAnimation: "on",
+        renderLineHighlight: "all",
+        roundedSelection: true,
+        padding: { top: 10, bottom: 10 },
+        bracketPairColorization: { enabled: true },
+        guides: { bracketPairs: true, indentation: true },
+        wordWrap: "off",
+        tabSize: 4,
+        insertSpaces: true,
+        formatOnPaste: true,
+        formatOnType: true,
+        suggest: { preview: true, showStatusBar: true, snippetsPreventQuickSuggestions: false },
+    });
+
+    let suppressChange = false;
+    editor.onDidChangeModelContent(function () {
+        if (suppressChange) return;
+        const text = editor.getValue();
+        try {
+            window.webkit.messageHandlers.editorBridge.postMessage({
+                kind: "textChanged", text: text,
+            });
+        } catch (e) {}
+    });
+
+    // ── Swift-callable API
+    window.__editor = {
+        setCode: function (code, language) {
+            const model = editor.getModel();
+            if (!model) return;
+            const lang = language || "python";
+            monaco.editor.setModelLanguage(model, lang);
+            suppressChange = true;
+            model.setValue(code || "");
+            suppressChange = false;
+        },
+        getText: function () { return editor.getValue(); },
+        setLanguage: function (lang) {
+            const model = editor.getModel();
+            if (model) monaco.editor.setModelLanguage(model, lang || "python");
+        },
+        focusEditor: function () { editor.focus(); },
+        insertCode: function (code) {
+            const sel = editor.getSelection();
+            editor.executeEdits("swift-insert", [{
+                range: sel, text: code, forceMoveMarkers: true,
+            }]);
+        },
+        runAction: function (id) {
+            try {
+                editor.focus();
+                const a = editor.getAction(id);
+                if (a) { a.run(); return; }
+                editor.trigger("source", id, null);
+            } catch (e) { console.error("runAction", id, e); }
+        },
+        setMarkers: function (markers) {
+            const model = editor.getModel();
+            if (!model) return;
+            const owner = "manimstudio";
+            if (!Array.isArray(markers) || markers.length === 0) {
+                monaco.editor.setModelMarkers(model, owner, []);
+                return;
+            }
+            const sev = (monaco.MarkerSeverity && monaco.MarkerSeverity.Error) || 8;
+            const out = markers.map(function (m) {
+                const line = Math.max(1, (m.line | 0));
+                const col  = Math.max(1, (m.column | 0) || 1);
+                return {
+                    startLineNumber: line, endLineNumber: line,
+                    startColumn: col, endColumn: col + 1,
+                    message: String(m.message || "Error"),
+                    severity: m.severity || sev,
+                };
+            });
+            monaco.editor.setModelMarkers(model, owner, out);
+            if (out.length > 0) {
+                editor.revealLineInCenterIfOutsideViewport(out[0].startLineNumber);
+            }
+        },
+        setFontSize: function (sz) {
+            editor.updateOptions({ fontSize: sz });
+        },
+    };
+
+    // Tell the host the editor is ready.
+    try {
+        window.webkit.messageHandlers.editorBridge.postMessage({ kind: "ready" });
+    } catch (e) {}
+});
+</script>
+</body>
+</html>

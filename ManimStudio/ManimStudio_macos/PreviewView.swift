@@ -1,6 +1,11 @@
-// PreviewView.swift — AVKit player for the rendered MP4 / MOV.
-// Falls back to an icon + filename when the URL points at a GIF
-// or PNG, since AVPlayer doesn't decode those.
+// PreviewView.swift — AVPlayer-backed video preview with native
+// transport controls (AVPlayerView's built-in inline scrubber +
+// play/pause + volume + share) plus a custom overlay header
+// showing the filename + reveal-in-Finder + open-in-default-app.
+//
+// AVPlayerView (NSView, AVKit) does the heavy lifting — controls
+// auto-hide, scrubber works, fullscreen works. We just wrap and
+// add the header strip on top.
 import SwiftUI
 import AVKit
 import AppKit
@@ -10,7 +15,7 @@ struct PreviewView: View {
 
     var body: some View {
         ZStack {
-            Theme.bgPrimary.ignoresSafeArea()
+            Theme.bgDeepest.ignoresSafeArea()
             if let url = url {
                 content(for: url)
             } else {
@@ -24,28 +29,70 @@ struct PreviewView: View {
         let ext = url.pathExtension.lowercased()
         switch ext {
         case "mp4", "mov", "m4v", "webm":
-            VideoPlayer(player: AVPlayer(url: url))
-        case "png", "jpg", "jpeg", "gif":
-            // NSImage handles each of these including animated GIF
-            // (with the right tweaks; SwiftUI's Image will at least
-            // show the first frame).
-            if let nsImg = NSImage(contentsOf: url) {
-                Image(nsImage: nsImg)
-                    .resizable()
-                    .scaledToFit()
-                    .padding()
-            } else {
-                emptyState
+            VStack(spacing: 0) {
+                previewHeader(url)
+                AVPlayerViewRepresentable(url: url)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        case "png", "jpg", "jpeg", "gif", "webp", "heic":
+            VStack(spacing: 0) {
+                previewHeader(url)
+                if let nsImg = NSImage(contentsOf: url) {
+                    Image(nsImage: nsImg)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(20)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    emptyState
+                }
             }
         default:
             VStack(spacing: 8) {
                 Image(systemName: "doc")
-                    .font(.system(size: 28))
+                    .font(.system(size: 32))
+                    .foregroundStyle(Theme.textDim)
                 Text(url.lastPathComponent)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    @ViewBuilder
+    private func previewHeader(_ url: URL) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "play.rectangle.fill")
+                .foregroundStyle(Theme.indigo)
+            Text(url.lastPathComponent)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1).truncationMode(.middle)
+            Spacer()
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } label: {
+                Image(systemName: "magnifyingglass.circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .help("Reveal in Finder")
+            Button {
+                NSWorkspace.shared.open(url)
+            } label: {
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .help("Open with default app")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(Theme.bgSecondary)
+        .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1),
+                 alignment: .bottom)
     }
 
     private var emptyState: some View {
@@ -53,12 +100,44 @@ struct PreviewView: View {
             Image(systemName: "play.rectangle")
                 .font(.system(size: 44))
                 .foregroundStyle(Theme.textDim)
+                .symbolEffect(.pulse, options: .repeating)
             Text("No preview yet")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
-            Text("Hit Render or Preview")
-                .font(.system(size: 11))
+            Text("⌘R = Render  ·  ⇧⌘R = Preview")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(Theme.textDim)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - AVPlayerView wrapper
+
+/// Native NSView-backed `AVPlayerView` (AVKit) with the inline
+/// transport bar — scrubber, time labels, play/pause/volume
+/// controls, AirPlay, fullscreen. Significantly nicer than
+/// SwiftUI's `VideoPlayer` for a desktop preview pane.
+struct AVPlayerViewRepresentable: NSViewRepresentable {
+    let url: URL
+    func makeNSView(context: Context) -> AVPlayerView {
+        let v = AVPlayerView()
+        v.player = AVPlayer(url: url)
+        v.controlsStyle = .inline
+        v.showsFullScreenToggleButton = true
+        v.showsTimecodes = false
+        v.allowsPictureInPicturePlayback = true
+        v.player?.isMuted = false
+        // Auto-play on appear so the user sees the result immediately
+        // after a render finishes.
+        v.player?.play()
+        return v
+    }
+    func updateNSView(_ v: AVPlayerView, context: Context) {
+        // Replace the player when the URL changes (new render).
+        if (v.player?.currentItem?.asset as? AVURLAsset)?.url != url {
+            v.player = AVPlayer(url: url)
+            v.player?.play()
         }
     }
 }

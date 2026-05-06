@@ -23,14 +23,17 @@ final class VenvManager: ObservableObject {
 
     // ── Phase-aware status with rich progress info.
     enum Phase: String, Equatable {
-        case idle, creatingVenv, upgradingPip,
+        case idle, checkingDeps, installingDeps,
+             creatingVenv, upgradingPip,
              installingPackages, verifying, ready, failed
         var label: String {
             switch self {
             case .idle:               return "Idle"
+            case .checkingDeps:       return "Checking system dependencies"
+            case .installingDeps:     return "Installing Cairo via Homebrew"
             case .creatingVenv:       return "Creating virtualenv"
             case .upgradingPip:       return "Upgrading pip"
-            case .installingPackages: return "Installing packages"
+            case .installingPackages: return "Installing Python packages"
             case .verifying:          return "Verifying manim"
             case .ready:              return "Ready"
             case .failed:             return "Failed"
@@ -108,12 +111,89 @@ final class VenvManager: ObservableObject {
 
     /// Drives the entire wizard pipeline. Errors are reported via
     /// `phase = .failed` + `failureReason` rather than thrown.
+    /// Brew prefix candidates (apple silicon first, then Intel).
+    static let brewPrefixCandidates: [URL] = [
+        URL(fileURLWithPath: "/opt/homebrew"),
+        URL(fileURLWithPath: "/usr/local"),
+    ]
+    /// Returns a Homebrew prefix URL where `lib/pkgconfig/cairo.pc`
+    /// is present, or nil if Cairo isn't installed.
+    static var cairoBrewPrefix: URL? {
+        for p in brewPrefixCandidates {
+            let pc = p.appendingPathComponent("lib/pkgconfig/cairo.pc")
+            if FileManager.default.fileExists(atPath: pc.path) {
+                return p
+            }
+        }
+        return nil
+    }
+    /// Brew binary URL if installed, regardless of Cairo state.
+    static var brewBinary: URL? {
+        for p in brewPrefixCandidates {
+            let bin = p.appendingPathComponent("bin/brew")
+            if FileManager.default.isExecutableFile(atPath: bin.path) {
+                return bin
+            }
+        }
+        return nil
+    }
+
     func setupFromScratch(host hostPython: URL, installKokoro: Bool = false) async {
         await MainActor.run {
             self.log = ""
             self.failureReason = ""
             self.progress = 0
             self.startFlushTimer()
+        }
+
+        // ── Step 0: system dependency check.
+        // pycairo + manimpango can't pip-install on a stock macOS
+        // because they need Cairo + pkg-config at build time. We
+        // detect Homebrew's Cairo install; if missing, run
+        // `brew install cairo pkg-config py3cairo pango`.
+        await MainActor.run {
+            self.phase = .checkingDeps
+            self.appendLog("checking for Cairo + pkg-config…")
+        }
+        if Self.cairoBrewPrefix == nil {
+            await MainActor.run {
+                self.appendLog("Cairo not found in /opt/homebrew or /usr/local")
+            }
+            guard let brew = Self.brewBinary else {
+                await fail(
+                    "Homebrew not installed. ManimStudio needs Cairo, " +
+                    "pkg-config, and Pango to compile pycairo + manimpango. " +
+                    "Install Homebrew from https://brew.sh, then rerun the " +
+                    "wizard.")
+                return
+            }
+            await MainActor.run {
+                self.phase = .installingDeps
+                self.appendLog("running: \(brew.path) install cairo pkg-config py3cairo pango")
+            }
+            // brew install can be slow (Cairo + Pango are big).
+            let ok = await runProcess(
+                executable: brew,
+                args: ["install", "cairo", "pkg-config", "py3cairo", "pango"])
+            if !ok {
+                await fail(
+                    "`brew install cairo pkg-config py3cairo pango` failed. " +
+                    "Try running it yourself in Terminal — output is in the " +
+                    "log above.")
+                return
+            }
+            // Re-check.
+            if Self.cairoBrewPrefix == nil {
+                await fail(
+                    "brew install reported success but cairo.pc still isn't " +
+                    "in /opt/homebrew/lib/pkgconfig or /usr/local/lib/pkgconfig.")
+                return
+            }
+        }
+        await MainActor.run {
+            if let prefix = Self.cairoBrewPrefix {
+                self.appendLog("found Cairo at \(prefix.path)")
+            }
         }
 
         // 1. Wipe any half-baked venv.
@@ -150,11 +230,15 @@ final class VenvManager: ObservableObject {
 
         // ── Step 3: install packages, one at a time, so the wizard
         // can show per-package progress.
-        var pkgs = ["manim", "manim-fonts",
-                    "numpy", "scipy", "matplotlib", "Pillow"]
-        if installKokoro {
-            pkgs.append(contentsOf: ["kokoro-onnx", "webvtt-py"])
-        }
+        let pkgs: [String] = {
+            var list = ["manim", "manim-fonts",
+                        "numpy", "scipy", "matplotlib", "Pillow"]
+            if installKokoro {
+                list.append(contentsOf: ["kokoro-onnx", "webvtt-py"])
+            }
+            return list
+        }()
+        let pkgCount = pkgs.count
         await MainActor.run {
             self.packages = pkgs.map { .init(name: $0, status: .pending) }
             self.phase = .installingPackages
@@ -172,7 +256,7 @@ final class VenvManager: ObservableObject {
             await MainActor.run {
                 self.markPackage(name, status: ok ? .done
                                           : .failed("pip install failed"))
-                let perPackage = 0.65 / Double(pkgs.count)
+                let perPackage = 0.65 / Double(pkgCount)
                 self.progress = 0.25 + perPackage * Double(i + 1)
             }
             if !ok && (name == "manim" || name == "numpy") {
@@ -214,6 +298,7 @@ final class VenvManager: ObservableObject {
 
     // MARK: log batching
 
+    @MainActor
     private func startFlushTimer() {
         stopFlushTimer()
         flushTimer = Timer.scheduledTimer(withTimeInterval: 0.08,
@@ -222,6 +307,7 @@ final class VenvManager: ObservableObject {
         }
         if let t = flushTimer { RunLoop.main.add(t, forMode: .common) }
     }
+    @MainActor
     private func stopFlushTimer() {
         flushTimer?.invalidate()
         flushTimer = nil
@@ -276,6 +362,23 @@ final class VenvManager: ObservableObject {
         let proc = Process()
         proc.executableURL = executable
         proc.arguments = args
+
+        // Wire Homebrew's pkg-config + headers + libs into the
+        // child env so pip install pycairo / manimpango can find
+        // Cairo and Pango at build time. Harmless when Cairo isn't
+        // installed (the paths just won't exist).
+        var env = ProcessInfo.processInfo.environment
+        if let prefix = Self.cairoBrewPrefix {
+            let pkgConfig = "\(prefix.path)/lib/pkgconfig"
+            env["PKG_CONFIG_PATH"] = pkgConfig + ":" + (env["PKG_CONFIG_PATH"] ?? "")
+            // Some setup.py scripts honor these directly.
+            env["CFLAGS"]  = "-I\(prefix.path)/include " + (env["CFLAGS"] ?? "")
+            env["LDFLAGS"] = "-L\(prefix.path)/lib "    + (env["LDFLAGS"] ?? "")
+            // Ensure pkg-config itself is on PATH (Apple Silicon brew
+            // doesn't add /opt/homebrew/bin to non-shell processes).
+            env["PATH"] = "\(prefix.path)/bin:" + (env["PATH"] ?? "")
+        }
+        proc.environment = env
 
         let stdout = Pipe(); let stderr = Pipe()
         proc.standardOutput = stdout

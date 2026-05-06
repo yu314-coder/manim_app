@@ -69,7 +69,9 @@ struct RenderControlsPanel: View {
                 Text("Not set up yet — open the welcome wizard from the menu bar.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textSecondary)
-            case .creatingVenv, .upgradingPip, .installingPackages, .verifying:
+            case .checkingDeps, .installingDeps,
+                 .creatingVenv, .upgradingPip,
+                 .installingPackages, .verifying:
                 Text("Setting up…")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.indigo)
@@ -86,7 +88,9 @@ struct RenderControlsPanel: View {
     private var venvDotState: StatusDot.DotState {
         switch venv.phase {
         case .ready:           return .ok
-        case .creatingVenv, .upgradingPip, .installingPackages, .verifying: return .active
+        case .checkingDeps, .installingDeps,
+             .creatingVenv, .upgradingPip,
+             .installingPackages, .verifying: return .active
         case .failed:          return .error
         default:               return .idle
         }
