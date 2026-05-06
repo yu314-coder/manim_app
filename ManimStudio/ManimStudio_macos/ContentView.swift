@@ -9,16 +9,13 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var app: AppState
-    @StateObject private var render: RenderHolder
-
-    init() {
-        // RenderManager has to be created with the AppState that's
-        // injected via @EnvironmentObject, but @StateObject can't
-        // capture @EnvironmentObject in init. Workaround: defer
-        // construction to onAppear via a Holder that owns the
-        // optional manager.
-        _render = StateObject(wrappedValue: RenderHolder())
-    }
+    /// RenderManager has to be constructed with the AppState that
+    /// the parent injects via @EnvironmentObject, which @StateObject
+    /// can't capture from `init`. We hold it in plain @State and
+    /// initialize lazily in `onAppear`. RenderManager doesn't need
+    /// to publish — the views observe AppState's @Published props
+    /// (terminalText, isRendering, lastRenderURL) instead.
+    @State private var renderManager: RenderManager?
 
     var body: some View {
         NavigationSplitView {
@@ -31,8 +28,8 @@ struct ContentView: View {
         .background(Theme.bgPrimary)
         .preferredColorScheme(.dark)
         .onAppear {
-            if render.manager == nil {
-                render.manager = RenderManager(app: app)
+            if renderManager == nil {
+                renderManager = RenderManager(app: app)
             }
         }
         .toolbar { toolbarContent }
@@ -92,7 +89,7 @@ struct ContentView: View {
         ToolbarItemGroup(placement: .primaryAction) {
             // Render — primary gradient action.
             Button {
-                render.manager?.renderFinal()
+                renderManager?.renderFinal()
             } label: {
                 Label("Render", systemImage: "play.fill")
             }
@@ -101,7 +98,7 @@ struct ContentView: View {
             .disabled(app.isRendering)
 
             Button {
-                render.manager?.renderPreview()
+                renderManager?.renderPreview()
             } label: {
                 Label("Preview", systemImage: "eye")
             }
@@ -111,7 +108,7 @@ struct ContentView: View {
 
             if app.isRendering {
                 Button(role: .destructive) {
-                    render.manager?.stop()
+                    renderManager?.stop()
                 } label: {
                     Label("Stop", systemImage: "stop.fill")
                 }
@@ -160,13 +157,6 @@ struct ContentView: View {
         if !app.selectedScene.isEmpty { return app.selectedScene }
         return scenes.isEmpty ? "No Scene" : (scenes.first ?? "")
     }
-}
-
-// MARK: - holder wrapper for the render manager
-
-@MainActor
-final class RenderHolder: ObservableObject {
-    var manager: RenderManager?
 }
 
 // MARK: - placeholders for non-workspace sections
