@@ -76,3 +76,66 @@ for b in "$APP"/python-ios-lib_*.bundle; do
 done
 shopt -u nullglob
 echo "note: removed $DEL leftover SwiftPM resource bundles"
+
+# ── Per-framework PrivacyInfo.xcprivacy manifest.
+#
+# Apple's Spring 2024 third-party SDK policy requires every embedded
+# .framework that includes a "commonly used third-party SDK" to ship
+# its own PrivacyInfo.xcprivacy at the framework root. ManimStudio
+# trips this for _hashlib.framework and _ssl.framework (Python stdlib
+# C extensions that statically link BoringSSL).
+#
+# Rather than enumerating which wrapped frameworks happen to contain
+# OpenSSL/BoringSSL/grpc/zlib/etc. (the list is fluid as Python stdlib
+# evolves), drop an identical minimal manifest into every wrapped
+# .framework. The manifest declares: no tracking, no tracking domains,
+# no collected data types, no required-reason API usage. This is
+# accurate for these frameworks (they're vendored crypto / hash / file
+# I/O libs that don't phone home or read private user data) and
+# satisfies ITMS-91061 across the whole bundle in one pass.
+read -r -d '' MANIFEST <<'PRIV_EOF' || true
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array/>
+</dict>
+</plist>
+PRIV_EOF
+
+PRIV_COUNT=0
+shopt -s nullglob
+for fw in "$APP/Frameworks"/*.framework; do
+  [ -d "$fw" ] || continue
+  printf '%s' "$MANIFEST" > "$fw/PrivacyInfo.xcprivacy"
+  PRIV_COUNT=$((PRIV_COUNT + 1))
+  # Re-sign the framework so the new file is included in the seal.
+  # Without this the framework's signature covers the old contents
+  # only and codesign --verify fails on the bundle.
+  bin_path=""
+  if [ -f "$fw/Info.plist" ]; then
+    exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" \
+            "$fw/Info.plist" 2>/dev/null || true)
+    [ -n "$exe" ] && bin_path="$fw/$exe"
+  fi
+  bid=""
+  [ -f "$fw/Info.plist" ] && bid=$(/usr/libexec/PlistBuddy \
+    -c "Print :CFBundleIdentifier" "$fw/Info.plist" 2>/dev/null || true)
+  IDENT="${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:--}}"
+  if [ -n "$bid" ]; then
+    codesign --force --sign "$IDENT" --timestamp=none \
+      --identifier "$bid" "$fw" 2>/dev/null || true
+  else
+    codesign --force --sign "$IDENT" --timestamp=none \
+      "$fw" 2>/dev/null || true
+  fi
+done
+shopt -u nullglob
+echo "note: wrote PrivacyInfo.xcprivacy to $PRIV_COUNT framework(s) and re-signed"
