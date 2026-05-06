@@ -161,12 +161,14 @@ final class IPCHandler: NSObject, WKScriptMessageHandler,
         }
     }
 
-    /// Phase 1 stub — every call resolves to `null`. PythonHost will
-    /// replace this with a real Python invocation in Phase 2.
+    /// Phase 2 — forward every JS pywebview.api.* call to the
+    /// embedded Python's `bootstrap_macos.api.<method>(*args)`.
+    /// PythonHost serializes onto its own GIL queue so concurrent
+    /// IPC calls from the WebView don't stomp each other.
     static func dispatch(method: String, args: [Any]) async -> Any? {
-        NSLog("[macos.ipc] %@(%d args) — stub (not wired to Python yet)",
-              method, args.count)
-        return NSNull()
+        await MainActor.run {
+            PythonHost.shared.dispatch(method: method, args: args)
+        }
     }
 
     private func reply(id: Int, payload: Any?) {

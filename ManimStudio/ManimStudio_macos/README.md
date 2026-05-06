@@ -42,18 +42,34 @@ see the existing Windows-app UI render in a native macOS window. Every
 button click hits the IPC stub and gets `null` back, so nothing
 actually renders or saves yet — that's Phase 2.
 
-### ⏳ Phase 2 — Embed Python + wire IPC
+### ✅ Phase 2 — Embed Python + wire IPC (this commit)
 
 - `PythonHost.swift` — embeds `Python.framework` (BeeWare's
-  arm64-macos slice), `Py_Initialize`, imports `app`, owns the GIL.
-- `IPCHandler.dispatch` becomes a real `app.api.<method>(*args)` call
-  via PyObject_CallMethod, with JSON serialization of args/return.
-- macOS-specific shims in `app.py` for `winpty` → `pty.openpty`,
-  `cmd.exe` → `/bin/zsh`, `\\` → `/`. ~50 LOC.
-- Bundle `manim`, `numpy`, `scipy`, `matplotlib`, `kokoro-onnx`,
-  `pywebview`-style helpers into `Resources/site-packages/` via a
-  build-phase shell script (parallel to `install-python-stdlib.sh`
-  but for macOS).
+  macOS slice), `Py_Initialize`, owns the GIL on a dedicated
+  serial dispatch queue. `dispatch(method:args:)` JSON-encodes
+  the JS args, runs a tiny `getattr(api, method)(*args)` wrapper
+  via `PyRun_SimpleString`, JSON-encodes the return value, and
+  hands it back through a temp file (avoids walking the C API
+  for every primitive).
+- `IPCHandler.dispatch` now calls `PythonHost.shared.dispatch(...)`
+  instead of returning `null`. JSON shape is preserved end-to-end:
+  JS → Swift `[Any]` → JSON string → Python `json.loads` → method
+  call → JSON-encoded return → Swift JSON object → JS Promise.
+- `PythonApp/bootstrap_macos.py` — entry point loaded once after
+  `Py_Initialize`. Applies platform shims **before** importing
+  `app`:
+  - `winpty` → wrapper around `pty.openpty()` + `posix_spawn`
+  - `webview` → no-op stub (we don't need PyWebView's window)
+  - `COMSPEC=/bin/zsh`, `SHELL=/bin/zsh`
+  Then `import app`, instantiate `App()` (or a fallback name),
+  expose as module-level `api`. The Windows `app.py` is left
+  byte-identical so future merges from `main` are clean.
+- `scripts/install-python-macos.sh` — build phase that copies the
+  stdlib + a pip-installed `_vendor/macos-site-packages/` cache
+  into `<App>.app/Contents/Resources/`. First build pip-installs
+  everything once (~5 min); subsequent builds rsync from the cache.
+- `requirements-macos.txt` — pip deps: manim / numpy / scipy /
+  matplotlib / Pillow / webvtt-py / kokoro-onnx / httpx / pyyaml.
 
 ### ⏳ Phase 3 — Native macOS niceties
 

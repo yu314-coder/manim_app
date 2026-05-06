@@ -12,6 +12,16 @@ import SwiftUI
 
 @main
 struct ManimStudio_macosApp: App {
+    init() {
+        // Boot the embedded Python on a background queue at app
+        // launch so by the time the WKWebView finishes loading
+        // `web/index.html` and starts firing pywebview.api.* calls,
+        // PythonHost.shared.isReady is true and the IPC dispatch
+        // resolves immediately. Idempotent — safe to call multiple
+        // times.
+        PythonHost.shared.ensureReady()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

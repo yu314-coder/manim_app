@@ -1,0 +1,36 @@
+# requirements-macos.txt — pip dependencies for the macOS build's
+# embedded Python. The install-python-macos.sh build script runs
+# `pip install --target _vendor/macos-site-packages -r requirements-macos.txt`
+# once, then rsyncs that directory into <App>.app/Contents/Resources/site-packages/
+# on every build.
+#
+# Versions are intentionally loose so the desktop app's eventual
+# next-version can pull the latest patches without a script change.
+# Pin only when a newer release breaks something concretely.
+
+# Core animation engine
+manim>=0.18
+
+# Scientific stack manim depends on (also used by the AI agent's
+# screenshot QA review path).
+numpy>=2.0
+scipy>=1.13
+matplotlib>=3.9
+Pillow>=10.0
+
+# Subtitle / WebVTT generation for auto-narration captions
+webvtt-py>=0.4
+
+# Optional: Kokoro ONNX TTS for the auto-narration feature.
+# Heavy (~310 MB model auto-downloaded on first use) — comment out
+# to ship a smaller .app at the cost of disabling narrate(...).
+kokoro-onnx>=0.4
+
+# AI edit panel — the agent shells out to `claude` and `codex` CLIs,
+# but reads JSONL responses with these libraries.
+httpx>=0.27
+pyyaml>=6.0
+
+# basedpyright LSP is a Node.js package launched via subprocess —
+# install via npm/pnpm in a Resources/node_modules/ tree, not pip.
+# (handled by a separate build phase if/when LSP is wired.)
