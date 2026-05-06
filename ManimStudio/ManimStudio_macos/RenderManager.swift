@@ -1,164 +1,129 @@
-// RenderManager.swift — runs a manim render in a subprocess,
-// streams stdout/stderr into AppState.terminalText, and resolves
-// the produced .mp4 path on success.
+// RenderManager.swift — drives manim render commands through the
+// integrated PTY terminal (TerminalProcessView) so the user sees
+// the actual manim output stream in the same shell they can type
+// into. No hidden subprocess; just a command dispatched via
+// TerminalBridge.
 //
-// macOS Process pattern:
-//   /usr/local/bin/python3.14 -m manim
-//       <scene.py> <SceneName>
-//       <quality flag>  -o <basename>  --format mp4 ...
-//   PYTHONPATH = <App>.app/Contents/Resources/site-packages
-//   cwd        = <writable temp dir per-render>
+// Earlier the render spawned its own Process and tried to mirror
+// stdout/stderr into a separate read-only NSTextView. That panel
+// was replaced by the real terminal, so the render output was
+// silently going nowhere. Now we treat the integrated terminal
+// as the single source of truth for command output.
 //
-// We write the editor buffer to a temp .py file, invoke manim, and
-// poll its stdout/stderr line-buffered through Pipe + readability
-// handlers. Output is appended to AppState.terminalText on the
-// main actor.
+// State coordination:
+//   • app.isRendering tracks whether a manim run is in flight.
+//     Toggled true on send, false when an output file lands or
+//     2 minutes pass without progress (timeout).
+//   • The output poller watches Documents/ManimStudio/Renders/ for
+//     the produced .mp4/.mov/.gif/.png and promotes the newest
+//     non-partial one to app.lastRenderURL. The PreviewView's
+//     AVPlayerView updates automatically.
+//   • Stop sends Ctrl-C through the PTY — manim catches the
+//     KeyboardInterrupt cleanly between animations.
 import Foundation
 
 @MainActor
 final class RenderManager {
 
     let app: AppState
-    private var current: Process?
-    /// Timer that polls the output dir while a render is in flight,
-    /// updating `app.lastRenderURL` to the newest produced
-    /// .mp4/.mov/.gif/.png so the preview pane shows partial movie
-    /// segments mid-render instead of staying empty until the very
-    /// end. The interval is generous (1.2 s) so we don't churn the
-    /// AVPlayer for tiny scenes that finish in under a second.
     private var outputPoller: Timer?
-    /// Set of paths we've already surfaced — keeps the AVPlayer
-    /// from re-loading the same partial repeatedly.
-    private var surfacedURLs: Set<URL> = []
+    private var renderStart: Date = .distantPast
+    private var lastSurfacedURL: URL?
+    private var watchedDir: URL?
 
     init(app: AppState) { self.app = app }
 
     // MARK: trigger
 
-    func renderFinal()  { run(quality: app.renderQuality, fps: app.renderFPS) }
-    func renderPreview() { run(quality: .low, fps: 15) }
+    func renderFinal()  { dispatch(quality: app.renderQuality, fps: app.renderFPS) }
+    func renderPreview() { dispatch(quality: .low, fps: 15) }
 
     func stop() {
-        guard let p = current else { return }
-        p.terminate()
-        current = nil
+        guard app.isRendering else { return }
+        TerminalBridge.shared.interrupt()
+        finishUpUI()
     }
 
     // MARK: core
 
-    private func run(quality: RenderQuality, fps: Int) {
+    private func dispatch(quality: RenderQuality, fps: Int) {
         guard !app.isRendering else { return }
-        // Prefer the per-app venv's python (created by the welcome
-        // wizard via VenvManager) so renders use a pinned manim
-        // instead of whatever happens to be on the user's PATH.
-        // Fall back to host python if the venv isn't ready yet.
-        guard let pyURL = VenvManager.venvPython ?? PythonResolver.pythonURL else {
-            app.appendTerminal(
-                "[render] no Python found. Open the welcome wizard from Help → " +
-                "Set Up Environment, or install Python 3.14 (python.org / " +
-                "`brew install python@3.14`).\n")
-            return
-        }
 
-        // 1. Pick the scene to render.
+        // 1. Resolve the scene.
         let sceneArg = app.selectedScene.isEmpty
             ? (app.detectedScenes.first ?? "")
             : app.selectedScene
         if sceneArg.isEmpty {
-            app.appendTerminal(
-                "[render] no Scene class found in the editor buffer.\n")
+            // Surface the warning into the terminal so the user
+            // sees it in the same place every other render output
+            // appears.
+            TerminalBridge.shared.sendCommand?(
+                "echo '[manimstudio] no Scene class found in the editor buffer'\n")
             return
         }
 
-        // 2. Stage the source + output under
-        //    Documents/ManimStudio/Renders/manim_<id>/
-        // (same path HistoryView walks). Persistent so the user can
-        // find the .mp4 across launches; runDir is deleted only when
-        // they hit "Clear all" in History.
-        let runID  = UUID().uuidString.prefix(8)
+        // 2. Stage scene.py to a per-render directory.
         let docs = FileManager.default.urls(
             for: .documentDirectory, in: .userDomainMask).first!
-        let rendersRoot = docs.appendingPathComponent(
-            "ManimStudio/Renders", isDirectory: true)
-        try? FileManager.default.createDirectory(
-            at: rendersRoot, withIntermediateDirectories: true)
-        let runDir = rendersRoot
+        let runID  = UUID().uuidString.prefix(8)
+        let runDir = docs
+            .appendingPathComponent("ManimStudio/Renders", isDirectory: true)
             .appendingPathComponent("manim_\(runID)", isDirectory: true)
         try? FileManager.default.createDirectory(
             at: runDir, withIntermediateDirectories: true)
-        let sourceURL = runDir.appendingPathComponent("scene.py")
+        let sceneURL = runDir.appendingPathComponent("scene.py")
         do {
-            try app.sourceCode.write(to: sourceURL, atomically: true, encoding: .utf8)
+            try app.sourceCode.write(
+                to: sceneURL, atomically: true, encoding: .utf8)
         } catch {
-            app.appendTerminal("[render] failed to stage scene.py: \(error)\n")
+            TerminalBridge.shared.sendCommand?(
+                "echo '[manimstudio] could not stage scene.py: \(error.localizedDescription)'\n")
             return
         }
 
-        // 3. Compose the manim command.
+        // 3. Compose the manim command line. Run it INSIDE the
+        // venv's python. If the venv is ready, the user's terminal
+        // already has activated it (TerminalProcessView sources
+        // bin/activate at boot), so plain `python` resolves to the
+        // venv binary. Use that path explicitly anyway in case the
+        // user typed `deactivate`.
+        let pythonCmd: String = {
+            if let py = VenvManager.venvPython { return py.path.shellQuoted() }
+            return "python3"
+        }()
         let outputDir = runDir.appendingPathComponent("output", isDirectory: true)
         try? FileManager.default.createDirectory(
             at: outputDir, withIntermediateDirectories: true)
 
-        var args: [String] = [
-            "-m", "manim", "render",
+        let parts: [String] = [
+            pythonCmd, "-m", "manim", "render",
             quality.manimFlag,
             "--fps", String(fps),
-            "--media_dir", outputDir.path,
+            "--media_dir", outputDir.path.shellQuoted(),
+        ] + app.renderFormat.manimArg + [
+            sceneURL.path.shellQuoted(),
+            sceneArg,
         ]
-        args.append(contentsOf: app.renderFormat.manimArg)
-        args.append(sourceURL.path)
-        args.append(sceneArg)
+        let cmd = parts.joined(separator: " ")
 
-        // 4. Launch.
-        let proc = Process()
-        proc.executableURL = pyURL
-        proc.arguments = args
-        proc.currentDirectoryURL = runDir
+        // 4. Send to terminal.
+        TerminalBridge.shared.sendCommand?("\n# manimstudio render\n")
+        TerminalBridge.shared.sendCommand?(cmd + "\n")
 
-        var env = ProcessInfo.processInfo.environment
-        env["PYTHONPATH"]            = PythonResolver.pythonPath
-        env["PYTHONDONTWRITEBYTECODE"] = "1"
-        env["PYTHONUNBUFFERED"]      = "1"
-        env["MANIM_DISABLE_RENDERER_CACHE"] = "1"
-        proc.environment = env
-
-        let stdout = Pipe(); let stderr = Pipe()
-        proc.standardOutput = stdout
-        proc.standardError  = stderr
-        attachReader(stdout)
-        attachReader(stderr)
-
-        proc.terminationHandler = { [weak self] p in
-            Task { @MainActor [weak self] in
-                self?.finished(in: outputDir, exit: p.terminationStatus)
-            }
-        }
-
-        let invocation = ([pyURL.path] + args).joined(separator: " ")
-        app.appendTerminal("\n[render] \(invocation)\n")
         app.isRendering = true
-        surfacedURLs.removeAll()
-        do {
-            try proc.run()
-            current = proc
-            startOutputPoller(in: outputDir)
-        } catch {
-            app.appendTerminal("[render] failed to launch: \(error)\n")
-            app.isRendering = false
-        }
+        renderStart = Date()
+        lastSurfacedURL = nil
+        watchedDir = outputDir
+        startOutputPoller(in: outputDir)
     }
 
-    // MARK: live preview polling
+    // MARK: poller — watches outputDir for produced video files
 
-    /// Walks `outputDir` every ~1.2 s while the render is running,
-    /// promoting the newest .mp4/.mov/.gif/.png to
-    /// `app.lastRenderURL` so the preview pane updates incrementally
-    /// instead of waiting for the final concat step.
     private func startOutputPoller(in outputDir: URL) {
         stopOutputPoller()
         let exts: Set<String> = ["mp4", "mov", "m4v", "gif", "png"]
-        outputPoller = Timer.scheduledTimer(withTimeInterval: 1.2,
-                                             repeats: true) { [weak self] _ in
+        outputPoller = Timer.scheduledTimer(
+            withTimeInterval: 1.2, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 guard let walker = FileManager.default.enumerator(
@@ -169,24 +134,34 @@ final class RenderManager {
                 else { return }
                 var best: (URL, Date)?
                 for case let url as URL in walker {
+                    // Skip per-animation chunks — manim deletes those
+                    // after the final concat finishes.
+                    if url.pathComponents.contains("partial_movie_files") {
+                        continue
+                    }
                     let v = try? url.resourceValues(forKeys: [
                         .isRegularFileKey, .contentModificationDateKey,
                         .fileSizeKey])
                     guard v?.isRegularFile == true,
                           exts.contains(url.pathExtension.lowercased()),
-                          // Skip empty files — manim creates a 0-byte
-                          // mp4 placeholder before the encoder starts
-                          // writing frames; AVPlayer chokes on those.
-                          (v?.fileSize ?? 0) > 0
+                          (v?.fileSize ?? 0) > 0,
+                          let mtime = v?.contentModificationDate,
+                          mtime >= self.renderStart
                     else { continue }
-                    let m = v?.contentModificationDate ?? .distantPast
-                    if best == nil || m > best!.1 { best = (url, m) }
+                    if best == nil || mtime > best!.1 { best = (url, mtime) }
                 }
-                if let (url, _) = best, !self.surfacedURLs.contains(url) {
-                    self.surfacedURLs.insert(url)
+                if let (url, _) = best, url != self.lastSurfacedURL {
+                    self.lastSurfacedURL = url
                     self.app.lastRenderURL = url
-                    self.app.appendTerminal(
-                        "[render] partial available: \(url.lastPathComponent)\n")
+                }
+                // Heuristic for "render finished": the newest file
+                // is older than 8 seconds AND we have something. The
+                // shell's prompt printing isn't easily observable
+                // from here, so we fall back to an idle-window check.
+                if let (_, mtime) = best,
+                   Date().timeIntervalSince(mtime) > 8,
+                   self.app.isRendering {
+                    self.finishUpUI()
                 }
             }
         }
@@ -199,58 +174,18 @@ final class RenderManager {
         outputPoller = nil
     }
 
-    // MARK: pipes → terminal
-
-    private func attachReader(_ pipe: Pipe) {
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            if data.isEmpty { return }
-            let s = String(data: data, encoding: .utf8) ?? ""
-            Task { @MainActor [weak self] in
-                self?.app.appendTerminal(s)
-            }
-        }
-    }
-
-    // MARK: finish
-
-    private func finished(in outputDir: URL, exit: Int32) {
-        // Drain pipes one last time + detach handlers so they don't
-        // hold a strong ref to self and leak the Process.
-        if let p = current {
-            (p.standardOutput as? Pipe)?.fileHandleForReading.readabilityHandler = nil
-            (p.standardError  as? Pipe)?.fileHandleForReading.readabilityHandler = nil
-        }
-        current = nil
+    private func finishUpUI() {
         stopOutputPoller()
-
-        if exit == 0 {
-            // Walk outputDir for the most recently produced video file.
-            let exts: Set<String> = ["mp4", "mov", "gif", "png"]
-            if let walker = FileManager.default.enumerator(
-                at: outputDir,
-                includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey])
-            {
-                var best: (URL, Date)?
-                for case let url as URL in walker {
-                    let v = try? url.resourceValues(forKeys: [
-                        .isRegularFileKey, .contentModificationDateKey])
-                    guard v?.isRegularFile == true,
-                          exts.contains(url.pathExtension.lowercased())
-                    else { continue }
-                    let m = v?.contentModificationDate ?? .distantPast
-                    if best == nil || m > best!.1 { best = (url, m) }
-                }
-                if let url = best?.0 {
-                    app.lastRenderURL = url
-                    app.appendTerminal("[render] complete → \(url.path)\n")
-                } else {
-                    app.appendTerminal("[render] exited 0 but no video file found\n")
-                }
-            }
-        } else {
-            app.appendTerminal("[render] exited with status \(exit)\n")
-        }
         app.isRendering = false
+    }
+}
+
+// MARK: - shell quoting helper
+
+private extension String {
+    /// Wrap a path in single quotes safely, escaping any embedded
+    /// single quotes via `'\''` so the shell sees one argument.
+    func shellQuoted() -> String {
+        "'" + self.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

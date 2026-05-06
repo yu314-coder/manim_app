@@ -151,7 +151,99 @@ require(["vs/editor/editor.main"], function () {
         setFontSize: function (sz) {
             editor.updateOptions({ fontSize: sz });
         },
+        // Receive the venv's introspected symbol index. Shape:
+        //   { modules:[…], members:{mod:[…]}, submodules:{mod:[…]} }
+        // Registers a single Python completion provider that walks
+        // the index and surfaces module / member / submodule names.
+        setSymbolIndex: function (index) {
+            try { window.__symbolIndex = index || {}; } catch (e) {}
+        },
     };
+
+    // ── Completion provider — fed by setSymbolIndex above. The
+    // provider triggers on `.` so dotted access surfaces members,
+    // and on plain word boundaries so module names autocomplete in
+    // import statements.
+    monaco.languages.registerCompletionItemProvider("python", {
+        triggerCharacters: ["."],
+        provideCompletionItems: function (model, position) {
+            const idx = window.__symbolIndex || {};
+            const members   = idx.members    || {};
+            const submodules = idx.submodules || {};
+            const modules   = idx.modules    || Object.keys(members);
+            if (!modules.length) return { suggestions: [] };
+
+            const lineUpToCursor = model.getValueInRange({
+                startLineNumber: position.lineNumber,
+                startColumn: 1,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column,
+            });
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn,
+            };
+
+            // Did the user just type `<something>.`? Walk back from
+            // the cursor to find the dotted prefix.
+            const dotMatch = lineUpToCursor.match(/([A-Za-z_][\w.]*)\.\s*$/);
+            const suggestions = [];
+            const Kind = monaco.languages.CompletionItemKind;
+
+            if (dotMatch) {
+                const prefix = dotMatch[1];
+                const memberList = members[prefix] || [];
+                const subList    = submodules[prefix] || [];
+                memberList.forEach(function (n) {
+                    suggestions.push({
+                        label: n,
+                        kind: Kind.Property,
+                        insertText: n,
+                        range: range,
+                        detail: prefix + "." + n,
+                    });
+                });
+                subList.forEach(function (n) {
+                    suggestions.push({
+                        label: n,
+                        kind: Kind.Module,
+                        insertText: n,
+                        range: range,
+                        detail: prefix + "." + n + "  (submodule)",
+                    });
+                });
+            } else {
+                // Top-level — suggest module names. Helps `import …`
+                // and `from … import` statements.
+                modules.forEach(function (m) {
+                    if (m.indexOf(".") !== -1) return;  // skip dotted
+                    suggestions.push({
+                        label: m,
+                        kind: Kind.Module,
+                        insertText: m,
+                        range: range,
+                        detail: "module",
+                    });
+                });
+                // Also surface manim's top-level names directly so
+                // typing `Sce…` in a fresh file completes to `Scene`.
+                const manim = members["manim"] || [];
+                manim.forEach(function (n) {
+                    suggestions.push({
+                        label: n,
+                        kind: Kind.Class,
+                        insertText: n,
+                        range: range,
+                        detail: "manim." + n,
+                    });
+                });
+            }
+            return { suggestions: suggestions };
+        },
+    });
 
     // Tell the host the editor is ready.
     try {

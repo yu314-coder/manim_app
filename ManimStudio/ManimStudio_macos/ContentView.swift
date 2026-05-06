@@ -44,6 +44,27 @@ struct ContentView: View {
             if renderManager == nil {
                 renderManager = RenderManager(app: app)
             }
+            // Feed Monaco any cached symbol index immediately, then
+            // refresh in the background. The provider tolerates an
+            // empty index so completion still works pre-install.
+            if let cached = MonacoSymbolIndexer.cachedJSON() {
+                monaco.setSymbolIndex(cached)
+            }
+            if venv.isReady {
+                MonacoSymbolIndexer.refresh { json in
+                    if let json = json { monaco.setSymbolIndex(json) }
+                }
+            }
+        }
+        .onChange(of: venv.phase) { _, new in
+            // Re-introspect the moment the venv finishes installing —
+            // gives the user manim/numpy/etc. completion as soon as
+            // the wizard finishes.
+            if new == .ready {
+                MonacoSymbolIndexer.refresh { json in
+                    if let json = json { monaco.setSymbolIndex(json) }
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .renderFinal)) { _ in
             renderManager?.renderFinal()

@@ -25,6 +25,15 @@ struct TerminalProcessView: NSViewRepresentable {
 
         term.processDelegate = context.coordinator
 
+        // Register the send-text callback so RenderManager can push
+        // a `python -m manim render …` command directly into the
+        // shell's stdin. The user sees manim's output stream
+        // through the same xterm-256color view they type into,
+        // exactly like running it from Terminal.app.
+        TerminalBridge.shared.sendCommand = { [weak term] text in
+            term?.send(txt: text)
+        }
+
         // ── Spawn /bin/zsh -i in a working dir under
         // Documents/ManimStudio/. If the venv is ready, source its
         // activate script as the shell's first action so `python`

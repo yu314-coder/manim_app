@@ -11,15 +11,19 @@ import AVKit
 import AppKit
 
 struct PreviewView: View {
+    @EnvironmentObject var app: AppState
     let url: URL?
 
     var body: some View {
         ZStack {
             Theme.bgDeepest.ignoresSafeArea()
-            if let url = url {
-                content(for: url)
-            } else {
-                emptyState
+            VStack(spacing: 0) {
+                previewHeader(url)
+                if let url = url {
+                    content(for: url)
+                } else {
+                    emptyState
+                }
             }
         }
     }
@@ -29,23 +33,17 @@ struct PreviewView: View {
         let ext = url.pathExtension.lowercased()
         switch ext {
         case "mp4", "mov", "m4v", "webm":
-            VStack(spacing: 0) {
-                previewHeader(url)
-                AVPlayerViewRepresentable(url: url)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            AVPlayerViewRepresentable(url: url)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         case "png", "jpg", "jpeg", "gif", "webp", "heic":
-            VStack(spacing: 0) {
-                previewHeader(url)
-                if let nsImg = NSImage(contentsOf: url) {
-                    Image(nsImage: nsImg)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(20)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    emptyState
-                }
+            if let nsImg = NSImage(contentsOf: url) {
+                Image(nsImage: nsImg)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                emptyState
             }
         default:
             VStack(spacing: 8) {
@@ -61,33 +59,55 @@ struct PreviewView: View {
     }
 
     @ViewBuilder
-    private func previewHeader(_ url: URL) -> some View {
+    private func previewHeader(_ url: URL?) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "play.rectangle.fill")
                 .foregroundStyle(Theme.indigo)
-            Text(url.lastPathComponent)
+            Text(url?.lastPathComponent ?? "Preview")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1).truncationMode(.middle)
             Spacer()
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-            } label: {
-                Image(systemName: "magnifyingglass.circle")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.textSecondary)
+
+            // Quality picker — applies to the next ⌘R render. Quick
+            // Preview (⇧⌘R) ignores this and is hard-wired to 480p15.
+            HStack(spacing: 4) {
+                Image(systemName: "speedometer")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textDim)
+                Picker("", selection: $app.renderQuality) {
+                    ForEach(RenderQuality.allCases) { q in
+                        Text(q.label).tag(q)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(width: 110)
+                .tint(Theme.indigo)
+                .help("Render quality (applies to ⌘R)")
             }
-            .buttonStyle(.plain)
-            .help("Reveal in Finder")
-            Button {
-                NSWorkspace.shared.open(url)
-            } label: {
-                Image(systemName: "arrow.up.right.square")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.textSecondary)
+
+            if let url = url {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                } label: {
+                    Image(systemName: "magnifyingglass.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Reveal in Finder")
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Open with default app")
             }
-            .buttonStyle(.plain)
-            .help("Open with default app")
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Theme.bgSecondary)

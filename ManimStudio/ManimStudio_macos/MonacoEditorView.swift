@@ -24,6 +24,7 @@ import AppKit
 final class MonacoController {
     fileprivate weak var view: MonacoEditorWebView?
     func setMarkers(_ markers: [MarkerSpec]) { view?.setMarkers(markers) }
+    func setSymbolIndex(_ json: String) { view?.setSymbolIndex(json) }
     func runAction(_ id: String) { view?.runAction(id) }
     func showFind() { view?.runAction("actions.find") }
     func showFindAndReplace() { view?.runAction("editor.action.startFindReplaceAction") }
@@ -180,6 +181,15 @@ final class MonacoEditorWebView: NSView, WKScriptMessageHandler {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
         run("window.__editor && window.__editor.setMarkers(\(json));")
+    }
+    /// `json` is the raw JSON blob from MonacoSymbolIndexer (same
+    /// shape the JS-side `setSymbolIndex` expects).
+    func setSymbolIndex(_ json: String) {
+        // Sanity-check it parses, then embed as a JS object literal —
+        // Monaco's setSymbolIndex takes the parsed object directly.
+        guard (try? JSONSerialization.jsonObject(
+            with: Data(json.utf8), options: [])) != nil else { return }
+        run("window.__editor && window.__editor.setSymbolIndex(\(json));")
     }
     func refocus() {
         run("window.__editor && window.__editor.focusEditor();")
