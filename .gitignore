@@ -20,3 +20,16 @@ ManimStudio/ManimStudio/Resources/Busytex/
 
 # Last-archive logs from the SwiftSupport injector script.
 scripts/last-archive-postaction.log
+
+# macOS Python pip cache — populated by install-python-macos.sh on first
+# build (or scripts/fetch-macos-python.sh + manual pip). 508 MB, not for
+# git. Each clone reproduces it via:
+#   /usr/local/bin/python3.14 -m pip install --target _vendor/macos-site-packages -r requirements-macos.txt
+_vendor/macos-site-packages/
+
+# BeeWare macOS support download cache (the script writes here while
+# fetching the macOS Python.xcframework slice).
+_vendor/beeware/.macos-python-fetch/
+
+# Backup xcframeworks the fetch script leaves behind on each merge.
+_vendor/beeware/Python.xcframework.bak.*
