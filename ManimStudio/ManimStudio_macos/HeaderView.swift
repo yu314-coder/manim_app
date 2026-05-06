@@ -327,6 +327,8 @@ private struct LatexInstallPopover: View {
     let dvisvgm: LaTeXProbe.Status
     let onRefresh: () -> Void
 
+    @StateObject private var fixer = LaTeXFixer.shared
+
     private static let installLatex   = "brew install --cask basictex"
     private static let installDvisvgm = "brew install dvisvgm"
     private static let installTexPkgs =
@@ -341,40 +343,42 @@ private struct LatexInstallPopover: View {
                     .foregroundStyle(statusTint)
                 Text(headline).font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Button { onRefresh() } label: {
+                Button { onRefresh(); fixer.runEndToEndTest() } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.textSecondary)
                 }
                 .buttonStyle(.plain)
-                .help("Re-check PATH")
+                .help("Re-check PATH and re-run pipeline test")
             }
 
             // ── Found path summary
             statusRow("LaTeX", latex)
             statusRow("dvisvgm", dvisvgm)
+            pipelineRow
 
-            // ── Action items, only when something's missing
-            let needLatex   = !latex.isReady
-            let needDvisvgm = !dvisvgm.isReady
-            if needLatex || needDvisvgm {
+            // ── Auto-fix bar
+            autoFixBar
+
+            // ── Manual install commands (always available)
+            if let why = nextStepDescription {
                 Divider().padding(.vertical, 2)
-                Text("Manim's `Text(...)`, `MathTex(...)` and `Tex(...)` mobjects need both `pdflatex` AND `dvisvgm` to compile to SVG.")
+                Text(why)
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if needLatex {
+            if !latex.isReady {
                 stepLabel("Install BasicTeX (~80 MB)")
                 copyableCommand(Self.installLatex)
                 stepLabel("…then install the manim TeX packages")
                 copyableCommand(Self.installTexPkgs)
             }
-            if needDvisvgm {
+            if !dvisvgm.isReady {
                 stepLabel("Install dvisvgm")
                 copyableCommand(Self.installDvisvgm)
             }
-            if needLatex || needDvisvgm {
+            if !latex.isReady || !dvisvgm.isReady {
                 Text("After installing, click the refresh icon above. Or skip TeX entirely by using non-text mobjects (Circle, Square, Dot, …).")
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textDim)
@@ -382,6 +386,142 @@ private struct LatexInstallPopover: View {
             }
         }
         .padding(14)
+        .onAppear {
+            fixer.detectBrew()
+            if fixer.test == .unknown { fixer.runEndToEndTest() }
+        }
+    }
+
+    // ── pipeline test result row
+    private var pipelineRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: testIcon)
+                .font(.system(size: 12))
+                .foregroundStyle(testTint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("End-to-end test")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(testDetail)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if case .running = fixer.test {
+                ProgressView().controlSize(.small)
+            }
+        }
+    }
+
+    private var testIcon: String {
+        switch fixer.test {
+        case .passed:     return "checkmark.circle.fill"
+        case .failed:     return "xmark.circle.fill"
+        case .running:    return "arrow.triangle.2.circlepath"
+        case .unknown:    return "questionmark.circle"
+        }
+    }
+    private var testTint: Color {
+        switch fixer.test {
+        case .passed:     return Theme.success
+        case .failed:     return Theme.amber
+        case .running:    return Theme.indigo
+        case .unknown:    return Theme.textDim
+        }
+    }
+    private var testDetail: String {
+        switch fixer.test {
+        case .passed(let bytes):
+            return "compiled MathTex → \(bytes)-byte SVG ✓"
+        case .failed(let stage, let msg):
+            return "\(stage.rawValue): \(msg)"
+        case .running:
+            return "compiling test MathTex through pdflatex + dvisvgm…"
+        case .unknown:
+            return "not run yet"
+        }
+    }
+
+    // ── Auto-fix action bar
+    @ViewBuilder
+    private var autoFixBar: some View {
+        let plan = fixer.plan(latex: latex, dvisvgm: dvisvgm)
+        if plan != .allGood {
+            HStack(spacing: 8) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text(plan.label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Button {
+                    runAutoFix(plan)
+                } label: {
+                    Text("Run")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 6)
+                            .fill(.white.opacity(0.22)))
+                }
+                .buttonStyle(.plain)
+                .disabled(autoFixDisabled(plan))
+                .opacity(autoFixDisabled(plan) ? 0.4 : 1)
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 8)
+                .fill(Theme.signatureGradient))
+        }
+    }
+
+    private func autoFixDisabled(_ plan: LaTeXFixer.NextStep) -> Bool {
+        if case .noFixerAvailable = plan { return true }
+        return false
+    }
+
+    /// Dispatches the planned command into the integrated terminal
+    /// so the user sees real-time progress + can intervene if asked
+    /// for a password (cask install) or a y/N confirmation.
+    private func runAutoFix(_ plan: LaTeXFixer.NextStep) {
+        switch plan {
+        case .installLatex:
+            TerminalBridge.shared.runInShell(Self.installLatex)
+        case .installDvisvgm:
+            TerminalBridge.shared.runInShell(Self.installDvisvgm)
+        case .installManimTeXPackages:
+            TerminalBridge.shared.runInShell(Self.installTexPkgs)
+        case .restartShellForEnvVars:
+            // Manual — the user has to close + reopen the workspace.
+            // Leave a hint in the terminal so they can fix the
+            // running shell without restarting the app.
+            TerminalBridge.shared.runInShell(
+                "export TEXMFROOT=$(ls -1d /usr/local/texlive/*basic 2>/dev/null | sort -r | head -1) && export TEXMFCNF=\"$TEXMFROOT/texmf-dist/web2c\" && echo set TEXMFROOT=$TEXMFROOT")
+        case .allGood, .noFixerAvailable:
+            break
+        }
+        // Re-probe and re-test in 30s — gives brew time to finish
+        // most installs. User can also click the refresh icon.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+            onRefresh()
+            fixer.runEndToEndTest()
+        }
+    }
+
+    private var nextStepDescription: String? {
+        let plan = fixer.plan(latex: latex, dvisvgm: dvisvgm)
+        switch plan {
+        case .allGood:
+            return nil
+        case .installLatex, .installDvisvgm, .installManimTeXPackages:
+            return "Manim's `Text(...)`, `MathTex(...)` and `Tex(...)` mobjects need both `pdflatex` AND `dvisvgm` to compile to SVG."
+        case .restartShellForEnvVars:
+            return "Both pieces are installed but the running shell hasn't picked up the TEXMF env vars. Click \"Run\" above to export them in the current session, or restart the workspace tab."
+        case .noFixerAvailable(let reason):
+            return reason + ". Install Homebrew first (https://brew.sh) then come back here."
+        }
     }
 
     @ViewBuilder
