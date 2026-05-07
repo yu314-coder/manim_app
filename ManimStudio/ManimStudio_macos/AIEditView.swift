@@ -24,27 +24,35 @@ import AppKit
 struct AIEditView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var svc = AIEditService()
+    @StateObject private var registry = AIModelRegistry.shared
     @Binding var open: Bool
 
     @State private var prompt: String = ""
     @State private var selectedAlias: String = ""
 
-    /// Aliases for the model picker. The CLI resolves each to a real
-    /// model and the resolved name is shown next to the alias once
-    /// it's been seen.
+    /// CLI-side aliases ("opus", "sonnet", "haiku" for claude;
+    /// "Auto" / no flag for codex). Always surfaced as a top section
+    /// in the picker so the user can let the CLI pick the latest
+    /// version automatically.
     private var aliases: [(id: String, label: String)] {
         switch svc.provider {
         case .claude:
             return [("",        "Auto"),
-                    ("opus",    "Opus"),
-                    ("sonnet",  "Sonnet"),
-                    ("haiku",   "Haiku")]
+                    ("opus",    "Opus (latest)"),
+                    ("sonnet",  "Sonnet (latest)"),
+                    ("haiku",   "Haiku (latest)")]
         case .codex:
-            return [("",                  "Auto"),
-                    ("gpt-5-codex",       "GPT-5 Codex"),
-                    ("gpt-5",             "GPT-5"),
-                    ("gpt-5-mini",        "GPT-5 Mini"),
-                    ("o3",                "o3")]
+            return [("", "Auto")]
+        }
+    }
+
+    /// Model IDs auto-discovered from each CLI's local cache. Shown
+    /// below the aliases so the user can pin to a specific version.
+    /// See AIModelRegistry for sources.
+    private var discovered: [AIModelRegistry.DiscoveredModel] {
+        switch svc.provider {
+        case .claude: return registry.claudeModels
+        case .codex:  return registry.codexModels
         }
     }
 
@@ -61,7 +69,10 @@ struct AIEditView: View {
             }
         }
         .background(Theme.bgPrimary)
-        .onAppear { svc.probeCLI() }
+        .onAppear {
+            svc.probeCLI()
+            registry.refresh()
+        }
     }
 
     // MARK: - header
@@ -198,17 +209,41 @@ struct AIEditView: View {
 
     private var modelMenu: some View {
         Menu {
-            ForEach(aliases, id: \.id) { entry in
-                Button { selectedAlias = entry.id } label: {
-                    if let resolved = svc.resolvedName(
-                        for: entry.id.isEmpty ? "default" : entry.id) {
-                        Text("\(entry.label) — \(resolved)")
-                    } else {
-                        Text(entry.label)
+            // ── Aliases (CLI auto-resolves to current version)
+            Section("Aliases") {
+                ForEach(aliases, id: \.id) { entry in
+                    Button { selectedAlias = entry.id } label: {
+                        if let resolved = svc.resolvedName(
+                            for: entry.id.isEmpty ? "default" : entry.id) {
+                            Text("\(entry.label) — \(resolved)")
+                        } else {
+                            Text(entry.label)
+                        }
+                    }
+                }
+            }
+            // ── Discovered specific versions (auto-found on disk).
+            if !discovered.isEmpty {
+                Section("On this machine") {
+                    ForEach(discovered, id: \.id) { m in
+                        Button { selectedAlias = m.id } label: {
+                            if let detail = m.detail, !detail.isEmpty {
+                                VStack(alignment: .leading) {
+                                    Text(m.display)
+                                    Text(detail)
+                                        .font(.system(size: 9))
+                                }
+                            } else {
+                                Text("\(m.display) — \(m.id)")
+                            }
+                        }
                     }
                 }
             }
             Divider()
+            Button("Re-scan local model caches") {
+                registry.refresh()
+            }
             if svc.provider == .claude, !svc.claudeCLIVersion.isEmpty {
                 Text(svc.claudeCLIVersion)
             }
@@ -233,6 +268,10 @@ struct AIEditView: View {
     }
 
     private var menuLabel: String {
+        // Discovered specific model picked → show its display name.
+        if let m = discovered.first(where: { $0.id == selectedAlias }) {
+            return m.display
+        }
         let entry = aliases.first(where: { $0.id == selectedAlias })
             ?? aliases[0]
         if let resolved = svc.resolvedName(
