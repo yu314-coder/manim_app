@@ -157,6 +157,20 @@ struct AIEditView: View {
             guard let apply = apply else { return }
             applyAndRunAgent(apply)
         }
+        // Visual-QA: when the auto-render preview lands, send the
+        // frames back through claude with the Review prompt. Caps
+        // the window at 60s after arming so a stale render from
+        // earlier in the session doesn't accidentally trigger.
+        .onChange(of: app.lastRenderURL) { _, newURL in
+            guard let newURL = newURL,
+                  let pending = pendingReview,
+                  Date().timeIntervalSince(pending.armedAt) < 60 else {
+                return
+            }
+            pendingReview = nil
+            Task { await runReviewPass(videoURL: newURL,
+                                       goal: pending.goal) }
+        }
         .overlay(agentCursorOverlay)
     }
 
@@ -166,6 +180,14 @@ struct AIEditView: View {
     /// confusing — most users don't expect their cursor to move on
     /// its own).
     @State private var agentTrace: AgentTrace? = nil
+    /// Set when an agent run kicks off auto-render and we want to
+    /// queue a visual-QA review pass once the .mp4 lands. Cleared
+    /// when the review fires or after a 60s safety window.
+    @State private var pendingReview: PendingReview? = nil
+    struct PendingReview: Equatable {
+        let goal: String
+        let armedAt: Date
+    }
 
     struct AgentTrace: Equatable {
         var sceneName: String
@@ -187,8 +209,35 @@ struct AIEditView: View {
         }
     }
 
+    /// Visual-QA pass: extract frames from the rendered .mp4 at 1
+    /// fps and send them back through claude with the Review prompt.
+    /// Reuses the existing chat session via the service's session-id,
+    /// so this lands as a follow-up turn rather than starting fresh.
+    @MainActor
+    private func runReviewPass(videoURL: URL, goal: String) async {
+        let frames: [URL]
+        do {
+            frames = try await AIReviewer.extractFrames(from: videoURL)
+        } catch {
+            return
+        }
+        guard !frames.isEmpty else { return }
+        let dir = AIReviewer.framesDir(for: videoURL)
+        let prompt = AIReviewer.buildReviewPrompt(originalGoal: goal,
+                                                  framesDir: dir,
+                                                  framePaths: frames)
+        // Send on a tiny delay so the trace overlay finishes its fade
+        // before the new turn appears in the transcript.
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        svc.send(prompt: prompt,
+                 originalCode: app.sourceCode,
+                 modelAlias: "")
+    }
+
     /// Apply, switch the scene picker, and post the render. Each
     /// step ticks the agent trace so the user sees what's happening.
+    /// Also arms a visual-QA review pass keyed on the very next
+    /// `lastRenderURL` change.
     private func applyAndRunAgent(_ apply: AIEditService.PendingApply) {
         // 1. Push the new code into the buffer.
         app.sourceCode = apply.code
@@ -199,6 +248,10 @@ struct AIEditView: View {
             agentTrace = AgentTrace(sceneName: scene.isEmpty ? "Scene" : scene,
                                     step: .applied)
         }
+        // Arm the review-on-render-finished. Use the most recent
+        // user prompt as the goal text.
+        let goal = svc.turns.last?.prompt ?? ""
+        pendingReview = PendingReview(goal: goal, armedAt: Date())
         svc.consumePendingAutoApply()
 
         // 2. Set the scene picker to the agent's choice (after a
