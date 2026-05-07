@@ -121,16 +121,23 @@ struct RenderControlsPanel: View {
     }
 
     private var quickPreviewCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.amber)
                 SectionHeader(title: "Quick Preview")
             }
-            Text("⇧⌘R always renders 480p / 15 fps for fast iteration. Final settings apply only to ⌘R.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textSecondary)
+
+            picker(label: "Quality", selection: $app.previewQuality) {
+                ForEach(RenderQuality.allCases) { q in Text(q.label).tag(q) }
+            }
+            stepper(label: "FPS", value: $app.previewFPS, range: 12...60, step: 3,
+                    presets: [12, 15, 24, 30])
+
+            Text("⇧⌘R uses these. Final ⌘R uses the Final Render card above.")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)

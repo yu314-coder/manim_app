@@ -23,6 +23,11 @@ final class AppState: ObservableObject {
     @Published var renderQuality: RenderQuality = .medium
     @Published var renderFPS: Int = 30
     @Published var renderFormat: RenderFormat = .mp4
+    /// Quality used by ⇧⌘R Quick Preview. Defaults to .low (480p15)
+    /// — same as the previous hard-coded behaviour — but exposed in
+    /// the sidebar so the user can bump it without touching the code.
+    @Published var previewQuality: RenderQuality = .low
+    @Published var previewFPS: Int = 15
     @Published var selectedScene: String = ""
     @Published var lastRenderURL: URL? = nil
 

@@ -21,7 +21,6 @@ struct HeaderView: View {
     @State private var showSettings = false
     @State private var showHelp = false
     @State private var showLatexPopover = false
-    @State private var showAIEdit = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -87,10 +86,6 @@ struct HeaderView: View {
         .sheet(isPresented: $showHelp) {
             HelpSheet()
                 .frame(minWidth: 540, minHeight: 540)
-        }
-        .sheet(isPresented: $showAIEdit) {
-            AIEditView()
-                .environmentObject(app)
         }
         .onAppear { latex.probe() }
     }
@@ -231,7 +226,9 @@ struct HeaderView: View {
 
     private var aiEditButton: some View {
         Button {
-            showAIEdit = true
+            // ContentView listens for this and toggles the embedded
+            // AI Edit panel inside EditorPane.
+            NotificationCenter.default.post(name: .toggleAIEdit, object: nil)
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "wand.and.sparkles")
@@ -247,7 +244,7 @@ struct HeaderView: View {
             .shadow(color: Theme.violet.opacity(0.4), radius: 6, y: 1)
         }
         .buttonStyle(.plain)
-        .help("Edit your scene with Claude (⇧⌘E)")
+        .help("Toggle AI Edit panel in the editor (⇧⌘E)")
         .keyboardShortcut("e", modifiers: [.command, .shift])
     }
 

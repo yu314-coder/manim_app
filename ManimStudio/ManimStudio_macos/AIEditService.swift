@@ -1,24 +1,57 @@
-// AIEditService.swift — drives the `claude` CLI in stream-json mode
-// to perform AI edits on the user's scene buffer. Inspired by the
-// Windows desktop app's ai_edit.py but rewritten for Swift / AppKit.
+// AIEditService.swift — drives Claude Code or OpenAI Codex CLIs to
+// perform AI edits on the user's scene buffer. Mirrors the Windows
+// desktop app's ai_edit.py provider split (claude / codex) plus an
+// agent vs. non-agent mode toggle drawn from the bundled
+// Resources/prompts/ markdown templates.
 //
-// Flow:
-//   1. Write app.sourceCode to ~/Library/Application Support/
-//      ManimStudio/ai-edit-workspace/scene.py
-//   2. Spawn `claude -p <instruction> --output-format stream-json
-//      --verbose --session-id <uuid> --allowedTools Read,Write,Edit,
-//      Bash,Glob,Grep,WebSearch,WebFetch [--model <id>]` with that
-//      workspace as CWD. claude can Read/Edit scene.py directly.
-//   3. Read stdout line-by-line. Each line is a JSON event; we
-//      extract user-facing text deltas and append to `output`.
-//   4. On exit, read scene.py back. If changed, expose it via
-//      `editedCode` so the UI can show Accept / Reject.
-//   5. Subsequent prompts use --resume <uuid> instead of --session-id
-//      so claude keeps the conversation context.
+// Why two providers: Claude Code's stream-json + session-resume flow
+// is excellent for surgical edits; Codex's --full-auto + JSONL flow
+// is better at multi-file changes and following long agentic plans.
+// The user picks per-task.
+//
+// Why agent vs. edit mode:
+//   • Edit (claude_non_agent.md): one-shot scene.py mutation. Fast.
+//   • Agent (claude_agent.md): multi-step plan-and-execute. Used for
+//     "Generate from description", "Fix render errors", "Improve
+//     visual quality based on screenshots".
+//
+// Resolved model names: each turn's stream contains the actual
+// model the CLI picked (e.g. claude-opus-4-6, gpt-5-codex). We
+// cache it per alias in UserDefaults so the dropdown can show
+// "Opus → claude-opus-4-6" instead of just "Opus (latest)".
 import Foundation
 import Combine
 
 final class AIEditService: ObservableObject {
+
+    // ── provider + mode
+
+    enum Provider: String, CaseIterable, Identifiable, Equatable {
+        case claude, codex
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .claude: return "Claude"
+            case .codex:  return "Codex"
+            }
+        }
+    }
+
+    enum Mode: String, CaseIterable, Identifiable, Equatable {
+        /// One-shot edit → claude_non_agent.md / codex_non_agent.md.
+        case edit
+        /// Multi-step plan-and-execute → claude_agent.md /
+        /// codex_agent.md, plus claude --permission-mode acceptEdits
+        /// / codex --full-auto so tool calls don't pause for prompts.
+        case agent
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .edit:  return "Edit"
+            case .agent: return "Agent"
+            }
+        }
+    }
 
     enum Phase: Equatable {
         case idle
@@ -27,43 +60,51 @@ final class AIEditService: ObservableObject {
         case failed(String)
     }
 
+    @Published var provider: Provider = .claude
+    @Published var mode: Mode = .edit
     @Published private(set) var phase: Phase = .idle
-    /// Concatenated user-facing text from claude's stream — not raw
-    /// JSON. Rendered in the output pane as it streams.
     @Published private(set) var output: String = ""
-    /// Set when the post-run scene.py differs from the original.
     @Published private(set) var editedCode: String? = nil
-    /// Session UUID — re-used across turns so `--resume` works.
     @Published private(set) var sessionId: String = UUID().uuidString
-    /// Per-turn token + cost stats from the system message.
     @Published private(set) var lastCostUSD: Double = 0
     @Published private(set) var lastInputTokens: Int = 0
     @Published private(set) var lastOutputTokens: Int = 0
-    /// Live elapsed seconds during a run; reset on each send.
     @Published private(set) var elapsed: TimeInterval = 0
-    /// Model name as reported by the CLI's stream-json `system/init`
-    /// event — e.g. "claude-opus-4-7[1m]". Lets the UI show the
-    /// real, current model resolved from your local Claude install
-    /// instead of a hardcoded version string.
+    /// The exact model name the CLI used on the last turn —
+    /// "claude-opus-4-6[1m]" / "gpt-5-codex" / etc. Drawn from each
+    /// provider's own initial event in the stream.
     @Published private(set) var resolvedModel: String = ""
-    /// Claude CLI version string discovered at probe time.
-    @Published private(set) var cliVersion: String = ""
+    /// CLI version strings, populated by probeCLI().
+    @Published private(set) var claudeCLIVersion: String = ""
+    @Published private(set) var codexCLIVersion: String = ""
+    /// Cached `alias → resolvedModel` mappings so the dropdown can
+    /// show real names without an extra probe round.
+    @Published private(set) var cachedResolved: [String: String] = [:]
 
     private var firstMessage = true
     private var process: Process?
     private var startedAt: Date = .distantPast
     private var elapsedTimer: Timer?
     private var originalCode: String = ""
+    private var lastAlias: String = ""
 
-    // MARK: - public API
+    private let cacheKey = "ai_edit_resolved_models"
 
-    /// Picks a sensible default of the bundled `claude` CLI. Returns
-    /// nil if not on PATH — UI shows an install hint in that case.
-    static func locateClaudeCLI() -> URL? {
+    init() {
+        // Restore cached alias→model mappings from disk.
+        if let dict = UserDefaults.standard
+            .dictionary(forKey: cacheKey) as? [String: String] {
+            self.cachedResolved = dict
+        }
+    }
+
+    // MARK: - probes
+
+    static func locateCLI(_ name: String) -> URL? {
         for dir in ["/opt/homebrew/bin", "/usr/local/bin",
-                    "/Users/\(NSUserName())/.bun/bin",
-                    "/Users/\(NSUserName())/.npm-global/bin"] {
-            let url = URL(fileURLWithPath: dir).appendingPathComponent("claude")
+                    "\(NSHomeDirectory())/.bun/bin",
+                    "\(NSHomeDirectory())/.npm-global/bin"] {
+            let url = URL(fileURLWithPath: dir).appendingPathComponent(name)
             if FileManager.default.isExecutableFile(atPath: url.path) {
                 return url
             }
@@ -71,19 +112,21 @@ final class AIEditService: ObservableObject {
         return nil
     }
 
-    /// Probe `claude --version` to populate `cliVersion`. Cheap and
-    /// safe to call on view appear.
     func probeCLI() {
         Task.detached(priority: .utility) { [weak self] in
-            let v = Self.runVersion() ?? ""
-            await MainActor.run { self?.cliVersion = v }
+            let claudeV = Self.runVersion(cli: "claude") ?? ""
+            let codexV  = Self.runVersion(cli: "codex")  ?? ""
+            await MainActor.run {
+                self?.claudeCLIVersion = claudeV
+                self?.codexCLIVersion  = codexV
+            }
         }
     }
 
-    private nonisolated static func runVersion() -> String? {
-        guard let cli = locateClaudeCLI() else { return nil }
+    private nonisolated static func runVersion(cli: String) -> String? {
+        guard let url = locateCLI(cli) else { return nil }
         let proc = Process()
-        proc.executableURL = cli
+        proc.executableURL = url
         proc.arguments = ["--version"]
         let out = Pipe()
         proc.standardOutput = out
@@ -106,6 +149,8 @@ final class AIEditService: ObservableObject {
         return dir
     }
 
+    // MARK: - control
+
     func newSession() {
         guard phase != .running else { return }
         sessionId = UUID().uuidString
@@ -119,14 +164,9 @@ final class AIEditService: ObservableObject {
         process?.terminate()
         process = nil
         elapsedTimer?.invalidate()
-        if case .running = phase {
-            phase = .failed("Stopped by user")
-        }
+        if case .running = phase { phase = .failed("Stopped by user") }
     }
 
-    /// Returns the suggested edit (clearing it so it doesn't get
-    /// applied twice) and flips `phase` to `.done(applied: true)`.
-    /// Returns nil if there's nothing to apply.
     @discardableResult
     func acceptEdit() -> String? {
         guard let edited = editedCode else { return nil }
@@ -140,15 +180,13 @@ final class AIEditService: ObservableObject {
         if case .done = phase { phase = .done(applied: false) }
     }
 
-    /// Kick off a run. Streams output into `output`; on exit sets
-    /// `editedCode` if scene.py was modified.
-    func send(prompt: String, originalCode: String, model: String?) {
+    // MARK: - send
+
+    /// Kick off a run. Routes to the active provider's CLI and uses
+    /// the active mode's prompt template. Streams events into
+    /// `output`; on exit sets `editedCode` if scene.py was modified.
+    func send(prompt: String, originalCode: String, modelAlias: String) {
         guard phase != .running else { return }
-        guard let cli = Self.locateClaudeCLI() else {
-            phase = .failed("`claude` CLI not found on PATH. " +
-                            "Install Claude Code: https://claude.com/download")
-            return
-        }
 
         // 1. Stage scene.py.
         let workspace = Self.workspaceURL
@@ -161,15 +199,35 @@ final class AIEditService: ObservableObject {
         }
         self.originalCode = originalCode
         self.editedCode = nil
+        self.lastAlias = modelAlias
 
         // 2. Compose the instruction from the bundled prompt files
-        // (same templates the Windows desktop app uses, dropped into
-        // Resources/prompts/). Falls back to a minimal inline string
-        // if the bundle resource is missing — keeps the feature
-        // working even on dev builds before the resources land.
-        let instruction = Self.composeInstruction(prompt: prompt)
+        // for the active (provider, mode) pair.
+        let instruction = Self.composeInstruction(prompt: prompt,
+                                                  provider: provider,
+                                                  mode: mode)
 
-        // 3. Build the argv.
+        // 3. Spawn the right CLI.
+        switch provider {
+        case .claude: spawnClaude(workspace: workspace,
+                                  instruction: instruction,
+                                  modelAlias: modelAlias)
+        case .codex:  spawnCodex(workspace: workspace,
+                                 instruction: instruction,
+                                 modelAlias: modelAlias)
+        }
+    }
+
+    // MARK: - claude path
+
+    private func spawnClaude(workspace: URL, instruction: String,
+                             modelAlias: String)
+    {
+        guard let cli = Self.locateCLI("claude") else {
+            phase = .failed("`claude` CLI not found. Install Claude Code: " +
+                            "https://claude.com/download")
+            return
+        }
         var args: [String] = [
             "-p", instruction,
             "--output-format", "stream-json",
@@ -181,24 +239,75 @@ final class AIEditService: ObservableObject {
         } else {
             args.append(contentsOf: ["--resume", sessionId])
         }
-        if let model = model, !model.isEmpty {
-            args.append(contentsOf: ["--model", model])
+        if !modelAlias.isEmpty {
+            args.append(contentsOf: ["--model", modelAlias])
+        }
+        // Agent mode: skip permission prompts so multi-step plans
+        // don't hang waiting for an "approve Bash?" answer.
+        if mode == .agent {
+            args.append(contentsOf: ["--permission-mode", "acceptEdits"])
         }
 
-        // 4. Spawn.
+        spawn(executable: cli, args: args, workspace: workspace,
+              extraEnv: ["CLAUDECODE": nil, "CLAUDE_CODE": nil],
+              parser: { [weak self] line in
+                  guard let self = self else { return }
+                  Self.parseClaudeStreamJSON(line, into: self,
+                                             alias: modelAlias)
+              })
+    }
+
+    // MARK: - codex path
+
+    private func spawnCodex(workspace: URL, instruction: String,
+                            modelAlias: String)
+    {
+        guard let cli = Self.locateCLI("codex") else {
+            phase = .failed("`codex` CLI not found. " +
+                            "Install with: npm install -g @openai/codex")
+            return
+        }
+        var args: [String] = [
+            "exec", "-",                  // read prompt from stdin
+            "--skip-git-repo-check",
+            "--json",
+        ]
+        // Agent mode for codex = --full-auto = workspace-write sandbox.
+        // Edit mode keeps the default tighter sandbox.
+        if mode == .agent {
+            args.append("--full-auto")
+        }
+        if !modelAlias.isEmpty {
+            args.append(contentsOf: ["-m", modelAlias])
+        }
+
+        // codex reads the prompt from stdin since we passed `-`.
+        spawn(executable: cli, args: args, workspace: workspace,
+              stdin: instruction,
+              extraEnv: [:],
+              parser: { [weak self] line in
+                  guard let self = self else { return }
+                  Self.parseCodexJSONL(line, into: self,
+                                       alias: modelAlias)
+              })
+    }
+
+    // MARK: - generic spawn
+
+    private func spawn(executable: URL, args: [String],
+                       workspace: URL, stdin: String? = nil,
+                       extraEnv: [String: String?],
+                       parser: @escaping (String) -> Void)
+    {
         let proc = Process()
-        proc.executableURL = cli
+        proc.executableURL = executable
         proc.arguments = args
         proc.currentDirectoryURL = workspace
 
         var env = ProcessInfo.processInfo.environment
-        // Avoid "nested session" error when launched from inside a
-        // Claude Code agent (the user might be in a Claude Code
-        // session right now).
-        env.removeValue(forKey: "CLAUDECODE")
-        env.removeValue(forKey: "CLAUDE_CODE")
-        // Make sure the brew bin dirs are findable for any tools
-        // claude wants to invoke (e.g. python).
+        for (k, v) in extraEnv {
+            if let v = v { env[k] = v } else { env.removeValue(forKey: k) }
+        }
         let extras = ["/opt/homebrew/bin", "/usr/local/bin"]
         env["PATH"] = (extras + (env["PATH"] ?? "").split(separator: ":")
                                                    .map(String.init))
@@ -208,6 +317,12 @@ final class AIEditService: ObservableObject {
         let outPipe = Pipe()
         proc.standardOutput = outPipe
         proc.standardError = outPipe
+
+        if stdin != nil {
+            proc.standardInput = Pipe()
+        } else {
+            proc.standardInput = FileHandle(forReadingAtPath: "/dev/null")
+        }
 
         let startedAt = Date()
         self.startedAt = startedAt
@@ -219,29 +334,32 @@ final class AIEditService: ObservableObject {
                 self?.elapsed = Date().timeIntervalSince(startedAt)
             }
         }
-        if let t = elapsedTimer {
-            RunLoop.main.add(t, forMode: .common)
-        }
+        if let t = elapsedTimer { RunLoop.main.add(t, forMode: .common) }
 
-        do {
-            try proc.run()
-        } catch {
-            phase = .failed("Failed to launch claude: \(error.localizedDescription)")
+        do { try proc.run() }
+        catch {
+            phase = .failed("Failed to launch: \(error.localizedDescription)")
             return
         }
         self.process = proc
         self.phase = .running
         self.output = ""
+        self.resolvedModel = ""
 
-        // 5. Read stdout line-by-line on a background queue,
-        // dispatching parsed events back to the main actor.
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.readStream(from: outPipe.fileHandleForReading,
-                             scenePath: scenePath)
+        // Push stdin if provided (codex prompt).
+        if let stdinStr = stdin,
+           let inHandle = (proc.standardInput as? Pipe)?.fileHandleForWriting {
+            DispatchQueue.global(qos: .utility).async {
+                inHandle.write(stdinStr.data(using: .utf8) ?? Data())
+                try? inHandle.close()
+            }
         }
 
-        // 6. Wait for termination on a background queue, then
-        // finalize state on main.
+        DispatchQueue.global(qos: .userInitiated).async {
+            Self.streamLines(from: outPipe.fileHandleForReading, parser: parser)
+        }
+
+        let scenePath = workspace.appendingPathComponent("scene.py")
         DispatchQueue.global(qos: .utility).async { [weak self] in
             proc.waitUntilExit()
             DispatchQueue.main.async {
@@ -251,82 +369,68 @@ final class AIEditService: ObservableObject {
         }
     }
 
-    // MARK: - private
+    // MARK: - line streaming
 
-    private func readStream(from fh: FileHandle, scenePath: URL) {
+    private static func streamLines(from fh: FileHandle,
+                                    parser: (String) -> Void)
+    {
         var buffer = Data()
         while true {
             let chunk = fh.availableData
             if chunk.isEmpty { break }
             buffer.append(chunk)
-            // Split on newlines; keep the trailing partial line.
             while let nl = buffer.firstIndex(of: 0x0A) {
                 let lineData = buffer.subdata(in: 0..<nl)
                 buffer.removeSubrange(0...nl)
-                guard let line = String(data: lineData, encoding: .utf8) else { continue }
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.isEmpty { continue }
-                Self.parseAndDispatch(trimmed, into: self)
+                guard let line = String(data: lineData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespaces),
+                    !line.isEmpty else { continue }
+                parser(line)
             }
         }
-        // Flush any final partial line.
         if !buffer.isEmpty,
-           let line = String(data: buffer, encoding: .utf8) {
-            Self.parseAndDispatch(line.trimmingCharacters(in: .whitespaces),
-                                  into: self)
+           let line = String(data: buffer, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespaces),
+            !line.isEmpty {
+            parser(line)
         }
     }
 
-    /// Best-effort decode of a stream-json event. We extract user-
-    /// facing text from a few well-known shapes:
-    ///   • {"type":"assistant","message":{"content":[
-    ///       {"type":"text","text":"…"} | {"type":"tool_use",…}]}}
-    ///   • {"type":"result","result":"…"}
-    ///   • {"type":"system","subtype":"init",…}
-    /// Everything else is silently dropped (we don't echo raw JSON).
-    private static func parseAndDispatch(_ jsonLine: String,
-                                         into svc: AIEditService) {
+    // MARK: - claude parser (stream-json)
+
+    private static func parseClaudeStreamJSON(_ jsonLine: String,
+                                              into svc: AIEditService,
+                                              alias: String)
+    {
         guard let data = jsonLine.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+              let obj = try? JSONSerialization.jsonObject(with: data)
+                  as? [String: Any]
         else { return }
-
         let type = (obj["type"] as? String) ?? ""
-
         switch type {
         case "assistant":
             if let msg = obj["message"] as? [String: Any],
                let content = msg["content"] as? [[String: Any]] {
                 for part in content {
                     let kind = (part["type"] as? String) ?? ""
-                    switch kind {
-                    case "text":
-                        if let t = part["text"] as? String {
-                            DispatchQueue.main.async { svc.output += t }
-                        }
-                    case "tool_use":
+                    if kind == "text", let t = part["text"] as? String {
+                        DispatchQueue.main.async { svc.output += t }
+                    } else if kind == "tool_use" {
                         let name = (part["name"] as? String) ?? "tool"
                         let input = part["input"] as? [String: Any] ?? [:]
-                        let summary = describeToolUse(name: name,
-                                                       input: input)
+                        let summary = describeToolUse(name: name, input: input)
                         DispatchQueue.main.async {
                             svc.output += "\n\u{2022} \(summary)\n"
                         }
-                    default:
-                        break
                     }
                 }
             }
         case "result":
-            if let r = obj["result"] as? String {
-                // Result is the final assistant text. Append once with
-                // a separator so the user knows the run finished.
+            if let r = obj["result"] as? String, !r.isEmpty {
                 DispatchQueue.main.async {
-                    if !r.isEmpty {
-                        svc.output += "\n\n— done —\n\(r)\n"
-                    }
+                    svc.output += "\n\n— done —\n\(r)\n"
                 }
             }
-            // Capture totals if present.
             let usage = obj["usage"] as? [String: Any]
             let inT  = (usage?["input_tokens"]  as? Int) ?? 0
             let outT = (usage?["output_tokens"] as? Int) ?? 0
@@ -337,15 +441,12 @@ final class AIEditService: ObservableObject {
                 svc.lastCostUSD      = cost
             }
         case "system":
-            // Init / config messages. Surface the model name once
-            // — and store it so the UI can show the live, resolved
-            // model name instead of guessing from the alias the user
-            // picked. This is the dynamic-discovery path: the CLI
-            // tells us exactly which model handled the turn.
             if let model = obj["model"] as? String {
                 DispatchQueue.main.async {
                     svc.resolvedModel = model
                     svc.output += "[claude · \(model)]\n"
+                    svc.cacheResolved(alias: alias.isEmpty ? "default" : alias,
+                                      to: model)
                 }
             }
         default:
@@ -353,75 +454,75 @@ final class AIEditService: ObservableObject {
         }
     }
 
-    /// Loads `claude_non_agent.md` from the app bundle's Resources/
-    /// prompts/ folder, extracts the `## Without Selection` section,
-    /// and substitutes `{{PROMPT}}`. Mirrors the Windows app's
-    /// _build_ai_instruction() / _load_prompt_section() pair.
-    private static func composeInstruction(prompt: String) -> String {
-        // The "Without Selection" section is the one we want for
-        // full-file edits (no selection range support yet on macOS).
-        if let template = loadPromptSection(file: "claude_non_agent",
-                                            section: "Without Selection") {
-            return template.replacingOccurrences(of: "{{PROMPT}}", with: prompt)
-                + "\n\n" + workspaceRules()
-        }
-        // Fallback if Resources/prompts/ isn't in the bundle yet.
-        return """
-        Read `scene.py` first, then edit it.
-        This is a Manim file.
+    // MARK: - codex parser (JSONL)
 
-        Instruction: \(prompt)
+    private static func parseCodexJSONL(_ jsonLine: String,
+                                        into svc: AIEditService,
+                                        alias: String)
+    {
+        guard let data = jsonLine.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data)
+                  as? [String: Any]
+        else { return }
+        let type = (obj["type"] as? String) ?? ""
 
-        Apply changes and write back to scene.py.
-
-        \(workspaceRules())
-        """
-    }
-
-    /// Loads `workspace_claude.md` and returns its full content (no
-    /// section split). Appended to every instruction so claude knows
-    /// the rules of the sandbox: no pip / python / manim execution,
-    /// only edit scene.py, etc. Same file the Windows app uses.
-    private static func workspaceRules() -> String {
-        if let url = Bundle.main.url(forResource: "workspace_claude",
-                                     withExtension: "md",
-                                     subdirectory: "prompts"),
-           let body = try? String(contentsOf: url, encoding: .utf8) {
-            return body
-        }
-        return ""
-    }
-
-    /// Pulls a `## Header` section out of one of the prompt
-    /// templates. Returns nil if the file or section is missing.
-    private static func loadPromptSection(file: String,
-                                          section: String) -> String? {
-        guard let url = Bundle.main.url(forResource: file,
-                                        withExtension: "md",
-                                        subdirectory: "prompts"),
-              let body = try? String(contentsOf: url, encoding: .utf8)
-        else { return nil }
-        // Walk markdown headers and return the body of the matching
-        // ## section, stopping at the next ## header.
-        var capturing = false
-        var lines: [String] = []
-        for raw in body.components(separatedBy: .newlines) {
-            if raw.hasPrefix("## ") {
-                if capturing { break }
-                let title = raw
-                    .dropFirst(3)
-                    .trimmingCharacters(in: .whitespaces)
-                if title.caseInsensitiveCompare(section) == .orderedSame {
-                    capturing = true
-                    continue
+        switch type {
+        case "thread.started":
+            if let model = obj["model"] as? String {
+                DispatchQueue.main.async {
+                    svc.resolvedModel = model
+                    svc.output += "[codex · \(model)]\n"
+                    svc.cacheResolved(alias: alias.isEmpty ? "default" : alias,
+                                      to: model)
                 }
-            } else if capturing {
-                lines.append(raw)
             }
+        case "item.completed":
+            // Items: agent_message (text), tool_call, etc.
+            guard let item = obj["item"] as? [String: Any] else { break }
+            let itemType = (item["type"] as? String) ?? ""
+            switch itemType {
+            case "agent_message":
+                if let text = item["text"] as? String, !text.isEmpty {
+                    DispatchQueue.main.async { svc.output += text + "\n" }
+                }
+            case "tool_call", "shell_call":
+                let name = (item["name"] as? String) ?? itemType
+                let summary: String
+                if let cmd = item["command"] as? String {
+                    summary = "\(name) → \(cmd.prefix(80))"
+                } else if let path = item["path"] as? String {
+                    summary = "\(name) → \((path as NSString).lastPathComponent)"
+                } else {
+                    summary = name
+                }
+                DispatchQueue.main.async {
+                    svc.output += "\n\u{2022} \(summary)\n"
+                }
+            case "patch_apply":
+                let path = (item["path"] as? String) ?? "(file)"
+                DispatchQueue.main.async {
+                    svc.output += "\n\u{2022} edit → \((path as NSString).lastPathComponent)\n"
+                }
+            default:
+                break
+            }
+        case "turn.completed":
+            let usage = obj["usage"] as? [String: Any]
+            let inT  = (usage?["input_tokens"]  as? Int) ?? 0
+            let outT = (usage?["output_tokens"] as? Int) ?? 0
+            DispatchQueue.main.async {
+                svc.lastInputTokens  = inT
+                svc.lastOutputTokens = outT
+                svc.output += "\n— done —\n"
+            }
+        case "error", "turn.failed":
+            let msg = (obj["message"] as? String)
+                ?? ((obj["error"] as? [String: Any])?["message"] as? String)
+                ?? "codex error"
+            DispatchQueue.main.async { svc.output += "\n[error] \(msg)\n" }
+        default:
+            break
         }
-        let result = lines.joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.isEmpty ? nil : result
     }
 
     private static func describeToolUse(name: String,
@@ -445,13 +546,100 @@ final class AIEditService: ObservableObject {
         }
     }
 
+    // MARK: - prompt loading
+
+    /// Loads the right prompt template for the (provider, mode) pair
+    /// from Resources/prompts/. Falls back to a minimal inline string
+    /// if the bundle resource is missing.
+    private static func composeInstruction(prompt: String,
+                                           provider: Provider,
+                                           mode: Mode) -> String {
+        let baseFile: String
+        let section: String
+        switch (provider, mode) {
+        case (.claude, .edit):  baseFile = "claude_non_agent"; section = "Without Selection"
+        case (.claude, .agent): baseFile = "claude_agent";     section = "Generate"
+        case (.codex,  .edit):  baseFile = "codex_non_agent";  section = "Without Selection"
+        case (.codex,  .agent): baseFile = "codex_agent";      section = "Generate"
+        }
+
+        var instruction: String
+        if let tpl = loadPromptSection(file: baseFile, section: section) {
+            instruction = tpl
+                .replacingOccurrences(of: "{{PROMPT}}",      with: prompt)
+                .replacingOccurrences(of: "{{DESCRIPTION}}", with: prompt)
+        } else {
+            instruction = (mode == .agent)
+                ? "Read scene.py, then implement: \(prompt)\n\nWrite the result to scene.py."
+                : "Read scene.py, then edit it.\n\nInstruction: \(prompt)\n\nApply changes to scene.py."
+        }
+        if let rules = loadRules(provider: provider) {
+            instruction += "\n\n" + rules
+        }
+        return instruction
+    }
+
+    private static func loadRules(provider: Provider) -> String? {
+        let file = (provider == .claude) ? "workspace_claude" : "workspace_codex"
+        guard let url = Bundle.main.url(forResource: file,
+                                        withExtension: "md",
+                                        subdirectory: "prompts"),
+              let body = try? String(contentsOf: url, encoding: .utf8)
+        else { return nil }
+        return body
+    }
+
+    private static func loadPromptSection(file: String,
+                                          section: String) -> String? {
+        guard let url = Bundle.main.url(forResource: file,
+                                        withExtension: "md",
+                                        subdirectory: "prompts"),
+              let body = try? String(contentsOf: url, encoding: .utf8)
+        else { return nil }
+        var capturing = false
+        var lines: [String] = []
+        for raw in body.components(separatedBy: .newlines) {
+            if raw.hasPrefix("## ") {
+                if capturing { break }
+                let title = raw.dropFirst(3)
+                    .trimmingCharacters(in: .whitespaces)
+                if title.caseInsensitiveCompare(section) == .orderedSame {
+                    capturing = true; continue
+                }
+            } else if capturing {
+                lines.append(raw)
+            }
+        }
+        let r = lines.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return r.isEmpty ? nil : r
+    }
+
+    // MARK: - cache
+
+    /// Records that `alias` resolved to `model` on the most recent
+    /// turn. Persisted to UserDefaults so the picker can show the
+    /// real model name on next launch.
+    private func cacheResolved(alias: String, to model: String) {
+        var dict = cachedResolved
+        dict[alias] = model
+        cachedResolved = dict
+        UserDefaults.standard.set(dict, forKey: cacheKey)
+    }
+
+    /// Lookup helper for the UI.
+    func resolvedName(for alias: String) -> String? {
+        cachedResolved[alias.isEmpty ? "default" : alias]
+    }
+
+    // MARK: - finalize
+
     private func finalize(scenePath: URL, exitCode: Int32) {
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         process = nil
-        firstMessage = false  // future turns use --resume
+        firstMessage = false
 
-        // Read scene.py — if it changed, surface the edit.
         let edited: String?
         do {
             let content = try String(contentsOf: scenePath, encoding: .utf8)
@@ -469,10 +657,10 @@ final class AIEditService: ObservableObject {
             if exitCode == 0 {
                 self.phase = .done(applied: false)
                 if output.isEmpty {
-                    self.output = "(claude finished — no changes detected)"
+                    self.output = "(finished — no changes detected)"
                 }
             } else {
-                self.phase = .failed("claude exited \(exitCode)")
+                self.phase = .failed("\(provider.label) exited \(exitCode)")
             }
         }
     }

@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var renderManager: RenderManager?
     @State private var monaco = MonacoController()
     @State private var controlsOpen = true
+    @State private var aiEditOpen = false
     @State private var openPanelShown = false
     @State private var savePanelShown = false
 
@@ -81,6 +82,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .renderStop)) { _ in
             renderManager?.stop()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleAIEdit)) { _ in
+            aiEditOpen.toggle()
+        }
     }
 
     // MARK: detail pane
@@ -101,7 +105,7 @@ struct ContentView: View {
         HStack(spacing: 0) {
             VSplitView {
                 HSplitView {
-                    EditorPane(monaco: monaco)
+                    EditorPane(monaco: monaco, aiEditOpen: $aiEditOpen)
                         .frame(minWidth: 360)
                     PreviewView(url: app.lastRenderURL)
                         .frame(minWidth: 280)
@@ -176,8 +180,25 @@ struct ContentView: View {
 struct EditorPane: View {
     @EnvironmentObject var app: AppState
     let monaco: MonacoController
+    @Binding var aiEditOpen: Bool
 
     var body: some View {
+        // Horizontal split — Monaco on the left, AI Edit panel on the
+        // right when toggled open. Replaces the previous "AI Edit as
+        // a sheet" UX so the user can keep an eye on their code while
+        // iterating on the prompt.
+        HSplitView {
+            editorColumn
+                .frame(minWidth: 360)
+            if aiEditOpen {
+                AIEditView(open: $aiEditOpen)
+                    .frame(minWidth: 320, idealWidth: 380, maxWidth: 520)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+    }
+
+    private var editorColumn: some View {
         VStack(spacing: 0) {
             // Editor mini toolbar — Find / Format / Comment + filename
             HStack(spacing: 8) {
@@ -199,6 +220,25 @@ struct EditorPane: View {
                 editorToolBtn("text.bubble",     "Toggle comment (⌘/)") {
                     monaco.toggleComment()
                 }
+                Button {
+                    withAnimation(.spring(response: 0.3)) { aiEditOpen.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "wand.and.sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("AI")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 6)
+                        .fill(LinearGradient(colors: [Theme.violet, Theme.pink],
+                                             startPoint: .leading,
+                                             endPoint: .trailing)))
+                    .opacity(aiEditOpen ? 1 : 0.85)
+                }
+                .buttonStyle(.plain)
+                .help("Toggle AI Edit panel (⇧⌘E)")
                 Menu {
                     ForEach([10, 12, 13, 14, 16, 18, 20, 24], id: \.self) { sz in
                         Button("\(sz)px") { app.editorFontSize = Double(sz) }
@@ -352,6 +392,7 @@ struct SettingsView: View {
 extension Notification.Name {
     static let renderStop      = Notification.Name("manimstudio.render.stop")
     static let reopenWelcome   = Notification.Name("manimstudio.welcome.reopen")
+    static let toggleAIEdit    = Notification.Name("manimstudio.aiedit.toggle")
 }
 
 #Preview {

@@ -35,8 +35,8 @@ final class RenderManager {
 
     // MARK: trigger
 
-    func renderFinal()  { dispatch(quality: app.renderQuality, fps: app.renderFPS) }
-    func renderPreview() { dispatch(quality: .low, fps: 15) }
+    func renderFinal()   { dispatch(quality: app.renderQuality,   fps: app.renderFPS) }
+    func renderPreview() { dispatch(quality: app.previewQuality,  fps: app.previewFPS) }
 
     func stop() {
         guard app.isRendering else { return }
