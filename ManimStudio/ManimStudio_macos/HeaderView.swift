@@ -21,6 +21,7 @@ struct HeaderView: View {
     @State private var showSettings = false
     @State private var showHelp = false
     @State private var showLatexPopover = false
+    @State private var showAIEdit = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -61,6 +62,7 @@ struct HeaderView: View {
                 if app.isRendering { stopButton }
 
                 Divider().frame(height: 16)
+                aiEditButton
                 gpuToggle
             }
 
@@ -85,6 +87,10 @@ struct HeaderView: View {
         .sheet(isPresented: $showHelp) {
             HelpSheet()
                 .frame(minWidth: 540, minHeight: 540)
+        }
+        .sheet(isPresented: $showAIEdit) {
+            AIEditView()
+                .environmentObject(app)
         }
         .onAppear { latex.probe() }
     }
@@ -221,6 +227,28 @@ struct HeaderView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(".", modifiers: [.command])
         .help("Stop (⌘.)")
+    }
+
+    private var aiEditButton: some View {
+        Button {
+            showAIEdit = true
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "wand.and.sparkles")
+                    .font(.system(size: 11, weight: .bold))
+                Text("AI Edit")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 7)
+                .fill(LinearGradient(colors: [Theme.violet, Theme.pink],
+                                     startPoint: .leading, endPoint: .trailing)))
+            .shadow(color: Theme.violet.opacity(0.4), radius: 6, y: 1)
+        }
+        .buttonStyle(.plain)
+        .help("Edit your scene with Claude (⇧⌘E)")
+        .keyboardShortcut("e", modifiers: [.command, .shift])
     }
 
     private var gpuToggle: some View {
