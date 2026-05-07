@@ -95,7 +95,7 @@ final class AIEditService: ObservableObject {
     struct CodeBlock: Identifiable, Equatable {
         let id: UUID
         let toolName: String   // "Edit" | "Write" | "patch_apply"
-        let path: String       // file the agent is writing
+        var path: String       // file the agent is writing (mutable for streaming)
         var content: String    // streaming buffer
     }
 
@@ -140,6 +140,20 @@ final class AIEditService: ObservableObject {
     private var elapsedTimer: Timer?
     private var originalCode: String = ""
     private var lastAlias: String = ""
+
+    /// Per-content-block streaming state for claude's
+    /// content_block_delta events. Keyed by block index so we
+    /// correlate deltas with the right CodeBlock entry.
+    private var partialBlocks: [Int: PartialBlock] = [:]
+    private struct PartialBlock {
+        var toolName: String
+        var partialJSON: String
+        /// UUID of the matching Turn.codeBlocks entry, if we created
+        /// one (Edit / Write / MultiEdit only). nil for other tools
+        /// — we still accumulate JSON so the next "Edit" delta
+        /// after a "Bash" doesn't get a stale buffer.
+        var codeBlockID: UUID?
+    }
 
     private let cacheKey = "ai_edit_resolved_models"
 
@@ -260,6 +274,7 @@ final class AIEditService: ObservableObject {
         self.originalCode = originalCode
         self.editedCode = nil
         self.lastAlias = modelAlias
+        self.partialBlocks = [:]
 
         // Append a new turn to the chat history — the streamer
         // mutates this entry in place as events arrive.
@@ -302,6 +317,10 @@ final class AIEditService: ObservableObject {
             "-p", instruction,
             "--output-format", "stream-json",
             "--verbose",
+            "--include-partial-messages",  // emits content_block_delta
+                                            // events so we can stream
+                                            // tool_use input_json_delta
+                                            // (=> live code-gen).
             "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch",
         ]
         if firstMessage {
@@ -483,6 +502,36 @@ final class AIEditService: ObservableObject {
         else { return }
         let type = (obj["type"] as? String) ?? ""
         switch type {
+        case "stream_event":
+            // Streaming partial events (with --include-partial-messages).
+            // These let us update tool_use code blocks character by
+            // character as the model writes them. The compact
+            // "assistant" message at end-of-block still arrives and
+            // overwrites with the final canonical input.
+            guard let event = obj["event"] as? [String: Any] else { break }
+            let eventType = (event["type"] as? String) ?? ""
+            if eventType == "content_block_start",
+               let index = event["index"] as? Int,
+               let block = event["content_block"] as? [String: Any],
+               (block["type"] as? String) == "tool_use" {
+                let name = (block["name"] as? String) ?? "tool"
+                DispatchQueue.main.async {
+                    svc.beginPartialBlock(index: index, toolName: name)
+                }
+            } else if eventType == "content_block_delta",
+                      let index = event["index"] as? Int,
+                      let delta = event["delta"] as? [String: Any],
+                      (delta["type"] as? String) == "input_json_delta",
+                      let partial = delta["partial_json"] as? String {
+                DispatchQueue.main.async {
+                    svc.appendPartialJSON(index: index, chunk: partial)
+                }
+            } else if eventType == "content_block_stop",
+                      let index = event["index"] as? Int {
+                DispatchQueue.main.async {
+                    svc.endPartialBlock(index: index)
+                }
+            }
         case "assistant":
             if let msg = obj["message"] as? [String: Any],
                let content = msg["content"] as? [[String: Any]] {
@@ -511,27 +560,25 @@ final class AIEditService: ObservableObject {
                         DispatchQueue.main.async {
                             svc.appendToolCall(name: name, detail: summary)
                         }
-                        // For Edit / Write — capture the actual file
-                        // body so the UI can show what's being
-                        // generated, not just the file name.
-                        if name == "Write" {
+                        // For Edit / Write — finalize the streaming
+                        // CodeBlock with the canonical input from the
+                        // compact event. The stream_event partial
+                        // flow already created and populated the
+                        // entry; we update it in place rather than
+                        // appending a duplicate.
+                        if Self.toolWritesFiles(name) {
                             let path = (input["file_path"] as? String) ?? ""
-                            let content = (input["content"] as? String) ?? ""
-                            if !content.isEmpty {
-                                DispatchQueue.main.async {
-                                    svc.appendCodeBlock(toolName: name,
-                                                         path: path,
-                                                         content: content)
-                                }
+                            let body: String
+                            if name == "Write" {
+                                body = (input["content"] as? String) ?? ""
+                            } else {
+                                body = (input["new_string"] as? String) ?? ""
                             }
-                        } else if name == "Edit" || name == "MultiEdit" {
-                            let path = (input["file_path"] as? String) ?? ""
-                            let new = (input["new_string"] as? String) ?? ""
-                            if !new.isEmpty {
+                            if !body.isEmpty {
                                 DispatchQueue.main.async {
-                                    svc.appendCodeBlock(toolName: name,
-                                                         path: path,
-                                                         content: new)
+                                    svc.finalizeCodeBlock(toolName: name,
+                                                           path: path,
+                                                           content: body)
                                 }
                             }
                         }
@@ -587,6 +634,140 @@ final class AIEditService: ObservableObject {
         let block = CodeBlock(id: UUID(), toolName: toolName,
                               path: path, content: content)
         turns[turns.count - 1].codeBlocks.append(block)
+    }
+
+    // MARK: - claude streaming code-gen (partial messages)
+
+    /// Called on `content_block_start` with type=tool_use. For Edit/
+    /// Write/MultiEdit we create a placeholder CodeBlock the deltas
+    /// will populate; for other tools we still track the partial JSON
+    /// so a later block doesn't pick up stale state.
+    fileprivate func beginPartialBlock(index: Int, toolName: String) {
+        var slot = PartialBlock(toolName: toolName, partialJSON: "",
+                                codeBlockID: nil)
+        if Self.toolWritesFiles(toolName), !turns.isEmpty {
+            let id = UUID()
+            slot.codeBlockID = id
+            turns[turns.count - 1].codeBlocks.append(
+                CodeBlock(id: id, toolName: toolName, path: "", content: ""))
+        }
+        partialBlocks[index] = slot
+    }
+
+    /// Called on `content_block_delta` with input_json_delta. Appends
+    /// the partial chunk and re-extracts the path + content fields so
+    /// the matching CodeBlock updates live.
+    fileprivate func appendPartialJSON(index: Int, chunk: String) {
+        guard var slot = partialBlocks[index] else { return }
+        slot.partialJSON += chunk
+        partialBlocks[index] = slot
+        guard let blockID = slot.codeBlockID,
+              !turns.isEmpty else { return }
+        let path = Self.extractStringField("file_path", from: slot.partialJSON)
+            ?? ""
+        // Edit / MultiEdit have new_string; Write has content.
+        let body = Self.extractStringField("new_string", from: slot.partialJSON)
+            ?? Self.extractStringField("content", from: slot.partialJSON)
+            ?? ""
+        let last = turns.count - 1
+        if let bIdx = turns[last].codeBlocks.firstIndex(where: { $0.id == blockID }) {
+            if !path.isEmpty { turns[last].codeBlocks[bIdx].path = path }
+            turns[last].codeBlocks[bIdx].content = body
+        }
+    }
+
+    fileprivate func endPartialBlock(index: Int) {
+        partialBlocks.removeValue(forKey: index)
+    }
+
+    fileprivate static func toolWritesFiles(_ name: String) -> Bool {
+        name == "Write" || name == "Edit" || name == "MultiEdit"
+    }
+
+    /// Replace the content / path of the latest matching CodeBlock
+    /// (by toolName + path or by toolName alone if path is empty)
+    /// instead of appending a duplicate. Called by the compact
+    /// assistant event after the stream_event partial flow finishes.
+    fileprivate func finalizeCodeBlock(toolName: String, path: String,
+                                       content: String) {
+        guard !turns.isEmpty else { return }
+        let last = turns.count - 1
+        // Search latest-first so we hit the most-recently-streamed entry.
+        if let bIdx = turns[last].codeBlocks.lastIndex(
+            where: { $0.toolName == toolName
+                     && (path.isEmpty || $0.path.isEmpty || $0.path == path) }) {
+            turns[last].codeBlocks[bIdx].content = content
+            if !path.isEmpty {
+                turns[last].codeBlocks[bIdx].path = path
+            }
+        } else {
+            // Stream events didn't fire (e.g. CLI version without
+            // --include-partial-messages); fall back to appending.
+            turns[last].codeBlocks.append(
+                CodeBlock(id: UUID(), toolName: toolName,
+                          path: path, content: content))
+        }
+    }
+
+    /// Best-effort partial-JSON string-field extractor. Walks the
+    /// accumulated JSON looking for `"<field>"\s*:\s*"…` and returns
+    /// the value characters parsed so far, with the JSON string
+    /// escapes interpreted (\\n, \\t, \\\", \\\\, etc.). Returns nil
+    /// if the field hasn't started yet. The string may be incomplete
+    /// — we stop at the first unescaped closing quote, or at the end
+    /// of the buffer if no close has arrived yet.
+    private static func extractStringField(_ field: String,
+                                           from json: String) -> String? {
+        let needle = "\"\(field)\""
+        guard let r = json.range(of: needle) else { return nil }
+        var i = r.upperBound
+        // Skip whitespace + colon.
+        while i < json.endIndex && (json[i].isWhitespace || json[i] == ":") {
+            i = json.index(after: i)
+        }
+        guard i < json.endIndex && json[i] == "\"" else { return nil }
+        i = json.index(after: i)  // skip opening quote
+        var out = ""
+        while i < json.endIndex {
+            let c = json[i]
+            if c == "\\" {
+                let next = json.index(after: i)
+                if next >= json.endIndex { break }  // partial escape
+                let esc = json[next]
+                switch esc {
+                case "n":  out.append("\n")
+                case "t":  out.append("\t")
+                case "r":  out.append("\r")
+                case "\"": out.append("\"")
+                case "\\": out.append("\\")
+                case "/":  out.append("/")
+                case "b":  out.append("\u{08}")
+                case "f":  out.append("\u{0C}")
+                case "u":
+                    // \uXXXX — need 4 hex chars; bail if not yet
+                    // received.
+                    let hexStart = json.index(after: next)
+                    let hexEnd = json.index(hexStart, offsetBy: 4,
+                                             limitedBy: json.endIndex)
+                    guard let hexEnd = hexEnd else { return out }
+                    let hex = String(json[hexStart..<hexEnd])
+                    if let code = UInt32(hex, radix: 16),
+                       let scalar = Unicode.Scalar(code) {
+                        out.append(Character(scalar))
+                    }
+                    i = hexEnd
+                    continue
+                default:
+                    out.append(esc)
+                }
+                i = json.index(after: next)
+                continue
+            }
+            if c == "\"" { break }  // end of string
+            out.append(c)
+            i = json.index(after: i)
+        }
+        return out
     }
     private func updateTurnModel(_ model: String) {
         guard !turns.isEmpty else { return }

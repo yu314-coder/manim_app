@@ -126,12 +126,71 @@ final class AIModelRegistry: ObservableObject {
 
     // MARK: - codex
 
-    /// Reads ~/.codex/models_cache.json. The CLI fetches the user's
-    /// account-available model list and caches it there. Each entry
-    /// has { slug, display_name, description, … }. We surface every
-    /// non-internal slug (filter out "codex-auto-review" — it's an
-    /// internal review-only model not user-pickable).
+    /// Spawns `codex debug models` and parses its raw JSON catalog —
+    /// this is what the codex CLI itself uses to render its own
+    /// model picker, so it stays in sync with whatever the user's
+    /// ChatGPT account has access to (including new models that
+    /// haven't been written to ~/.codex/models_cache.json yet).
+    /// Filters out entries with visibility != "list" (codex hides
+    /// internal review-only models that way).
+    ///
+    /// Falls back to ~/.codex/models_cache.json if the CLI isn't on
+    /// PATH or the subcommand fails for any reason — the cache file
+    /// still has SOMETHING usable even if it's slightly stale.
     private nonisolated static func scanCodex() -> [DiscoveredModel] {
+        if let live = scanCodexLive() { return live }
+        return scanCodexCacheFile()
+    }
+
+    private nonisolated static func scanCodexLive() -> [DiscoveredModel]? {
+        let candidates = ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"]
+        guard let cli = candidates.first(where: {
+            FileManager.default.isExecutableFile(atPath: $0)
+        }) else { return nil }
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: cli)
+        proc.arguments = ["debug", "models"]
+        let outPipe = Pipe()
+        proc.standardOutput = outPipe
+        proc.standardError = Pipe()  // discard
+
+        do { try proc.run() } catch { return nil }
+
+        // Hard timeout — codex debug models is local + fast (~50ms),
+        // but a hung CLI shouldn't freeze the model picker.
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            proc.waitUntilExit()
+            group.leave()
+        }
+        if group.wait(timeout: .now() + .seconds(5)) == .timedOut {
+            proc.terminate()
+            return nil
+        }
+        guard proc.terminationStatus == 0 else { return nil }
+        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+        guard let obj = try? JSONSerialization.jsonObject(with: data)
+                as? [String: Any],
+              let arr = obj["models"] as? [[String: Any]]
+        else { return nil }
+
+        var out: [DiscoveredModel] = []
+        for m in arr {
+            guard let slug = m["slug"] as? String,
+                  let visibility = m["visibility"] as? String,
+                  visibility == "list" else { continue }
+            let display = (m["display_name"] as? String) ?? slug
+            let detail  = m["description"] as? String
+            out.append(DiscoveredModel(id: slug,
+                                       display: display.isEmpty ? slug : display,
+                                       detail: detail))
+        }
+        return out.isEmpty ? nil : out
+    }
+
+    private nonisolated static func scanCodexCacheFile() -> [DiscoveredModel] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let url = home.appendingPathComponent(".codex/models_cache.json")
         guard let data = try? Data(contentsOf: url),
