@@ -36,6 +36,11 @@ final class AIModelRegistry: ObservableObject {
         let id: String         // e.g. "claude-opus-4-7", "gpt-5.4"
         let display: String    // human-readable label
         let detail: String?    // brief description (codex only)
+        /// Reasoning effort levels this model accepts. Empty if the
+        /// CLI / cache didn't report any. Used by the effort picker
+        /// to keep options in sync — codex catalogs these per-model
+        /// (gpt-5.5 supports xhigh; gpt-5.4 doesn't, etc.).
+        let supportedEfforts: [String]
     }
 
     /// Re-scan the local caches. Call on view appear so the picker
@@ -102,9 +107,26 @@ final class AIModelRegistry: ObservableObject {
             // "claude-opus-4-7" → "Opus 4.7"; "claude-haiku-4-5-20251001" → "Haiku 4.5"
             DiscoveredModel(id: entry.key,
                             display: prettyClaudeName(entry.key),
-                            detail: nil)
+                            detail: nil,
+                            // Claude's session JSONL doesn't list
+                            // per-model effort levels; fall back to
+                            // the CLI's universal --effort options.
+                            supportedEfforts: claudeEffortLevels(
+                                forModelID: entry.key))
         }
         return sorted
+    }
+
+    /// Effort levels claude's CLI accepts for `--effort`. The CLI
+    /// itself ships these via its --help output as "(low, medium,
+    /// high, max)" — we reflect that. Haiku family doesn't really
+    /// benefit from effort tuning; it gets a smaller set so the UI
+    /// doesn't expose levels the model will silently ignore.
+    private nonisolated static func claudeEffortLevels(forModelID id: String)
+        -> [String]
+    {
+        if id.contains("haiku") { return ["low", "medium"] }
+        return ["low", "medium", "high", "max"]
     }
 
     private nonisolated static func prettyClaudeName(_ id: String) -> String {
@@ -181,11 +203,10 @@ final class AIModelRegistry: ObservableObject {
             guard let slug = m["slug"] as? String,
                   let visibility = m["visibility"] as? String,
                   visibility == "list" else { continue }
-            let display = (m["display_name"] as? String) ?? slug
-            let detail  = m["description"] as? String
             out.append(DiscoveredModel(id: slug,
-                                       display: display.isEmpty ? slug : display,
-                                       detail: detail))
+                                       display: extractDisplay(m, slug: slug),
+                                       detail: m["description"] as? String,
+                                       supportedEfforts: extractEfforts(m)))
         }
         return out.isEmpty ? nil : out
     }
@@ -204,12 +225,28 @@ final class AIModelRegistry: ObservableObject {
         for m in arr {
             guard let slug = m["slug"] as? String,
                   !exclude.contains(slug) else { continue }
-            let display = (m["display_name"] as? String) ?? slug
-            let detail  = m["description"] as? String
             out.append(DiscoveredModel(id: slug,
-                                       display: display.isEmpty ? slug : display,
-                                       detail: detail))
+                                       display: extractDisplay(m, slug: slug),
+                                       detail: m["description"] as? String,
+                                       supportedEfforts: extractEfforts(m)))
         }
         return out
+    }
+
+    private nonisolated static func extractDisplay(_ m: [String: Any],
+                                                   slug: String) -> String {
+        let display = (m["display_name"] as? String) ?? slug
+        return display.isEmpty ? slug : display
+    }
+
+    /// Pulls supported_reasoning_levels[].effort from a codex model
+    /// catalog entry. Returns ["low", "medium", "high", "xhigh"]
+    /// for gpt-5.5, etc.
+    private nonisolated static func extractEfforts(_ m: [String: Any])
+        -> [String]
+    {
+        guard let levels = m["supported_reasoning_levels"]
+                as? [[String: Any]] else { return [] }
+        return levels.compactMap { $0["effort"] as? String }
     }
 }

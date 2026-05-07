@@ -101,6 +101,15 @@ final class AIEditService: ObservableObject {
 
     @Published var provider: Provider = .claude
     @Published var mode: Mode = .edit
+    /// Reasoning effort for the active model. Empty = let the CLI
+    /// pick. Claude maps to --effort; codex to
+    /// -c model_reasoning_effort. UI is a small picker next to the
+    /// model menu in AIEditView.
+    @Published var effort: String = ""
+    /// File attachments to include with the next prompt. Copied into
+    /// the workspace's attachments/ folder on send so claude / codex
+    /// can Read them by relative path. Cleared after each send.
+    @Published var attachments: [URL] = []
     @Published private(set) var phase: Phase = .idle
     /// One entry per send() — the chat history rendered as message
     /// bubbles in the UI. The most recent turn streams in place.
@@ -218,6 +227,22 @@ final class AIEditService: ObservableObject {
 
     // MARK: - control
 
+    func addAttachments(_ urls: [URL]) {
+        // Filter to actual files and de-duplicate by absolute path so
+        // dragging the same image twice doesn't double-stage it.
+        var existing = Set(attachments.map(\.path))
+        for url in urls {
+            guard FileManager.default.fileExists(atPath: url.path),
+                  !existing.contains(url.path) else { continue }
+            attachments.append(url)
+            existing.insert(url.path)
+        }
+    }
+
+    func removeAttachment(_ url: URL) {
+        attachments.removeAll(where: { $0 == url })
+    }
+
     func newSession() {
         guard phase != .running else { return }
         sessionId = UUID().uuidString
@@ -286,33 +311,91 @@ final class AIEditService: ObservableObject {
                            errorMessage: nil)
         self.turns.append(newTurn)
 
-        // 2. Compose the instruction from the bundled prompt files
-        // for the active (provider, mode) pair.
-        let instruction = Self.composeInstruction(prompt: prompt,
-                                                  provider: provider,
-                                                  mode: mode)
+        // 2. Stage attachments — copy files the user dropped onto the
+        // panel into workspace/attachments/ so claude / codex can
+        // Read them by stable relative path. Names get de-duplicated
+        // by suffixing if a previous turn dropped the same filename.
+        let stagedAttachments = stageAttachments(into: workspace,
+                                                  files: attachments)
+        attachments = []  // consume
 
-        // 3. Spawn the right CLI.
+        // 3. Compose the instruction from the bundled prompt files
+        // for the active (provider, mode) pair.
+        let instruction = Self.composeInstruction(
+            prompt: prompt, provider: provider, mode: mode,
+            attachments: stagedAttachments.map(\.lastPathComponent))
+
+        // 4. Spawn the right CLI.
         switch provider {
         case .claude: spawnClaude(workspace: workspace,
                                   instruction: instruction,
-                                  modelAlias: modelAlias)
+                                  modelAlias: modelAlias,
+                                  attachmentImages: stagedAttachments.filter { Self.isImage($0) })
         case .codex:  spawnCodex(workspace: workspace,
                                  instruction: instruction,
-                                 modelAlias: modelAlias)
+                                 modelAlias: modelAlias,
+                                 attachmentImages: stagedAttachments.filter { Self.isImage($0) })
         }
+    }
+
+    /// Copies user-dropped attachments into <workspace>/attachments/
+    /// with collision-safe names. Returns the staged URLs.
+    private func stageAttachments(into workspace: URL,
+                                  files: [URL]) -> [URL] {
+        guard !files.isEmpty else { return [] }
+        let dir = workspace.appendingPathComponent("attachments",
+                                                    isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true)
+        var out: [URL] = []
+        for src in files {
+            let base = src.deletingPathExtension().lastPathComponent
+            let ext = src.pathExtension
+            var dest = dir.appendingPathComponent(src.lastPathComponent)
+            var i = 2
+            while FileManager.default.fileExists(atPath: dest.path) {
+                let name = ext.isEmpty
+                    ? "\(base)_\(i)"
+                    : "\(base)_\(i).\(ext)"
+                dest = dir.appendingPathComponent(name)
+                i += 1
+            }
+            do {
+                try FileManager.default.copyItem(at: src, to: dest)
+                out.append(dest)
+            } catch {
+                NSLog("[ai-edit] attach copy failed: %@",
+                      error.localizedDescription)
+            }
+        }
+        return out
+    }
+
+    fileprivate static func isImage(_ url: URL) -> Bool {
+        ["png", "jpg", "jpeg", "gif", "webp", "heic", "bmp"]
+            .contains(url.pathExtension.lowercased())
     }
 
     // MARK: - claude path
 
     private func spawnClaude(workspace: URL, instruction: String,
-                             modelAlias: String)
+                             modelAlias: String,
+                             attachmentImages: [URL])
     {
         guard let cli = Self.locateCLI("claude") else {
             phase = .failed("`claude` CLI not found. Install Claude Code: " +
                             "https://claude.com/download")
             return
         }
+        // Agent mode locks the toolset down to Read+Write+Edit so
+        // claude doesn't waste turns running python / bash to "check"
+        // the code before writing it. Read stays in so the review
+        // pass can load frame PNGs. Edit mode keeps the full toolkit
+        // because the user is in control and may want shell access.
+        let tools = (mode == .agent)
+            ? "Read,Write,Edit"
+            : "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch"
+
         var args: [String] = [
             "-p", instruction,
             "--output-format", "stream-json",
@@ -321,8 +404,14 @@ final class AIEditService: ObservableObject {
                                             // events so we can stream
                                             // tool_use input_json_delta
                                             // (=> live code-gen).
-            "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch",
+            "--allowedTools", tools,
         ]
+        // Reasoning effort — passes through to claude's --effort flag.
+        // Values: low / medium / high / max. Picker lives in the
+        // panel's header so the user can dial it per-task.
+        if !effort.isEmpty {
+            args.append(contentsOf: ["--effort", effort])
+        }
         if firstMessage {
             args.append(contentsOf: ["--session-id", sessionId])
         } else {
@@ -349,7 +438,8 @@ final class AIEditService: ObservableObject {
     // MARK: - codex path
 
     private func spawnCodex(workspace: URL, instruction: String,
-                            modelAlias: String)
+                            modelAlias: String,
+                            attachmentImages: [URL])
     {
         guard let cli = Self.locateCLI("codex") else {
             phase = .failed("`codex` CLI not found. " +
@@ -374,6 +464,18 @@ final class AIEditService: ObservableObject {
         }
         if !modelAlias.isEmpty {
             args.append(contentsOf: ["-m", modelAlias])
+        }
+        // Reasoning effort — codex maps "effort" through the
+        // model_reasoning_effort config key (low/medium/high/xhigh
+        // depending on the model). Skip when the user picked Auto.
+        if !effort.isEmpty {
+            args.append(contentsOf: ["-c", "model_reasoning_effort=\(effort)"])
+        }
+        // Image attachments — codex's `-i` flag attaches one image
+        // per repetition. Files are already inside the workspace
+        // (which is also the cwd) so relative paths work.
+        for image in attachmentImages {
+            args.append(contentsOf: ["-i", image.path])
         }
 
         // codex reads the prompt from stdin since we passed `-`.
@@ -909,7 +1011,8 @@ final class AIEditService: ObservableObject {
     /// if the bundle resource is missing.
     private static func composeInstruction(prompt: String,
                                            provider: Provider,
-                                           mode: Mode) -> String {
+                                           mode: Mode,
+                                           attachments: [String] = []) -> String {
         let baseFile: String
         let section: String
         switch (provider, mode) {
@@ -926,11 +1029,33 @@ final class AIEditService: ObservableObject {
                 .replacingOccurrences(of: "{{DESCRIPTION}}", with: prompt)
         } else {
             instruction = (mode == .agent)
-                ? "Read scene.py, then implement: \(prompt)\n\nWrite the result to scene.py."
+                ? "Implement this manim animation by writing scene.py: \(prompt)"
                 : "Read scene.py, then edit it.\n\nInstruction: \(prompt)\n\nApply changes to scene.py."
         }
-        if let rules = loadRules(provider: provider) {
+        // Edit mode appends the workspace rules ("Read scene.py FIRST",
+        // sandbox restrictions, etc.). Agent mode skips them — the
+        // claude_agent.md Generate section is self-contained, and the
+        // workspace rules' "Read FIRST" instruction is wasteful when
+        // the agent is generating fresh code from scratch.
+        if mode == .edit, let rules = loadRules(provider: provider) {
             instruction += "\n\n" + rules
+        } else if mode == .agent {
+            // One-line agent guardrail — replaces the heavy workspace
+            // rules block with the bits that still apply.
+            instruction += "\n\nGuardrails: write scene.py with the " +
+                "Write tool. Do NOT run python / pip / manim. The " +
+                "ManimStudio app handles rendering once scene.py is " +
+                "written."
+        }
+        if !attachments.isEmpty {
+            let list = attachments.map { "  - attachments/\($0)" }
+                .joined(separator: "\n")
+            instruction += """
+
+
+            Reference files (use the Read tool to inspect):
+            \(list)
+            """
         }
         return instruction
     }

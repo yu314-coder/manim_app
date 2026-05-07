@@ -20,6 +20,7 @@
 //   └───────────────────────────────────────────────┘
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Floating "what the agent did" badge row. Shown briefly at the
 /// top of the AI panel after an agent run so the user sees the
@@ -447,10 +448,100 @@ struct AIEditView: View {
                     .tracking(0.5).foregroundStyle(Theme.textDim)
                 modelMenu
                 Spacer()
+                effortMenu
             }
         }
         .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 10)
         .background(Theme.bgSecondary)
+    }
+
+    /// Reasoning-effort picker. The list is model-aware so we never
+    /// show levels the active model doesn't support: codex pulls
+    /// supported_reasoning_levels per model from its catalog (e.g.
+    /// gpt-5.5 has xhigh, gpt-5.4 doesn't); claude defaults to its
+    /// CLI's universal {low, medium, high, max}, with haiku trimmed
+    /// to {low, medium} since it's the budget model.
+    private var effortMenu: some View {
+        let levels = supportedEffortLevels()
+        return Menu {
+            // Auto first — empty string => no flag passed.
+            Button {
+                svc.effort = ""
+            } label: {
+                if svc.effort.isEmpty {
+                    Label("Auto", systemImage: "checkmark")
+                } else {
+                    Text("Auto")
+                }
+            }
+            if !levels.isEmpty { Divider() }
+            ForEach(levels, id: \.self) { e in
+                Button { svc.effort = e } label: {
+                    if svc.effort == e {
+                        Label(e.capitalized, systemImage: "checkmark")
+                    } else {
+                        Text(e.capitalized)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "gauge.high")
+                    .font(.system(size: 9))
+                Text(svc.effort.isEmpty
+                     ? "Auto"
+                     : svc.effort.capitalized)
+                    .font(.system(size: 10, weight: .medium))
+                Image(systemName: "chevron.down").font(.system(size: 8))
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 6)
+                .fill(Theme.bgTertiary))
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 86)
+        .help("Reasoning effort (model-aware)")
+        // If the user picks a model whose supported levels don't
+        // include their previous choice, drop back to Auto so we
+        // don't pass a level the CLI will reject.
+        .onChange(of: selectedAlias) { _, _ in resetEffortIfUnsupported() }
+        .onChange(of: svc.provider)  { _, _ in resetEffortIfUnsupported() }
+    }
+
+    /// Computes the effort levels available given the selected
+    /// (provider, model). For codex: looks up the discovered model
+    /// by id and reads its supportedEfforts. For claude: same lookup;
+    /// if the chosen alias hasn't been resolved yet, falls back to
+    /// the universal default {low, medium, high, max}.
+    private func supportedEffortLevels() -> [String] {
+        // Match either by alias or by exact model id (the picker
+        // surfaces both; selectedAlias holds whichever was clicked).
+        if let m = discovered.first(where: { $0.id == selectedAlias }),
+           !m.supportedEfforts.isEmpty {
+            return m.supportedEfforts
+        }
+        switch svc.provider {
+        case .claude: return ["low", "medium", "high", "max"]
+        case .codex:
+            // No specific model picked → take the union of every
+            // discovered codex model's levels so the picker is
+            // useful from a fresh state.
+            var seen: [String] = []
+            for m in registry.codexModels {
+                for e in m.supportedEfforts where !seen.contains(e) {
+                    seen.append(e)
+                }
+            }
+            return seen.isEmpty ? ["low", "medium", "high"] : seen
+        }
+    }
+
+    private func resetEffortIfUnsupported() {
+        guard !svc.effort.isEmpty else { return }
+        if !supportedEffortLevels().contains(svc.effort) {
+            svc.effort = ""
+        }
     }
 
     @ViewBuilder
@@ -859,6 +950,12 @@ struct AIEditView: View {
 
     private var composer: some View {
         VStack(spacing: 6) {
+            // Attachment chips (images, PDFs, .tex, .txt, .xlsx, …).
+            // Drop files onto the prompt or click the + paperclip.
+            if !svc.attachments.isEmpty {
+                attachmentStrip
+            }
+
             ZStack(alignment: .bottomTrailing) {
                 ZStack(alignment: .topLeading) {
                     if prompt.isEmpty {
@@ -882,17 +979,23 @@ struct AIEditView: View {
                             : Theme.indigo.opacity(0.5),
                             lineWidth: 1))
                 .animation(.easeInOut(duration: 0.15), value: prompt.isEmpty)
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleDroppedProviders(providers)
+                    return true
+                }
 
-                // Send / Stop button inside the textarea (lower-right).
-                actionButton
-                    .padding(8)
+                HStack(spacing: 6) {
+                    attachButton
+                    actionButton
+                }
+                .padding(8)
             }
 
             HStack(spacing: 8) {
                 Image(systemName: "command")
                     .font(.system(size: 8))
                     .foregroundStyle(Theme.textDim)
-                Text("⌘⏎ to send  ·  ⇧⌘E to close")
+                Text("⌘⏎ send  ·  drag files to attach  ·  ⇧⌘E close")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.textDim)
                 Spacer()
@@ -900,6 +1003,98 @@ struct AIEditView: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Theme.bgSecondary)
+    }
+
+    /// Horizontal chip strip showing currently-attached files. Each
+    /// chip has an icon by extension, the filename, and a "×"
+    /// remove button.
+    private var attachmentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                ForEach(svc.attachments, id: \.self) { url in
+                    HStack(spacing: 4) {
+                        Image(systemName: iconFor(url))
+                            .font(.system(size: 9))
+                            .foregroundStyle(tintFor(url))
+                        Text(url.lastPathComponent)
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1).truncationMode(.middle)
+                        Button {
+                            svc.removeAttachment(url)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(Theme.textDim)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule().fill(Theme.bgTertiary))
+                    .overlay(Capsule()
+                        .stroke(tintFor(url).opacity(0.45), lineWidth: 1))
+                }
+            }
+        }
+        .frame(maxHeight: 28)
+    }
+
+    private var attachButton: some View {
+        Button {
+            pickAttachments()
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Theme.bgTertiary))
+        }
+        .buttonStyle(.plain)
+        .help("Attach images / PDF / .tex / .txt / .xlsx / .csv")
+    }
+
+    private func pickAttachments() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK {
+            svc.addAttachments(panel.urls)
+        }
+    }
+
+    private func handleDroppedProviders(_ providers: [NSItemProvider]) {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url = url else { return }
+                Task { @MainActor in svc.addAttachments([url]) }
+            }
+        }
+    }
+
+    private func iconFor(_ url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "png", "jpg", "jpeg", "gif", "webp", "heic", "bmp":
+            return "photo"
+        case "pdf":                  return "doc.richtext"
+        case "xlsx", "xls", "csv":   return "tablecells"
+        case "tex":                  return "function"
+        case "txt", "md":            return "doc.plaintext"
+        case "json":                 return "curlybraces"
+        case "py":                   return "chevron.left.forwardslash.chevron.right"
+        default:                     return "doc"
+        }
+    }
+
+    private func tintFor(_ url: URL) -> Color {
+        switch url.pathExtension.lowercased() {
+        case "png", "jpg", "jpeg", "gif", "webp", "heic", "bmp":
+            return Theme.indigo
+        case "pdf":                  return Theme.error
+        case "xlsx", "xls", "csv":   return Theme.success
+        case "tex":                  return Theme.violet
+        default:                     return Theme.textSecondary
+        }
     }
 
     private var placeholder: String {
