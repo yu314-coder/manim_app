@@ -670,6 +670,15 @@ struct AIEditView: View {
                     .textSelection(.enabled)
             }
 
+            // Thinking block (extended-thinking content, codex
+            // reasoning items). Collapsible — defaults open while
+            // running so the user sees the model's mind in motion,
+            // collapses once the turn finishes to keep the chat tidy.
+            if !turn.thinking.isEmpty {
+                ThinkingBlock(text: turn.thinking,
+                              live: turn.finishedAt == nil)
+            }
+
             // Assistant text + tool calls, full width.
             if !turn.text.isEmpty {
                 Text(.init(turn.text))   // accepts inline markdown
@@ -683,6 +692,18 @@ struct AIEditView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(turn.toolCalls) { call in
                         toolCallChip(call)
+                    }
+                }
+            }
+
+            // Code blocks captured live from Edit/Write/patch_apply
+            // tool calls. Auto-scroll to the bottom while streaming
+            // so the user watches the file get written line by line.
+            if !turn.codeBlocks.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(turn.codeBlocks) { block in
+                        CodeBlockView(block: block,
+                                      live: turn.finishedAt == nil)
                     }
                 }
             }
@@ -973,3 +994,141 @@ private struct ChipStyle {
         }
     }
 }
+
+
+// MARK: - thinking block + code block subviews
+
+/// Collapsible "💭 Thinking" panel rendered above the assistant
+/// reply. Live = streaming → keep open + show a pulsing brain icon.
+/// Once the turn finishes, the user can toggle it on/off.
+private struct ThinkingBlock: View {
+    let text: String
+    let live: Bool
+    @State private var expanded: Bool = false
+
+    var body: some View {
+        let isOpen = live || expanded
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: live ? "brain.head.profile" : "brain")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.violet)
+                        .opacity(live ? 0.6 + 0.4 * sin(Date().timeIntervalSince1970 * 2) : 1)
+                    Text("Thinking")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundStyle(Theme.violet)
+                    if live {
+                        Text("·").foregroundStyle(Theme.textDim)
+                        Text("\(text.count) chars")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(Theme.textDim)
+                    }
+                    Spacer()
+                    Image(systemName: isOpen ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Theme.textDim)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(live)  // always-open while running
+
+            if isOpen {
+                Text(text)
+                    .font(.system(size: 10, design: .monospaced))
+                    .italic()
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 7)
+                        .fill(Theme.violet.opacity(0.08)))
+                    .overlay(RoundedRectangle(cornerRadius: 7)
+                        .stroke(Theme.violet.opacity(0.25), lineWidth: 1))
+                    .textSelection(.enabled)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+}
+
+/// Streaming code block rendered inside a turn. Header shows the
+/// tool + filename + line count. Body is monospaced source. While
+/// the turn is live, an indigo pulse-ring on the icon signals
+/// "still being written"; auto-scrolls to the bottom so the user
+/// watches generation in real time.
+private struct CodeBlockView: View {
+    let block: AIEditService.CodeBlock
+    let live: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                ZStack {
+                    if live {
+                        Circle()
+                            .stroke(Theme.indigo.opacity(0.6), lineWidth: 1.5)
+                            .frame(width: 16, height: 16)
+                            .scaleEffect(1.4)
+                            .opacity(0.4)
+                    }
+                    Image(systemName: iconName)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(Theme.indigo))
+                }
+                Text(block.toolName)
+                    .font(.system(size: 9, weight: .heavy)).tracking(1)
+                    .foregroundStyle(Theme.indigo)
+                Text((block.path as NSString).lastPathComponent)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1).truncationMode(.middle)
+                Spacer()
+                Text("\(lineCount) lines")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(Theme.textDim)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(Theme.bgTertiary)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(block.content)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .id("end")
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 220)
+                .onChange(of: block.content) { _, _ in
+                    if live {
+                        withAnimation { proxy.scrollTo("end", anchor: .bottom) }
+                    }
+                }
+            }
+            .background(Theme.bgDeepest)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8)
+            .stroke(Theme.indigo.opacity(live ? 0.45 : 0.20), lineWidth: 1))
+    }
+
+    private var iconName: String {
+        switch block.toolName {
+        case "Write":       return "doc.badge.plus"
+        case "MultiEdit":   return "doc.on.doc"
+        default:            return "pencil"
+        }
+    }
+
+    private var lineCount: Int {
+        block.content.split(whereSeparator: \.isNewline).count
+    }
+}
+

@@ -67,7 +67,16 @@ final class AIEditService: ObservableObject {
         let id: UUID
         let prompt: String
         var text: String
+        /// Streamed reasoning / thinking text from the model. Claude
+        /// emits this as content type=thinking; codex as item
+        /// type=reasoning. Rendered as a collapsible thought block
+        /// distinct from the regular reply.
+        var thinking: String
         var toolCalls: [ToolCall]
+        /// Code blocks captured live from Edit/Write tool_use
+        /// payloads, so the UI can show the file content as it's
+        /// being written. Each entry is one tool call.
+        var codeBlocks: [CodeBlock]
         var model: String
         var inputTokens: Int
         var outputTokens: Int
@@ -81,6 +90,13 @@ final class AIEditService: ObservableObject {
         let id: UUID
         let name: String      // "Edit", "Read", "Bash", "Glob", "patch_apply"…
         let detail: String    // human-readable summary
+    }
+
+    struct CodeBlock: Identifiable, Equatable {
+        let id: UUID
+        let toolName: String   // "Edit" | "Write" | "patch_apply"
+        let path: String       // file the agent is writing
+        var content: String    // streaming buffer
     }
 
     @Published var provider: Provider = .claude
@@ -248,7 +264,8 @@ final class AIEditService: ObservableObject {
         // Append a new turn to the chat history — the streamer
         // mutates this entry in place as events arrive.
         let newTurn = Turn(id: UUID(), prompt: prompt, text: "",
-                           toolCalls: [], model: "",
+                           thinking: "",
+                           toolCalls: [], codeBlocks: [], model: "",
                            inputTokens: 0, outputTokens: 0, costUSD: 0,
                            startedAt: Date(), finishedAt: nil,
                            errorMessage: nil)
@@ -475,12 +492,48 @@ final class AIEditService: ObservableObject {
                         DispatchQueue.main.async {
                             svc.appendText(t)
                         }
+                    } else if kind == "thinking" || kind == "redacted_thinking" {
+                        // Extended-thinking blocks. Body is in
+                        // "thinking" (or "data" for redacted variants
+                        // — we render redacted as italic placeholder).
+                        let body = (part["thinking"] as? String)
+                            ?? (kind == "redacted_thinking"
+                                ? "[redacted reasoning]" : "")
+                        if !body.isEmpty {
+                            DispatchQueue.main.async {
+                                svc.appendThinking(body + "\n")
+                            }
+                        }
                     } else if kind == "tool_use" {
                         let name = (part["name"] as? String) ?? "tool"
                         let input = part["input"] as? [String: Any] ?? [:]
                         let summary = describeToolUse(name: name, input: input)
                         DispatchQueue.main.async {
                             svc.appendToolCall(name: name, detail: summary)
+                        }
+                        // For Edit / Write — capture the actual file
+                        // body so the UI can show what's being
+                        // generated, not just the file name.
+                        if name == "Write" {
+                            let path = (input["file_path"] as? String) ?? ""
+                            let content = (input["content"] as? String) ?? ""
+                            if !content.isEmpty {
+                                DispatchQueue.main.async {
+                                    svc.appendCodeBlock(toolName: name,
+                                                         path: path,
+                                                         content: content)
+                                }
+                            }
+                        } else if name == "Edit" || name == "MultiEdit" {
+                            let path = (input["file_path"] as? String) ?? ""
+                            let new = (input["new_string"] as? String) ?? ""
+                            if !new.isEmpty {
+                                DispatchQueue.main.async {
+                                    svc.appendCodeBlock(toolName: name,
+                                                         path: path,
+                                                         content: new)
+                                }
+                            }
                         }
                     }
                 }
@@ -516,6 +569,24 @@ final class AIEditService: ObservableObject {
         guard !turns.isEmpty else { return }
         let call = ToolCall(id: UUID(), name: name, detail: detail)
         turns[turns.count - 1].toolCalls.append(call)
+    }
+    /// Append text to the latest turn's reasoning / thinking buffer.
+    /// Claude emits {"type":"thinking", "thinking":"…"} blocks when
+    /// extended thinking is on; codex emits item.type=reasoning.
+    private func appendThinking(_ s: String) {
+        guard !turns.isEmpty else { return }
+        turns[turns.count - 1].thinking += s
+    }
+    /// Capture the file content claude/codex is writing as part of an
+    /// Edit/Write tool call, so the UI can render it as a streaming
+    /// code block. For Edit, `content` is the new_string; for Write,
+    /// it's the full file body.
+    private func appendCodeBlock(toolName: String, path: String,
+                                 content: String) {
+        guard !turns.isEmpty else { return }
+        let block = CodeBlock(id: UUID(), toolName: toolName,
+                              path: path, content: content)
+        turns[turns.count - 1].codeBlocks.append(block)
     }
     private func updateTurnModel(_ model: String) {
         guard !turns.isEmpty else { return }
@@ -562,6 +633,18 @@ final class AIEditService: ObservableObject {
                 if let text = item["text"] as? String, !text.isEmpty {
                     DispatchQueue.main.async { svc.appendText(text + "\n") }
                 }
+            case "reasoning", "thinking":
+                // Codex emits reasoning content as a separate item
+                // type. Render as a thinking block, not regular text.
+                let body = (item["text"] as? String)
+                    ?? (item["content"] as? String)
+                    ?? (item["summary"] as? String)
+                    ?? ""
+                if !body.isEmpty {
+                    DispatchQueue.main.async {
+                        svc.appendThinking(body + "\n")
+                    }
+                }
             case "tool_call", "shell_call":
                 let name = (item["name"] as? String) ?? itemType
                 let summary: String
@@ -577,9 +660,21 @@ final class AIEditService: ObservableObject {
                 }
             case "patch_apply":
                 let path = (item["path"] as? String) ?? "(file)"
+                // Codex sometimes ships the new file body as
+                // "content" or "after"; capture either so the UI can
+                // render the streaming code block.
+                let body = (item["content"] as? String)
+                    ?? (item["after"] as? String)
+                    ?? (item["new_text"] as? String)
+                    ?? ""
                 DispatchQueue.main.async {
                     svc.appendToolCall(name: "Edit",
                         detail: (path as NSString).lastPathComponent)
+                    if !body.isEmpty {
+                        svc.appendCodeBlock(toolName: "Edit",
+                                             path: path,
+                                             content: body)
+                    }
                 }
             default:
                 break
