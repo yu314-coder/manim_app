@@ -17,18 +17,33 @@ struct AIEditView: View {
     @State private var prompt: String = ""
     @State private var selectedModel: AIModel = .default
 
+    /// Model picker uses aliases the `claude` CLI already understands
+    /// (`opus`, `sonnet`, `haiku`) instead of hardcoded version IDs.
+    /// The CLI resolves each alias to whatever model is current on
+    /// the user's machine, so this stays correct as Anthropic ships
+    /// new versions without an app update. The exact resolved name
+    /// comes back via the stream-json `system/init` event and is
+    /// surfaced via `svc.resolvedModel`.
     enum AIModel: String, CaseIterable, Identifiable {
         case `default` = ""
-        case opus      = "claude-opus-4-7"
-        case sonnet    = "claude-sonnet-4-7"
-        case haiku     = "claude-haiku-4-5"
+        case opus      = "opus"
+        case sonnet    = "sonnet"
+        case haiku     = "haiku"
         var id: String { rawValue }
         var label: String {
             switch self {
             case .default: return "Default"
-            case .opus:    return "Opus 4.7"
-            case .sonnet:  return "Sonnet 4.7"
-            case .haiku:   return "Haiku 4.5"
+            case .opus:    return "Opus (latest)"
+            case .sonnet:  return "Sonnet (latest)"
+            case .haiku:   return "Haiku (latest)"
+            }
+        }
+        var subtitle: String {
+            switch self {
+            case .default: return "let claude pick"
+            case .opus:    return "best quality, slower"
+            case .sonnet:  return "balanced"
+            case .haiku:   return "fast & cheap"
             }
         }
     }
@@ -45,6 +60,7 @@ struct AIEditView: View {
         .frame(minWidth: 940, minHeight: 600)
         .background(Theme.bgPrimary)
         .preferredColorScheme(.dark)
+        .onAppear { svc.probeCLI() }
     }
 
     // MARK: - header
@@ -74,7 +90,21 @@ struct AIEditView: View {
             Spacer()
             Menu {
                 ForEach(AIModel.allCases) { m in
-                    Button(m.label) { selectedModel = m }
+                    Button {
+                        selectedModel = m
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(m.label)
+                            Text(m.subtitle).font(.system(size: 9))
+                        }
+                    }
+                }
+                Divider()
+                if !svc.resolvedModel.isEmpty {
+                    Text("Last resolved: \(svc.resolvedModel)")
+                }
+                if !svc.cliVersion.isEmpty {
+                    Text(svc.cliVersion)
                 }
             } label: {
                 HStack(spacing: 5) {
@@ -89,7 +119,10 @@ struct AIEditView: View {
                     .fill(Theme.bgTertiary))
             }
             .menuStyle(.borderlessButton)
-            .frame(width: 130)
+            .frame(width: 160)
+            .help(svc.resolvedModel.isEmpty
+                  ? "Pick a model alias — claude resolves it to the latest version on your machine"
+                  : "Last run resolved to \(svc.resolvedModel)")
 
             Button {
                 svc.newSession()
@@ -196,13 +229,20 @@ struct AIEditView: View {
 
             // ── RIGHT: streaming output
             VStack(spacing: 0) {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: "terminal.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.indigo)
                     Text("Output")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
+                    if !svc.resolvedModel.isEmpty {
+                        Text(svc.resolvedModel)
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(Theme.indigo.opacity(0.6)))
+                    }
                     Spacer()
                     Text("session: \(svc.sessionId.prefix(8))")
                         .font(.system(size: 10, design: .monospaced))

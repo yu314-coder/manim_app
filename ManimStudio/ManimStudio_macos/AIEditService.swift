@@ -41,6 +41,13 @@ final class AIEditService: ObservableObject {
     @Published private(set) var lastOutputTokens: Int = 0
     /// Live elapsed seconds during a run; reset on each send.
     @Published private(set) var elapsed: TimeInterval = 0
+    /// Model name as reported by the CLI's stream-json `system/init`
+    /// event — e.g. "claude-opus-4-7[1m]". Lets the UI show the
+    /// real, current model resolved from your local Claude install
+    /// instead of a hardcoded version string.
+    @Published private(set) var resolvedModel: String = ""
+    /// Claude CLI version string discovered at probe time.
+    @Published private(set) var cliVersion: String = ""
 
     private var firstMessage = true
     private var process: Process?
@@ -62,6 +69,30 @@ final class AIEditService: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// Probe `claude --version` to populate `cliVersion`. Cheap and
+    /// safe to call on view appear.
+    func probeCLI() {
+        Task.detached(priority: .utility) { [weak self] in
+            let v = Self.runVersion() ?? ""
+            await MainActor.run { self?.cliVersion = v }
+        }
+    }
+
+    private nonisolated static func runVersion() -> String? {
+        guard let cli = locateClaudeCLI() else { return nil }
+        let proc = Process()
+        proc.executableURL = cli
+        proc.arguments = ["--version"]
+        let out = Pipe()
+        proc.standardOutput = out
+        proc.standardError = Pipe()
+        do { try proc.run() } catch { return nil }
+        proc.waitUntilExit()
+        return String(data: out.fileHandleForReading.readDataToEndOfFile(),
+                      encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static var workspaceURL: URL {
@@ -131,20 +162,12 @@ final class AIEditService: ObservableObject {
         self.originalCode = originalCode
         self.editedCode = nil
 
-        // 2. Compose the instruction. Echo the file path so claude
-        // knows what to edit; the prompt itself becomes the user's
-        // request.
-        let instruction = """
-        You are editing a manim Python scene file located at scene.py
-        in the current working directory. Read it, then perform the
-        edit the user describes below. Use the Edit / Write tools
-        to mutate scene.py directly. Do not output the full file
-        contents back unless explicitly asked. When done, briefly
-        summarize what you changed.
-
-        USER REQUEST:
-        \(prompt)
-        """
+        // 2. Compose the instruction from the bundled prompt files
+        // (same templates the Windows desktop app uses, dropped into
+        // Resources/prompts/). Falls back to a minimal inline string
+        // if the bundle resource is missing — keeps the feature
+        // working even on dev builds before the resources land.
+        let instruction = Self.composeInstruction(prompt: prompt)
 
         // 3. Build the argv.
         var args: [String] = [
@@ -314,15 +337,91 @@ final class AIEditService: ObservableObject {
                 svc.lastCostUSD      = cost
             }
         case "system":
-            // Init / config messages. Surface the model name once.
+            // Init / config messages. Surface the model name once
+            // — and store it so the UI can show the live, resolved
+            // model name instead of guessing from the alias the user
+            // picked. This is the dynamic-discovery path: the CLI
+            // tells us exactly which model handled the turn.
             if let model = obj["model"] as? String {
                 DispatchQueue.main.async {
+                    svc.resolvedModel = model
                     svc.output += "[claude · \(model)]\n"
                 }
             }
         default:
             break
         }
+    }
+
+    /// Loads `claude_non_agent.md` from the app bundle's Resources/
+    /// prompts/ folder, extracts the `## Without Selection` section,
+    /// and substitutes `{{PROMPT}}`. Mirrors the Windows app's
+    /// _build_ai_instruction() / _load_prompt_section() pair.
+    private static func composeInstruction(prompt: String) -> String {
+        // The "Without Selection" section is the one we want for
+        // full-file edits (no selection range support yet on macOS).
+        if let template = loadPromptSection(file: "claude_non_agent",
+                                            section: "Without Selection") {
+            return template.replacingOccurrences(of: "{{PROMPT}}", with: prompt)
+                + "\n\n" + workspaceRules()
+        }
+        // Fallback if Resources/prompts/ isn't in the bundle yet.
+        return """
+        Read `scene.py` first, then edit it.
+        This is a Manim file.
+
+        Instruction: \(prompt)
+
+        Apply changes and write back to scene.py.
+
+        \(workspaceRules())
+        """
+    }
+
+    /// Loads `workspace_claude.md` and returns its full content (no
+    /// section split). Appended to every instruction so claude knows
+    /// the rules of the sandbox: no pip / python / manim execution,
+    /// only edit scene.py, etc. Same file the Windows app uses.
+    private static func workspaceRules() -> String {
+        if let url = Bundle.main.url(forResource: "workspace_claude",
+                                     withExtension: "md",
+                                     subdirectory: "prompts"),
+           let body = try? String(contentsOf: url, encoding: .utf8) {
+            return body
+        }
+        return ""
+    }
+
+    /// Pulls a `## Header` section out of one of the prompt
+    /// templates. Returns nil if the file or section is missing.
+    private static func loadPromptSection(file: String,
+                                          section: String) -> String? {
+        guard let url = Bundle.main.url(forResource: file,
+                                        withExtension: "md",
+                                        subdirectory: "prompts"),
+              let body = try? String(contentsOf: url, encoding: .utf8)
+        else { return nil }
+        // Walk markdown headers and return the body of the matching
+        // ## section, stopping at the next ## header.
+        var capturing = false
+        var lines: [String] = []
+        for raw in body.components(separatedBy: .newlines) {
+            if raw.hasPrefix("## ") {
+                if capturing { break }
+                let title = raw
+                    .dropFirst(3)
+                    .trimmingCharacters(in: .whitespaces)
+                if title.caseInsensitiveCompare(section) == .orderedSame {
+                    capturing = true
+                    continue
+                }
+            } else if capturing {
+                lines.append(raw)
+            }
+        }
+        let result = lines.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? nil : result
     }
 
     private static func describeToolUse(name: String,
