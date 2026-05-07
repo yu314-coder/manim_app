@@ -2,37 +2,53 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Sandbox is OFF for ManimStudio (macOS).
-         The embedded Python interpreter dlopens manim/numpy/scipy
-         C extensions, spawns /bin/zsh for the integrated terminal,
-         runs the manim CLI as a subprocess, reads/writes anywhere
-         the user picks via NSOpenPanel. Sandboxing all of that
-         would require ~20 separate entitlements + app-group dance,
-         and the Windows/Linux desktop app is unsandboxed too — so
-         this matches user expectations. App Store distribution
-         will need re-evaluation; direct distribution is fine. -->
+    <!-- ───────────────────────────────────────────────────────────
+         App Sandbox: ON (required for Mac App Store distribution).
+         The Mac App Store rejects builds without this flag (error
+         90296). Some app features that rely on /opt/homebrew, the
+         claude/codex CLIs on $PATH, /Library/TeX, or sudo will be
+         limited / no-ops inside the sandbox — those code paths are
+         expected to fail gracefully when filesystem access is
+         denied. AI Edit, the brew-driven LaTeX setup banner, and
+         the integrated PTY shell against the user's home dir all
+         degrade.
+         For direct (non-MAS) distribution, set this back to false
+         — the app has more capabilities outside the sandbox.
+         ─────────────────────────────────────────────────────────── -->
     <key>com.apple.security.app-sandbox</key>
-    <false/>
-
-    <!-- Hardened Runtime stays ON (notarization requirement) but
-         we relax library validation so unsigned C extensions
-         from pip can load. The .so files inside site-packages/
-         are not signed by Apple-trusted authorities — signed by
-         the build at install time, but with our developer cert. -->
-    <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
 
-    <!-- Allow JIT-style executable memory: ctypes / cffi /
-         certain numpy paths allocate executable pages. -->
+    <!-- Network — manim renders may pull resources, the Python
+         interpreter resolves package metadata, etc. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- User-selected files — NSOpenPanel scene.py picks, saving
+         renders to user-chosen folders, picking AI Edit attachments. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <!-- Common write targets: Downloads + Movies (where renders
+         are auto-stashed) + Pictures (frame screenshots). -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+    <key>com.apple.security.assets.movies.read-write</key>
+    <true/>
+    <key>com.apple.security.assets.pictures.read-write</key>
+    <true/>
+
+    <!-- ─── Hardened-runtime relaxations
+         Stay enabled even with sandbox on, because the bundled
+         python interpreter dlopens C extensions that aren't signed
+         by Apple-trusted authorities and a few numpy paths
+         allocate executable pages. ─── -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
-
-    <!-- Allow loading dynamic libraries from arbitrary signed
-         paths (the pip-installed extensions live under
-         <App>.app/Contents/Resources/site-packages/, not the
-         standard /usr/lib paths). -->
     <key>com.apple.security.cs.allow-dyld-environment-variables</key>
     <true/>
 </dict>
