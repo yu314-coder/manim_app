@@ -16,7 +16,7 @@
          — the app has more capabilities outside the sandbox.
          ─────────────────────────────────────────────────────────── -->
     <key>com.apple.security.app-sandbox</key>
-    <true/>
+    <false/>
 
     <!-- Network — manim renders may pull resources, the Python
          interpreter resolves package metadata, etc. -->

@@ -35,7 +35,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				B9MA01022FAB0001000ABCDE /* Python.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -80,7 +79,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B9MA01012FAB0001000ABCDE /* Python.xcframework in Frameworks */,
 				B9MA02012FAB0002000ABCDE /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

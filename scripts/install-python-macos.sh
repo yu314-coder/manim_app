@@ -52,7 +52,13 @@ if [ ! -d "$VENDOR_SITE" ] && [ -f "$REQS" ]; then
 fi
 
 # ── 2. Sync the cache into the .app bundle.
-if [ -d "$VENDOR_SITE" ]; then
+# Bundling site-packages is gated on the BUNDLE_PYTHON env var. The
+# default for the macOS native rewrite is OFF — VenvManager creates
+# a per-user venv via the host Python and pip-installs manim there,
+# so the ~400 MB bundled site-packages tree is redundant. Set
+# BUNDLE_PYTHON=1 in the build settings if you want the legacy
+# "ships with manim out of the box" experience back.
+if [ "${BUNDLE_PYTHON:-0}" != "0" ] && [ -d "$VENDOR_SITE" ]; then
   DST_SITE="$APP_RESOURCES/site-packages"
   mkdir -p "$DST_SITE"
   rsync -a --delete --exclude '__pycache__' --exclude '.DS_Store' \
@@ -60,7 +66,9 @@ if [ -d "$VENDOR_SITE" ]; then
   count=$(ls "$DST_SITE" 2>/dev/null | wc -l | tr -d ' ')
   echo "note: bundled $count packages from $VENDOR_SITE into Resources/site-packages/"
 else
-  echo "warning: $VENDOR_SITE not present — site-packages NOT bundled"
+  # Make sure no stale bundle from a prior build sticks around.
+  rm -rf "$APP_RESOURCES/site-packages"
+  echo "note: site-packages NOT bundled (BUNDLE_PYTHON=${BUNDLE_PYTHON:-0})"
 fi
 
 echo "note: install-python-macos.sh done"
