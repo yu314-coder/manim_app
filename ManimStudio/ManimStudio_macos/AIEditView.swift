@@ -21,6 +21,77 @@
 import SwiftUI
 import AppKit
 
+/// Floating "what the agent did" badge row. Shown briefly at the
+/// top of the AI panel after an agent run so the user sees the
+/// chain: applied → picked scene → rendering. Three pills with
+/// staged checkmarks and a trailing chevron between each.
+private struct AgentCursorTraceView: View {
+    let trace: AIEditView.AgentTrace
+
+    var body: some View {
+        HStack(spacing: 6) {
+            pill(text: "Applied", icon: "checkmark.circle.fill",
+                 active: stepReached(.applied),
+                 tint: Theme.success)
+            chevron
+            pill(text: trace.sceneName, icon: "rectangle.stack.fill",
+                 active: stepReached(.picked),
+                 tint: Theme.indigo)
+            chevron
+            pill(text: stepReached(.done) ? "Rendered"
+                  : (stepReached(.rendering) ? "Rendering…" : "Preview"),
+                 icon: stepReached(.rendering) ? "play.fill" : "play",
+                 active: stepReached(.rendering),
+                 tint: Theme.violet)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(.ultraThinMaterial,
+                    in: Capsule(style: .continuous))
+        .overlay(Capsule()
+            .stroke(LinearGradient(
+                colors: [Theme.indigo, Theme.violet, Theme.pink],
+                startPoint: .leading, endPoint: .trailing),
+                    lineWidth: 1))
+        .shadow(color: Theme.glowPrimary.opacity(0.5), radius: 14)
+    }
+
+    private func stepReached(_ s: AIEditView.AgentTrace.Step) -> Bool {
+        switch (trace.step, s) {
+        case (.applied,   .applied):                                   return true
+        case (.picked,    .applied), (.picked,    .picked):            return true
+        case (.rendering, .applied), (.rendering, .picked),
+             (.rendering, .rendering):                                  return true
+        case (.done,      _):                                           return true
+        default:                                                        return false
+        }
+    }
+
+    @ViewBuilder
+    private func pill(text: String, icon: String,
+                      active: Bool, tint: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(active ? tint : Theme.textDim)
+            Text(text)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(active ? Theme.textPrimary : Theme.textDim)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(active
+                    ? AnyShapeStyle(tint.opacity(0.20))
+                    : AnyShapeStyle(Color.clear))
+        .clipShape(Capsule())
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 8, weight: .bold))
+            .foregroundStyle(Theme.textDim)
+    }
+}
+
 struct AIEditView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var svc = AIEditService()
@@ -77,6 +148,84 @@ struct AIEditView: View {
         .onAppear {
             svc.probeCLI()
             registry.refresh()
+        }
+        // Agent mode hands-off pipeline: when the service stages a
+        // PendingApply, push the edit into the buffer, set the scene
+        // picker, and trigger a preview render — no user clicks.
+        // See AIEditService.finalize for where this gets set.
+        .onChange(of: svc.pendingAutoApply) { _, apply in
+            guard let apply = apply else { return }
+            applyAndRunAgent(apply)
+        }
+        .overlay(agentCursorOverlay)
+    }
+
+    /// Drives the visible "fake cursor" sequence so the user sees
+    /// the agent picking a scene + clicking Render. Uses a small
+    /// overlay strip rather than a literal mouse pointer (less
+    /// confusing — most users don't expect their cursor to move on
+    /// its own).
+    @State private var agentTrace: AgentTrace? = nil
+
+    struct AgentTrace: Equatable {
+        var sceneName: String
+        var step: Step
+        enum Step { case applied, picked, rendering, done }
+    }
+
+    @ViewBuilder
+    private var agentCursorOverlay: some View {
+        if let t = agentTrace {
+            VStack {
+                AgentCursorTraceView(trace: t)
+                    .padding(.top, 56)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .allowsHitTesting(false)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    /// Apply, switch the scene picker, and post the render. Each
+    /// step ticks the agent trace so the user sees what's happening.
+    private func applyAndRunAgent(_ apply: AIEditService.PendingApply) {
+        // 1. Push the new code into the buffer.
+        app.sourceCode = apply.code
+        let scene = apply.suggestedScene
+            ?? app.detectedScenes.first
+            ?? ""
+        withAnimation(.easeOut(duration: 0.25)) {
+            agentTrace = AgentTrace(sceneName: scene.isEmpty ? "Scene" : scene,
+                                    step: .applied)
+        }
+        svc.consumePendingAutoApply()
+
+        // 2. Set the scene picker to the agent's choice (after a
+        // short beat so the trace shows the "applied" step first).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            if !scene.isEmpty {
+                app.selectedScene = scene
+            }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                agentTrace?.step = .picked
+            }
+        }
+
+        // 3. Fire the preview render — picks up app.previewQuality /
+        // FPS from the sidebar settings the user already configured.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                agentTrace?.step = .rendering
+            }
+            NotificationCenter.default.post(name: .renderPreview, object: nil)
+        }
+
+        // 4. Fade the trace out after a couple seconds.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+            withAnimation(.easeOut(duration: 0.4)) {
+                agentTrace = nil
+            }
         }
     }
 
@@ -347,12 +496,17 @@ struct AIEditView: View {
                 Section("On this machine") {
                     ForEach(discovered, id: \.id) { m in
                         Button { selectedAlias = m.id } label: {
+                            // For codex the CLI cache often ships
+                            // display_name == slug; only render once
+                            // in that case. The description (if any)
+                            // goes on the second line for context.
                             if let detail = m.detail, !detail.isEmpty {
                                 VStack(alignment: .leading) {
                                     Text(m.display)
-                                    Text(detail)
-                                        .font(.system(size: 9))
+                                    Text(detail).font(.system(size: 9))
                                 }
+                            } else if m.display == m.id {
+                                Text(m.id)
                             } else {
                                 Text("\(m.display) — \(m.id)")
                             }

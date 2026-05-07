@@ -90,6 +90,21 @@ final class AIEditService: ObservableObject {
     /// bubbles in the UI. The most recent turn streams in place.
     @Published private(set) var turns: [Turn] = []
     @Published private(set) var editedCode: String? = nil
+    /// Set in agent mode when the run finishes with a modified
+    /// scene.py — bypasses the Accept/Reject UI so the chat panel
+    /// can auto-apply the edit and trigger a preview render. Read
+    /// once and cleared via consumePendingAutoApply().
+    @Published private(set) var pendingAutoApply: PendingApply? = nil
+
+    /// Bundle of "what to apply" + "what to render" for agent mode's
+    /// hands-off pipeline. The view layer consumes this and pushes
+    /// the edit into AppState + posts the render notification.
+    struct PendingApply: Equatable {
+        let code: String
+        /// Scene name the agent suggested to render, or nil to fall
+        /// back to AppState.detectedScenes.first.
+        let suggestedScene: String?
+    }
     @Published private(set) var sessionId: String = UUID().uuidString
     @Published private(set) var elapsed: TimeInterval = 0
     /// The exact model name the CLI used on the last turn —
@@ -200,6 +215,13 @@ final class AIEditService: ObservableObject {
     func rejectEdit() {
         editedCode = nil
         if case .done = phase { phase = .done(applied: false) }
+    }
+
+    /// Called by the view after it has applied the auto-apply bundle
+    /// and posted the render notification. Resets the flag so a
+    /// stale value can't re-fire.
+    func consumePendingAutoApply() {
+        pendingAutoApply = nil
     }
 
     // MARK: - send
@@ -690,6 +712,22 @@ final class AIEditService: ObservableObject {
         cachedResolved[alias.isEmpty ? "default" : alias]
     }
 
+    /// First `class XYZ(Scene)` (or any …Scene subclass) in a manim
+    /// source file, used by agent mode to pick the scene to render.
+    /// Mirrors AppState.detectedScenes' regex but doesn't need the
+    /// AppState instance (called from finalize()).
+    private nonisolated static func firstSceneName(in source: String) -> String? {
+        let pattern = #"^\s*class\s+([A-Za-z_]\w*)\s*\([^)]*Scene[^)]*\)"#
+        guard let re = try? NSRegularExpression(pattern: pattern,
+                                                options: [.anchorsMatchLines])
+        else { return nil }
+        let ns = source as NSString
+        let matches = re.matches(in: source,
+                                  range: NSRange(location: 0, length: ns.length))
+        guard let m = matches.first, m.numberOfRanges > 1 else { return nil }
+        return ns.substring(with: m.range(at: 1))
+    }
+
     // MARK: - finalize
 
     private func finalize(scenePath: URL, exitCode: Int32) {
@@ -713,8 +751,19 @@ final class AIEditService: ObservableObject {
         }
 
         if let edited = edited {
-            self.editedCode = edited
-            self.phase = .done(applied: false)
+            // Agent mode: hands-off pipeline. Skip the Accept/Reject
+            // gate, push the edit into the buffer + auto-render. Edit
+            // mode keeps the manual gate so the user can review.
+            if mode == .agent {
+                let scene = Self.firstSceneName(in: edited)
+                self.pendingAutoApply = PendingApply(code: edited,
+                                                     suggestedScene: scene)
+                self.editedCode = nil
+                self.phase = .done(applied: true)
+            } else {
+                self.editedCode = edited
+                self.phase = .done(applied: false)
+            }
         } else {
             self.editedCode = nil
             if exitCode == 0 {
