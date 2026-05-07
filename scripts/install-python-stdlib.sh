@@ -224,14 +224,28 @@ echo "note: consolidated $CONSOLIDATED entries into $SITE (SwiftPM bundles flatt
 # neutral "[redacted]" placeholder. The change is idempotent and
 # affects only string contents the user never reads — the docstrings
 # still document what the function does.
+# Match only URLs whose HOSTNAME ends in an embargoed TLD — i.e.
+# the .ir/.kp/.sy/.cu must be the last segment of the host
+# (before the next "/" or end-of-URL), not a .cu file extension
+# inside a github path. The hostname class excludes "/" so
+# github.com/.../foo.cu does NOT match.
+#
+# Walks the *entire* .app this time (not just $SITE / $META_DST)
+# so any .py file inside SwiftPM resource bundles, frameworks, or
+# python-stdlib catches the scrub too. Apple's reviewer scans the
+# whole binary for embargoed strings; we should mirror that.
+# Note: sed delimiter is "," not "|" because the regex itself
+# contains | as the alternation operator inside (ir|kp|sy|cu).
+# BSD sed treats the outer "|" as the s-command separator and
+# bails with "parentheses not balanced" if both are pipes.
 SCRUB_COUNT=0
-EMBARGOED_TLDS='\.ir|\.kp|\.sy|\.cu'
+EMBARGOED_HOST_RE='https?://[^/ ")]*\.(ir|kp|sy|cu)(/[^ ")]*)?'
 while IFS= read -r -d '' f; do
-  if grep -qE "https?://[^[:space:]\"')]*($EMBARGOED_TLDS)[/[:space:]\"')]" "$f" 2>/dev/null; then
-    sed -i '' -E "s|https?://[^[:space:]\"')]*($EMBARGOED_TLDS)[^[:space:]\"')]*|[redacted-embargoed-url]|g" "$f"
+  if grep -qE "$EMBARGOED_HOST_RE" "$f" 2>/dev/null; then
+    sed -i '' -E "s,$EMBARGOED_HOST_RE,[redacted-embargoed-url],g" "$f"
     SCRUB_COUNT=$((SCRUB_COUNT + 1))
   fi
-done < <(find "$SITE" "$META_DST" \( -name "*.py" -o -name "METADATA" -o -name "*.rst" -o -name "*.txt" -o -name "*.md" \) -type f -print0 2>/dev/null)
+done < <(find "$APP" \( -name "*.py" -o -name "METADATA" -o -name "*.rst" -o -name "*.txt" -o -name "*.md" \) -type f -print0 2>/dev/null)
 echo "note: scrubbed embargoed-TLD URLs from $SCRUB_COUNT bundled file(s)"
 
 # ── 10. Wrap every .so into <name>.framework + .fwork pointer.
