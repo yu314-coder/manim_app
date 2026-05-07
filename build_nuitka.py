@@ -210,8 +210,8 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
         f"--output-filename={APP_NAME}.exe",
         "--company-name=ManimStudio",
         "--product-name=Manim Studio",
-        "--file-version=1.1.2.0",
-        "--product-version=1.1.2.0",
+        "--file-version=1.1.3.0",
+        "--product-version=1.1.3.0",
         "--file-description=Manim Animation Studio",
         "--copyright=Manim Studio 2025",
 

@@ -30,7 +30,7 @@ if sys.platform == 'win32':
         pass  # No console available (GUI double-click) — app logs to file instead
 
 # App version
-APP_VERSION = "1.1.2.0"
+APP_VERSION = "1.1.3.0"
 
 # Terminal emulation with PTY support
 try:

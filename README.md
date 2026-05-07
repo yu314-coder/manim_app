@@ -4,7 +4,7 @@
 
 A powerful, feature-rich desktop application for creating stunning mathematical animations using [Manim Community Edition](https://www.manim.community/). Built with Python, PyWebView, and modern web technologies.
 
-![Version](https://img.shields.io/badge/version-1.1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8+-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-orange)
@@ -609,19 +609,34 @@ If you find this project useful, please consider giving it a star on GitHub!
 
 ## 📝 Changelog
 
-### v1.1.2.0 (Latest)
-- ✨ **F-09 Agent Memory** — per-project `style.md` auto-injected as a system preamble on every AI edit/agent turn. Editable via the 🧠 brain icon in the AI Edit panel. Auto-detects user corrections and proposes memory updates; prefix `#ignore-style` to skip the preamble for one turn.
-- ✨ **F-03 Visual Diff** — pHashes every rendered frame, diffs against the baseline render, opens an A/B review modal when drift > 1%. Accept (promotes new baseline), Revert, Block per render. Keyboard `J/K/A/R/B`.
-- ✨ **Multi-scene combined render** — files with 2+ Scene classes pop a picker. Tick boxes + "Render selected" runs ONE manim subprocess with all scene names as positional args, then ffmpeg-concats the outputs into one standalone `combined_*.mp4`.
-- ✨ **Scene picker** — modal pops up when rendering/previewing a file with multiple Scene subclasses. Single-click a row to render just that scene; checkbox + "Render selected" for batch.
-- ✨ **CJK auto-template** — files with Chinese/Japanese/Korean characters inside `MathTex(...)` / `Tex(...)` get the xelatex+ctex template auto-injected via subclass override (works around Manim 0.20.1's `tempconfig({})` losing `tex_template` between scenes).
-- ✨ **Auto-discovery of AI models** — Claude models auto-detected from `~/.claude/projects/*/*.jsonl` session history; Codex models pulled from the authoritative `~/.codex/models_cache.json` cache (slug, display name, reasoning levels). New models OpenAI/Anthropic ship surface in the dropdown automatically with no Manim Studio update needed.
-- ✨ **Claude 4.7 family added** — Opus 4.7, Sonnet 4.7, Haiku 4.7 are now the default tier for edit/agent/autocomplete/review/complex tasks. 4.6 / 4.5 still selectable as "(previous)".
-- ✨ **AST-based scene detection** — fixed the long-standing "only first scene detected" bug. `extract_scene_name` now uses Python's `ast` module to find every Scene subclass (handles `typing.Generic[T]`, metaclass parents, mixed bases). Backward-compatible regex fallback for files mid-edit.
-- ✨ **Persistent Chat History** — AI chat sessions auto-saved to disk (`~/.manim_studio/chat_history/`); browse, resume, or delete past sessions from the history dropdown.
-- ✨ **AI-Friendly GUI** — `aria-label`, `data-testid`, `aria-live` attributes on all interactive elements; hidden app state indicator (`#appStateIndicator`) exposes render/AI/file state for computer-control agents (Claude Code Desktop, Codex).
-- ✨ **Faster Startup** — disk-cached dependency checks (1-hour TTL) skip subprocess calls on repeat launches; Python and LaTeX checks run in parallel threads; `shutil.which()` fast path for LaTeX.
-- ✨ **Editor Skeleton UI** — CSS shimmer placeholder shown while Monaco editor loads for improved perceived startup speed.
+### v1.1.3.0 (Latest)
+
+**New features:**
+- ✨ **F-09 Agent Memory** — per-project `style.md` auto-injected as a system preamble on every AI edit/agent turn. Editable via the 🧠 brain icon in the AI Edit panel header. Heuristic detects user corrections (e.g. "no, use BLUE instead of RED") and proposes memory updates with one-click accept/dismiss. Prefix `#ignore-style` on a single message to skip the preamble for that turn.
+- ✨ **F-03 Visual Diff** — pHashes every rendered frame, diffs against the baseline render, opens an A/B review modal when drift > 1%. Accept (promotes new baseline), Revert, Block per render. Keyboard shortcuts `J/K` next/prev flagged frame, `A` accept, `R` revert, `B` block.
+- ✨ **Multi-scene combined render** — files with 2+ Scene classes pop a picker. Tick checkboxes + "Render selected" runs ONE manim subprocess with all scene names as positional args, then ffmpeg `-f concat -c copy` stitches the outputs into one standalone `combined_*.mp4`.
+- ✨ **Scene picker modal** — auto-shows when rendering/previewing a file with multiple Scene subclasses. Single-click a row to render just that scene; checkboxes + "Render selected" for batch; "Select all" button for one-click full-file render.
+- ✨ **CJK auto-template** — files with Chinese / Japanese / Korean characters inside `MathTex(...)` / `Tex(...)` get the xelatex + `ctex` template auto-injected. Works around Manim 0.20.1's `tempconfig({})` clearing `_tex_template` between scenes by subclassing `MathTex`/`Tex` to bake `tex_template=ctex` into every constructor.
+- ✨ **Auto-discovery of AI models** — Claude models auto-detected by scanning `~/.claude/projects/*/*.jsonl` session history; Codex models pulled from the authoritative `~/.codex/models_cache.json` cache (with full metadata: slug, display name, reasoning levels, speed tiers, visibility). New models that OpenAI / Anthropic ship surface in the dropdown automatically — no Manim Studio update required. Discovered models appear under a "Discovered" tier with an orange 🔍 magnifier icon to distinguish from hardcoded defaults.
+- ✨ **Claude 4.7 family** — Opus 4.7, Sonnet 4.7, Haiku 4.7 are now the default tier for edit / agent / autocomplete / review / complex tasks. 4.6 and 4.5 remain selectable under a "(previous)" suffix. Fallback chain: Opus 4.7 → Sonnet 4.7 → Haiku 4.7 → Haiku 4.5.
+- ✨ **AST-based scene detection** — fixed the long-standing "only first scene detected" bug. `extract_scene_name` now uses Python's `ast` module to find every Scene subclass, handling tricky base-class shapes (`typing.Generic[T]`, metaclass parents, mixed bases). Backward-compatible regex fallback for files in the middle of an edit.
+- ✨ **`list_scenes` MCP tool** — Codex can list every Scene-subclass class in a Manim file (name, line, parent) before invoking `render_manim_animation`.
+
+**Bug fixes:**
+- 🐛 **Multi-scene render no longer wipes preview folder** between iterations. Was a per-scene loop that called `clear_preview_folder()` between scenes; the previous scene's temp file got deleted before manim could read it. Now a single subprocess + ffmpeg concat.
+- 🐛 **Agent waits for in-flight preview** before firing its own. Was hanging forever when `quickPreview()` got silently rejected by `if (job.running) return`. Now polls `job.running` to clear (up to 5min) before triggering, plus a 10-min safety timeout that synthesises `render_error` to break out of `_ai_agent_wait` cleanly.
+- 🐛 **Preview-folder race condition fixed** — double-clicking Preview rapidly wiped the in-flight previous render's temp `.py` (`FileNotFoundError: temp_preview_*.py not found`). `clear_preview_folder()` now skips files modified in the last 60 seconds.
+- 🐛 **LaTeX errors no longer truncated** — error capture used to grab only 3 lines / 200 chars, hiding the actual root cause. Now scans up to 40 traceback lines, stops at the closing `ErrorType:` line, returns up to 2000 chars to the UI, and dumps the full content to backend stdout.
+- 🐛 **Memory modal no longer overlapped by preview video** — Chromium's GPU video compositor painted over HTML regardless of z-index. Modal now sets `visibility:hidden` on the `<video>` element while open (full GPU-layer removal), plus `transform: translateZ(0); isolation: isolate` on the modal itself as defense-in-depth.
+
+**Removed from toolbar UI** (backends remain on disk for future re-introduction):
+- 🗑️ F-08 AI Sketches button (the `sketch_*` API methods are still available via pywebview)
+- 🗑️ F-04 Inspector button + side dock
+- 🗑️ F-01 Timeline dock + toolbar button
+- 🗑️ F-12 Render Farm sidebar toggle + progress modal
+- 🗑️ Narration Voice & Speed sidebar selector (narration itself still works; localStorage-driven)
+
+### v1.1.2.0
 - ✨ **CLI Mode** — same EXE works as headless CLI: `ManimStudio render scene.py --quality 1080p --width 1920 --height 1080 --fps 60`
 - ✨ **MCP Server for Codex** — `ManimStudio mcp` exposes render/validate/presets as MCP tools over stdio; register in `~/.codex/config.toml` and Codex can render Manim animations directly
 - ✨ **Full Resolution Control** — CLI and MCP support all quality presets (120p–8K) plus custom `--width`/`--height` override
@@ -639,13 +654,6 @@ If you find this project useful, please consider giving it a star on GitHub!
 - ✨ **AI-Friendly GUI** — `aria-label`, `data-testid`, `aria-live` attributes on all interactive elements; hidden app state indicator (`#appStateIndicator`) exposes render/AI/file state for computer-control agents (Claude Code Desktop, Codex)
 - ✨ **Faster Startup** — disk-cached dependency checks (1-hour TTL) skip subprocess calls on repeat launches; Python and LaTeX checks run in parallel threads; `shutil.which()` fast path for LaTeX
 - ✨ **Editor Skeleton UI** — CSS shimmer placeholder shown while Monaco editor loads for improved perceived startup speed
-- 🐛 **Fixed scene detection (multi-scene bug)** — `extract_scene_name` used `re.search` (returns first match only); files with 2+ Scene classes silently rendered only the first. Rewritten with AST-based `extract_all_scene_classes`, plus a `choose_scene` response from the render API that triggers the picker modal.
-- 🐛 **Fixed multi-scene render** — was a per-scene loop that wiped the preview folder between iterations (only the last scene survived). Now a single `manim file.py SceneA SceneB SceneC ...` invocation + ffmpeg `-f concat -c copy` to one combined .mp4.
-- 🐛 **Fixed CJK characters in `MathTex`** — Manim 0.20.1's `tempconfig({})` clears `_tex_template` between scenes, so `config.tex_template = TexTemplateLibrary.ctex` only worked for the first scene. Bypassed by subclassing `MathTex`/`Tex` to bake `tex_template=ctex` into every constructor.
-- 🐛 **Fixed agent waiting for in-flight preview** — agent fired `quickPreview()` while a previous render was still running; `if (job.running) return` silently rejected the call, agent hung forever waiting for `previewCompleted`. Now polls `job.running` to clear (up to 5min) before agent's preview, plus a 10-min safety timeout that synthesises a `render_error` to break out cleanly.
-- 🐛 **Fixed preview-folder race** — double-clicking Preview rapidly wiped the in-flight previous render's temp `.py` file before manim could read it (`FileNotFoundError: temp_preview_*.py not found`). `clear_preview_folder()` now skips files modified in the last 60s.
-- 🐛 **Fixed truncated LaTeX errors** — error capture grabbed only 3 lines / 200 chars, hiding the actual root cause. Now scans up to 40 traceback lines, stops at the closing `ErrorType:` line, and returns up to 2000 chars + dumps the full content to backend stdout.
-- 🐛 **Fixed Memory modal video-overlay** — Chromium's GPU video compositor painted on top of the modal regardless of `z-index`. Modal now sets `visibility:hidden` on the `<video>` element while open, plus `transform: translateZ(0); isolation: isolate` on the modal itself.
 - 🐛 Fixed Codex agent not working (cascading bugs: missing AGENTS.md, wrong CLI flags, no JSONL parsing)
 - 🐛 Fixed Codex agent review using Claude instead of Codex — now each provider reviews with its own CLI
 - 🐛 Fixed `--skip-git-repo-check` incorrectly added to Claude CLI calls (only valid for Codex)
