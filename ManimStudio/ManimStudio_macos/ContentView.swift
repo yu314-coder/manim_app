@@ -102,6 +102,12 @@ struct ContentView: View {
 
     @ViewBuilder
     private var workspace: some View {
+        // AI Edit lives as a peer column to the editor + preview
+        // stack so opening it never bleeds into the preview pane's
+        // bounds. Layout, left → right:
+        //   [editor | preview] / [terminal]   (vertical split)
+        //   AI Edit (full-height column, draggable width)
+        //   Controls panel (collapsible)
         HStack(spacing: 0) {
             VSplitView {
                 HSplitView {
@@ -116,6 +122,15 @@ struct ContentView: View {
                     .frame(minHeight: 120)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if aiEditOpen {
+                Rectangle()
+                    .fill(Theme.borderActive)
+                    .frame(width: 1)
+                AIEditView(open: $aiEditOpen)
+                    .frame(minWidth: 320, idealWidth: 380, maxWidth: 540)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
 
             if controlsOpen {
                 RenderControlsPanel(venv: venv, open: $controlsOpen)
@@ -183,19 +198,12 @@ struct EditorPane: View {
     @Binding var aiEditOpen: Bool
 
     var body: some View {
-        // Horizontal split — Monaco on the left, AI Edit panel on the
-        // right when toggled open. Replaces the previous "AI Edit as
-        // a sheet" UX so the user can keep an eye on their code while
-        // iterating on the prompt.
-        HSplitView {
-            editorColumn
-                .frame(minWidth: 360)
-            if aiEditOpen {
-                AIEditView(open: $aiEditOpen)
-                    .frame(minWidth: 320, idealWidth: 380, maxWidth: 520)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
+        // Editor pane is just the editor column. AI Edit panel lives
+        // at the workspace HStack level so it doesn't fight the
+        // preview pane for splitter space — the previous nested
+        // HSplitView caused the AI panel to render behind / overlap
+        // the preview when both were open.
+        editorColumn
     }
 
     private var editorColumn: some View {

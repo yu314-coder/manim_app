@@ -59,6 +59,10 @@ struct AIEditView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            // Agent-mode plan banner — only shown in agent mode so
+            // edit mode stays minimal. Gives a visual signal that
+            // multi-step tool calls are in scope.
+            if svc.mode == .agent { agentBanner }
             Divider().background(Theme.borderSubtle)
             transcript
             Divider().background(Theme.borderSubtle)
@@ -68,11 +72,127 @@ struct AIEditView: View {
                 acceptRejectBar
             }
         }
-        .background(Theme.bgPrimary)
+        .background(panelBackground)
+        .overlay(panelBorder)
         .onAppear {
             svc.probeCLI()
             registry.refresh()
         }
+    }
+
+    /// Layered background — deep navy fill + a faint top-down
+    /// indigo→violet glow that pulses subtly while a turn is
+    /// streaming. Keeps the panel feeling alive without being noisy.
+    private var panelBackground: some View {
+        ZStack {
+            Theme.bgPrimary
+            LinearGradient(
+                colors: [Theme.indigo.opacity(svc.phase == .running ? 0.10 : 0.04),
+                         .clear],
+                startPoint: .top, endPoint: .center
+            )
+            .allowsHitTesting(false)
+        }
+        .animation(.easeInOut(duration: 0.6), value: svc.phase)
+    }
+
+    /// Vertical gradient border on the leading edge, plus a soft
+    /// outer glow when running. Reads as "this is a special panel"
+    /// without crowding the layout.
+    private var panelBorder: some View {
+        Rectangle()
+            .fill(LinearGradient(
+                colors: [Theme.indigo, Theme.violet, Theme.pink,
+                         Theme.violet, Theme.indigo],
+                startPoint: .top, endPoint: .bottom))
+            .frame(width: 2)
+            .opacity(svc.phase == .running ? 1 : 0.55)
+            .shadow(color: Theme.glowPrimary
+                    .opacity(svc.phase == .running ? 0.85 : 0),
+                    radius: 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .allowsHitTesting(false)
+            .animation(.easeInOut(duration: 0.6), value: svc.phase)
+    }
+
+    /// Plan-mode strip — visible only in agent mode. Shows what
+    /// the agent is currently doing (latest tool call) with a
+    /// pulsing indicator so the user knows the multi-step run is
+    /// live. When idle, it's a static one-line hint.
+    private var agentBanner: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [Theme.indigo, Theme.violet],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing))
+                    .frame(width: 18, height: 18)
+                    .shadow(color: Theme.glowPrimary, radius: 6)
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Agent")
+                    .font(.system(size: 9, weight: .heavy)).tracking(1.2)
+                    .foregroundStyle(Theme.violet)
+                Text(agentBannerSubtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1).truncationMode(.tail)
+            }
+            Spacer()
+            if svc.phase == .running, let last = activeToolCall {
+                HStack(spacing: 5) {
+                    pulsingDot
+                    Text(last.name)
+                        .font(.system(size: 9, weight: .semibold,
+                                      design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(Theme.bgTertiary))
+                }
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(
+            LinearGradient(
+                colors: [Theme.indigo.opacity(0.18), Theme.violet.opacity(0.10)],
+                startPoint: .leading, endPoint: .trailing))
+        .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1),
+                 alignment: .bottom)
+    }
+
+    private var agentBannerSubtitle: String {
+        switch svc.phase {
+        case .running:
+            if let last = activeToolCall {
+                return "\(last.name): \(last.detail)"
+            }
+            return "Planning…"
+        case .done:
+            return "Plan complete"
+        case .failed:
+            return "Plan halted"
+        case .idle:
+            return "Multi-step: read → plan → execute → verify"
+        }
+    }
+
+    /// Most recent tool call from the running turn — drives the
+    /// agent banner's right-side status chip.
+    private var activeToolCall: AIEditService.ToolCall? {
+        svc.turns.last?.toolCalls.last
+    }
+
+    /// Animated dot used in agent-mode + thinking indicators.
+    private var pulsingDot: some View {
+        Circle()
+            .fill(Theme.indigo)
+            .frame(width: 5, height: 5)
+            .opacity(svc.phase == .running ? 1 : 0.5)
+            .shadow(color: Theme.glowPrimary, radius: 4)
     }
 
     // MARK: - header

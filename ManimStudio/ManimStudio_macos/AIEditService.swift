@@ -298,15 +298,21 @@ final class AIEditService: ObservableObject {
                             "Install with: npm install -g @openai/codex")
             return
         }
+        // --full-auto enables the workspace-write sandbox; without
+        // it codex falls back to read-only and silently can't edit
+        // scene.py. The Windows desktop app passes it
+        // unconditionally for both edit and agent modes — we do the
+        // same so edit mode for codex actually changes the file.
         var args: [String] = [
             "exec", "-",                  // read prompt from stdin
+            "--full-auto",
             "--skip-git-repo-check",
             "--json",
         ]
-        // Agent mode for codex = --full-auto = workspace-write sandbox.
-        // Edit mode keeps the default tighter sandbox.
+        // Agent mode also enables web search via codex's config knob
+        // so plans that need to look up library docs work.
         if mode == .agent {
-            args.append("--full-auto")
+            args.append(contentsOf: ["-c", "web_search=live"])
         }
         if !modelAlias.isEmpty {
             args.append(contentsOf: ["-m", modelAlias])
