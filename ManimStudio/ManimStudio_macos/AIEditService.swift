@@ -60,15 +60,37 @@ final class AIEditService: ObservableObject {
         case failed(String)
     }
 
+    /// One assistant turn. Streamed text, tool calls, and metadata
+    /// land here so the chat UI can render a rich message instead of
+    /// a monospace text blob.
+    struct Turn: Identifiable, Equatable {
+        let id: UUID
+        let prompt: String
+        var text: String
+        var toolCalls: [ToolCall]
+        var model: String
+        var inputTokens: Int
+        var outputTokens: Int
+        var costUSD: Double
+        var startedAt: Date
+        var finishedAt: Date?
+        var errorMessage: String?
+    }
+
+    struct ToolCall: Identifiable, Equatable {
+        let id: UUID
+        let name: String      // "Edit", "Read", "Bash", "Glob", "patch_apply"…
+        let detail: String    // human-readable summary
+    }
+
     @Published var provider: Provider = .claude
     @Published var mode: Mode = .edit
     @Published private(set) var phase: Phase = .idle
-    @Published private(set) var output: String = ""
+    /// One entry per send() — the chat history rendered as message
+    /// bubbles in the UI. The most recent turn streams in place.
+    @Published private(set) var turns: [Turn] = []
     @Published private(set) var editedCode: String? = nil
     @Published private(set) var sessionId: String = UUID().uuidString
-    @Published private(set) var lastCostUSD: Double = 0
-    @Published private(set) var lastInputTokens: Int = 0
-    @Published private(set) var lastOutputTokens: Int = 0
     @Published private(set) var elapsed: TimeInterval = 0
     /// The exact model name the CLI used on the last turn —
     /// "claude-opus-4-6[1m]" / "gpt-5-codex" / etc. Drawn from each
@@ -155,7 +177,7 @@ final class AIEditService: ObservableObject {
         guard phase != .running else { return }
         sessionId = UUID().uuidString
         firstMessage = true
-        output = ""
+        turns = []
         editedCode = nil
         phase = .idle
     }
@@ -200,6 +222,15 @@ final class AIEditService: ObservableObject {
         self.originalCode = originalCode
         self.editedCode = nil
         self.lastAlias = modelAlias
+
+        // Append a new turn to the chat history — the streamer
+        // mutates this entry in place as events arrive.
+        let newTurn = Turn(id: UUID(), prompt: prompt, text: "",
+                           toolCalls: [], model: "",
+                           inputTokens: 0, outputTokens: 0, costUSD: 0,
+                           startedAt: Date(), finishedAt: nil,
+                           errorMessage: nil)
+        self.turns.append(newTurn)
 
         // 2. Compose the instruction from the bundled prompt files
         // for the active (provider, mode) pair.
@@ -343,7 +374,6 @@ final class AIEditService: ObservableObject {
         }
         self.process = proc
         self.phase = .running
-        self.output = ""
         self.resolvedModel = ""
 
         // Push stdin if provided (codex prompt).
@@ -414,37 +444,32 @@ final class AIEditService: ObservableObject {
                 for part in content {
                     let kind = (part["type"] as? String) ?? ""
                     if kind == "text", let t = part["text"] as? String {
-                        DispatchQueue.main.async { svc.output += t }
+                        DispatchQueue.main.async {
+                            svc.appendText(t)
+                        }
                     } else if kind == "tool_use" {
                         let name = (part["name"] as? String) ?? "tool"
                         let input = part["input"] as? [String: Any] ?? [:]
                         let summary = describeToolUse(name: name, input: input)
                         DispatchQueue.main.async {
-                            svc.output += "\n\u{2022} \(summary)\n"
+                            svc.appendToolCall(name: name, detail: summary)
                         }
                     }
                 }
             }
         case "result":
-            if let r = obj["result"] as? String, !r.isEmpty {
-                DispatchQueue.main.async {
-                    svc.output += "\n\n— done —\n\(r)\n"
-                }
-            }
             let usage = obj["usage"] as? [String: Any]
             let inT  = (usage?["input_tokens"]  as? Int) ?? 0
             let outT = (usage?["output_tokens"] as? Int) ?? 0
             let cost = (obj["total_cost_usd"]   as? Double) ?? 0
             DispatchQueue.main.async {
-                svc.lastInputTokens  = inT
-                svc.lastOutputTokens = outT
-                svc.lastCostUSD      = cost
+                svc.updateUsage(inT: inT, outT: outT, cost: cost)
             }
         case "system":
             if let model = obj["model"] as? String {
                 DispatchQueue.main.async {
                     svc.resolvedModel = model
-                    svc.output += "[claude · \(model)]\n"
+                    svc.updateTurnModel(model)
                     svc.cacheResolved(alias: alias.isEmpty ? "default" : alias,
                                       to: model)
                 }
@@ -452,6 +477,29 @@ final class AIEditService: ObservableObject {
         default:
             break
         }
+    }
+
+    /// Append text to the latest turn's running assistant message.
+    private func appendText(_ s: String) {
+        guard !turns.isEmpty else { return }
+        turns[turns.count - 1].text += s
+    }
+    private func appendToolCall(name: String, detail: String) {
+        guard !turns.isEmpty else { return }
+        let call = ToolCall(id: UUID(), name: name, detail: detail)
+        turns[turns.count - 1].toolCalls.append(call)
+    }
+    private func updateTurnModel(_ model: String) {
+        guard !turns.isEmpty else { return }
+        if turns[turns.count - 1].model.isEmpty {
+            turns[turns.count - 1].model = model
+        }
+    }
+    private func updateUsage(inT: Int, outT: Int, cost: Double) {
+        guard !turns.isEmpty else { return }
+        turns[turns.count - 1].inputTokens  = inT
+        turns[turns.count - 1].outputTokens = outT
+        turns[turns.count - 1].costUSD      = cost
     }
 
     // MARK: - codex parser (JSONL)
@@ -471,37 +519,39 @@ final class AIEditService: ObservableObject {
             if let model = obj["model"] as? String {
                 DispatchQueue.main.async {
                     svc.resolvedModel = model
-                    svc.output += "[codex · \(model)]\n"
+                    svc.updateTurnModel(model)
                     svc.cacheResolved(alias: alias.isEmpty ? "default" : alias,
                                       to: model)
                 }
             }
         case "item.completed":
-            // Items: agent_message (text), tool_call, etc.
+            // Items: agent_message (text), tool_call, shell_call,
+            // patch_apply.
             guard let item = obj["item"] as? [String: Any] else { break }
             let itemType = (item["type"] as? String) ?? ""
             switch itemType {
             case "agent_message":
                 if let text = item["text"] as? String, !text.isEmpty {
-                    DispatchQueue.main.async { svc.output += text + "\n" }
+                    DispatchQueue.main.async { svc.appendText(text + "\n") }
                 }
             case "tool_call", "shell_call":
                 let name = (item["name"] as? String) ?? itemType
                 let summary: String
                 if let cmd = item["command"] as? String {
-                    summary = "\(name) → \(cmd.prefix(80))"
+                    summary = String(cmd.prefix(80))
                 } else if let path = item["path"] as? String {
-                    summary = "\(name) → \((path as NSString).lastPathComponent)"
+                    summary = (path as NSString).lastPathComponent
                 } else {
-                    summary = name
+                    summary = ""
                 }
                 DispatchQueue.main.async {
-                    svc.output += "\n\u{2022} \(summary)\n"
+                    svc.appendToolCall(name: name, detail: summary)
                 }
             case "patch_apply":
                 let path = (item["path"] as? String) ?? "(file)"
                 DispatchQueue.main.async {
-                    svc.output += "\n\u{2022} edit → \((path as NSString).lastPathComponent)\n"
+                    svc.appendToolCall(name: "Edit",
+                        detail: (path as NSString).lastPathComponent)
                 }
             default:
                 break
@@ -511,15 +561,17 @@ final class AIEditService: ObservableObject {
             let inT  = (usage?["input_tokens"]  as? Int) ?? 0
             let outT = (usage?["output_tokens"] as? Int) ?? 0
             DispatchQueue.main.async {
-                svc.lastInputTokens  = inT
-                svc.lastOutputTokens = outT
-                svc.output += "\n— done —\n"
+                svc.updateUsage(inT: inT, outT: outT, cost: 0)
             }
         case "error", "turn.failed":
             let msg = (obj["message"] as? String)
                 ?? ((obj["error"] as? [String: Any])?["message"] as? String)
                 ?? "codex error"
-            DispatchQueue.main.async { svc.output += "\n[error] \(msg)\n" }
+            DispatchQueue.main.async {
+                if !svc.turns.isEmpty {
+                    svc.turns[svc.turns.count - 1].errorMessage = msg
+                }
+            }
         default:
             break
         }
@@ -640,6 +692,11 @@ final class AIEditService: ObservableObject {
         process = nil
         firstMessage = false
 
+        // Seal the last turn.
+        if !turns.isEmpty {
+            turns[turns.count - 1].finishedAt = Date()
+        }
+
         let edited: String?
         do {
             let content = try String(contentsOf: scenePath, encoding: .utf8)
@@ -656,10 +713,17 @@ final class AIEditService: ObservableObject {
             self.editedCode = nil
             if exitCode == 0 {
                 self.phase = .done(applied: false)
-                if output.isEmpty {
-                    self.output = "(finished — no changes detected)"
+                if !turns.isEmpty,
+                   turns[turns.count - 1].text.isEmpty,
+                   turns[turns.count - 1].toolCalls.isEmpty {
+                    turns[turns.count - 1].text =
+                        "(finished — no changes detected)"
                 }
             } else {
+                if !turns.isEmpty {
+                    turns[turns.count - 1].errorMessage =
+                        "\(provider.label) exited \(exitCode)"
+                }
                 self.phase = .failed("\(provider.label) exited \(exitCode)")
             }
         }

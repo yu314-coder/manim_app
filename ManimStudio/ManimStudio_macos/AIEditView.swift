@@ -1,46 +1,46 @@
-// AIEditView.swift — embedded AI edit panel for the editor pane.
-// Used to be a sheet; now lives as a collapsible right-side panel
-// inside EditorPane so users can iterate prompt → preview → edit
-// without losing track of the code they're editing.
+// AIEditView.swift — chat-style AI Edit panel embedded in the
+// editor pane. Designed to feel closer to Claude.ai / ChatGPT /
+// Cursor's right-rail than the original two-column form-and-output
+// layout it replaces.
 //
-// Header: provider toggle (Claude / Codex), mode toggle (Edit /
-// Agent), model picker, new-session button, close.
-// Body: prompt textarea on top, streaming output below.
-// Footer: Accept / Reject when an edit is staged.
-//
-// The model picker shows the real, last-resolved model name next
-// to each alias (cached in UserDefaults via AIEditService) — so
-// users see "Opus → claude-opus-4-6" once a turn has run, not
-// just "Opus (latest)".
+// Visual structure:
+//   ┌─ header ──────────────────────────────────────┐
+//   │ AI Edit  [BETA]                    + ⊟        │
+//   │ [Claude / Codex]  [Edit / Agent]   ▼ Opus     │
+//   ├───────────────────────────────────────────────┤
+//   │ scrollable conversation                        │
+//   │  ╭ user prompt ─╮                              │
+//   │  ╰──────────────╯                              │
+//   │  assistant text + tool-call cards              │
+//   │  …                                             │
+//   ├───────────────────────────────────────────────┤
+//   │ ⏎  prompt textarea …                  [Send]  │
+//   ├───────────────────────────────────────────────┤
+//   │ Edit ready · +12 lines     [Reject] [Accept]  │
+//   └───────────────────────────────────────────────┘
 import SwiftUI
 import AppKit
 
 struct AIEditView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var svc = AIEditService()
-    /// Toggles the panel from inside EditorPane. The host view
-    /// also flips this when the user presses ⇧⌘E or clicks the
-    /// header AI Edit button.
     @Binding var open: Bool
 
     @State private var prompt: String = ""
     @State private var selectedAlias: String = ""
 
-    /// Aliases are CLI-side — the actual model name comes back via
-    /// svc.resolvedModel and gets cached per alias. Keeps the app
-    /// future-proof: when Anthropic / OpenAI ship newer models, the
-    /// CLI alias still resolves correctly without an app update.
+    /// Aliases for the model picker. The CLI resolves each to a real
+    /// model and the resolved name is shown next to the alias once
+    /// it's been seen.
     private var aliases: [(id: String, label: String)] {
         switch svc.provider {
         case .claude:
-            return [("",        "Default"),
+            return [("",        "Auto"),
                     ("opus",    "Opus"),
                     ("sonnet",  "Sonnet"),
                     ("haiku",   "Haiku")]
         case .codex:
-            // Codex aliases per `codex exec --help`. The CLI resolves
-            // these to the latest variant ChatGPT lets the user use.
-            return [("",                  "Default"),
+            return [("",                  "Auto"),
                     ("gpt-5-codex",       "GPT-5 Codex"),
                     ("gpt-5",             "GPT-5"),
                     ("gpt-5-mini",        "GPT-5 Mini"),
@@ -51,12 +51,12 @@ struct AIEditView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            promptBlock
-            Divider()
-            outputBlock
+            Divider().background(Theme.borderSubtle)
+            transcript
+            Divider().background(Theme.borderSubtle)
+            composer
             if svc.editedCode != nil {
-                Divider()
+                Divider().background(Theme.borderSubtle)
                 acceptRejectBar
             }
         }
@@ -67,85 +67,110 @@ struct AIEditView: View {
     // MARK: - header
 
     private var header: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "wand.and.sparkles")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.signatureGradient)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.signatureGradient)
+                        .frame(width: 22, height: 22)
+                        .shadow(color: Theme.glowPrimary, radius: 6)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                }
                 Text("AI Edit")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Text("BETA")
-                    .font(.system(size: 8, weight: .bold)).tracking(1)
+                    .font(.system(size: 8, weight: .heavy)).tracking(1)
                     .foregroundStyle(Theme.amber)
-                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().stroke(Theme.amber.opacity(0.6),
                                                   lineWidth: 1))
                 Spacer()
-
-                Button {
-                    svc.newSession()
-                } label: {
-                    Image(systemName: "plus.bubble")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 22, height: 22)
-                        .background(RoundedRectangle(cornerRadius: 5)
-                            .fill(Theme.bgTertiary))
+                iconButton("plus.bubble", "Fresh session") {
+                    withAnimation(.spring) { svc.newSession() }
                 }
-                .buttonStyle(.plain)
-                .help("Fresh session")
-
-                Button { open = false } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 22, height: 22)
-                        .background(RoundedRectangle(cornerRadius: 5)
-                            .fill(Theme.bgTertiary))
-                }
-                .buttonStyle(.plain)
-                .help("Close (⇧⌘E)")
-                .keyboardShortcut("e", modifiers: [.command, .shift])
+                iconButton("sidebar.right", "Close (⇧⌘E)") { open = false }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
             }
 
+            // Toggles on their own row so neither gets clipped in
+            // narrow panels — Codex was disappearing when the model
+            // menu hogged horizontal space.
             HStack(spacing: 6) {
                 providerToggle
                 modeToggle
                 Spacer()
+            }
+            // Model menu on a third row, full-width with a leading
+            // "Model" tag, so the dropdown can grow without
+            // squeezing the toggles above.
+            HStack(spacing: 6) {
+                Image(systemName: "cpu")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.textDim)
+                Text("Model").font(.system(size: 9, weight: .semibold))
+                    .tracking(0.5).foregroundStyle(Theme.textDim)
                 modelMenu
+                Spacer()
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
+        .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 10)
         .background(Theme.bgSecondary)
+    }
+
+    @ViewBuilder
+    private func iconButton(_ icon: String, _ help: String,
+                            action: @escaping () -> Void) -> some View
+    {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 24, height: 24)
+                .background(RoundedRectangle(cornerRadius: 6)
+                    .fill(Theme.bgTertiary))
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     private var providerToggle: some View {
         HStack(spacing: 0) {
             ForEach(AIEditService.Provider.allCases) { p in
                 Button {
-                    svc.provider = p
+                    withAnimation(.spring(response: 0.25)) {
+                        svc.provider = p
+                    }
                 } label: {
-                    Text(p.label)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(svc.provider == p ? .white : Theme.textSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(svc.provider == p
-                                    ? AnyShapeStyle(Theme.signatureGradient)
-                                    : AnyShapeStyle(Color.clear))
+                    HStack(spacing: 4) {
+                        Image(systemName: p == .claude
+                              ? "sparkles" : "chevron.left.forwardslash.chevron.right")
+                            .font(.system(size: 9))
+                        Text(p.label)
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(svc.provider == p ? .white : Theme.textSecondary)
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(svc.provider == p
+                                ? AnyShapeStyle(Theme.signatureGradient)
+                                : AnyShapeStyle(Color.clear))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.bgTertiary))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .background(RoundedRectangle(cornerRadius: 7)
+            .fill(Theme.bgTertiary))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .help("Provider")
     }
 
     private var modeToggle: some View {
         HStack(spacing: 0) {
             ForEach(AIEditService.Mode.allCases) { m in
                 Button {
-                    svc.mode = m
+                    withAnimation(.spring(response: 0.25)) { svc.mode = m }
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: m == .agent
@@ -164,58 +189,49 @@ struct AIEditView: View {
                 .buttonStyle(.plain)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.bgTertiary))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.bgTertiary))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
         .help(svc.mode == .agent
-              ? "Agent: multi-step plan + execute (auto-approves edits)"
+              ? "Agent: multi-step plan + execute"
               : "Edit: one-shot scene.py mutation")
     }
 
     private var modelMenu: some View {
         Menu {
             ForEach(aliases, id: \.id) { entry in
-                Button {
-                    selectedAlias = entry.id
-                } label: {
-                    VStack(alignment: .leading) {
+                Button { selectedAlias = entry.id } label: {
+                    if let resolved = svc.resolvedName(
+                        for: entry.id.isEmpty ? "default" : entry.id) {
+                        Text("\(entry.label) — \(resolved)")
+                    } else {
                         Text(entry.label)
-                        if let resolved = svc.resolvedName(
-                            for: entry.id.isEmpty ? "default" : entry.id) {
-                            Text("→ \(resolved)")
-                                .font(.system(size: 9))
-                        }
                     }
                 }
             }
             Divider()
-            if !svc.claudeCLIVersion.isEmpty,
-               svc.provider == .claude {
+            if svc.provider == .claude, !svc.claudeCLIVersion.isEmpty {
                 Text(svc.claudeCLIVersion)
             }
-            if !svc.codexCLIVersion.isEmpty,
-               svc.provider == .codex {
+            if svc.provider == .codex, !svc.codexCLIVersion.isEmpty {
                 Text(svc.codexCLIVersion)
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "cpu").font(.system(size: 10))
                 Text(menuLabel)
                     .font(.system(size: 10, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    .lineLimit(1).truncationMode(.tail)
                 Image(systemName: "chevron.down").font(.system(size: 8))
             }
             .foregroundStyle(Theme.textPrimary)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 6)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 7)
                 .fill(Theme.bgTertiary))
         }
         .menuStyle(.borderlessButton)
-        .frame(width: 200)
+        .frame(maxWidth: 220)
     }
 
-    /// Label combines alias + cached resolved name when known so the
-    /// dropdown reads "Opus → claude-opus-4-6" instead of "Opus".
     private var menuLabel: String {
         let entry = aliases.first(where: { $0.id == selectedAlias })
             ?? aliases[0]
@@ -226,186 +242,351 @@ struct AIEditView: View {
         return entry.label
     }
 
-    // MARK: - prompt + output
+    // MARK: - transcript
 
-    private var promptBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text("Prompt")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer()
-                statusBadge
+    @ViewBuilder
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if svc.turns.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(svc.turns) { turn in
+                            turnView(turn)
+                                .id(turn.id)
+                        }
+                        if case .running = svc.phase {
+                            thinkingDots
+                        }
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            ZStack(alignment: .topLeading) {
-                if prompt.isEmpty {
-                    Text(placeholder)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.textDim)
-                        .padding(8)
-                        .allowsHitTesting(false)
+            .background(Theme.bgPrimary)
+            .onChange(of: svc.turns.last?.text) { _, _ in
+                if let last = svc.turns.last {
+                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
-                TextEditor(text: $prompt)
-                    .font(.system(size: 11, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(4)
             }
-            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.bgDeepest))
-            .overlay(RoundedRectangle(cornerRadius: 6)
-                .stroke(Theme.borderSubtle, lineWidth: 1))
-            .frame(minHeight: 90, maxHeight: 160)
-
-            HStack(spacing: 6) {
-                sendButton
-                if case .running = svc.phase {
-                    Button("Stop") { svc.stop() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.error)
-                        .controlSize(.small)
-                }
-                Spacer()
-                if svc.lastInputTokens + svc.lastOutputTokens > 0 {
-                    Text("\(svc.lastInputTokens)→\(svc.lastOutputTokens) tok")
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(Theme.textDim)
-                }
-                if svc.lastCostUSD > 0 {
-                    Text(String(format: "$%.4f", svc.lastCostUSD))
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(Theme.textDim)
+            .onChange(of: svc.turns.last?.toolCalls.count) { _, _ in
+                if let last = svc.turns.last {
+                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
         }
-        .padding(10)
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: "wand.and.sparkles")
+                    .foregroundStyle(Theme.signatureGradient)
+                Text("Edit your manim scene with AI")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            Text("Describe a change to scene.py and \(svc.provider.label) will edit it directly. Click **Accept** to apply the result, or **Reject** to discard.")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("TRY")
+                .font(.system(size: 9, weight: .heavy)).tracking(1)
+                .foregroundStyle(Theme.textDim)
+                .padding(.top, 6)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(samplePrompts, id: \.self) { s in
+                    Button { prompt = s } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.up.left")
+                                .font(.system(size: 9))
+                                .foregroundStyle(Theme.textDim)
+                            Text(s)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8)
+                            .fill(Theme.bgTertiary))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .stroke(Theme.borderSubtle, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var samplePrompts: [String] {
+        switch (svc.provider, svc.mode) {
+        case (_, .agent):
+            return [
+                "Create an animation of the Pythagorean theorem with a 3-4-5 right triangle",
+                "Generate a number-line scene that counts up from 1 to 10 with smooth easing",
+            ]
+        case (_, .edit):
+            return [
+                "Make all text twice as big and use the indigo→pink gradient",
+                "Add a wait(1) before the final fade-out",
+                "Replace the title Text(...) with MathTex(\\\"E = mc^2\\\")",
+            ]
+        }
+    }
+
+    // ── one chat turn
+
+    @ViewBuilder
+    private func turnView(_ turn: AIEditService.Turn) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // User prompt bubble — right-aligned, indigo gradient.
+            HStack {
+                Spacer(minLength: 28)
+                Text(turn.prompt)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 10)
+                        .fill(Theme.signatureGradient))
+                    .shadow(color: Theme.glowPrimary, radius: 4)
+                    .frame(alignment: .trailing)
+                    .textSelection(.enabled)
+            }
+
+            // Assistant text + tool calls, full width.
+            if !turn.text.isEmpty {
+                Text(.init(turn.text))   // accepts inline markdown
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+
+            if !turn.toolCalls.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(turn.toolCalls) { call in
+                        toolCallChip(call)
+                    }
+                }
+            }
+
+            if let err = turn.errorMessage {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.error)
+                    Text(err)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.error)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 7)
+                    .fill(Theme.error.opacity(0.10)))
+                .overlay(RoundedRectangle(cornerRadius: 7)
+                    .stroke(Theme.error.opacity(0.35), lineWidth: 1))
+            }
+
+            // Footer caption — model + tokens + cost when present.
+            HStack(spacing: 8) {
+                if !turn.model.isEmpty {
+                    Label(turn.model, systemImage: "cpu")
+                        .font(.system(size: 9, design: .monospaced))
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(Theme.textDim)
+                }
+                if turn.inputTokens + turn.outputTokens > 0 {
+                    Text("\(turn.inputTokens)→\(turn.outputTokens) tok")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Theme.textDim)
+                }
+                if turn.costUSD > 0 {
+                    Text(String(format: "$%.4f", turn.costUSD))
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Theme.textDim)
+                }
+                if let finished = turn.finishedAt {
+                    Text(finished, style: .time)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Theme.textDim)
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    @ViewBuilder
+    private func toolCallChip(_ call: AIEditService.ToolCall) -> some View {
+        let style = ChipStyle.forTool(call.name)
+        HStack(spacing: 6) {
+            Image(systemName: style.icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(style.tint)
+                .frame(width: 16)
+            Text(call.name)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(style.tint)
+            if !call.detail.isEmpty {
+                Text(call.detail)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(style.tint.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: 6)
+            .stroke(style.tint.opacity(0.30), lineWidth: 1))
+    }
+
+    private var thinkingDots: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3) { i in
+                Circle()
+                    .fill(Theme.indigo)
+                    .frame(width: 5, height: 5)
+                    .opacity(0.4)
+                    .scaleEffect(1.0)
+                    .animation(.easeInOut(duration: 0.7)
+                                .repeatForever()
+                                .delay(Double(i) * 0.18),
+                               value: svc.elapsed)
+            }
+            Text("thinking… \(Int(svc.elapsed))s")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Theme.textDim)
+                .padding(.leading, 4)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bgTertiary))
+    }
+
+    // MARK: - composer
+
+    private var composer: some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .bottomTrailing) {
+                ZStack(alignment: .topLeading) {
+                    if prompt.isEmpty {
+                        Text(placeholder)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textDim)
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $prompt)
+                        .font(.system(size: 11, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .padding(.horizontal, 8).padding(.vertical, 6)
+                }
+                .frame(minHeight: 64, maxHeight: 140)
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill(Theme.bgDeepest))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .stroke(prompt.isEmpty
+                            ? Theme.borderSubtle
+                            : Theme.indigo.opacity(0.5),
+                            lineWidth: 1))
+                .animation(.easeInOut(duration: 0.15), value: prompt.isEmpty)
+
+                // Send / Stop button inside the textarea (lower-right).
+                actionButton
+                    .padding(8)
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "command")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Theme.textDim)
+                Text("⌘⏎ to send  ·  ⇧⌘E to close")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.textDim)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(Theme.bgSecondary)
     }
 
     private var placeholder: String {
         switch (svc.provider, svc.mode) {
-        case (_, .agent):
-            return "Describe the animation you want generated…"
-        case (.claude, .edit):
-            return "What should claude change in scene.py?"
-        case (.codex, .edit):
-            return "What should codex change in scene.py?"
+        case (_, .agent):  return "Describe an animation to generate…"
+        case (.claude, _): return "What should claude change in scene.py?"
+        case (.codex,  _): return "What should codex change in scene.py?"
         }
     }
 
-    private var sendButton: some View {
-        Button {
-            send()
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: svc.mode == .agent
-                      ? "wand.and.stars" : "paperplane.fill")
-                    .font(.system(size: 10))
-                Text("Send").font(.system(size: 11, weight: .semibold))
-                Text("⌘⏎").font(.system(size: 8))
-                    .padding(.horizontal, 3).padding(.vertical, 1)
-                    .background(Capsule().fill(.white.opacity(0.18)))
+    @ViewBuilder
+    private var actionButton: some View {
+        if case .running = svc.phase {
+            Button {
+                svc.stop()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Theme.error))
+                    .shadow(color: Theme.error.opacity(0.4), radius: 5)
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 6)
-                .fill(Theme.signatureGradient))
-            .shadow(color: Theme.glowPrimary, radius: 5, y: 1)
+            .buttonStyle(.plain)
+            .help("Stop")
+        } else {
+            Button {
+                send()
+            } label: {
+                Image(systemName: svc.mode == .agent
+                      ? "wand.and.stars" : "arrow.up")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Theme.signatureGradient))
+                    .shadow(color: Theme.glowPrimary, radius: 5)
+            }
+            .buttonStyle(.plain)
+            .disabled(promptIsEmpty)
+            .opacity(promptIsEmpty ? 0.4 : 1)
+            .keyboardShortcut(.return, modifiers: .command)
+            .help("Send (⌘⏎)")
         }
-        .buttonStyle(.plain)
-        .disabled(promptIsEmpty || svc.phase == .running)
-        .opacity((promptIsEmpty || svc.phase == .running) ? 0.5 : 1)
-        .keyboardShortcut(.return, modifiers: .command)
     }
 
     private var promptIsEmpty: Bool {
         prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    @ViewBuilder
-    private var statusBadge: some View {
-        switch svc.phase {
-        case .idle: EmptyView()
-        case .running:
-            HStack(spacing: 4) {
-                ProgressView().controlSize(.small)
-                Text("\(Int(svc.elapsed))s")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-        case .done(let applied):
-            Image(systemName: applied
-                  ? "checkmark.circle.fill" : "checkmark.circle")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.success)
-        case .failed(let why):
-            HStack(spacing: 3) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 9))
-                Text(why).font(.system(size: 9))
-            }
-            .foregroundStyle(Theme.error)
-            .lineLimit(1)
-        }
-    }
-
-    private var outputBlock: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.indigo)
-                Text("Output")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                if !svc.resolvedModel.isEmpty {
-                    Text(svc.resolvedModel)
-                        .font(.system(size: 8, weight: .semibold,
-                                      design: .monospaced))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Capsule().fill(Theme.indigo.opacity(0.6)))
-                }
-                Spacer()
-                Text(svc.sessionId.prefix(8))
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(Theme.textDim)
-            }
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Theme.bgSecondary)
-            .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1),
-                     alignment: .bottom)
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(svc.output.isEmpty ? "(no output yet)" : svc.output)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(svc.output.isEmpty
-                                          ? Theme.textDim : Theme.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .id("end")
-                        .textSelection(.enabled)
-                }
-                .onChange(of: svc.output) { _, _ in
-                    withAnimation { proxy.scrollTo("end", anchor: .bottom) }
-                }
-            }
-            .background(Theme.bgDeepest)
-        }
+    private func send() {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        svc.send(prompt: trimmed,
+                 originalCode: app.sourceCode,
+                 modelAlias: selectedAlias)
+        prompt = ""
     }
 
     // MARK: - accept / reject
 
     private var acceptRejectBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc.text.below.ecg")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.indigo)
+        HStack(spacing: 10) {
+            Image(systemName: "doc.text.below.ecg.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Theme.indigo))
+
             VStack(alignment: .leading, spacing: 1) {
                 Text("Edit ready")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Text(diffSummary)
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)
             }
             Spacer()
@@ -413,28 +594,34 @@ struct AIEditView: View {
                 Text("Reject")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: 6)
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 7)
                         .fill(Theme.bgTertiary))
-            }.buttonStyle(.plain)
+            }
+            .buttonStyle(.plain)
             Button {
                 if let edited = svc.acceptEdit() {
                     app.sourceCode = edited
                 }
             } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
-                    Text("Accept").font(.system(size: 10, weight: .semibold))
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Accept")
+                        .font(.system(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(.white)
-                .padding(.horizontal, 12).padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 6)
+                .padding(.horizontal, 14).padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 7)
                     .fill(Theme.signatureGradient))
                 .shadow(color: Theme.glowPrimary, radius: 5)
-            }.buttonStyle(.plain)
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(Theme.bgSecondary)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(LinearGradient(
+            colors: [Theme.indigo.opacity(0.18), Theme.violet.opacity(0.10)],
+            startPoint: .leading, endPoint: .trailing))
     }
 
     private var diffSummary: String {
@@ -445,14 +632,31 @@ struct AIEditView: View {
         let sign = delta >= 0 ? "+" : ""
         return "\(newLines) lines (\(sign)\(delta))"
     }
+}
 
-    // MARK: - send
+// MARK: - tool-call chip styling
 
-    private func send() {
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        svc.send(prompt: trimmed,
-                 originalCode: app.sourceCode,
-                 modelAlias: selectedAlias)
+private struct ChipStyle {
+    let icon: String
+    let tint: Color
+
+    static func forTool(_ name: String) -> ChipStyle {
+        switch name {
+        case "Edit", "patch_apply":
+            return ChipStyle(icon: "pencil.and.outline",  tint: Theme.indigo)
+        case "Write":
+            return ChipStyle(icon: "square.and.pencil",    tint: Theme.indigo)
+        case "Read":
+            return ChipStyle(icon: "doc.text.magnifyingglass",
+                             tint: Theme.cyan)
+        case "Bash", "shell_call":
+            return ChipStyle(icon: "terminal.fill",         tint: Theme.success)
+        case "Glob", "Grep":
+            return ChipStyle(icon: "magnifyingglass",       tint: Theme.amber)
+        case "WebSearch", "WebFetch":
+            return ChipStyle(icon: "globe",                 tint: Theme.violet)
+        default:
+            return ChipStyle(icon: "wrench.and.screwdriver", tint: Theme.textSecondary)
+        }
     }
 }
