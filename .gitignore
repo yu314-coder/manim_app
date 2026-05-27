@@ -20,3 +20,7 @@ ManimStudio/ManimStudio/Resources/Busytex/
 
 # Last-archive logs from the SwiftSupport injector script.
 scripts/last-archive-postaction.log
+
+# App Store submission artifacts (resized PNGs + render scratch dir).
+/_appstore_uploads/
+/_preview_renders/scenes/media/

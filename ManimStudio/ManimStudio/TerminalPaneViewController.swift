@@ -217,7 +217,7 @@ final class TerminalPaneViewController: UIViewController {
     }
 
     @objc private func didTapMenu(_ sender: UIButton) {
-        let alert = UIAlertController(title: "Terminal", message: nil, preferredStyle: .actionSheet)
+        let alert = UIAlertController(title: "Render Log", message: nil, preferredStyle: .actionSheet)
         alert.addAction(UIAlertAction(title: "Reset PTY (reconnect Python)", style: .destructive) { [weak self] _ in
             self?.resetPTY()
         })

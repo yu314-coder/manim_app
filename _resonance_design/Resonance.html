@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Resonance — ManimStudio redesign</title>
+<meta name="viewport" content="width=1400, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  html, body { margin:0; padding:0; background:#08081A; color:#E6E8FF; font-family: "Geist", system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  ::selection { background: rgba(168,85,247,0.4); color:#fff; }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(190,200,255,0.12); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(190,200,255,0.22); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="resonance-tokens.jsx"></script>
+<script type="text/babel" src="resonance-screens.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState } = React;
+
+function App() {
+  const [screen, setScreen] = useState('gallery'); // gallery | workspace | render
+  const [running, setRunning] = useState(false);
+
+  return (
+    <DesignCanvas>
+      {/* ── Identity ─────────────────────────────────────────────── */}
+      <DCSection id="identity" title="Resonance — visual identity"
+                 subtitle="A scientific-instrument aesthetic for mathematical animation. Indigo→violet→pink survives; everything else is on the table.">
+        <DCArtboard id="statement" label="Identity statement" width={720} height={420}>
+          <IdentityStatement/>
+        </DCArtboard>
+        <DCArtboard id="palette" label="Palette" width={720} height={560}>
+          <PaletteCard/>
+        </DCArtboard>
+        <DCArtboard id="type" label="Typography" width={720} height={560}>
+          <TypeCard/>
+        </DCArtboard>
+        <DCArtboard id="motif" label="Signature motif · The Phase Line" width={720} height={380}>
+          <MotifCard/>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ── iPad screens ─────────────────────────────────────────── */}
+      <DCSection id="ipad" title="iPad Air 11″ · M3"
+                 subtitle="Live, interactive — click a Gallery card to load Workspace; press the render trigger to enter the render takeover.">
+        <DCArtboard id="gallery" label="Gallery — cold launch (default landing)" width={1112} height={834}>
+          <Gallery onPick={() => setScreen('workspace')}/>
+        </DCArtboard>
+        <DCArtboard id="workspace" label="Workspace — preview hero" width={1112} height={834}>
+          <Workspace openDrawer="preview" running={running}
+                     onRender={() => setRunning(r => !r)}/>
+        </DCArtboard>
+        <DCArtboard id="workspace-editor" label="Workspace — scene.py drawer open" width={1112} height={834}>
+          <Workspace openDrawer="editor"/>
+        </DCArtboard>
+        <DCArtboard id="workspace-log" label="Workspace — render log drawer open" width={1112} height={834}>
+          <Workspace openDrawer="log" running/>
+        </DCArtboard>
+        <DCArtboard id="render" label="Render takeover — Manim rendering on-device" width={1112} height={834}>
+          <RenderState pct={0.49}/>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ── iPhone screens ───────────────────────────────────────── */}
+      <DCSection id="iphone" title="iPhone 17 Pro Max"
+                 subtitle="Same identity. Side rail → bottom dock; Workspace becomes a segmented picker with Preview as the default.">
+        <DCArtboard id="phone-gallery" label="Gallery" width={402} height={780}>
+          <PhoneGallery/>
+        </DCArtboard>
+        <DCArtboard id="phone-workspace" label="Workspace — preview default" width={402} height={780}>
+          <PhoneWorkspace/>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ── Render button hero ───────────────────────────────────── */}
+      <DCSection id="hero-button" title="The Render trigger"
+                 subtitle="Hero action, treated like an oscilloscope trigger or transmitter key. Three states: idle (pulsing), engaged (sweep ring), and rendering (locked).">
+        <DCArtboard id="trigger-idle" label="Idle — armed" width={320} height={360}>
+          <div style={{ width:'100%', height:'100%', background: R.void, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:24, padding: 30 }}>
+            <RenderTrigger size={200}/>
+            <div style={{ fontFamily:F.mono, fontSize:10, color:R.dim, letterSpacing:'0.24em', textAlign:'center' }}>
+              IDLE · ARMED<br/>
+              <span style={{ color:R.faint }}>tap to fire encoder</span>
+            </div>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="trigger-running" label="Rendering — locked" width={320} height={360}>
+          <div style={{ width:'100%', height:'100%', background: R.void, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:24, padding: 30 }}>
+            <RenderTrigger size={200} running/>
+            <div style={{ fontFamily:F.mono, fontSize:10, color:R.trace, letterSpacing:'0.24em', textAlign:'center' }}>
+              RENDERING · 49%<br/>
+              <span style={{ color:R.faint }}>tap to abort run</span>
+            </div>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="trigger-small" label="In-header — compact" width={320} height={360}>
+          <div style={{ width:'100%', height:'100%', background: R.void, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:18, padding: 30 }}>
+            <RenderTrigger size={92}/>
+            <RenderTrigger size={56}/>
+            <div style={{ fontFamily:F.mono, fontSize:10, color:R.dim, letterSpacing:'0.24em', textAlign:'center' }}>
+              92 px · 56 px<br/>
+              <span style={{ color:R.faint }}>scales to header / FAB</span>
+            </div>
+          </div>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ── App icons ────────────────────────────────────────────── */}
+      <DCSection id="icons" title="App icon — four directions"
+                 subtitle="Recommend #1 Phase trace as primary; #2 Reticle and #3 Orbit are strong fallbacks if Apple wants a less editorial mark.">
+        <DCArtboard id="icon-phase" label="01 · PHASE — recommended" width={260} height={300}>
+          <div style={{ width:'100%', height:'100%', background: R.void, display:'flex', alignItems:'center', justifyContent:'center', padding:30 }}>
+            <AppIcon size={180} kind="phase" label="PHASE TRACE"/>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="icon-reticle" label="02 · RETICLE" width={260} height={300}>
+          <div style={{ width:'100%', height:'100%', background: R.void, display:'flex', alignItems:'center', justifyContent:'center', padding:30 }}>
+            <AppIcon size={180} kind="reticle" label="RETICLE"/>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="icon-orbit" label="03 · ORBIT" width={260} height={300}>
+          <div style={{ width:'100%', height:'100%', background: R.void, display:'flex', alignItems:'center', justifyContent:'center', padding:30 }}>
+            <AppIcon size={180} kind="orbit" label="ORBIT"/>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="icon-integral" label="04 · INTEGRAL" width={260} height={300}>
+          <div style={{ width:'100%', height:'100%', background: R.void, display:'flex', alignItems:'center', justifyContent:'center', padding:30 }}>
+            <AppIcon size={180} kind="integral" label="INTEGRAL"/>
+          </div>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ── Nav direction ────────────────────────────────────────── */}
+      <DCSection id="nav" title="Navigation direction"
+                 subtitle="The pill-tab strip becomes a side rail with rotated labels on iPad, a custom dock with a hot-key cutout on iPhone — no tab bar shape that reads as a generic IDE.">
+        <DCArtboard id="rail" label="iPad · Side rail" width={120} height={760}>
+          <div style={{ width:'100%', height:'100%', background: R.void }}>
+            <SideRail active="gallery"/>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="dock" label="iPhone · Bottom dock" width={420} height={120}>
+          <div style={{ width:'100%', height:'100%', background: R.void, paddingTop: 12 }}>
+            <PhoneDock active="workspace"/>
+          </div>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ── Scene previews — closeup ─────────────────────────────── */}
+      <DCSection id="previews" title="Gallery scene previews — one per template"
+                 subtitle="Each card preview is a tiny animated math loop. All procedural Canvas — bundles cleanly, runs offline.">
+        {SCENES.map((s, i) => (
+          <DCArtboard key={s.id} id={`prev-${s.id}`} label={`${String(i+1).padStart(2,'0')} · ${s.title}`} width={340} height={340}>
+            <div style={{ width:'100%', height:'100%', background: R.void, padding: 24, display:'flex', flexDirection:'column', gap: 14 }}>
+              <div style={{ flex:1, borderRadius: 10, border:`1px solid ${R.hairline}`, background: R.deep, position:'relative', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <CornerBrackets inset={8} len={12} color={s.accent} opacity={0.5}/>
+                <s.Preview w={292} h={200}/>
+              </div>
+              <div>
+                <div style={{ fontFamily:F.mono, fontSize:10, color:R.dim, letterSpacing:'0.2em' }}>{String(i+1).padStart(2,'0')} · SCENE</div>
+                <div style={{ fontFamily:F.display, fontSize:18, marginTop:2 }}>{s.title}</div>
+                <div style={{ fontFamily:F.mono, fontSize:10.5, color:R.trace, marginTop:6 }}>{s.formula}</div>
+              </div>
+            </div>
+          </DCArtboard>
+        ))}
+      </DCSection>
+
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

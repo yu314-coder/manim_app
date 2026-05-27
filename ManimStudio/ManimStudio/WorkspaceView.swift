@@ -9,7 +9,7 @@ struct WorkspaceView: View {
     @State private var sidebarOpen = true
     @State private var hSplit: CGFloat = 0.5   // editor↔preview
     @State private var vSplit: CGFloat = 0.7   // top↔terminal
-    @State private var compactPane: CompactPane = .editor
+    @State private var compactPane: CompactPane = .preview
     @State private var compactSheet: CompactSheet? = nil
 
     /// On iPhone the three-pane horizontal layout is cramped to the
@@ -24,14 +24,14 @@ struct WorkspaceView: View {
             switch self {
             case .editor:   return "Editor"
             case .preview:  return "Preview"
-            case .terminal: return "Terminal"
+            case .terminal: return "Render Log"
             }
         }
         var icon: String {
             switch self {
             case .editor:   return "chevron.left.forwardslash.chevron.right"
             case .preview:  return "play.rectangle"
-            case .terminal: return "terminal"
+            case .terminal: return "doc.text.magnifyingglass"
             }
         }
     }

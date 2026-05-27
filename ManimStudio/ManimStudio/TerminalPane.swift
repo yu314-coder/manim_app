@@ -10,12 +10,12 @@ struct TerminalPane: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "terminal")
+                Image(systemName: "doc.text.magnifyingglass")
                     .font(.system(size: 11)).foregroundStyle(Theme.cyan)
-                Text("Console & Terminal").font(.system(size: 12, weight: .semibold))
+                Text("Render Log").font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Circle().fill(Theme.success).frame(width: 6, height: 6)
-                Text("manimstudio_shell")
+                Text("manim output")
                     .font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
                 Spacer()
                 // Copy — grab the terminal's current selection (or all

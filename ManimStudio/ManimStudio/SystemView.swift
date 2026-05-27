@@ -8,7 +8,7 @@ struct SystemView: View {
         ("GPU",             "Apple GPU",   "cpu"),
         ("Disk Space",      "—",           "internaldrive"),
         ("FFmpeg",          "PyAV native", "film"),
-        ("Terminal",        "PTY",         "terminal"),
+        ("Render Log",      "PTY",         "doc.text.magnifyingglass"),
         ("Venv",            "embedded",    "shippingbox"),
         ("Python exe",      "embedded",    "doc"),
         ("Media dir",       "Documents/",  "folder"),

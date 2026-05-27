@@ -4,7 +4,10 @@ import UniformTypeIdentifiers
 import Photos
 
 struct ContentView: View {
-    @State private var selectedTab: AppTab = .workspace
+    // Cold launch lands on the Gallery (animation templates) so the
+    // app reads as a Manim animation studio, not an editor + terminal.
+    // The Workspace tab is one tap away from there.
+    @State private var selectedTab: AppTab = .gallery
     @AppStorage("manim_source") private var sourceCode: String = """
     from manim import *
 
@@ -60,6 +63,12 @@ struct ContentView: View {
 
             Group {
                 switch selectedTab {
+                case .gallery:
+                    GalleryView(
+                        sourceCode: $sourceCode,
+                        selectedTab: $selectedTab,
+                        selectedScene: $selectedScene
+                    )
                 case .workspace:
                     WorkspaceView(
                         sourceCode: $sourceCode,

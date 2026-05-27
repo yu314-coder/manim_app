@@ -425,8 +425,8 @@ private struct SettingsSheet: View {
                     }
                 }
 
-                // — Terminal ———————————————————————————————————
-                Section("Terminal") {
+                // — Render Log ─────────────────────────────────────
+                Section("Render Log") {
                     HStack {
                         Text("Font size")
                         Slider(value: $terminalFontSize, in: 9...22, step: 1)
