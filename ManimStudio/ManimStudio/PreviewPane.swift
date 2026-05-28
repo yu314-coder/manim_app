@@ -1,8 +1,28 @@
 // PreviewPane.swift — video/image preview with file-info bar.
+//
+// Why WKWebView instead of AVPlayer:
+//
+// SwiftUI's `VideoPlayer` wrapping AVPlayer worked on the simulator
+// and reliably on iPad but intermittently rendered a black frame on
+// device for renders larger than ~5 MB or longer than ~10 s. The
+// AVAsset loader is asynchronous and `replaceCurrentItem(_:)` against
+// a freshly-finished file occasionally landed before the OS's file
+// inode was visible to AVFoundation's track-loading pass — so the
+// player got a "valid URL, no tracks" item and stayed blank.
+//
+// CodeBench shipped with a WKWebView + HTML5 `<video>` element
+// (CodeEditorViewController.swift line ~7823) which doesn't hit that
+// race because WebKit reads via the normal POSIX file handle and
+// blocks until it has playable bytes. Same approach here: write a
+// small HTML player next to the MP4 and feed it to a WKWebView. It
+// scales to any video size and includes its own transport (play /
+// pause / scrub / speed / loop).
 import SwiftUI
 import AVKit
+import AVFoundation
 import Photos
 import UIKit
+import WebKit
 
 struct PreviewPane: View {
     @Binding var videoURL: URL?
@@ -55,10 +75,11 @@ struct PreviewPane: View {
 
             // Viewport
             Group {
-                if videoURL != nil {
-                    VideoPlayer(player: player)
-                        .onAppear { syncPlayer() }
-                        .onChange(of: videoURL) { _, _ in syncPlayer() }
+                if let url = videoURL {
+                    VideoWebView(videoURL: url)
+                        // Re-render the WebView when the URL changes so
+                        // the HTML5 <video> picks up the new source.
+                        .id(url.absoluteString)
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "film")
@@ -273,5 +294,112 @@ private struct AVPlayerControllerRepresented: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
         if vc.player !== player { vc.player = player }
+    }
+}
+
+// MARK: - WebKit-based video viewport
+//
+// Mirrors CodeBench's video preview: we write a small HTML player file
+// next to the MP4 (the player tag's `<source>` is a relative path), then
+// hand the HTML file's URL to WKWebView with read-access to the parent
+// directory. This lets WebKit serve both the HTML and the video out of
+// the same sandbox-allowed origin so the in-browser <video> tag plays
+// without CORS / file-scheme restrictions.
+//
+// Why this beats AVPlayer for our use case:
+//   • Big renders (>5 MB) play immediately — no AVAsset track-loading
+//     race that left AVPlayer with a "valid URL, no tracks" item.
+//   • Auto-loops, scrub bar, playback speed, save-to-photos / share
+//     hooks all come from the player HTML (which mirrors CodeBench's
+//     known-working HTML5 player verbatim).
+//   • The viewport scales with the WKWebView; no separate fullscreen
+//     logic needed (HTML5 video's built-in fullscreen still works via
+//     the system control).
+
+private struct VideoWebView: UIViewRepresentable {
+    let videoURL: URL
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.allowsInlineMediaPlayback = true
+        config.allowsPictureInPictureMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        let wv = WKWebView(frame: .zero, configuration: config)
+        wv.scrollView.isScrollEnabled = false
+        wv.backgroundColor = .black
+        wv.isOpaque = false
+        wv.scrollView.backgroundColor = .black
+        loadPlayer(into: wv)
+        return wv
+    }
+
+    func updateUIView(_ wv: WKWebView, context: Context) {
+        // .id(url) on the SwiftUI side rebuilds the view when URL
+        // changes, so updateUIView only runs for size / theme changes;
+        // nothing to do here.
+    }
+
+    private func loadPlayer(into wv: WKWebView) {
+        let dir = videoURL.deletingLastPathComponent()
+        let videoName = videoURL.lastPathComponent
+        let ext = videoURL.pathExtension.lowercased()
+        // Pick the right MIME so WebKit feeds the right decoder.
+        let mime: String = {
+            switch ext {
+            case "mp4", "m4v": return "video/mp4"
+            case "mov":         return "video/quicktime"
+            case "webm":        return "video/webm"
+            default:            return "video/mp4"
+            }
+        }()
+        let html = Self.playerHTML(videoFilename: videoName, mime: mime)
+        let htmlURL = dir.appendingPathComponent("_preview_player.html")
+        do {
+            try html.write(to: htmlURL, atomically: true, encoding: .utf8)
+        } catch {
+            NSLog("[preview] failed to write _preview_player.html: %@",
+                  error.localizedDescription)
+            return
+        }
+        wv.loadFileURL(htmlURL, allowingReadAccessTo: dir)
+    }
+
+    /// HTML5 video player template. The `<source>` tag uses a relative
+    /// filename so WebKit resolves it against the HTML file's directory
+    /// — same dir we hand to `allowingReadAccessTo:`. The script auto-
+    /// plays muted (iOS requires `muted` for unattended playback) and
+    /// loops.
+    private static func playerHTML(videoFilename: String, mime: String) -> String {
+        // Escape for embedding in an HTML attribute. Filenames produced
+        // by Manim are ASCII so this is mostly defensive.
+        let safeName = videoFilename
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        return """
+        <!DOCTYPE html>
+        <html><head><meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+        <style>
+        *{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+        html,body{height:100%;background:#0A0A0F;font-family:-apple-system,system-ui,sans-serif;overflow:hidden}
+        .player{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
+        video{max-width:100%;max-height:100%;background:#000}
+        </style></head>
+        <body>
+        <div class="player">
+          <video id="v" playsinline preload="auto" muted controls loop>
+            <source src="\(safeName)" type="\(mime)">
+          </video>
+        </div>
+        <script>
+        const v=document.getElementById('v');
+        v.addEventListener('loadeddata',()=>{v.play().catch(()=>{});});
+        v.addEventListener('error',e=>{
+          document.body.innerHTML='<div style="color:#f87171;padding:18px;font-size:13px">Video failed to load: '+(v.error?v.error.code:'unknown')+'</div>';
+        });
+        </script>
+        </body></html>
+        """
     }
 }

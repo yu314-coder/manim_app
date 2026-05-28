@@ -34,8 +34,66 @@ struct ManimStudioApp: App {
         // like `\frac{p_{i|j}}{2n}` falls through to SwiftMath, which
         // tolerates the Manim mangling. Match that here.
         //
-        // To force busytex back on for debugging, set
-        // OFFLINAI_LATEX_FORCE_BUSYTEX=1 from your Python script.
+        // Force busytex back on for ALL MathTex. The previous workaround
+        // (let simple Latin math fall through to SwiftMath) was needed
+        // because Manim's `}}` autosplit corrupted \frac{a}{b} when xelatex
+        // saw it. Upstream python-ios-lib commit fe7cfa4c
+        // "undo manim's `}}` autosplit before stripping specials" plus
+        // 4d081711 "route \frac through real LaTeX" have fixed both the
+        // corruption and the routing — we can now use busytex for
+        // everything and get crisp PNG-in-SVG output instead of
+        // SwiftMath's fixed-size Latin Modern glyphs (which Manim then
+        // upscales and looks blurry).
+        setenv("OFFLINAI_LATEX_BACKEND", "busytex", 1)
+        setenv("OFFLINAI_ENGINE",        "busytex", 1)
+        setenv("OFFLINAI_LATEX_FORCE_BUSYTEX", "1", 1)
+        setenv("OFFLINAI_LATEX_USE_PDFTEX",    "0", 1)
+
+        // UTF-8 mode — make Python default to UTF-8 for stdin/stdout/stderr
+        // AND for every `open(path, "w")` that doesn't pass an explicit
+        // `encoding=` arg. Without this, iOS Python's `locale.getpreferredencoding()`
+        // returns "ascii" (because no LANG/LC_ALL is inherited from the iOS
+        // process environment), and any third-party lib that does:
+        //
+        //     with open(svg_path, "w") as f: f.write(svg_containing_中文)
+        //
+        // dies with `UnicodeEncodeError: 'ascii' codec can't encode characters`.
+        // `manimpango.text2svg` and several Manim helpers fall into this trap.
+        // PYTHONUTF8=1 is Python 3.7+'s official switch and the canonical
+        // fix on platforms without a real locale (iOS, embedded, container).
+        setenv("PYTHONUTF8", "1", 1)
+        setenv("LANG",       "en_US.UTF-8", 1)
+        setenv("LC_ALL",     "en_US.UTF-8", 1)
+
+        // SSL trust roots — point OpenSSL at certifi's bundled CA file.
+        //
+        // Beeware's iOS Python build inherits OpenSSL's compiled-in
+        // default verify paths (e.g. /etc/ssl/certs) which simply don't
+        // exist on iOS. Any HTTPS call through stdlib `urllib.request`,
+        // `http.client`, or anything that builds an `ssl.SSLContext`
+        // without an explicit cafile dies with:
+        //
+        //     URLError: [SSL: CERTIFICATE_VERIFY_FAILED]
+        //     certificate verify failed: unable to get local issuer
+        //     certificate (_ssl.c:1081)
+        //
+        // `requests` and `urllib3` work around this themselves by
+        // calling `certifi.where()` and passing the path as a cafile —
+        // which is why high-level libs sometimes appear to work while
+        // stdlib `urlopen()` doesn't. Setting these env vars fixes
+        // every path in one shot: OpenSSL reads `SSL_CERT_FILE` /
+        // `SSL_CERT_DIR` natively, and `requests` reads
+        // `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` for completeness.
+        let cacert = Bundle.main.bundleURL
+            .appendingPathComponent("app_packages/site-packages/certifi/cacert.pem",
+                                     isDirectory: false).path
+        if FileManager.default.fileExists(atPath: cacert) {
+            setenv("SSL_CERT_FILE",       cacert, 1)
+            setenv("REQUESTS_CA_BUNDLE",  cacert, 1)
+            setenv("CURL_CA_BUNDLE",      cacert, 1)
+        } else {
+            NSLog("[ssl] certifi cacert.pem not found at %@ — HTTPS will fail", cacert)
+        }
 
         DispatchQueue.main.async {
             BusytexEngine.shared.preload()

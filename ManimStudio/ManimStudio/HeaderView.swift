@@ -734,16 +734,27 @@ private struct HelpSheet: View {
                                 Spacer()
                                 Button {
                                     UIPasteboard.general.string = code
-                                    copied = name
+                                    withAnimation(.easeOut(duration: 0.15)) {
+                                        copied = name
+                                    }
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-                                        if copied == name { copied = nil }
+                                        if copied == name {
+                                            withAnimation(.easeIn(duration: 0.2)) {
+                                                copied = nil
+                                            }
+                                        }
                                     }
                                 } label: {
-                                    Label("Copy", systemImage: "doc.on.doc")
-                                        .font(.system(size: 11))
+                                    Label(copied == name ? "Copied" : "Copy",
+                                          systemImage: copied == name
+                                              ? "checkmark.circle.fill"
+                                              : "doc.on.doc")
+                                        .font(.system(size: 11, weight: copied == name ? .semibold : .regular))
+                                        .foregroundStyle(copied == name ? Theme.success : Color.primary)
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
+                                .tint(copied == name ? Theme.success : Theme.accentPrimary)
                             }
                             Text(code)
                                 .font(.system(size: 11, design: .monospaced))

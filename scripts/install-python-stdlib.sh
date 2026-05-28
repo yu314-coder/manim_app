@@ -22,6 +22,107 @@ FRAMEWORKS="$APP/Frameworks"
 IDENT="${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:--}}"
 echo "install-python-stdlib: APP=$APP"
 
+# ── Copy fontTools into app_packages/site-packages (run early so it
+# isn't skipped if a later codesign step fails under set -e).
+#
+# python-ios-lib's manimpango shim (upstream c069984b) does:
+#     from fontTools.ttLib import TTFont
+#     from fontTools.pens.svgPathPen import SVGPathPen
+# fontTools is bundled in app_packages/site-packages/fontTools/ but
+# python-ios-lib's `Manim` SwiftPM library product doesn't list it as
+# a target, so it never ships into the .app. ImportError fires, the
+# shim falls through to its minimal-SVG path, and every Text(...)
+# mobject renders as an invisible bounding-box-only object.
+# Locate python-ios-lib's app_packages/site-packages — the source of
+# truth for every pure-Python package that python-ios-lib's
+# Package.swift forgot to expose to the `Manim` SwiftPM library.
+PIL_SP=""
+for cand in \
+  "${BUILD_ROOT}/../../SourcePackages/checkouts/python-ios-lib/app_packages/site-packages" \
+  "${SRCROOT}/../_vendor/python-ios-lib/app_packages/site-packages" \
+  ; do
+  if [ -d "$cand" ]; then PIL_SP="$cand"; break; fi
+done
+if [ -z "$PIL_SP" ]; then
+  echo "warning: python-ios-lib site-packages not found — Text(), requests, sympy, etc. will all fail."
+else
+  echo "install-python-stdlib: PIL_SP=$PIL_SP"
+  APP_SP="$APP/app_packages/site-packages"
+  mkdir -p "$APP_SP"
+  # Each entry below is a top-level package directory under PIL_SP that
+  # the `Manim` SwiftPM library doesn't ship but real user scripts
+  # depend on. Rsync-mirror only if missing or older than source — most
+  # builds will be no-ops after the first run.
+  #
+  #   fontTools           manimpango 0.6.1 shim hard-imports
+  #                       (fontTools.ttLib, fontTools.pens.svgPathPen);
+  #                       without this Text() renders invisible.
+  #   requests, urllib3,
+  #   certifi, idna,
+  #   charset_normalizer  the HTTP stack — requests.get() / pip / any
+  #                       download fails without these. certifi also
+  #                       provides cacert.pem that SSL_CERT_FILE points at.
+  #   mpmath              SymPy arbitrary-precision dep.
+  #   yaml (PyYAML)       manim.config + many third-party libs read YAML.
+  #   jsonschema +
+  #   referencing +
+  #   rpds +
+  #   jsonschema_specifications  schema validation (Plotly, Jupyter, …).
+  #   attr, attrs         widely-used class decorators.
+  #   regex               transformers tokenizer needs this.
+  #   filelock            huggingface_hub lock files.
+  #   fsspec              huggingface_hub file-abstraction layer.
+  #   pycparser           cffi ABI parsing.
+  # CRITICAL: do NOT use the variable name `DST` in this loop — the
+  # outer script sets `DST="$APP/python-stdlib"` at the top and relies
+  # on it later (line ~134, "Copy stdlib + per-arch lib-dynload").
+  # Earlier this loop clobbered DST to point at the last package copied
+  # (e.g. ".../site-packages/pycparser"), so when the stdlib step then
+  # ran `mkdir -p "$DST"; rsync ... "$DST/"`, the stdlib went into the
+  # wrong directory and the running app booted with python-stdlib MISSING
+  # → "ensureRuntimeReady: env setup failed" at first launch → every
+  # Preview / Render button click silently did nothing. Use distinct
+  # variable names here.
+  for _missing_pkg in \
+      fontTools \
+      requests urllib3 certifi idna charset_normalizer \
+      mpmath yaml \
+      jsonschema referencing rpds jsonschema_specifications \
+      attr attrs \
+      regex filelock fsspec pycparser \
+      ; do
+    PKG_SRC="$PIL_SP/$_missing_pkg"
+    PKG_DST="$APP_SP/$_missing_pkg"
+    if [ -d "$PKG_SRC" ]; then
+      if [ ! -d "$PKG_DST" ] || [ "$PKG_SRC" -nt "$PKG_DST" ]; then
+        rsync -a --delete \
+          --exclude '__pycache__' --exclude '*.pyc' --exclude 'tests' \
+          "$PKG_SRC/" "$PKG_DST/"
+        echo "note: copied $_missing_pkg ($(du -sh "$PKG_DST" | cut -f1))"
+      fi
+    else
+      echo "warning: $_missing_pkg not present in $PIL_SP — skipping."
+    fi
+  done
+  unset _missing_pkg PKG_SRC PKG_DST
+  # dist-info directories — pip / importlib.metadata look for these to
+  # answer `requests.__version__`, `pip show requests`, etc.
+  for di in \
+      requests-2.33.1.dist-info \
+      urllib3-2.6.3.dist-info \
+      certifi-2026.2.25.dist-info \
+      idna-3.11.dist-info \
+      charset_normalizer-3.4.7.dist-info \
+      mpmath-1.4.1.dist-info \
+      pyyaml-6.0.3.dist-info \
+      jsonschema-4.26.0.dist-info \
+      ; do
+    if [ -d "$PIL_SP/$di" ] && [ ! -d "$APP_SP/$di" ]; then
+      rsync -a "$PIL_SP/$di/" "$APP_SP/$di/"
+    fi
+  done
+fi
+
 if [ ! -d "$BEEWARE" ]; then
   echo "warning: BeeWare Python.xcframework not at $BEEWARE — Python stdlib won't be bundled."
   exit 0
@@ -648,3 +749,4 @@ FORTRAN_PLIST_EOF
     --identifier "com.manimstudio.dylib.libfortran-io-stubs" "$FORTRAN_STUB_BIN" || true
   echo "note: bundled libfortran_io_stubs.framework"
 fi
+

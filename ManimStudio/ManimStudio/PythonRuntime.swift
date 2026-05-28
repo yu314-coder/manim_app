@@ -1759,8 +1759,21 @@ try:
                     _font_dir = _cand_dir
                     break
         if _font_dir:
+            # Walk every bundled Noto Sans CJK we can find and append it
+            # to the <prefer> chain. Without SC, Simplified-Chinese glyphs
+            # render as empty; without KR, Hangul does the same.
+            _cjk_labels_pre = []
+            for _lbl, _fname in (
+                ("Noto Sans SC", "NotoSansSC-Regular.otf"),
+                ("Noto Sans JP", "NotoSansJP-Regular.otf"),
+                ("Noto Sans KR", "NotoSansKR-Regular.otf"),
+            ):
+                if os.path.exists(os.path.join(_font_dir, _fname)):
+                    _cjk_labels_pre.append(_lbl)
             _fc_file_pre = os.path.join(__codebench_tool_dir, "fonts.conf")
-            _prefer_pre = "<family>KaTeX_Main</family><family>Noto Sans JP</family>"
+            _prefer_pre = "<family>KaTeX_Main</family>" + "".join(
+                f"<family>{_lbl}</family>" for _lbl in _cjk_labels_pre
+            )
             _fc_lines_pre = [
                 "<fontconfig>",
                 "  <dir>" + _font_dir + "</dir>",
@@ -1825,38 +1838,55 @@ try:
             _log(f"[manim-font] bundle_root={_bundle_root}")
             _font_dir = None
             _font_path = None
-            _cjk_font_path = None
+            # All three Noto Sans CJK subset fonts the bundle may contain.
+            # SC is required for Simplified Chinese; JP carries kana +
+            # Japanese-only kanji; KR carries Hangul. We register every
+            # one that's actually present so the build is forgiving if a
+            # particular .otf is missing.
+            _cjk_fonts = []  # list of (family_name_for_log, full_path)
             if _bundle_root:
-                # Also probe the bundle root itself — Xcode's
-                # synchronized-folder mode flattens KaTeX/fonts/*.otf
-                # straight into <App>.app/, so the .otf files end up as
-                # bundle-root siblings without the KaTeX/fonts/ prefix.
+                # Probe both subdir layouts and the flat bundle root —
+                # Xcode's synchronized-folder mode can put KaTeX/fonts/*
+                # at either location depending on group setup.
+                # Sentinel: only use a dir that has KaTeX_Main-Regular.ttf
+                # so we skip empty katex/fonts/ scaffolding.
                 for _rel in ("katex/fonts", "Frameworks/katex/fonts",
                              "KaTeX/fonts", "Frameworks/KaTeX/fonts",
                              ""):
                     _cand_dir = os.path.join(_bundle_root, _rel) if _rel else _bundle_root
-                    if os.path.isdir(_cand_dir):
-                        _ttf = os.path.join(_cand_dir, "KaTeX_Main-Regular.ttf")
-                        _cjk = os.path.join(_cand_dir, "NotoSansJP-Regular.otf")
-                        if os.path.exists(_ttf) or os.path.exists(_cjk):
-                            _font_dir = _cand_dir
-                            if os.path.exists(_ttf): _font_path = _ttf
-                            if os.path.exists(_cjk): _cjk_font_path = _cjk
-                            break
-            _log(f"[manim-font] font_dir={_font_dir} latin={_font_path} cjk={_cjk_font_path}")
+                    if not os.path.isdir(_cand_dir):
+                        continue
+                    _ttf = os.path.join(_cand_dir, "KaTeX_Main-Regular.ttf")
+                    if not os.path.exists(_ttf):
+                        continue
+                    _font_dir = _cand_dir
+                    _font_path = _ttf
+                    for _label, _fname in (
+                        ("Noto Sans SC", "NotoSansSC-Regular.otf"),
+                        ("Noto Sans JP", "NotoSansJP-Regular.otf"),
+                        ("Noto Sans KR", "NotoSansKR-Regular.otf"),
+                    ):
+                        _p = os.path.join(_cand_dir, _fname)
+                        if os.path.exists(_p):
+                            _cjk_fonts.append((_label, _p))
+                    break
+            _log(f"[manim-font] font_dir={_font_dir} latin={_font_path}")
+            for _lbl, _p in _cjk_fonts:
+                _log(f"[manim-font] cjk={_lbl} -> {_p}")
+            # Keep _cjk_font_path defined for back-compat with later log lines.
+            _cjk_font_path = _cjk_fonts[0][1] if _cjk_fonts else None
 
             if _font_dir:
                 # Write a fonts.conf that maps Pango's default families to
-                # KaTeX_Main (Latin coverage), with Noto Sans JP as the
-                # automatic fallback for codepoints KaTeX can't render —
-                # that's what gives us CJK support. Fontconfig walks the
-                # <prefer> list in order and picks the first family that
-                # has the glyph, so `serif` → tries KaTeX_Main first, falls
-                # back to Noto Sans JP on Hanzi/Kanji/Kana.
+                # KaTeX_Main (Latin coverage), with every bundled Noto Sans
+                # CJK as fallback. Fontconfig walks the <prefer> list in
+                # order and picks the first family that has the glyph.
+                # SC → JP → KR ordering gives the cheapest match for
+                # unified-Han codepoints (most common script first).
                 _fc_file = os.path.join(__codebench_tool_dir, "fonts.conf")
                 _prefer = "<family>KaTeX_Main</family>"
-                if _cjk_font_path:
-                    _prefer += "<family>Noto Sans JP</family>"
+                for _lbl, _ in _cjk_fonts:
+                    _prefer += f"<family>{_lbl}</family>"
                 _lines = [
                     "<fontconfig>",
                     "  <dir>" + _font_dir + "</dir>",
@@ -1887,9 +1917,17 @@ try:
                 if _font_path and hasattr(_mp, "register_font"):
                     _ok = _mp.register_font(_font_path)
                     _log(f"[manim-font] register_font latin = {_ok}")
-                if _cjk_font_path and hasattr(_mp, "register_font"):
-                    _ok2 = _mp.register_font(_cjk_font_path)
-                    _log(f"[manim-font] register_font cjk = {_ok2}")
+                # Register EVERY available CJK font, not just the first.
+                # The manimpango fontTools-shim path picks per-glyph from
+                # registered fonts — if NotoSansSC isn't registered,
+                # Simplified-Chinese glyphs render as empty (or fall back
+                # to Japanese kanji shapes when the codepoint happens to
+                # be in the unified-Han subset). Registering SC + JP + KR
+                # gives complete coverage for the full CJK block.
+                if hasattr(_mp, "register_font"):
+                    for _lbl, _p in _cjk_fonts:
+                        _okc = _mp.register_font(_p)
+                        _log(f"[manim-font] register_font {_lbl} = {_okc}")
                 manim.config.font = "KaTeX_Main"
             except BaseException as _e2:
                 _log(f"[manim-font] manimpango.register_font failed: {_e2}")
