@@ -185,7 +185,7 @@ private struct SceneCard: View {
             // so each card reads as a window onto a real animation
             // frame rather than as decorative UI.
             Color.black
-            template.preview
+            ManimPreviewPlayer(id: template.id)
             // Index
             VStack {
                 HStack {
@@ -251,7 +251,6 @@ struct GalleryTemplate: Identifiable {
     let formula: String
     let accent: Color
     let sceneName: String
-    let preview: AnyView
     let code: String
 
     static let all: [GalleryTemplate] = [
@@ -262,7 +261,6 @@ struct GalleryTemplate: Identifiable {
             formula: "manim.Write(text)",
             accent: Theme.violet,
             sceneName: "HelloManim",
-            preview: AnyView(ManimPreviewPlayer(id: "hello")),
             code: """
             from manim import *
 
@@ -282,7 +280,6 @@ struct GalleryTemplate: Identifiable {
             formula: "a² + b² = c²",
             accent: Theme.indigo,
             sceneName: "Pythagorean",
-            preview: AnyView(ManimPreviewPlayer(id: "pythag")),
             code: """
             from manim import *
 
@@ -313,7 +310,6 @@ struct GalleryTemplate: Identifiable {
             formula: "y = sin(x)",
             accent: Theme.trace,
             sceneName: "SineWave",
-            preview: AnyView(ManimPreviewPlayer(id: "sine")),
             code: """
             from manim import *
             import numpy as np
@@ -340,7 +336,6 @@ struct GalleryTemplate: Identifiable {
             formula: "Σ (4/πn)·sin(nωt)",
             accent: Theme.pink,
             sceneName: "FourierSquare",
-            preview: AnyView(ManimPreviewPlayer(id: "fourier")),
             code: """
             from manim import *
             import numpy as np
@@ -374,7 +369,6 @@ struct GalleryTemplate: Identifiable {
             formula: "lerp(◯, ▢, t)",
             accent: Theme.violet,
             sceneName: "CircleToSquare",
-            preview: AnyView(ManimPreviewPlayer(id: "morph")),
             code: """
             from manim import *
 
@@ -398,7 +392,6 @@ struct GalleryTemplate: Identifiable {
             formula: "DFS(G, v₀)",
             accent: Theme.pink,
             sceneName: "GraphWalk",
-            preview: AnyView(ManimPreviewPlayer(id: "graph")),
             code: """
             from manim import *
 

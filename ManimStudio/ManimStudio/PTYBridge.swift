@@ -24,6 +24,25 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
 
     static let shared = PTYBridge()
 
+    /// When true, send() logs every keystroke/paste as hex bytes. Off
+    /// by default so interactive typing and large pastes don't flood the
+    /// log at interactive frequency (and don't leak typed content).
+    static let verbose = false
+
+    /// Serial queue used to drain stdin writes that couldn't complete
+    /// immediately (EAGAIN on the non-blocking masterFD). Keeps the main
+    /// thread free while preserving write ordering.
+    private let stdinWriteQueue = DispatchQueue(label: "codebench.pty.stdin-writer")
+
+    /// Number of write chunks currently queued/in-flight on
+    /// `stdinWriteQueue`. While this is > 0, new send()s must also go
+    /// through the queue so bytes never overtake an earlier blocked
+    /// write — otherwise a large paste sitting in the background drain
+    /// could be interleaved by a subsequent keystroke written inline.
+    /// Guarded by `stdinPendingLock`.
+    private var stdinPending = 0
+    private let stdinPendingLock = NSLock()
+
     /// PTY master FD — we read from here to get what Python wrote, and
     /// write to here to send user keystrokes back to Python's stdin.
     private(set) var masterFD: Int32 = -1
@@ -172,6 +191,15 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
         // slaveFD now holds the stdout-pipe read end for the read loop.
         slaveFD = stdoutPipe[0]
 
+        // Set the stdin write end to non-blocking too. Without this, a
+        // large paste (or any write while Python isn't reading stdin)
+        // can fill the 64KB pipe and block Darwin.write() — which, since
+        // send() runs on the main thread, would freeze the UI. With
+        // O_NONBLOCK, write() returns EAGAIN/EWOULDBLOCK instead of
+        // blocking, and send() drains the remainder off the main thread.
+        _ = fcntl(masterFD, F_SETFL,
+                  fcntl(masterFD, F_GETFL) | O_NONBLOCK)
+
         startReadLoop()
 
         isReady = true
@@ -219,6 +247,91 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
         }
     }
 
+    // MARK: - Teardown
+
+    /// Cancel the read source and close all PTY/pipe file descriptors.
+    /// Safe to call multiple times. After this, `isReady` is false and a
+    /// fresh `setupIfNeeded()` re-establishes the bridge from scratch.
+    ///
+    /// The DispatchSourceRead's cancel handler closes the read fd — this
+    /// is the documented way to close an fd a dispatch source owns
+    /// (closing it out from under the source races the kernel). The
+    /// other fds (stdin write end, stdout write end) are closed directly.
+    /// Full teardown: cancel the read source (its cancel handler closes
+    /// the read fd) and close every PTY/pipe fd. Used on deinit-style
+    /// shutdown. NOTE: after this the bridge is fully detached from
+    /// Python — Python's already-redirected sys.stdout points at the
+    /// (now-closed) write end, so a plain re-setup alone won't reconnect
+    /// output. Prefer `reset()` for the in-app "Reset PTY" action, which
+    /// recovers a wedged read loop WITHOUT orphaning Python's stdout.
+    func teardown() {
+        // Tearing down the read source asynchronously fires its cancel
+        // handler (which closes slaveFD). Capture the fd locally so the
+        // handler closes the right one even after we reset the ivar.
+        if let source = readSource {
+            let fd = slaveFD
+            source.setCancelHandler {
+                if fd >= 0 { Darwin.close(fd) }
+            }
+            source.cancel()
+            readSource = nil
+        } else if slaveFD >= 0 {
+            // No source owned it — close directly.
+            Darwin.close(slaveFD)
+        }
+        slaveFD = -1
+
+        if masterFD >= 0 { Darwin.close(masterFD); masterFD = -1 }
+        if stdoutPipeWriteFD >= 0 { Darwin.close(stdoutPipeWriteFD); stdoutPipeWriteFD = -1 }
+
+        clearTransientState()
+
+        isReady = false
+        NSLog("[PTY] torn down")
+    }
+
+    /// Drop any buffered-but-unflushed output and reset feed/filter
+    /// state so a fresh read loop starts clean.
+    private func clearTransientState() {
+        feedBufferLock.lock()
+        feedBuffer.removeAll(keepingCapacity: false)
+        feedDrainScheduled = false
+        feedBufferLock.unlock()
+        pendingLock.lock()
+        pendingBytes.removeAll(keepingCapacity: false)
+        pendingLock.unlock()
+        debugFilterCarry.removeAll(keepingCapacity: false)
+    }
+
+    /// In-app "Reset PTY" recovery. Cancels and re-creates the read
+    /// source on the SAME stdout pipe and flushes stale buffers, so a
+    /// wedged or stuck read loop is restarted WITHOUT closing the fds
+    /// that Python's sys.stdout/sys.stdin are already wired to. (A full
+    /// fd recreate would orphan Python's redirect — only PythonRuntime
+    /// can re-point sys.stdout, and that path is owned elsewhere.) If
+    /// the bridge was never set up, this just does the initial setup.
+    func reset() {
+        guard isReady, slaveFD >= 0 else {
+            setupIfNeeded()
+            return
+        }
+        // Cancel the old source but DO NOT close slaveFD — we reuse it.
+        if let source = readSource {
+            source.setCancelHandler { /* keep fd open for the new source */ }
+            source.cancel()
+            readSource = nil
+        }
+        clearTransientState()
+        // Also reset the Swift-side line discipline so a half-typed line
+        // or stale raw/ai mode doesn't survive the reset.
+        DispatchQueue.main.async {
+            LineBuffer.shared.setRawMode(false)
+            LineBuffer.shared.setAIMode(false)
+        }
+        startReadLoop()
+        NSLog("[PTY] reset (read loop restarted)")
+    }
+
     // MARK: - Read loop
 
     private func startReadLoop() {
@@ -231,13 +344,36 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
 
         source.setEventHandler { [weak self] in
             guard let self = self else { return }
+            // Drain the pipe fully on each event: a single read() only
+            // returns up to 4096 bytes, so a heavy burst (manim render
+            // output, a big traceback) would otherwise need one dispatch
+            // event per 4096 bytes and lag behind. Loop until read()
+            // returns <= 0 (0 = EOF, -1 with EAGAIN = nothing more right
+            // now). The fd is non-blocking so this never stalls.
             var buffer = [UInt8](repeating: 0, count: 4096)
-            let n = buffer.withUnsafeMutableBufferPointer { bp in
-                Darwin.read(readFD, bp.baseAddress, bp.count)
+            while true {
+                let n = buffer.withUnsafeMutableBufferPointer { bp in
+                    Darwin.read(readFD, bp.baseAddress, bp.count)
+                }
+                if n > 0 {
+                    self.processIncoming(Array(buffer[0..<n]))
+                    // A short read means the pipe is drained for now.
+                    if n < buffer.count { break }
+                    continue
+                }
+                break
             }
-            guard n > 0 else { return }
-            let rawUnfiltered = Array(buffer[0..<n])
+        }
 
+        source.resume()
+        readSource = source
+    }
+
+    /// Process one chunk of raw bytes read off the stdout pipe: log,
+    /// filter [manim-debug] lines, strip private OSC mode markers,
+    /// apply ONLCR, and hand the result to the coalesced feed buffer.
+    private func processIncoming(_ rawUnfiltered: [UInt8]) {
+        do {
             // Tee every byte the PTY emits into the persistent log
             // file BEFORE filtering. Captures the [manim-debug] /
             // tqdm / Python tracebacks unfiltered so the log file
@@ -362,9 +498,6 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
                 }
             }
         }
-
-        source.resume()
-        readSource = source
     }
 
     /// Drop any line that begins with the literal "[manim-debug]" from
@@ -499,16 +632,96 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
                 return
             }
         }
-        let preview = data.prefix(32).map { String(format: "%02x", $0) }.joined(separator: " ")
-        NSLog("[PTY] → master(\(masterFD)): \(data.count) bytes: \(preview)")
+        if Self.verbose {
+            let preview = data.prefix(32).map { String(format: "%02x", $0) }.joined(separator: " ")
+            NSLog("[PTY] → master(\(masterFD)): \(data.count) bytes: \(preview)")
+        }
+        let fd = masterFD
+
+        // If a background drain is already in flight, every new write
+        // must also go through the serial queue so it lands AFTER the
+        // earlier (still-blocked) bytes. Otherwise an inline write here
+        // could overtake them and corrupt stdin ordering.
+        stdinPendingLock.lock()
+        let mustQueue = stdinPending > 0
+        if mustQueue { stdinPending += 1 }
+        stdinPendingLock.unlock()
+        if mustQueue {
+            stdinWriteQueue.async { [weak self, fd] in
+                self?.blockingDrain(data, fd: fd)
+                self?.decrementStdinPending()
+            }
+            return
+        }
+
+        // Fast path: write as much as we can right now. masterFD is
+        // non-blocking, so write() may return EAGAIN/EWOULDBLOCK (pipe
+        // full because Python isn't reading stdin) or a partial count.
+        // We must NOT block the main thread; hand any unwritten
+        // remainder to the serial background queue, which retries until
+        // it all lands. Ordering preserved; data never dropped.
+        let written = data.withUnsafeBufferPointer { bp -> Int in
+            var done = 0
+            while done < bp.count {
+                let n = Darwin.write(fd, bp.baseAddress!.advanced(by: done),
+                                     bp.count - done)
+                if n > 0 {
+                    done += n
+                } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    break  // pipe full — finish on background queue
+                } else if n < 0 && errno == EINTR {
+                    continue
+                } else {
+                    if n < 0 { NSLog("[PTY] write failed: errno=\(errno)") }
+                    done = bp.count  // unrecoverable — stop
+                    break
+                }
+            }
+            return done
+        }
+        guard written < data.count else { return }
+
+        // Remainder couldn't be written without blocking. Drain it off
+        // the main thread so the UI stays responsive (e.g. a large
+        // paste while Python is busy).
+        let remainder = Array(data[written...])
+        stdinPendingLock.lock()
+        stdinPending += 1
+        stdinPendingLock.unlock()
+        stdinWriteQueue.async { [weak self, fd] in
+            self?.blockingDrain(remainder, fd: fd)
+            self?.decrementStdinPending()
+        }
+    }
+
+    /// Write `data` fully to `fd`, retrying on EAGAIN/EINTR. Runs on the
+    /// serial stdinWriteQueue (never the main thread), so the brief
+    /// usleep yields on a full pipe don't affect UI responsiveness.
+    private func blockingDrain(_ data: [UInt8], fd: Int32) {
         data.withUnsafeBufferPointer { bp in
-            let n = Darwin.write(masterFD, bp.baseAddress, bp.count)
-            if n < 0 {
-                NSLog("[PTY] write failed: errno=\(errno)")
-            } else if n != data.count {
-                NSLog("[PTY] partial write: \(n) of \(data.count) bytes")
+            var done = 0
+            while done < bp.count {
+                let n = Darwin.write(fd, bp.baseAddress!.advanced(by: done),
+                                     bp.count - done)
+                if n > 0 {
+                    done += n
+                } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    usleep(2000)  // 2 ms — wait for Python to drain stdin
+                    continue
+                } else if n < 0 && errno == EINTR {
+                    continue
+                } else {
+                    if n < 0 { NSLog("[PTY] bg write failed: errno=\(errno)") }
+                    return
+                }
             }
         }
+    }
+
+    private func decrementStdinPending() {
+        stdinPendingLock.lock()
+        if stdinPending > 0 { stdinPending -= 1 }
+        stdinPendingLock.unlock()
     }
 
     func send(text: String) {

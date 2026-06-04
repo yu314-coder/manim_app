@@ -856,11 +856,12 @@ private struct HelpSheet: View {
             ("Esc",       "Stop render (legacy)"),
         ]),
         ("View", [
-            ("⌘ 1",       "Workspace tab"),
-            ("⌘ 2",       "System tab"),
+            ("⌘ 1",       "Gallery tab"),
+            ("⌘ 2",       "Workspace tab"),
             ("⌘ 3",       "Assets tab"),
             ("⌘ 4",       "Packages tab"),
             ("⌘ 5",       "History tab"),
+            ("⌘ 6",       "System tab"),
             ("⌘ \\",      "Toggle right sidebar"),
         ]),
         ("Editor — find / nav", [
@@ -890,7 +891,7 @@ private struct HelpSheet: View {
         ("Help / Settings", [
             ("⌘ ?",       "Open this help"),
             ("⇧ ⌘ K",     "Keyboard shortcuts"),
-            ("⌘ ,",       "Open Settings"),
+            ("⌘ ,",       "Settings (system)"),
         ]),
         ("Shell", [
             ("help",    "List all builtins"),

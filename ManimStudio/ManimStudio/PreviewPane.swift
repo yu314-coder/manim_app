@@ -18,6 +18,7 @@
 // scales to any video size and includes its own transport (play /
 // pause / scrub / speed / loop).
 import SwiftUI
+import Combine
 import AVKit
 import AVFoundation
 import Photos
@@ -26,19 +27,21 @@ import WebKit
 
 struct PreviewPane: View {
     @Binding var videoURL: URL?
-    /// Stable AVPlayer instance kept across SwiftUI redraws. Building
-    /// `AVPlayer(url:)` inline in `body` recreates the player on
-    /// every state change (e.g. each terminalText update during a
-    /// render) — that drops in-flight asset loading and sometimes
-    /// shows a black screen even though the URL is valid. Holding
-    /// the player in @State and only swapping the AVPlayerItem when
-    /// the URL changes keeps playback steady.
-    @State private var player = AVPlayer()
-    @State private var loadedURL: URL? = nil
+    /// Holder for the live <video> WKWebView so the screenshot action
+    /// can read the element's current playback time and capture the
+    /// exact frame the user is looking at. The viewport is rendered by
+    /// `VideoWebView` (HTML5 <video>), not by an AVPlayer, so there is
+    /// no Swift-side player whose `currentTime()` reflects the screen.
+    @StateObject private var webHolder = WebViewHolder()
     @State private var showFullscreen = false
     @State private var shareItems: [Any] = []
     @State private var showShare = false
     @State private var toast: String? = nil
+    /// Cached, pre-formatted on-disk size for the file-info bar. Reading
+    /// FileManager attributes + ByteCountFormatter on every `body` pass
+    /// is wasteful — during a render `videoURL` changes each poll tick
+    /// and `body` re-evaluates constantly. Recompute only on URL change.
+    @State private var fileSizeText: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -64,9 +67,8 @@ struct PreviewPane: View {
                 Text(videoURL?.lastPathComponent ?? "—")
                     .font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
                 Spacer()
-                if let url = videoURL,
-                   let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64 {
-                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                if let sizeText = fileSizeText {
+                    Text(sizeText)
                         .font(.system(size: 10)).foregroundStyle(Theme.textDim)
                 }
             }
@@ -76,7 +78,7 @@ struct PreviewPane: View {
             // Viewport
             Group {
                 if let url = videoURL {
-                    VideoWebView(videoURL: url)
+                    VideoWebView(videoURL: url, holder: webHolder)
                         // Re-render the WebView when the URL changes so
                         // the HTML5 <video> picks up the new source.
                         .id(url.absoluteString)
@@ -98,6 +100,7 @@ struct PreviewPane: View {
             }
         }
         .background(Theme.bgPrimary)
+        .task(id: videoURL) { refreshFileSize() }
         .overlay(alignment: .top) {
             if let t = toast {
                 Text(t)
@@ -120,36 +123,32 @@ struct PreviewPane: View {
         }
     }
 
-    /// Replace the player's currentItem when the URL changes,
-    /// rather than rebuilding the AVPlayer itself. Kicks off
-    /// playback immediately on the new file. If the URL points at
-    /// a deleted file (e.g. a partial that was cleaned up after
-    /// concat), clear the binding so the empty state re-renders.
-    private func syncPlayer() {
-        guard let url = videoURL else {
-            player.replaceCurrentItem(with: nil)
-            loadedURL = nil
+    /// Recompute the cached, formatted file size for the info bar.
+    /// Called only when `videoURL` changes (via `.task(id:)`) so we
+    /// don't touch the filesystem on every `body` evaluation.
+    private func refreshFileSize() {
+        guard let url = videoURL,
+              let size = try? FileManager.default
+                .attributesOfItem(atPath: url.path)[.size] as? Int64 else {
+            fileSizeText = nil
             return
         }
-        if loadedURL == url { return }
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            DispatchQueue.main.async { videoURL = nil }
-            return
-        }
-        let item = AVPlayerItem(asset: AVURLAsset(url: url))
-        player.replaceCurrentItem(with: item)
-        player.seek(to: .zero)
-        player.play()
-        loadedURL = url
+        fileSizeText = ByteCountFormatter.string(fromByteCount: size,
+                                                 countStyle: .file)
     }
 
     // MARK: - Screenshot
     //
-    // Grab a single frame from the currently-playing video at the
-    // player's current time, save it to the Photos library, and offer
-    // a share fallback. For still images (.png / .jpg) we just share
-    // the image file directly. AVAssetImageGenerator runs off-main
-    // so the UI doesn't stutter on a 1080p frame extract.
+    // Grab the frame the user is currently looking at, save it to the
+    // Photos library, and offer a share fallback. For still images
+    // (.png / .jpg) we just share the image file directly.
+    //
+    // The viewport is an HTML5 <video> inside a WKWebView, not an
+    // AVPlayer, so there is no Swift-side player whose `currentTime()`
+    // reflects the screen. Instead we ask the live WebView for the
+    // <video> element's `currentTime` via JavaScript, then extract that
+    // exact frame from the same asset with AVAssetImageGenerator (which
+    // runs off-main so the UI doesn't stutter on a 1080p frame).
     private func takeScreenshot() {
         guard let url = videoURL else {
             flash("No preview loaded")
@@ -161,8 +160,31 @@ struct PreviewPane: View {
             saveImageURLToPhotos(url)
             return
         }
-        // Video — extract the current frame.
-        let time = player.currentTime()
+        // Video — ask the WebView's <video> for its current playback
+        // time, then extract that frame. If the WebView isn't reachable
+        // (or JS fails), fall back to t=0 so the action still works.
+        readCurrentVideoTime { seconds in
+            let time = CMTime(seconds: max(0, seconds),
+                              preferredTimescale: 600)
+            extractFrame(from: url, at: time)
+        }
+    }
+
+    /// Read the on-screen <video> element's currentTime (seconds) from
+    /// the live WKWebView. Completion is delivered on the main queue;
+    /// falls back to 0 when the WebView or the value isn't available.
+    private func readCurrentVideoTime(_ completion: @escaping (Double) -> Void) {
+        guard let wv = webHolder.webView else {
+            completion(0)
+            return
+        }
+        wv.evaluateJavaScript("document.getElementById('v').currentTime") { value, _ in
+            let seconds = (value as? NSNumber)?.doubleValue ?? 0
+            completion(seconds)
+        }
+    }
+
+    private func extractFrame(from url: URL, at time: CMTime) {
         let asset = AVURLAsset(url: url)
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
@@ -316,8 +338,17 @@ private struct AVPlayerControllerRepresented: UIViewControllerRepresentable {
 //     logic needed (HTML5 video's built-in fullscreen still works via
 //     the system control).
 
+/// Weak handle to the live video WKWebView so the screenshot action can
+/// query the <video> element's current playback time. Held by PreviewPane
+/// as a @StateObject and populated by VideoWebView when its WKWebView is
+/// created.
+final class WebViewHolder: ObservableObject {
+    weak var webView: WKWebView?
+}
+
 private struct VideoWebView: UIViewRepresentable {
     let videoURL: URL
+    let holder: WebViewHolder
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -329,6 +360,7 @@ private struct VideoWebView: UIViewRepresentable {
         wv.backgroundColor = .black
         wv.isOpaque = false
         wv.scrollView.backgroundColor = .black
+        holder.webView = wv
         loadPlayer(into: wv)
         return wv
     }
@@ -341,9 +373,36 @@ private struct VideoWebView: UIViewRepresentable {
 
     private func loadPlayer(into wv: WKWebView) {
         let dir = videoURL.deletingLastPathComponent()
-        let videoName = videoURL.lastPathComponent
+        let name = videoURL.lastPathComponent
         let ext = videoURL.pathExtension.lowercased()
-        // Pick the right MIME so WebKit feeds the right decoder.
+        // An .html output is a self-contained file with the video
+        // base64-embedded as a data URI. Loading that multi-MB data URI
+        // into WKWebView exhausts the WebContent memory limit and crashes
+        // the app on iPad — so we DON'T preview the html itself. The
+        // render writes the html next to its source .mp4 (same basename),
+        // so play that lightweight sibling instead. The .html stays as the
+        // export/save artifact (full size, no cap). Only if the sibling
+        // mp4 is somehow missing do we fall back to loading the html.
+        if ext == "html" {
+            let siblingMP4 = dir.appendingPathComponent(
+                videoURL.deletingPathExtension().lastPathComponent + ".mp4")
+            if FileManager.default.fileExists(atPath: siblingMP4.path) {
+                let phtml = Self.playerHTML(
+                    videoFilename: siblingMP4.lastPathComponent, mime: "video/mp4")
+                let htmlURL = dir.appendingPathComponent("_preview_player.html")
+                if (try? phtml.write(to: htmlURL, atomically: true, encoding: .utf8)) != nil {
+                    wv.loadFileURL(htmlURL, allowingReadAccessTo: dir)
+                    return
+                }
+            }
+            wv.loadFileURL(videoURL, allowingReadAccessTo: dir)
+            return
+        }
+        // Images (gif / png / jpg) must render in an <img> tag — a GIF or
+        // PNG shoved into <video> fails to load ("Video failed to load").
+        // Manim outputs a .gif when the user picks the GIF format, so the
+        // preview has to handle images too, not just video.
+        let isImage = ["gif", "png", "jpg", "jpeg", "webp"].contains(ext)
         let mime: String = {
             switch ext {
             case "mp4", "m4v": return "video/mp4"
@@ -352,7 +411,9 @@ private struct VideoWebView: UIViewRepresentable {
             default:            return "video/mp4"
             }
         }()
-        let html = Self.playerHTML(videoFilename: videoName, mime: mime)
+        let html = isImage
+            ? Self.imageHTML(filename: name)
+            : Self.playerHTML(videoFilename: name, mime: mime)
         let htmlURL = dir.appendingPathComponent("_preview_player.html")
         do {
             try html.write(to: htmlURL, atomically: true, encoding: .utf8)
@@ -364,18 +425,21 @@ private struct VideoWebView: UIViewRepresentable {
         wv.loadFileURL(htmlURL, allowingReadAccessTo: dir)
     }
 
+    /// Escape a filename for embedding in an HTML attribute. Manim names
+    /// are ASCII so this is mostly defensive.
+    private static func escapeAttr(_ s: String) -> String {
+        s.replacingOccurrences(of: "\"", with: "&quot;")
+         .replacingOccurrences(of: "<", with: "&lt;")
+         .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
     /// HTML5 video player template. The `<source>` tag uses a relative
     /// filename so WebKit resolves it against the HTML file's directory
     /// — same dir we hand to `allowingReadAccessTo:`. The script auto-
     /// plays muted (iOS requires `muted` for unattended playback) and
     /// loops.
     private static func playerHTML(videoFilename: String, mime: String) -> String {
-        // Escape for embedding in an HTML attribute. Filenames produced
-        // by Manim are ASCII so this is mostly defensive.
-        let safeName = videoFilename
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
+        let safeName = escapeAttr(videoFilename)
         return """
         <!DOCTYPE html>
         <html><head><meta charset="UTF-8">
@@ -397,6 +461,34 @@ private struct VideoWebView: UIViewRepresentable {
         v.addEventListener('loadeddata',()=>{v.play().catch(()=>{});});
         v.addEventListener('error',e=>{
           document.body.innerHTML='<div style="color:#f87171;padding:18px;font-size:13px">Video failed to load: '+(v.error?v.error.code:'unknown')+'</div>';
+        });
+        </script>
+        </body></html>
+        """
+    }
+
+    /// Still / animated-image template (GIF, PNG, JPEG). An animated GIF
+    /// loops on its own; a PNG is shown statically. Centered, letterboxed,
+    /// pixel-art-friendly nearest-neighbour is avoided so anti-aliased
+    /// Manim output stays smooth.
+    private static func imageHTML(filename: String) -> String {
+        let safeName = escapeAttr(filename)
+        return """
+        <!DOCTYPE html>
+        <html><head><meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+        <style>
+        *{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+        html,body{height:100%;background:#0A0A0F;overflow:hidden}
+        .player{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
+        img{max-width:100%;max-height:100%;object-fit:contain;background:#000}
+        </style></head>
+        <body>
+        <div class="player"><img id="im" src="\(safeName)"></div>
+        <script>
+        const im=document.getElementById('im');
+        im.addEventListener('error',()=>{
+          document.body.innerHTML='<div style="color:#f87171;padding:18px;font-size:13px;font-family:-apple-system">Image failed to load</div>';
         });
         </script>
         </body></html>

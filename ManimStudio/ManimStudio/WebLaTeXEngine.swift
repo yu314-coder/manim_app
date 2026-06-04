@@ -37,6 +37,41 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
     private var pendingLoadCallbacks: [() -> Void] = []
     private let queue = DispatchQueue(label: "codebench.latex.web", qos: .userInitiated)
 
+    /// One-shot wrapper around a compile completion handler. `fire`
+    /// invokes the wrapped completion at most once — any later call
+    /// (timeout, nav failure, process termination, real result) is a
+    /// no-op. All mutation happens on the main thread, so no lock needed.
+    /// Mirrors BusytexEngine.CompletionGuard.
+    final class CompletionGuard {
+        private var completion: ((Int, String, Data?) -> Void)?
+        init(_ completion: @escaping (Int, String, Data?) -> Void) {
+            self.completion = completion
+        }
+        func fire(_ status: Int, _ log: String, _ pdf: Data?) {
+            guard let c = completion else { return }
+            completion = nil
+            c(status, log, pdf)
+        }
+        var isDone: Bool { completion == nil }
+    }
+
+    /// Compile completion guards still awaiting a result. A WebView nav
+    /// failure or WebContent process termination fails (and drains) all
+    /// of these so no caller hangs. Touched only on the main thread.
+    private var inflightGuards: [CompletionGuard] = []
+
+    private func removeGuard(_ g: CompletionGuard) {
+        inflightGuards.removeAll { $0 === g }
+    }
+
+    /// Fail every in-flight compile with the given code/message and
+    /// drain the list. Called on WebView load failure / process death.
+    private func failAllInflight(_ status: Int, _ message: String) {
+        let guards = inflightGuards
+        inflightGuards.removeAll()
+        for g in guards { g.fire(status, message, nil) }
+    }
+
     /// Live progress reports from the engine, forwarded to whoever's
     /// watching. LaTeXEngine hooks this up to the signal-file pipeline
     /// so Python can print "[latex] fetching article.cls" etc. while a
@@ -283,10 +318,35 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
             self.emitProgress("starting compile of \(mainFileName)")
             self.startSwiftHeartbeat()
             self.preload()
+
+            // Wrap completion in a one-shot guard so it fires exactly
+            // once across success / JS error / timeout / nav failure /
+            // WebContent-process death. Tear down verbose progress +
+            // heartbeat on whichever path fires first.
+            let guardBox = CompletionGuard { [weak self] status, log, pdf in
+                let engine = self ?? WebLaTeXEngine.shared
+                engine.verboseProgress = false
+                engine.stopSwiftHeartbeat()
+                completion(status, log, pdf)
+            }
+            self.inflightGuards.append(guardBox)
+            // 60s ceiling: if the WebView never calls back (hung WASM,
+            // dropped Promise, process freeze), force a failure so the
+            // caller never hangs. The signal-file watchdog upstream is
+            // a separate safety net — this guarantees the closure runs.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
+                guard let self, !guardBox.isDone else { return }
+                self.emitProgress("compile timed out after 60s")
+                self.removeGuard(guardBox)
+                guardBox.fire(-5, "WebLaTeX compile timed out", nil)
+            }
+
             self.whenReady { [weak self] in
                 guard let self, let wv = self.webView else {
-                    self?.stopSwiftHeartbeat()
-                    completion(-1, "engine not available", nil)
+                    // If `self` deallocated, fire via the guard (no-op if
+                    // already settled) — the guard's teardown stops the
+                    // heartbeat on the shared singleton.
+                    guardBox.fire(-1, "engine not available", nil)
                     return
                 }
                 self.emitProgress("engine ready — running pdflatex")
@@ -306,22 +366,19 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                     in: nil,
                     in: .page
                 ) { result in
-                    // Turn verbose progress back off once the compile
-                    // settles — the terminal stays quiet if the engine
-                    // logs anything after this (e.g. deferred Promise
-                    // resolutions, late XHRs).
+                    // Route every settlement through the one-shot guard
+                    // (which also turns verbose progress off + stops the
+                    // heartbeat). A late call after timeout/nav-failure is
+                    // a harmless no-op.
+                    self.removeGuard(guardBox)
                     switch result {
                     case .failure(let error):
                         self.emitProgress("compile failed: \(error.localizedDescription)")
-                        self.verboseProgress = false
-                        self.stopSwiftHeartbeat()
-                        completion(-2, "callAsyncJavaScript failed: \(error)", nil)
+                        guardBox.fire(-2, "callAsyncJavaScript failed: \(error)", nil)
                     case .success(let value):
                         guard let obj = value as? [String: Any] else {
                             self.emitProgress("engine returned unexpected value")
-                            self.verboseProgress = false
-                            self.stopSwiftHeartbeat()
-                            completion(-3,
+                            guardBox.fire(-3,
                                 "engine returned \(type(of: value)): \(value)",
                                 nil)
                             return
@@ -347,9 +404,7 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                                 + "\(self.fetchesServed) files served, "
                                 + "\(self.fetchesMissed) misses")
                         }
-                        self.verboseProgress = false
-                        self.stopSwiftHeartbeat()
-                        completion(status, logText, pdfData)
+                        guardBox.fire(status, logText, pdfData)
                     }
                 }
             }
@@ -423,7 +478,41 @@ extension WebLaTeXEngine: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        print("[WebLaTeX] navigation failed: \(error.localizedDescription)")
+        handleNavigationFailure("navigation failed: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        handleNavigationFailure("provisional navigation failed: \(error.localizedDescription)")
+    }
+
+    /// WebContent process was killed (almost always iOS memory pressure
+    /// on the hidden engine WebView). Without this, `isLoaded` stays
+    /// true, `webView` stays non-nil, and the next compile's
+    /// callAsyncJavaScript targets a dead process — hanging forever.
+    /// Fail in-flight compiles, mark unloaded, and reload so the next
+    /// compile recovers.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        handleNavigationFailure("WebContent process terminated")
+        // Reload the engine host page so a subsequent compile re-boots
+        // the WASM pdftex instead of targeting a dead process.
+        isLoaded = false
+        preload()
+    }
+
+    /// Shared failure path: drop the loaded flag, drain any callers
+    /// blocked in `whenReady` (so they don't wait on a load that will
+    /// never finish), and fail every in-flight compile guard.
+    private func handleNavigationFailure(_ message: String) {
+        print("[WebLaTeX] \(message)")
+        isLoaded = false
+        let callbacks = pendingLoadCallbacks
+        pendingLoadCallbacks.removeAll()
+        // Run pending whenReady actions: each re-enters via the guard
+        // and, finding no usable webView, fires its completion with a
+        // failure (instead of hanging).
+        for cb in callbacks { cb() }
+        failAllInflight(-6, "WebLaTeX engine load failed: \(message)")
     }
 }
 
@@ -544,7 +633,8 @@ extension WebLaTeXEngine {
             // itself fails fast on missing files. Saves one syscall per fetch
             // × 500+ fetches on first beamer/pgf load.
             if let workDir = engine.userWorkingDir,
-               let data = try? Data(contentsOf: workDir.appendingPathComponent(key)) {
+               let data = try? Data(contentsOf: workDir.appendingPathComponent(key),
+                                    options: .mappedIfSafe) {
                 engine.fetchesServed += 1
                 let response = HTTPURLResponse(
                     url: url, statusCode: 200,
@@ -564,7 +654,7 @@ extension WebLaTeXEngine {
             }
             if let fileURL = locate(key: key, root: root) {
                 do {
-                    let data = try Data(contentsOf: fileURL)
+                    let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
                     engine.fetchesServed += 1
                     engine.lastServedFile = key
                     engine.lastServedAt = CFAbsoluteTimeGetCurrent()
@@ -784,7 +874,7 @@ extension WebLaTeXEngine {
                 return
             }
             do {
-                let data = try Data(contentsOf: fileURL)
+                let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
                 let mime: String
                 switch ext.lowercased() {
                 case "html": mime = "text/html; charset=utf-8"

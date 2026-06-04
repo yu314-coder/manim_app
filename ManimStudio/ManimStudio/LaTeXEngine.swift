@@ -455,13 +455,26 @@ import PDFKit
     private func startSignalWatcher() {
         DispatchQueue.main.async {
             self.signalTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                self?.checkForCompileRequest()
-                self?.checkForTextRequest()
-                self?.checkForDocCompileRequest()
-                self?.checkForMathCompileRequest()
-                self?.checkForPreviewRequest()
-                self?.checkForEditorApplyRequest()
-                self?.checkForOpenInEditorRequest()
+                guard let self else { return }
+                // Single directory listing per tick instead of 7
+                // synchronous FileManager.fileExists probes. The signal
+                // dir is empty the vast majority of ticks, so one
+                // contentsOfDirectory call (returning []) is far cheaper
+                // on the main thread than 7 stat() syscalls every 0.1 s.
+                // We only dispatch into a check when its signal file is
+                // actually present; the checks still re-verify + remove
+                // the file themselves, so the protocol is unchanged.
+                let signalDir = NSTemporaryDirectory().appending("latex_signals/")
+                let present = (try? FileManager.default.contentsOfDirectory(atPath: signalDir))
+                    .map(Set.init) ?? Set<String>()
+                guard !present.isEmpty else { return }
+                if present.contains("compile_request.txt") { self.checkForCompileRequest() }
+                if present.contains("text_request.txt") { self.checkForTextRequest() }
+                if present.contains("compile_doc_request.txt") { self.checkForDocCompileRequest() }
+                if present.contains("compile_math_request.txt") { self.checkForMathCompileRequest() }
+                if present.contains("preview_request.txt") { self.checkForPreviewRequest() }
+                if present.contains("ai_editor_apply.json") { self.checkForEditorApplyRequest() }
+                if present.contains("open_in_editor.txt") { self.checkForOpenInEditorRequest() }
             }
             // Preload the WASM engine so the first pdflatex call doesn't
             // pay the cold-start tax. busytex is the default path —

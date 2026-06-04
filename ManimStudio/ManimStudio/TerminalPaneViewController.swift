@@ -244,8 +244,11 @@ final class TerminalPaneViewController: UIViewController {
     }
 
     private func resetPTY() {
-        // Issue a clear and send a newline so the Python shell prompts again.
+        // Clear the screen, then actually tear down + restart the PTY
+        // read loop (recovers a wedged stdin/stdout pipe), and finally
+        // send a newline so the Python shell re-prompts.
         PTYBridge.shared.terminalView?.feed(text: "\u{1b}[2J\u{1b}[H")
+        PTYBridge.shared.reset()
         PTYBridge.shared.send(data: [0x0a])
     }
 

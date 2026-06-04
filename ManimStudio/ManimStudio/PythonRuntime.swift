@@ -64,7 +64,6 @@ final class PythonRuntime {
     private var toolOutputDirectoryURL: URL?
     private var environmentConfigured = false
     private let fileInputMode: Int32 = 257 // Py_file_input
-    private var gilReleasedForThreads = false
     /// Class-picker selection for the next `executeSync` run. "" = all
     /// scenes (legacy default), "*" = all scenes (explicit), otherwise
     /// the bare class name to render. Reset to "" by every executeSync
@@ -167,16 +166,73 @@ final class PythonRuntime {
     }
 
     /// Read new bytes from a stream file starting at the given offset. Fully defensive — never throws.
+    ///
+    /// Uses a FileHandle + seek so each 50 ms poll tick reads only the
+    /// bytes appended since last time — O(new bytes) instead of re-reading
+    /// the whole file every tick (which was O(n²) over a long render).
+    ///
+    /// UTF-8 safety: the appended chunk can end in the middle of a
+    /// multibyte codepoint (the writer flushes mid-character). If we
+    /// decoded that blindly we'd emit a U+FFFD replacement char and, worse,
+    /// advance the offset past the split byte so the codepoint never heals.
+    /// Instead we decode only the complete-codepoint prefix and hold back
+    /// the trailing incomplete bytes by NOT advancing the offset past them,
+    /// so they get re-read (now complete) on the next tick.
     private func readNewStreamBytes(from path: String, offset: inout UInt64) -> String {
-        guard FileManager.default.fileExists(atPath: path),
-              let data = FileManager.default.contents(atPath: path) else {
+        guard let handle = FileHandle(forReadingAtPath: path) else {
             return ""
         }
-        let total = UInt64(data.count)
-        guard total > offset else { return "" }
-        let newData = data.subdata(in: Int(offset)..<Int(total))
-        offset = total
-        return String(data: newData, encoding: .utf8) ?? ""
+        defer { try? handle.close() }
+        do {
+            try handle.seek(toOffset: offset)
+        } catch {
+            return ""
+        }
+        let newData: Data
+        if let remaining = try? handle.readToEnd() {
+            newData = remaining
+        } else {
+            newData = Data()
+        }
+        guard !newData.isEmpty else { return "" }
+
+        // Find the largest prefix of `newData` that ends on a UTF-8
+        // codepoint boundary. A continuation byte has the high bits 10xxxxxx
+        // (0x80..0xBF); a lead byte tells us how many bytes the codepoint
+        // spans. Scan back from the end over at most 3 trailing bytes to see
+        // whether the final codepoint is complete.
+        var validCount = newData.count
+        let bytes = [UInt8](newData)
+        var i = bytes.count - 1
+        var trailing = 0
+        while i >= 0 && trailing < 4 {
+            let b = bytes[i]
+            if b & 0xC0 == 0x80 {
+                // continuation byte — keep walking back to the lead byte
+                trailing += 1
+                i -= 1
+                continue
+            }
+            // `b` is a lead/ASCII byte; how many bytes should this codepoint span?
+            let expected: Int
+            if b & 0x80 == 0 { expected = 1 }            // 0xxxxxxx ASCII
+            else if b & 0xE0 == 0xC0 { expected = 2 }    // 110xxxxx
+            else if b & 0xF0 == 0xE0 { expected = 3 }    // 1110xxxx
+            else if b & 0xF8 == 0xF0 { expected = 4 }    // 11110xxx
+            else { expected = 1 }                         // invalid lead — treat as single byte
+            let have = trailing + 1
+            if have < expected {
+                // Codepoint is split across the chunk boundary. Hold back
+                // these `have` trailing bytes so they're re-read next tick.
+                validCount = i
+            }
+            break
+        }
+
+        guard validCount > 0 else { return "" }
+        let decodable = validCount == newData.count ? newData : newData.prefix(validCount)
+        offset += UInt64(validCount)
+        return String(data: decodable, encoding: .utf8) ?? ""
     }
 
     private static var replStarted = false
@@ -582,14 +638,6 @@ final class PythonRuntime {
         }
     }
 
-    /// Call after first Py_Initialize to release the GIL for other threads
-    private func releaseMainGILIfNeeded() {
-        guard !gilReleasedForThreads else { return }
-        gilReleasedForThreads = true
-        // After Py_Initialize(), the calling thread holds the GIL.
-        // We must release it so that PyGILState_Ensure can work from other threads.
-    }
-
     func probeLibraries(_ libraries: [String]) -> [LibraryProbe] {
         let filtered = libraries
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -714,7 +762,11 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
                 PyGILState_Release(gil)
             }
 
-            let globals = try mainGlobals()
+            // Dedicated module dict for tool/render code. Keeping this
+            // separate from __main__ stops the long-lived REPL thread
+            // (which runs user commands in __main__) and the render path
+            // from racing on one shared globals dict.
+            let globals = try execGlobals()
             try configurePythonPathsIfNeeded(globals: globals)
 
             let toolDir = try ensureToolOutputDirectory()
@@ -758,6 +810,20 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             try setGlobalString(String(manimQuality), key: "__codebench_manim_quality", globals: globals)
             try setGlobalString(String(manimFPS),    key: "__codebench_manim_fps",     globals: globals)
 
+            // Output format (mp4 / mov / gif / png) chosen in
+            // ControlsSidebar → UserDefaults["manim_format"]. A Preview
+            // run always uses mp4 for fast iteration regardless of the
+            // picker; a Final render honors the chosen format. The
+            // wrapper reads __codebench_manim_format and sets
+            // manim.config.format + steers output resolution accordingly.
+            let chosenFormat = (UserDefaults.standard.string(forKey: "manim_format") ?? "mp4").lowercased()
+            // mp4 / gif / html. A stale "mov"/"png" from an older build
+            // falls back to mp4. Preview always uses mp4 for speed.
+            let allowedFormats: Set<String> = ["mp4", "gif", "html"]
+            let manimFormat = isPreview ? "mp4"
+                : (allowedFormats.contains(chosenFormat) ? chosenFormat : "mp4")
+            try setGlobalString(manimFormat, key: "__codebench_manim_format", globals: globals)
+
             // Class-picker selection (set by execute(targetScene:)). "" /
             // "*" = render all detected Scene subclasses (legacy); a
             // bare class name = render only that one. We BAKE the value
@@ -777,7 +843,7 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             let wrapperSource = Self.executionWrapperScript.replacingOccurrences(
                 of: "__CODEBENCH_TARGET_SCENE_LITERAL__",
                 with: pythonQuoted(pickedTarget))
-            try runStatements(wrapperSource, filename: "<offlinai-python-tool>")
+            try runStatements(wrapperSource, filename: "<offlinai-python-tool>", in: globals)
             let stdoutRaw = getGlobalString("__codebench_stdout", globals: globals)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let stdout = sanitizeToolStdout(stdoutRaw)
@@ -1239,20 +1305,6 @@ os.environ.setdefault("MPLCONFIGDIR", \(pythonQuoted(toolDir)))
         return outputURL
     }
 
-    private func firstPythonVersionPath(in rootURL: URL) -> String? {
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: rootURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else {
-            return nil
-        }
-        let candidates = entries
-            .filter { $0.lastPathComponent.hasPrefix("python") }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        return candidates.first?.path
-    }
-
     private func mainGlobals() throws -> PyObjectPointer {
         guard let module = "__main__".withCString({ PyImport_AddModule($0) }) else {
             throw RuntimeError.message("Unable to load Python __main__ module.")
@@ -1263,7 +1315,32 @@ os.environ.setdefault("MPLCONFIGDIR", \(pythonQuoted(toolDir)))
         return globals
     }
 
-    private func runStatements(_ source: String, filename: String) throws {
+    /// Globals dict of a DEDICATED module (`__codebench_exec__`) used to
+    /// run tool/render code. Kept separate from `__main__` so the
+    /// long-lived `offlinai_shell.repl` thread (which execs the user's
+    /// interactive commands in `__main__`) and the render path don't race
+    /// on the same module dict. PyImport_AddModule creates the module on
+    /// first use and returns the existing one thereafter, so the dict is
+    /// stable across runs (matching the previous `__main__` semantics).
+    private func execGlobals() throws -> PyObjectPointer {
+        guard let module = "__codebench_exec__".withCString({ PyImport_AddModule($0) }) else {
+            throw RuntimeError.message("Unable to load Python __codebench_exec__ module.")
+        }
+        guard let globals = PyModule_GetDict(module) else {
+            throw RuntimeError.message("Unable to access Python exec global dictionary.")
+        }
+        // Ensure __builtins__ is present — a freshly created module dict
+        // from PyImport_AddModule does NOT have it, and exec/eval needs it
+        // to resolve builtins (print, open, __import__, …).
+        let hasBuiltins = "__builtins__".withCString { PyDict_GetItemString(globals, $0) } != nil
+        if !hasBuiltins, let main = try? mainGlobals(),
+           let mainBuiltins = "__builtins__".withCString({ PyDict_GetItemString(main, $0) }) {
+            _ = "__builtins__".withCString { PyDict_SetItemString(globals, $0, mainBuiltins) }
+        }
+        return globals
+    }
+
+    private func runStatements(_ source: String, filename: String, in evalGlobals: PyObjectPointer? = nil) throws {
         // Crash-proof GIL guard: every path to PyEval_EvalCode must hold
         // the GIL. On Mac "Designed for iPad" we've seen EXC_BAD_ACCESS
         // deep inside the evaluator; most commonly the culprit is a
@@ -1288,7 +1365,7 @@ os.environ.setdefault("MPLCONFIGDIR", \(pythonQuoted(toolDir)))
         }
         defer { Py_DecRef(codeObject) }
 
-        let globals = try mainGlobals()
+        let globals = try evalGlobals ?? mainGlobals()
         // Breadcrumb: if PyEvK1al_EvalCode SIGBUSes (seen on Mac Designed-
         // for-iPad when an iOS-built C extension fails to properly load
         // its dylib and stores a stale function pointer), this NSLog is
@@ -1430,7 +1507,7 @@ try:
     _candidates = []
     # (1) Derive from entries of sys.path that point into the app bundle.
     for _p in sys.path:
-        if _p and _p.endswith(".app") or ".app/" in _p:
+        if _p.endswith(".app") or ".app/" in _p:
             # Trim everything after CodeBench.app to get bundle root.
             _root = (_p.split(".app/", 1)[0] + ".app") if ".app/" in _p else _p
             _candidates.append(_os_stub.path.join(_root, "Frameworks", "libfortran_io_stubs.dylib"))
@@ -1800,6 +1877,23 @@ try:
         import manim
         _manim_run_id = uuid.uuid4().hex[:8]
         _manim_media = os.path.join(__codebench_tool_dir, f"manim_{_manim_run_id}")
+        # Prune stale per-run media dirs from EARLIER renders before
+        # creating this run's dir. Each render leaves a manim_<uuid>/ tree
+        # behind; without cleanup the Documents/ToolOutputs dir-scan
+        # fallback walks every prior run and gets slower each time. Best
+        # effort and silent — never delete the current run's dir.
+        try:
+            import shutil as _shutil_prune
+            for _old in os.listdir(__codebench_tool_dir):
+                if not _old.startswith("manim_"):
+                    continue
+                _old_path = os.path.join(__codebench_tool_dir, _old)
+                if _old_path == _manim_media:
+                    continue
+                if os.path.isdir(_old_path):
+                    _shutil_prune.rmtree(_old_path, ignore_errors=True)
+        except Exception:
+            pass
         os.makedirs(_manim_media, exist_ok=True)
         manim.config.media_dir = _manim_media
         manim.config.renderer = "cairo"
@@ -1816,12 +1910,40 @@ try:
         # is running. Our own [manim-debug] / [diag] / [fallback]
         # prefixes are filtered to NSLog by the Swift terminal layer.
         manim.config.verbosity = "ERROR"
-        # MUST use standard quality presets — custom pixel values break frame_rate!
-        # Manim's quality presets set pixel_width, pixel_height, AND frame_rate together.
+
+        # Apply a resolution index → real Manim resolution. Defined at
+        # module level so the render monkey-patch below can reuse it.
+        #   0=480p 1=720p 2=1080p 3=1440p 4=4K(2160p) 5=8K(4320p)
+        # 0-4 use Manim's built-in presets (which set pixel_width,
+        # pixel_height AND frame_rate together). 8K has no preset, so we
+        # set the pixel dimensions explicitly. After the resolution is
+        # chosen we override frame_rate with the user's FPS pick so the
+        # FPS control is real too (it was previously ignored). 4K/8K are
+        # genuinely rendered at full resolution — they are very memory
+        # heavy on iPad; the RAM HUD will show how close to the ceiling
+        # a given resolution runs.
+        def _cb_apply_quality(_cfg, q, fps):
+            _preset = {0: 'low_quality', 1: 'medium_quality', 2: 'high_quality',
+                       3: 'production_quality', 4: 'fourk_quality'}
+            if q in _preset:
+                _cfg.quality = _preset[q]
+            elif q == 5:
+                _cfg.pixel_width = 7680
+                _cfg.pixel_height = 4320
+                _cfg.frame_rate = 60
+            else:
+                _cfg.quality = 'high_quality'
+            try:
+                _f = int(fps)
+                if 1 <= _f <= 240:
+                    _cfg.frame_rate = float(_f)
+            except (TypeError, ValueError):
+                pass
+
         _mq = int(globals().get('__codebench_manim_quality', '0') or '0')
-        _quality_map = {0: 'low_quality', 1: 'medium_quality', 2: 'high_quality'}
-        manim.config.quality = _quality_map.get(_mq, 'low_quality')
-        _log(f"manim quality={manim.config.quality} res={manim.config.pixel_width}x{manim.config.pixel_height} fps={manim.config.frame_rate}")
+        _mfps = int(globals().get('__codebench_manim_fps', '0') or '0')
+        _cb_apply_quality(manim.config, _mq, _mfps)
+        _log(f"manim quality idx={_mq} res={manim.config.pixel_width}x{manim.config.pixel_height} fps={manim.config.frame_rate}")
 
         # iOS: Pango segfaults in cairo_scaled_font_glyph_extents when the
         # fallback font ("Times 9.999") can't be resolved via fontconfig.
@@ -1939,32 +2061,54 @@ try:
         # Monkey-patch to capture frames → animated GIF (since ffmpeg unavailable)
         if not getattr(manim.Scene, '_offlinai_patched', False):
             _orig_render = manim.Scene.render
-            # Also patch write_frame to collect frames for GIF
+            # Also patch write_frame to collect frames for GIF.
             from manim.scene.scene_file_writer import SceneFileWriter
             _orig_write_frame = SceneFileWriter.write_frame
             _collected_frames = []  # shared frame buffer
 
+            # Frame capture is GATED + CAPPED. Holding every rendered frame
+            # as a full-resolution PIL image is the dominant memory cost of
+            # a render — a 720p scene with a few hundred frames retains
+            # hundreds of MB until the render finishes, which jetsam-kills
+            # the app on iPad (the device has a much smaller RAM ceiling
+            # than the Simulator, so it only crashes on-device). Those
+            # frames are ONLY ever used to assemble a GIF, so:
+            #   • _collect_enabled[0] is set True by the render patch ONLY
+            #     when the chosen format is gif — mp4/html collect nothing.
+            #   • even for gif we cap to _MAX_COLLECT downsampled frames so
+            #     a long scene can't blow memory (the gif assembler samples
+            #     to ~80 frames at 480px anyway, so capping here is lossless
+            #     for the final gif).
+            _collect_enabled = [False]
+            _MAX_COLLECT = 240
+            _GIF_MAX_W = 480
+
             def _capture_write_frame(self_fw, frame_or_renderer, num_frames=1):
-                # Intercept write_frame to collect PIL frames for GIF
-                try:
-                    if isinstance(frame_or_renderer, np.ndarray):
-                        frame = frame_or_renderer
-                    elif hasattr(frame_or_renderer, 'get_frame'):
-                        frame = frame_or_renderer.get_frame()
-                    else:
-                        frame = None
-                    if frame is not None and frame.size > 0:
-                        from PIL import Image as _PILImage
-                        # frame is RGBA uint8 numpy array
-                        if frame.shape[-1] == 4:
-                            img = _PILImage.fromarray(frame, 'RGBA').convert('RGB')
+                # Collect a downsized RGB copy for the GIF path only.
+                if _collect_enabled[0] and len(_collected_frames) < _MAX_COLLECT:
+                    try:
+                        if isinstance(frame_or_renderer, np.ndarray):
+                            frame = frame_or_renderer
+                        elif hasattr(frame_or_renderer, 'get_frame'):
+                            frame = frame_or_renderer.get_frame()
                         else:
-                            img = _PILImage.fromarray(frame, 'RGB')
-                        # Sample every few frames to keep GIF small
-                        _collected_frames.append(img)
-                except Exception:
-                    pass
-                # Still call original (for save_last_frame PNG)
+                            frame = None
+                        if frame is not None and frame.size > 0:
+                            from PIL import Image as _PILImage
+                            if frame.shape[-1] == 4:
+                                img = _PILImage.fromarray(frame, 'RGBA').convert('RGB')
+                            else:
+                                img = _PILImage.fromarray(frame, 'RGB')
+                            # Downsample at capture time so we never hold
+                            # full-res frames in memory.
+                            if img.width > _GIF_MAX_W:
+                                _r = _GIF_MAX_W / img.width
+                                img = img.resize((_GIF_MAX_W, int(img.height * _r)),
+                                                 _PILImage.LANCZOS)
+                            _collected_frames.append(img)
+                    except Exception:
+                        pass
+                # Always run the original so the real mp4 still gets written.
                 try:
                     _orig_write_frame(self_fw, frame_or_renderer, num_frames)
                 except Exception:
@@ -1976,6 +2120,14 @@ try:
                 global __codebench_plot_path
                 import manim as _m
                 _m.config.renderer = "cairo"
+                # Output format chosen by the user (Swift passes
+                # __codebench_manim_format; defaults to mp4). All formats
+                # render through the H.264 movie pipeline first:
+                #   mp4  — used directly
+                #   gif  — assembled from captured frames below
+                #   html — the mp4 is base64-embedded into a standalone
+                #          .html file below
+                _fmt = (globals().get('__codebench_manim_format', 'mp4') or 'mp4').lower()
                 _m.config.format = "mp4"
                 _m.config.write_to_movie = True
                 _m.config.save_last_frame = False
@@ -2057,10 +2209,18 @@ try:
                     print(f"[manim] font registration failed: {type(_fe).__name__}: {_fe}", flush=True)
                 _m.config.from_animation_number = 0
                 _m.config.upto_animation_number = -1
-                # Re-apply quality preset to ensure correct frame_rate
+                # Re-apply the chosen resolution + fps right before render
+                # (config can be reset between import and render). Uses the
+                # same 0..5 map as the initial setup, so 1440p / 4K / 8K
+                # render at TRUE resolution rather than collapsing to 1080p.
                 _q = int(globals().get('__codebench_manim_quality', '0') or '0')
-                _qmap = {0: 'low_quality', 1: 'medium_quality', 2: 'high_quality'}
-                _m.config.quality = _qmap.get(_q, 'low_quality')
+                _qfps = int(globals().get('__codebench_manim_fps', '0') or '0')
+                _cb_apply_quality(_m.config, _q, _qfps)
+                # Only retain frames in memory when we actually need them
+                # to assemble a GIF. mp4/html come from the movie pipeline
+                # and never touch _collected_frames, so collecting for them
+                # just wastes (a lot of) RAM and crashes iPad on big scenes.
+                _collect_enabled[0] = (_fmt == 'gif')
                 _collected_frames.clear()
                 _orig_render(self, *args, **kwargs)
                 print(f"[manim-debug] frames_written={len(_collected_frames)} skip={getattr(self.renderer, 'skip_animations', '?')} sections_skip={getattr(self.renderer.file_writer.sections[-1], 'skip_animations', '?') if hasattr(self.renderer, 'file_writer') and self.renderer.file_writer.sections else '?'}")
@@ -2069,16 +2229,73 @@ try:
                     _log(f"fw attrs: movie={hasattr(fw,'movie_file_path')}, image={hasattr(fw,'image_file_path')}")
                     if hasattr(fw, 'movie_file_path'):
                         _log(f"movie_file_path={fw.movie_file_path}")
-                    # 1. Check for mp4 video (PyAV + ffmpeg)
+                    # Resolve the output file, honoring the chosen format
+                    # (_fmt set above). The default order prefers the movie
+                    # file; gif and html wrap/convert the mp4 so the user's
+                    # pick wins.
                     movie_path = str(fw.movie_file_path) if hasattr(fw, 'movie_file_path') and fw.movie_file_path else None
-                    if movie_path and os.path.exists(movie_path) and os.path.getsize(movie_path) > 500:
-                        __codebench_plot_path = movie_path
-                        _log(f"manim MP4: {movie_path} ({os.path.getsize(movie_path)} bytes)")
-                        print(f"[manim rendered] {movie_path}")
-                        _collected_frames.clear()
-                        return
-                    # 2. Fallback: assemble GIF from captured frames
-                    if len(_collected_frames) >= 2:
+                    img_path = str(fw.image_file_path) if hasattr(fw, 'image_file_path') and fw.image_file_path else None
+
+                    def _wrap_html(mp4_path):
+                        # Build a single self-contained .html file with the
+                        # rendered mp4 embedded as a base64 data URI — no
+                        # external file dependency, opens in any browser.
+                        # We stream the base64 in chunks so a large (tens of
+                        # MB) render doesn't spike memory building one giant
+                        # string, and we never cap the size. Returns the
+                        # html path on success, else None.
+                        import base64 as _b64
+                        if not (mp4_path and os.path.exists(mp4_path)):
+                            return None
+                        # Write the .html RIGHT NEXT TO the .mp4 (same dir,
+                        # same basename) so the in-app preview can find the
+                        # lightweight sibling mp4 and play THAT instead of
+                        # loading the multi-MB base64 data-URI html (which
+                        # exhausts WKWebView's WebContent memory and crashes
+                        # the app on iPad).
+                        html_path = os.path.splitext(mp4_path)[0] + ".html"
+                        _name = type(self).__name__
+                        try:
+                            with open(html_path, "w", encoding="utf-8") as _h:
+                                _h.write(
+                                    "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                                    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                                    f"<title>{_name}</title>"
+                                    "<style>html,body{margin:0;height:100%;background:#000;"
+                                    "display:flex;align-items:center;justify-content:center}"
+                                    "video{max-width:100%;max-height:100%}</style></head><body>"
+                                    '<video controls autoplay loop muted playsinline src="data:video/mp4;base64,')
+                                # Stream base64 in 3 MB binary chunks (chunk
+                                # size is a multiple of 3 so chunk boundaries
+                                # never split a base64 quantum).
+                                with open(mp4_path, "rb") as _mp4:
+                                    while True:
+                                        _chunk = _mp4.read(3 * 1024 * 1024)
+                                        if not _chunk:
+                                            break
+                                        _h.write(_b64.b64encode(_chunk).decode("ascii"))
+                                _h.write('"></video></body></html>')
+                            if os.path.exists(html_path) and os.path.getsize(html_path) > 200:
+                                return html_path
+                        except Exception as _he:
+                            _log(f"manim HTML wrap failed: {_he}")
+                        return None
+
+                    # HTML requested → render mp4, then embed it.
+                    if _fmt == 'html' and movie_path and os.path.exists(movie_path) and os.path.getsize(movie_path) > 500:
+                        _html = _wrap_html(movie_path)
+                        if _html:
+                            __codebench_plot_path = _html
+                            _log(f"manim HTML: {_html} ({os.path.getsize(_html)} bytes)")
+                            print(f"[manim rendered] {_html}")
+                            _collected_frames.clear()
+                            return
+
+                    def _assemble_gif():
+                        # Build an animated GIF from the captured frames.
+                        # Returns the gif path on success, else None.
+                        if len(_collected_frames) < 2:
+                            return None
                         from PIL import Image as _PILImage
                         gif_path = os.path.join(_m.config.media_dir, f"{type(self).__name__}.gif")
                         frames = _collected_frames
@@ -2094,13 +2311,35 @@ try:
                         duration = max(int(1000 / fps), 33)
                         frames[0].save(gif_path, save_all=True, append_images=frames[1:], duration=duration, loop=0, optimize=True)
                         if os.path.exists(gif_path) and os.path.getsize(gif_path) > 100:
-                            __codebench_plot_path = gif_path
-                            _log(f"manim GIF: {gif_path} ({len(frames)} frames)")
-                            print(f"[manim rendered] {gif_path}")
+                            return gif_path
+                        return None
+
+                    # GIF requested → assemble from frames first.
+                    if _fmt == 'gif':
+                        _gif = _assemble_gif()
+                        if _gif:
+                            __codebench_plot_path = _gif
+                            _log(f"manim GIF: {_gif}")
+                            print(f"[manim rendered] {_gif}")
                             _collected_frames.clear()
                             return
-                    # 3. Fallback: static PNG
-                    img_path = str(fw.image_file_path) if hasattr(fw, 'image_file_path') and fw.image_file_path else None
+
+                    # 1. Movie file (mp4) — the default path.
+                    if movie_path and os.path.exists(movie_path) and os.path.getsize(movie_path) > 500:
+                        __codebench_plot_path = movie_path
+                        _log(f"manim movie: {movie_path} ({os.path.getsize(movie_path)} bytes)")
+                        print(f"[manim rendered] {movie_path}")
+                        _collected_frames.clear()
+                        return
+                    # 2. Fallback: assemble GIF from captured frames.
+                    _gif = _assemble_gif()
+                    if _gif:
+                        __codebench_plot_path = _gif
+                        _log(f"manim GIF: {_gif}")
+                        print(f"[manim rendered] {_gif}")
+                        _collected_frames.clear()
+                        return
+                    # 3. Fallback: static PNG.
                     if img_path and os.path.exists(img_path):
                         __codebench_plot_path = img_path
                         _log(f"manim PNG: {img_path}")
@@ -3072,14 +3311,17 @@ try:
                             _out_ct = _av.open(_combined_path, mode="w")
                             # GPU toggle (header bolt button). When the
                             # user has it off, ContentView.triggerRender
-                            # sets OFFLINAI_MANIM_GPU=0 so we drop to
-                            # software libx264. Default-on (=hardware
-                            # videotoolbox) because it's ~5× faster.
+                            # sets OFFLINAI_MANIM_GPU=0. Default-on
+                            # (=hardware videotoolbox) because it's ~5×
+                            # faster. The software fallback is mpeg4 — the
+                            # bundled ffmpeg build has NO libx264 (GPL), so
+                            # selecting libx264 here would fail to find the
+                            # encoder and abort the concat.
                             import os as _os_gpu
                             _gpu_codec = ("h264_videotoolbox"
                                           if _os_gpu.environ.get(
                                               "OFFLINAI_MANIM_GPU", "1") != "0"
-                                          else "libx264")
+                                          else "mpeg4")
                             _concat_stream = _out_ct.add_stream(
                                 _gpu_codec, rate=int(_max_rate))
                             _concat_stream.width = _max_w

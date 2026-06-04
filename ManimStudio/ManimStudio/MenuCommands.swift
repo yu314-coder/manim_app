@@ -99,10 +99,15 @@ struct ManimStudioCommands: Commands {
         }
 
         // ── View ────────────────────────────────────────────────
+        // NOTE: each tab maps to a current AppTab case (Gallery was added
+        // after this menu was first written — keep them in sync). The
+        // ⌘1–⌘6 / ⌘\ shortcuts are declared exactly once here; declaring
+        // the same key elsewhere (or twice) makes UIKit log duplicate
+        // UIKeyCommand identifiers and is undefined behavior.
         CommandMenu("View") {
-            Button("Workspace") { post(.menuViewTab, ["tab": "workspace"]) }
+            Button("Gallery")   { post(.menuViewTab, ["tab": "gallery"]) }
                 .keyboardShortcut("1", modifiers: [.command])
-            Button("System")    { post(.menuViewTab, ["tab": "system"]) }
+            Button("Workspace") { post(.menuViewTab, ["tab": "workspace"]) }
                 .keyboardShortcut("2", modifiers: [.command])
             Button("Assets")    { post(.menuViewTab, ["tab": "assets"]) }
                 .keyboardShortcut("3", modifiers: [.command])
@@ -110,6 +115,8 @@ struct ManimStudioCommands: Commands {
                 .keyboardShortcut("4", modifiers: [.command])
             Button("History")   { post(.menuViewTab, ["tab": "history"]) }
                 .keyboardShortcut("5", modifiers: [.command])
+            Button("System")    { post(.menuViewTab, ["tab": "system"]) }
+                .keyboardShortcut("6", modifiers: [.command])
             Divider()
             Button("Toggle Right Sidebar") { post(.menuViewToggleSidebar) }
                 .keyboardShortcut("\\", modifiers: [.command])
@@ -123,8 +130,11 @@ struct ManimStudioCommands: Commands {
             Button("Keyboard Shortcuts") { post(.menuHelpShortcuts) }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
             Divider()
+            // No ⌘, here: that combo is owned by the system "Settings…"
+            // command. Declaring it again triggers a duplicate
+            // UIKeyCommand identifier and UB. The menu item still fires
+            // the notification; it's just no longer bound to ⌘,.
             Button("Open Settings") { post(.menuHelpOpenSettings) }
-                .keyboardShortcut(",", modifiers: [.command])
             Button("Open Log File") { post(.menuHelpOpenLog) }
         }
     }

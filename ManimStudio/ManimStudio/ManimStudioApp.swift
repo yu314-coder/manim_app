@@ -12,38 +12,10 @@ struct ManimStudioApp: App {
         // be installed first so signal handlers cover the rest of init.
         CrashLogger.shared.install()
 
-        // LaTeX backend selection — match CodeBench's behaviour.
-        //
-        // We previously forced every MathTex call through busytex/xelatex so
-        // that complex macros (\underbrace, \boxed, CJK, matrix/align
-        // environments) would render correctly. The side-effect: xelatex
-        // strictly enforces \frac{}{} having exactly two arguments, which
-        // collides with a long-standing Manim quirk in
-        // `_break_up_by_substrings`: it splits every TeX string on `{{` /
-        // `}}` (substring isolation markers) and rejoins the pieces with
-        // dvisvgm `\special{...}` markers + a space. When `}}` arises
-        // naturally inside an expression — e.g. `\frac{p_{i|j}}{2n}`, where
-        // one `}` closes `p_{i|j` and the other closes the numerator —
-        // those two braces get eaten and never restored. After
-        // `offlinai_latex` strips the specials, xelatex sees
-        // `\frac{p_{i|j {2n}}}` (one argument, no denominator) and fails.
-        //
-        // CodeBench doesn't set any of these env vars, so its routing
-        // condition is `(has_cjk OR has_special_macro) AND NOT disabled`.
-        // CJK-bearing expressions still go to busytex; simple Latin math
-        // like `\frac{p_{i|j}}{2n}` falls through to SwiftMath, which
-        // tolerates the Manim mangling. Match that here.
-        //
-        // Force busytex back on for ALL MathTex. The previous workaround
-        // (let simple Latin math fall through to SwiftMath) was needed
-        // because Manim's `}}` autosplit corrupted \frac{a}{b} when xelatex
-        // saw it. Upstream python-ios-lib commit fe7cfa4c
-        // "undo manim's `}}` autosplit before stripping specials" plus
-        // 4d081711 "route \frac through real LaTeX" have fixed both the
-        // corruption and the routing — we can now use busytex for
-        // everything and get crisp PNG-in-SVG output instead of
-        // SwiftMath's fixed-size Latin Modern glyphs (which Manim then
-        // upscales and looks blurry).
+        // LaTeX backend: force every MathTex through busytex/xelatex for
+        // crisp PNG-in-SVG output. Upstream python-ios-lib fe7cfa4c
+        // ("undo manim's `}}` autosplit") + 4d081711 ("route \frac through
+        // real LaTeX") make \frac{a}{b} compile correctly under xelatex.
         setenv("OFFLINAI_LATEX_BACKEND", "busytex", 1)
         setenv("OFFLINAI_ENGINE",        "busytex", 1)
         setenv("OFFLINAI_LATEX_FORCE_BUSYTEX", "1", 1)

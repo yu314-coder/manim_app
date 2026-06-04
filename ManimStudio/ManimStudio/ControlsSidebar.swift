@@ -14,20 +14,35 @@ struct ControlsSidebar: View {
     @AppStorage("manim_final_fps")       private var finalFPS = 30
     @AppStorage("manim_format")          private var format = "mp4"
 
-    /// Map quality label → PythonRuntime's 0/1/2 enum. Rough mapping
-    /// chosen so anything ≥ 1080p is "high", 480p–720p is "medium", and
-    /// the lower tiers are "low" — keeps render time predictable.
+    /// Map a quality label → a resolution index the wrapper resolves to a
+    /// real Manim resolution:
+    ///   0 = 480p   (low_quality,        854×480)
+    ///   1 = 720p   (medium_quality,     1280×720)
+    ///   2 = 1080p  (high_quality,       1920×1080)
+    ///   3 = 1440p  (production_quality, 2560×1440)
+    ///   4 = 4K     (fourk_quality,      3840×2160)
+    ///   5 = 8K     (custom,             7680×4320)
+    /// 4K and 8K render at true resolution but are extremely memory-heavy
+    /// on iPad — watch the RAM HUD; they can hit the jetsam ceiling.
     private static func qualityIndex(_ q: String) -> Int {
-        switch q {
-        case "120p","240p","360p":          return 0
-        case "480p","720p":                 return 1
-        default:                            return 2  // 1080p / 1440p / 4K / 8K
+        switch q.lowercased() {
+        case "120p","240p","360p","480p": return 0
+        case "720p":                       return 1
+        case "1080p":                      return 2
+        case "1440p":                      return 3
+        case "4k":                         return 4
+        case "8k":                         return 5
+        default:                           return 2
         }
     }
 
     private let previewQualities = ["120p", "240p", "360p", "480p", "720p", "1080p"]
     private let finalQualities   = ["8K", "4K", "1440p", "1080p", "720p", "480p"]
-    private let formats = ["mp4","mov","gif","png"]
+    // mp4  — H.264 video (default)
+    // gif  — animated GIF assembled from frames
+    // html — single self-contained .html file with the video embedded
+    //        as a base64 data URI (no external file dependency)
+    private let formats = ["mp4","gif","html"]
 
     var body: some View {
         VStack(spacing: 12) {

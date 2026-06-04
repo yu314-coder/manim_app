@@ -75,28 +75,38 @@ struct TerminalPane: View {
     /// Grab terminal text on a background queue, write to the
     /// pasteboard on main, flash the "Copied" pill.
     private func copyTerminal() {
-        // Snapshot whatever the user needs RIGHT NOW on the main thread.
-        // SwiftTerm's TerminalView isn't documented as thread-safe; we
-        // pull the strings here, then move the join/clipboard write off.
+        // Snapshot on the main thread (SwiftTerm's TerminalView isn't
+        // documented as thread-safe), then format + write the pasteboard
+        // off-main.
+        //
+        // If the user has an active selection, copy exactly that. Otherwise
+        // copy the ENTIRE terminal — full scrollback, not just the visible
+        // viewport. term.getBufferAsData() walks 0..<buffer.lines.count
+        // (scrollback + on-screen), unlike the old getLine(row:) loop which
+        // only saw the `rows` visible lines.
         guard let tv = PTYBridge.shared.terminalView else { return }
         let selection = tv.getSelection()
         let term = tv.getTerminal()
-        let rows = term.rows
-        var rawLines: [String] = []
-        if let s = selection, !s.isEmpty {
-            rawLines = [s]
-        } else {
-            rawLines.reserveCapacity(rows)
-            for r in 0..<rows {
-                if let line = term.getLine(row: r) {
-                    rawLines.append(line.translateToString(trimRight: true))
-                }
-            }
-        }
+        let selected: String? = (selection?.isEmpty == false) ? selection : nil
+        let fullData: Data? = selected == nil ? term.getBufferAsData() : nil
+
         DispatchQueue.global(qos: .userInitiated).async {
-            let joined = rawLines.joined(separator: "\n")
+            let text: String
+            if let s = selected {
+                text = s
+            } else {
+                // Decode the full buffer, then trim the trailing run of
+                // blank lines the emulator pads the grid out with so the
+                // clipboard ends at the last real line of output.
+                let raw = fullData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                var lines = raw.split(separator: "\n", omittingEmptySubsequences: false)
+                while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
+                    lines.removeLast()
+                }
+                text = lines.joined(separator: "\n")
+            }
             DispatchQueue.main.async {
-                UIPasteboard.general.string = joined
+                UIPasteboard.general.string = text
                 withAnimation(.easeOut(duration: 0.15)) {
                     justCopied = true
                 }

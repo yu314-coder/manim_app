@@ -29,6 +29,13 @@ struct ContentView: View {
     @State private var renderOutputPoller: Timer? = nil
     @State private var renderStartedAt: Date = .distantPast
     @State private var renderSurfacedURLs: Set<URL> = []
+    /// Ticks an elapsed-time counter onto the terminal while a render is
+    /// running. At high resolutions (4K/8K) a single frame's Cairo
+    /// rasterization can take ~45 s with no output, so the tqdm bar sits
+    /// frozen and the render *looks* hung even though it's progressing.
+    /// The heartbeat overwrites the current line (\r + clear-line) every
+    /// few seconds so the user always sees a live, ticking counter.
+    @State private var renderHeartbeat: Timer? = nil
     @State private var selectedScene: String = ""
     @State private var confirmNew = false
     @State private var showOpener  = false
@@ -84,6 +91,12 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Theme.bgPrimary.ignoresSafeArea())
+        // Live RAM HUD, bottom-right, iPad only. Samples the app's
+        // phys_footprint every second and graphs it against device RAM —
+        // a debugging aid for the on-device jetsam crashes. The view
+        // self-gates to the regular size class, so on iPhone it renders
+        // nothing.
+        .overlay(alignment: .bottomTrailing) { RAMMonitorView() }
         .preferredColorScheme(.dark)
         .onChange(of: detectedScenes) { _, scenes in
             if !selectedScene.isEmpty && !scenes.contains(selectedScene) {
@@ -170,6 +183,7 @@ struct ContentView: View {
         renderStartedAt = Date()
         renderSurfacedURLs.removeAll()
         startRenderOutputPoller()
+        startRenderHeartbeat()
         // Keep the render going if the user switches apps or locks the
         // screen mid-render. iOS gives backgrounded apps ~30 s by
         // default; beginBackgroundTask extends that to a few minutes
@@ -192,6 +206,14 @@ struct ContentView: View {
         // hardware path. Persisted via @AppStorage("manim_gpu_on").
         let gpuOn = UserDefaults.standard.object(forKey: "manim_gpu_on") as? Bool ?? true
         setenv("OFFLINAI_MANIM_GPU", gpuOn ? "1" : "0", 1)
+        // The PER-SEGMENT encoder (the bulk of the work) reads
+        // OFFLINAI_MANIM_SOFTWARE_ENCODER, not OFFLINAI_MANIM_GPU — so we
+        // must set it for the toggle to affect anything beyond the final
+        // concat. GPU on → hardware h264_videotoolbox; GPU off → mpeg4
+        // software encode (the bundled ffmpeg has NO libx264). Software
+        // mpeg4 also releases its buffers on close, which avoids the
+        // VideoToolbox frame-pool growth that can jetsam very long scenes.
+        setenv("OFFLINAI_MANIM_SOFTWARE_ENCODER", gpuOn ? "0" : "1", 1)
 
         let code = sourceCode
         let scene: String? = selectedScene.isEmpty ? nil : selectedScene
@@ -223,6 +245,7 @@ struct ContentView: View {
 
     private func logStream_done(label: String, result: PythonRuntime.ExecutionResult) {
         stopRenderOutputPoller()
+        stopRenderHeartbeat()
         // Path resolution priority:
         //   1. result.imagePath — what the wrapper script wrote to
         //      __codebench_plot_path. Usually populated.
@@ -366,6 +389,7 @@ struct ContentView: View {
         PythonRuntime.shared.interruptPythonMainThread()
         BackgroundTaskGuard.shared.end()
         stopRenderOutputPoller()
+        stopRenderHeartbeat()
     }
 
     // MARK: live-preview polling
@@ -401,6 +425,35 @@ struct ContentView: View {
         renderOutputPoller = nil
     }
 
+    // MARK: render heartbeat (so high-res renders never look frozen)
+
+    private func startRenderHeartbeat() {
+        stopRenderHeartbeat()
+        let started = renderStartedAt
+        let t = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { _ in
+            let secs = Int(Date().timeIntervalSince(started))
+            let mm = secs / 60, ss = secs % 60
+            let elapsed = mm > 0 ? "\(mm)m \(ss)s" : "\(ss)s"
+            // \r + erase-line (ESC[2K) so we OVERWRITE the current line
+            // rather than scrolling — sits on the same line manim's tqdm
+            // bar uses, so the two alternate without stacking. Dim text
+            // (ESC[2m) keeps it visually secondary to real output. No
+            // trailing newline: tqdm's next \r update reclaims the line.
+            let beat = "\r\u{1b}[2K\u{1b}[2m⏳ rendering — \(elapsed) elapsed " +
+                       "(high resolutions can take ~45 s/frame)\u{1b}[0m"
+            beat.withCString { cs in
+                _ = Darwin.write(PTYBridge.shared.stdoutPipeWriteFD, cs, strlen(cs))
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        renderHeartbeat = t
+    }
+
+    private func stopRenderHeartbeat() {
+        renderHeartbeat?.invalidate()
+        renderHeartbeat = nil
+    }
+
     /// Static fallback — walk Documents/ToolOutputs/ for the newest
     /// non-partial mp4/.gif/.png modified after `start`. Used when
     /// result.imagePath is empty so the user still sees their video
@@ -417,7 +470,7 @@ struct ContentView: View {
                                           .fileSizeKey],
             options: [.skipsHiddenFiles])
         else { return nil }
-        let exts: Set<String> = ["mp4", "mov", "m4v", "webm", "gif", "png"]
+        let exts: Set<String> = ["mp4", "mov", "m4v", "webm", "gif", "png", "html"]
         var best: (URL, Date)?
         for case let url as URL in walker {
             if url.pathComponents.contains("partial_movie_files") { continue }
@@ -435,7 +488,7 @@ struct ContentView: View {
     }
 
     private func scanForFreshOutput(under outputs: URL) {
-        let exts: Set<String> = ["mp4", "mov", "m4v", "webm", "gif", "png"]
+        let exts: Set<String> = ["mp4", "mov", "m4v", "webm", "gif", "png", "html"]
         guard let walker = FileManager.default.enumerator(
             at: outputs,
             includingPropertiesForKeys: [.contentModificationDateKey,
@@ -618,6 +671,7 @@ private struct RenderCompleteSheet: View {
         case "gif":         return .gif
         case "png":         return .png
         case "jpg", "jpeg": return .jpeg
+        case "html":        return .html
         default:            return .data
         }
     }
@@ -656,6 +710,10 @@ private struct RenderCompleteSheet: View {
         let ext = videoURL.pathExtension.lowercased()
         let isVideo = ["mp4", "mov", "m4v"].contains(ext)
         let isImage = ["png", "jpg", "jpeg", "gif"].contains(ext)
+        guard isVideo || isImage else {
+            saveStatus = "Format not supported by Photos"
+            return
+        }
         // Photos write needs PHPhotoLibrary auth; we request it at the
         // moment of save rather than at app launch so the prompt is
         // contextual (the user just tapped "Save to Photos").
@@ -664,16 +722,30 @@ private struct RenderCompleteSheet: View {
                 saveStatus = "Photos access denied — enable in Settings"
                 return
             }
-            if isVideo {
-                UISaveVideoAtPathToSavedPhotosAlbum(videoURL.path, nil, nil, nil)
-                saveStatus = "✓ Saved to Photos"
-                autoDismiss()
-            } else if isImage, let ui = UIImage(contentsOfFile: videoURL.path) {
-                UIImageWriteToSavedPhotosAlbum(ui, nil, nil, nil)
-                saveStatus = "✓ Saved to Photos"
-                autoDismiss()
-            } else {
-                saveStatus = "Format not supported by Photos"
+            // Save by adding the ORIGINAL FILE as an asset resource —
+            // never via UIImage. UIImage(contentsOfFile:) on an animated
+            // GIF decodes only the FIRST frame, so the old
+            // UIImageWriteToSavedPhotosAlbum path stored a static image
+            // ("gif can't be saved perfectly"). PHAssetCreationRequest
+            // .addResource(with:fileURL:) copies the raw bytes, so the
+            // GIF lands in Photos fully animated. Same request type works
+            // for video; we pick .video vs .photo by extension.
+            let url = videoURL
+            PHPhotoLibrary.shared().performChanges {
+                let req = PHAssetCreationRequest.forAsset()
+                let opts = PHAssetResourceCreationOptions()
+                opts.shouldMoveFile = false   // keep the copy in ToolOutputs
+                req.addResource(with: isVideo ? .video : .photo,
+                                fileURL: url, options: opts)
+            } completionHandler: { ok, err in
+                DispatchQueue.main.async {
+                    if ok {
+                        saveStatus = "✓ Saved to Photos"
+                        autoDismiss()
+                    } else {
+                        saveStatus = "Save failed: \(err?.localizedDescription ?? "unknown")"
+                    }
+                }
             }
         }
     }
@@ -709,7 +781,7 @@ private struct RenderCompleteSheet: View {
 /// streams off disk.
 private struct VideoFileDoc: FileDocument {
     static var readableContentTypes: [UTType] {
-        [.mpeg4Movie, .quickTimeMovie, .gif, .png, .jpeg, .data]
+        [.mpeg4Movie, .quickTimeMovie, .gif, .png, .jpeg, .html, .data]
     }
     let url: URL
     init(url: URL) { self.url = url }

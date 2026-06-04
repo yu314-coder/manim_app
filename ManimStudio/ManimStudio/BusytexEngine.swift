@@ -41,6 +41,40 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
     private var isLoaded = false
     private var pendingLoadCallbacks: [() -> Void] = []
 
+    /// One-shot wrapper around a compile completion handler. `fire`
+    /// invokes the wrapped completion at most once — any later call
+    /// (timeout, nav failure, process termination, real result) is a
+    /// no-op. All mutation happens on the main thread, so no lock needed.
+    final class CompletionGuard {
+        private var completion: ((Int, String, Data?) -> Void)?
+        init(_ completion: @escaping (Int, String, Data?) -> Void) {
+            self.completion = completion
+        }
+        func fire(_ status: Int, _ log: String, _ pdf: Data?) {
+            guard let c = completion else { return }
+            completion = nil
+            c(status, log, pdf)
+        }
+        var isDone: Bool { completion == nil }
+    }
+
+    /// Compile completion guards still awaiting a result. A WebView nav
+    /// failure or WebContent process termination fails (and drains) all
+    /// of these so no caller hangs. Touched only on the main thread.
+    private var inflightGuards: [CompletionGuard] = []
+
+    private func removeGuard(_ g: CompletionGuard) {
+        inflightGuards.removeAll { $0 === g }
+    }
+
+    /// Fail every in-flight compile with the given code/message and
+    /// drain the list. Called on WebView load failure / process death.
+    private func failAllInflight(_ status: Int, _ message: String) {
+        let guards = inflightGuards
+        inflightGuards.removeAll()
+        for g in guards { g.fire(status, message, nil) }
+    }
+
     /// Forwarded up to LaTeXEngine / CodeEditorViewController for live
     /// compile chatter in the terminal.
     var onProgress: ((_ message: String) -> Void)?
@@ -169,7 +203,25 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
         driver: String = "pdftex_bibtex8",
         completion: @escaping (_ status: Int, _ log: String, _ pdfData: Data?) -> Void
     ) {
+        // One-shot completion guard (see compileMath for rationale).
+        // Wraps the real completion so heartbeat teardown + verbose
+        // reset happen exactly once regardless of which path fires.
+        let guardBox = CompletionGuard { status, log, pdf in
+            // Tear down via the shared singleton so the heartbeat timer
+            // is always stopped even if this engine instance somehow
+            // deallocated (a `[weak self]` here would no-op and leak the
+            // timer — the same dead-branch bug as WebLaTeXEngine had).
+            BusytexEngine.shared.verboseProgress = false
+            BusytexEngine.shared.stopSwiftHeartbeat()
+            completion(status, log, pdf)
+        }
         DispatchQueue.main.async {
+            self.inflightGuards.append(guardBox)
+            // Doc compiles legitimately take longer than math — 60s bound.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
+                guardBox.fire(-5, "busytex doc compile timed out (60s)", nil)
+                self?.removeGuard(guardBox)
+            }
             self.verboseProgress = true
             self.userWorkingDir = workingDir
             // Human-readable command name for progress messages —
@@ -187,8 +239,8 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
             self.preload()
             self.whenReady { [weak self] in
                 guard let self, let wv = self.webView else {
-                    self?.stopSwiftHeartbeat()
-                    completion(-1, "busytex engine not available", nil)
+                    guardBox.fire(-1, "busytex engine not available", nil)
+                    self?.removeGuard(guardBox)
                     return
                 }
                 self.emitProgress("busytex engine ready — running \(cmdName)")
@@ -249,16 +301,14 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                     switch result {
                     case .failure(let error):
                         self.emitProgress("busytex compile failed: \(error.localizedDescription)")
-                        self.verboseProgress = false
-                        self.stopSwiftHeartbeat()
-                        completion(-2, "callAsyncJavaScript failed: \(error)", nil)
+                        guardBox.fire(-2, "callAsyncJavaScript failed: \(error)", nil)
+                        self.removeGuard(guardBox)
                     case .success(let value):
                         guard let obj = value as? [String: Any] else {
-                            self.verboseProgress = false
-                            self.stopSwiftHeartbeat()
-                            completion(-3,
+                            guardBox.fire(-3,
                                 "busytex returned \(type(of: value)): \(value)",
                                 nil)
+                            self.removeGuard(guardBox)
                             return
                         }
                         let status = (obj["status"] as? Int) ?? -4
@@ -282,9 +332,8 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                                     self.emitProgress(
                                         "busytex compile failed (status \(status))")
                                 }
-                                self.verboseProgress = false
-                                self.stopSwiftHeartbeat()
-                                completion(status, logText, pdfData)
+                                guardBox.fire(status, logText, pdfData)
+                                self.removeGuard(guardBox)
                             }
                         }
                     }
@@ -320,11 +369,28 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
         colorHex: String = "FFFFFF",
         completion: @escaping (_ status: Int, _ log: String, _ pdfData: Data?) -> Void
     ) {
+        // One-shot completion guard: the WebView can fail to load, the
+        // WebContent process can die under memory pressure, or the JS
+        // Promise can simply never resolve — in any of those cases the
+        // original code left the caller hanging forever (manim then
+        // falls back to SwiftMath placeholders). This box guarantees
+        // `completion` is invoked exactly once across success, JS error,
+        // nav failure, process termination, and timeout. Mutated only on
+        // the main thread.
+        let guardBox = CompletionGuard(completion)
         DispatchQueue.main.async {
+            // Register so nav-failure / process-termination can fail it.
+            self.inflightGuards.append(guardBox)
+            // Force-fail after a sane bound if nothing else fired.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+                guardBox.fire(-5, "busytex math compile timed out (30s)", nil)
+                self?.removeGuard(guardBox)
+            }
             self.preload()
             self.whenReady { [weak self] in
                 guard let self, let wv = self.webView else {
-                    completion(-1, "busytex engine not available", nil)
+                    guardBox.fire(-1, "busytex engine not available", nil)
+                    self?.removeGuard(guardBox)
                     return
                 }
 
@@ -354,10 +420,12 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                     switch result {
                     case .failure(let error):
                         self.emitProgress("[math] busytex callAsyncJavaScript failed: \(error.localizedDescription)")
-                        completion(-2, "callAsyncJavaScript: \(error)", nil)
+                        guardBox.fire(-2, "callAsyncJavaScript: \(error)", nil)
+                        self.removeGuard(guardBox)
                     case .success(let value):
                         guard let obj = value as? [String: Any] else {
-                            completion(-3, "unexpected return shape: \(type(of: value))", nil)
+                            guardBox.fire(-3, "unexpected return shape: \(type(of: value))", nil)
+                            self.removeGuard(guardBox)
                             return
                         }
                         let status = (obj["status"] as? Int) ?? -4
@@ -372,7 +440,8 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                                 } else {
                                     self.emitProgress("[math] xelatex failed (status \(status))")
                                 }
-                                completion(status, logText, pdfData)
+                                guardBox.fire(status, logText, pdfData)
+                                self.removeGuard(guardBox)
                             }
                         }
                     }
@@ -410,8 +479,12 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
     /// Read NotoSansJP-Regular.otf from the bundle and return it as a
     /// busytex extraFiles entry (b64-encoded). Lets xeCJK find a CJK
     /// font without relying on busytex's fontconfig knowing about one.
-    private func mathExtraFiles() -> [[String: String]] {
-        var out: [[String: String]] = []
+    /// Lazily-computed cache of the Noto font's base64 string. The font
+    /// is multi-MB and was being re-read from disk + re-base64-encoded on
+    /// EVERY MathTex compile (one per formula) — pure repeated work.
+    /// `nil` means "not found in bundle" (distinct from "not computed");
+    /// we use a sentinel optional-of-optional via a separate flag.
+    private static let notoFontBase64: String? = {
         // Look for the font in any of the bundled locations.
         let candidates: [(name: String, ext: String, sub: String?)] = [
             ("NotoSansJP-Regular", "otf", "Resources/KaTeX/fonts"),
@@ -422,19 +495,25 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
             let url: URL? = (c.sub != nil)
                 ? Bundle.main.url(forResource: c.name, withExtension: c.ext, subdirectory: c.sub)
                 : Bundle.main.url(forResource: c.name, withExtension: c.ext)
-            if let u = url, let data = try? Data(contentsOf: u) {
-                out.append([
-                    "path": "NotoSansJP-Regular.otf",
-                    "kind": "b64",
-                    "data": data.base64EncodedString(),
-                ])
-                return out
+            if let u = url, let data = try? Data(contentsOf: u, options: .mappedIfSafe) {
+                return data.base64EncodedString()
             }
+        }
+        return nil
+    }()
+
+    private func mathExtraFiles() -> [[String: String]] {
+        if let b64 = Self.notoFontBase64 {
+            return [[
+                "path": "NotoSansJP-Regular.otf",
+                "kind": "b64",
+                "data": b64,
+            ]]
         }
         // Font missing — xeCJK will error on CJK input, but Latin math
         // still compiles. Caller should detect the empty result.
         emitProgress("[math] WARN: NotoSansJP-Regular.otf not found in bundle — CJK will fail")
-        return out
+        return []
     }
 
     // MARK: - Sibling file collection + missing-file placeholders
@@ -702,19 +781,25 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
         return (String(out), replaced)
     }
 
-    private static func placeholderPng() -> Data {
-        // 1×1 transparent RGBA PNG, 68 bytes. Generated by zlib'ing
-        // [0,0,0,0,0] (filter byte + 4-byte RGBA pixel) and wrapping
-        // in valid IHDR/IDAT/IEND chunks with real CRC32s. Verified
-        // via python zlib — decompresses and validates cleanly. The
-        // older hand-coded hex placeholder in the repo had a
-        // corrupted IDAT (zlib Adler32 mismatch); pdftex's libpng
-        // accepted the IHDR but rejected the IDAT with
-        // "IDAT: incorrect data check" → pipeline threw Infinity.
+    /// Cached 1×1 transparent PNG — the hex decode is constant work, so
+    /// compute it once rather than on every missing-image placeholder.
+    private static let placeholderPngData: Data = {
         let hex = "89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4" +
                   "890000000B4944415478DA636000020000050001E9FADCD80000000049454E" +
                   "44AE426082"
-        return Self.hexToData(hex)
+        return BusytexEngine.hexToData(hex)
+    }()
+
+    private static func placeholderPng() -> Data {
+        // 1×1 transparent RGBA PNG, 68 bytes (see placeholderPngData).
+        // Generated by zlib'ing [0,0,0,0,0] (filter byte + 4-byte RGBA
+        // pixel) and wrapping in valid IHDR/IDAT/IEND chunks with real
+        // CRC32s. Verified via python zlib — decompresses and validates
+        // cleanly. The older hand-coded hex placeholder in the repo had
+        // a corrupted IDAT (zlib Adler32 mismatch); pdftex's libpng
+        // accepted the IHDR but rejected the IDAT with
+        // "IDAT: incorrect data check" → pipeline threw Infinity.
+        return placeholderPngData
     }
 
     private static func placeholderPdf() -> Data {
@@ -780,7 +865,47 @@ extension BusytexEngine: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        print("[Busytex] navigation failed: \(error.localizedDescription)")
+        handleNavigationFailure("navigation failed: \(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        handleNavigationFailure("provisional navigation failed: \(error.localizedDescription)")
+    }
+
+    /// Shared nav-failure path: previously these delegates only print()ed
+    /// and left every queued `whenReady` callback stranded in
+    /// pendingLoadCallbacks → the compile hung forever. Now we drain the
+    /// pending callbacks AND fail any in-flight compile guard so the
+    /// caller gets a real failure result instead of hanging.
+    private func handleNavigationFailure(_ reason: String) {
+        NSLog("[Busytex] \(reason)")
+        appendToEngineLog(reason)
+        isLoaded = false
+        // Drain queued whenReady callbacks — they'll hit the
+        // `self.webView == nil`? no, webView is non-nil but the page
+        // never loaded; invoking them lets their own guard fail. Each
+        // queued action carries a guardBox that will fire a failure when
+        // it finds the engine unusable. But to be safe, fail guards
+        // directly too (idempotent via the one-shot guard).
+        pendingLoadCallbacks.removeAll()
+        failAllInflight(-6, "busytex WebView load failed: \(reason)")
+    }
+
+    /// WebContent process died (commonly under memory pressure — the
+    /// runtime log shows this happening mid-compile). Without this, the
+    /// WebView is left in a zombie state and the next compile hangs.
+    /// Recover: mark unloaded, fail any in-flight compile, and reload the
+    /// host page so the following compile can succeed.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        NSLog("[Busytex] WebContent process terminated — reloading host")
+        appendToEngineLog("WebContent process terminated (memory pressure?) — reloading")
+        isLoaded = false
+        pendingLoadCallbacks.removeAll()
+        failAllInflight(-7, "busytex WebContent process terminated mid-compile")
+        // Reload the host so the next compile recovers.
+        if let url = URL(string: "offlinai-bt://app/busytex.html") {
+            webView.load(URLRequest(url: url))
+        }
     }
 }
 
@@ -850,7 +975,7 @@ extension BusytexEngine {
                 return
             }
             do {
-                let data = try Data(contentsOf: fileURL)
+                let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
                 let response = HTTPURLResponse(
                     url: url, statusCode: 200,
                     httpVersion: "HTTP/1.1",
