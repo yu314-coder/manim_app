@@ -68,24 +68,46 @@ struct ContentView: View {
             )
             TabBarView(selection: $selectedTab)
 
-            Group {
-                switch selectedTab {
-                case .gallery:
-                    GalleryView(
-                        sourceCode: $sourceCode,
-                        selectedTab: $selectedTab,
-                        selectedScene: $selectedScene
-                    )
-                case .workspace:
-                    WorkspaceView(
-                        sourceCode: $sourceCode,
-                        isRendering: $isRendering,
-                        renderedVideoURL: $renderedVideoURL
-                    )
-                case .system:   SystemView()
-                case .assets:   AssetsView()
-                case .packages: PackagesView()
-                case .history:  HistoryView()
+            ZStack {
+                // Workspace is KEPT ALIVE across tab switches (hidden, not
+                // destroyed). It hosts the Monaco WKWebView, the SwiftTerm
+                // terminal + PTY, and the preview WKWebView — all expensive
+                // to tear down and rebuild. Destroying them on every tab
+                // change (and animating that teardown) is what made
+                // switching to/from the other tabs lag. Keeping it alive
+                // also means the editor/terminal/render state persists and
+                // returning to Workspace is instant.
+                WorkspaceView(
+                    sourceCode: $sourceCode,
+                    isRendering: $isRendering,
+                    renderedVideoURL: $renderedVideoURL
+                )
+                .opacity(selectedTab == .workspace ? 1 : 0)
+                .allowsHitTesting(selectedTab == .workspace)
+
+                // The lightweight tabs are created on demand and torn down
+                // when you leave them (so e.g. the Gallery's six looping
+                // video players stop when it's not visible).
+                if selectedTab != .workspace {
+                    Group {
+                        switch selectedTab {
+                        case .gallery:
+                            GalleryView(
+                                sourceCode: $sourceCode,
+                                selectedTab: $selectedTab,
+                                selectedScene: $selectedScene
+                            )
+                        case .system:   SystemView()
+                        case .assets:   AssetsView()
+                        case .packages: PackagesView()
+                        case .history:  HistoryView()
+                        case .workspace: EmptyView()  // handled above
+                        }
+                    }
+                    // Don't animate the content swap — animating a heavy
+                    // view appearing/disappearing janks the transition. The
+                    // tab-pill highlight still animates (in TabBarView).
+                    .transaction { $0.animation = nil }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

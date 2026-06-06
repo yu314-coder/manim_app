@@ -9,11 +9,17 @@ struct PackageInfo: Identifiable, Hashable {
     let version: String
     let summary: String?
     let location: String?
+    var category: String? = nil
 }
 
 @MainActor
 final class PackageInspector: ObservableObject {
-    @Published var packages: [PackageInfo] = []
+    // Seed with the baked-in list (BundledPackages.all) so the tab is
+    // INSTANT — no Python boot, no importlib.metadata walk (which took
+    // 2-5 s and janked the tab on every open). The bundled package set is
+    // fixed per build, so the static list is always correct. Refresh can
+    // still run a live Python re-scan on demand.
+    @Published var packages: [PackageInfo] = BundledPackages.all
     @Published var isLoading = false
     @Published var error: String?
 
