@@ -121,6 +121,38 @@ else
       rsync -a "$PIL_SP/$di/" "$APP_SP/$di/"
     fi
   done
+
+  # ── CairoMetal GPU rasterizer shim ──────────────────────────────
+  # cairo_metal is a compiled CPython extension (.so) + a Metal runtime
+  # dir, NOT a pure-Python package dir, so the loop above (which copies
+  # directories) misses it. Copy the loose .so + the runtime dir and
+  # re-sign the .so (SwiftPM/rsync strips signatures; iOS rejects
+  # unsigned Mach-O). The app's GPU toggle swaps this in as a pycairo
+  # drop-in (sys.modules["cairo"] = cairo_metal) when GPU acceleration
+  # is on. If it isn't present the wrapper falls back to software cairo.
+  CM_SO=$(ls "$PIL_SP"/cairo_metal*.so 2>/dev/null | head -1)
+  if [ -n "$CM_SO" ]; then
+    cp -f "$CM_SO" "$APP_SP/$(basename "$CM_SO")"
+    # The Metal runtime (metallib + shaders) MUST ship alongside the .so —
+    # copy it BEFORE the codesign so a signing failure (e.g. dev build with
+    # CODE_SIGNING_ALLOWED=NO) can't abort the script under `set -e` and
+    # leave the runtime missing.
+    if [ -d "$PIL_SP/cairo_metal_runtime" ]; then
+      rsync -a --delete "$PIL_SP/cairo_metal_runtime/" "$APP_SP/cairo_metal_runtime/"
+      echo "note: copied cairo_metal_runtime (metallib + shaders)"
+    fi
+    # Re-sign the .so (SwiftPM/rsync strips signatures; iOS rejects unsigned
+    # Mach-O). Non-fatal: `|| true` so a dev build without a real identity
+    # doesn't abort the rest of the install under `set -e`.
+    { codesign --force --sign "$IDENT" --timestamp=none \
+        --preserve-metadata=identifier,entitlements,flags \
+        "$APP_SP/$(basename "$CM_SO")" 2>/dev/null \
+      || codesign --force --sign "$IDENT" --timestamp=none \
+           "$APP_SP/$(basename "$CM_SO")" 2>/dev/null ; } || true
+    echo "note: copied cairo_metal shim ($(basename "$CM_SO"))"
+  else
+    echo "note: cairo_metal shim not in $PIL_SP — GPU rasterization will fall back to software cairo"
+  fi
 fi
 
 if [ ! -d "$BEEWARE" ]; then

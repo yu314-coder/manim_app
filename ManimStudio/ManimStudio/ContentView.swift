@@ -91,12 +91,15 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Theme.bgPrimary.ignoresSafeArea())
-        // Live RAM HUD, bottom-right, iPad only. Samples the app's
-        // phys_footprint every second and graphs it against device RAM —
-        // a debugging aid for the on-device jetsam crashes. The view
-        // self-gates to the regular size class, so on iPhone it renders
-        // nothing.
-        .overlay(alignment: .bottomTrailing) { RAMMonitorView() }
+        // Live RAM HUD, bottom-right — Workspace tab only, iPad only.
+        // Samples the app's phys_footprint every second and graphs it
+        // against device RAM — a debugging aid for on-device jetsam
+        // during renders. Only shown on the Workspace tab (where renders
+        // happen); the view also self-gates to the regular size class, so
+        // it renders nothing on iPhone.
+        .overlay(alignment: .bottomTrailing) {
+            if selectedTab == .workspace { RAMMonitorView() }
+        }
         .preferredColorScheme(.dark)
         .onChange(of: detectedScenes) { _, scenes in
             if !selectedScene.isEmpty && !scenes.contains(selectedScene) {
@@ -214,6 +217,15 @@ struct ContentView: View {
         // mpeg4 also releases its buffers on close, which avoids the
         // VideoToolbox frame-pool growth that can jetsam very long scenes.
         setenv("OFFLINAI_MANIM_SOFTWARE_ENCODER", gpuOn ? "0" : "1", 1)
+        // The same toggle also drives GPU RASTERIZATION: when on, the
+        // wrapper swaps in python-ios-lib's CairoMetal shim (a pycairo
+        // drop-in backed by a Metal renderer) before importing manim, so
+        // the per-frame cairo fill runs on the GPU. The wrapper no-ops
+        // gracefully to software cairo if the shim isn't bundled, so this
+        // is safe today and becomes live the moment CairoMetal ships.
+        // This makes the GPU button genuinely control GPU rendering +
+        // encode, not just encode.
+        setenv("OFFLINAI_MANIM_GPU_RENDER", gpuOn ? "1" : "0", 1)
 
         let code = sourceCode
         let scene: String? = selectedScene.isEmpty ? nil : selectedScene
@@ -383,10 +395,18 @@ struct ContentView: View {
 
     private func stopRender() {
         guard isRendering else { return }
-        // Equivalent to typing Ctrl-C in the terminal — manim catches the
-        // KeyboardInterrupt between animations and aborts cleanly.
-        PTYBridge.shared.send(data: [0x03])
+        // Three escalating stop signals:
+        //  1. Cooperative cancel sentinel — the render wrapper checks it
+        //     once per frame and raises KeyboardInterrupt. This is the
+        //     RELIABLE one: it works regardless of thread and aborts at
+        //     the next frame boundary even mid-C-call.
+        //  2. PyErr_SetInterrupt — fires between Python bytecodes (catches
+        //     pure-Python loops promptly; ignored during long C calls).
+        //  3. Ctrl-C to the PTY — for an interactive REPL command, not the
+        //     render (the render doesn't read stdin), kept for completeness.
+        PythonRuntime.shared.requestRenderCancel()
         PythonRuntime.shared.interruptPythonMainThread()
+        PTYBridge.shared.send(data: [0x03])
         BackgroundTaskGuard.shared.end()
         stopRenderOutputPoller()
         stopRenderHeartbeat()

@@ -13,9 +13,14 @@ struct HeaderView: View {
     var onSave:    () -> Void
 
     // Persisted across launches and read by PythonRuntime before each
-    // render: when on, manim's render config picks h264_videotoolbox
-    // (hardware encode); when off, it falls back to the libx264 software
-    // path. Default ON because hardware encode is ~5× faster on iPad.
+    // render. The GPU toggle now drives BOTH:
+    //   • encode  — h264_videotoolbox (hardware) vs mpeg4 (software)
+    //   • render  — CairoMetal GPU rasterization vs software cairo
+    //               (when the CairoMetal shim is bundled; no-ops to
+    //                software cairo otherwise)
+    // Default ON. Hardware encode is ~5× faster; GPU rasterization is
+    // correctness/parity (per profiling it doesn't change render speed —
+    // lower FPS is the real speed lever).
     @AppStorage("manim_gpu_on") private var gpuOn = true
     @State private var autosaveText = "Autosaved"
 
@@ -73,7 +78,7 @@ struct HeaderView: View {
                 Button { onOpen() } label: { Label("Open…",     systemImage: "folder") }
                 Button { onSave() } label: { Label("Save…",     systemImage: "square.and.arrow.down") }
                 Divider()
-                Toggle(isOn: $gpuOn) { Label("GPU encode", systemImage: "bolt.fill") }
+                Toggle(isOn: $gpuOn) { Label("GPU acceleration", systemImage: "bolt.fill") }
                 Button { showColors = true }  label: { Label("Accent color", systemImage: "paintpalette") }
                 Button { cycleTheme() }       label: { Label("Theme: \(themeMode.capitalized)", systemImage: themeIcon) }
                 Divider()
@@ -197,8 +202,8 @@ struct HeaderView: View {
                                 radius: 6)
                 }
                 .buttonStyle(.plain)
-                .help(gpuOn ? "GPU acceleration ON (hardware encode)"
-                            : "GPU acceleration OFF (software encode)")
+                .help(gpuOn ? "GPU acceleration ON (Metal render + hardware encode)"
+                            : "GPU acceleration OFF (software render + encode)")
 
                 // Colors → opens accent color picker.
                 headerBtn("paintpalette", "Colors") { showColors.toggle() }
@@ -444,7 +449,7 @@ private struct SettingsSheet: View {
                 // — Render —————————————————————————————————————
                 Section("Render") {
                     Toggle(isOn: $gpuOn) {
-                        Label("GPU acceleration (VideoToolbox)",
+                        Label("GPU acceleration (Metal + VideoToolbox)",
                               systemImage: "bolt.fill")
                     }
                     Picker(selection: $finalQuality) {
@@ -850,7 +855,7 @@ private struct HelpSheet: View {
             ("⌘ R",       "Render (Final quality)"),
             ("⇧ ⌘ R",     "Preview (480p / 15 fps)"),
             ("⌘ .",       "Stop render"),
-            ("⌥ ⌘ G",     "Toggle GPU encode"),
+            ("⌥ ⌘ G",     "Toggle GPU acceleration"),
             ("F5",        "Render (legacy)"),
             ("F6",        "Preview (legacy)"),
             ("Esc",       "Stop render (legacy)"),

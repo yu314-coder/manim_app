@@ -46,23 +46,34 @@ final class LibrarySymbolBuilder {
     }
 
     func build(completion: @escaping (String) -> Void) {
+        // In-memory hit — instant, stays on the main actor.
         if let cached = payloadJSON {
             completion(cached)
-            return
-        }
-        // Disk cache check — keyed by app build version. A hit means
-        // bundled packages haven't changed since last successful run.
-        let diskPath = Self.cachePath()
-        if let onDisk = try? String(contentsOfFile: diskPath, encoding: .utf8),
-           !onDisk.isEmpty {
-            payloadJSON = onDisk
-            completion(onDisk)
             return
         }
         guard !inFlight else { return }
         inFlight = true
 
+        // Everything below runs OFF the main thread. Previously the
+        // disk-cache read happened on the main actor here; the symbol
+        // JSON for manim/numpy/scipy/matplotlib can be hundreds of KB,
+        // so reading it during the Packages-tab transition caused a
+        // visible hitch. Now both the disk read and the Python pass run
+        // in the detached task; we touch the main actor only to publish.
         Task.detached(priority: .utility) {
+            let diskPath = Self.cachePath()
+            // Disk cache check — keyed by app build version. A hit means
+            // bundled packages haven't changed since the last build.
+            if let onDisk = try? String(contentsOfFile: diskPath, encoding: .utf8),
+               !onDisk.isEmpty {
+                await MainActor.run {
+                    self.payloadJSON = onDisk
+                    self.inFlight = false
+                }
+                completion(onDisk)
+                return
+            }
+            // Cache miss — run the multi-second Python introspection.
             // Write to a temp file rather than stdout — the wrapper now
             // tees stdout into the PTY, so a print() of 100 KB JSON would
             // dump into the user's terminal pane.

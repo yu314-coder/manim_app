@@ -253,6 +253,20 @@ final class PythonRuntime {
         PyErr_SetInterrupt()
     }
 
+    /// Request a cooperative cancel of an in-flight render. PyErr_SetInterrupt
+    /// alone is unreliable for this: it targets only Python's *main* thread
+    /// and only fires *between* bytecode instructions, so a long C-level
+    /// call (a cairo fill — up to ~45 s at 8K — or a numpy op) ignores it
+    /// until it returns. The render wrapper checks for this sentinel file
+    /// once per frame and raises KeyboardInterrupt when it appears, so Stop
+    /// aborts at the next frame boundary regardless of which thread the
+    /// render is on. The wrapper deletes the sentinel at render start.
+    func requestRenderCancel() {
+        guard let dir = try? ensureToolOutputDirectory() else { return }
+        let sentinel = dir.appendingPathComponent("_cancel_render.txt")
+        try? Data("stop".utf8).write(to: sentinel)
+    }
+
     /// Eagerly boot Python (Py_Initialize + stdio redirect) and start
     /// the REPL thread. Call this from CodeEditorViewController when
     /// the terminal view appears, so the user can type commands
@@ -1455,6 +1469,39 @@ os.environ.setdefault("MPLCONFIGDIR", \(pythonQuoted(toolDir)))
 import base64, io, os, sys, time, traceback, uuid, warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+# ── GPU rasterization (CairoMetal) ──────────────────────────────────
+# The app's GPU toggle sets OFFLINAI_MANIM_GPU_RENDER=1 when on. If the
+# python-ios-lib CairoMetal shim is bundled, swap it in as a pycairo
+# drop-in BEFORE anything imports cairo or manim, so manim's per-frame
+# fill runs on the GPU (Metal → IOSurface texture) instead of the
+# software image backend. This MUST run before `import manim` /
+# `import cairo` / `import manimpango`, hence its position at the very
+# top of the wrapper. Gracefully no-ops to software cairo when the shim
+# isn't present, so the toggle is safe today and becomes live the moment
+# CairoMetal ships. NOTE: per upstream profiling this does NOT speed
+# manim up (the cairo fill is ~5% of render time); it makes the GPU
+# button genuinely control GPU rendering, but the real speed lever is
+# lower FPS.
+if os.environ.get("OFFLINAI_MANIM_GPU_RENDER", "0") == "1" and "cairo" not in sys.modules:
+    try:
+        import importlib as _importlib_cm
+        _cairo_metal = _importlib_cm.import_module("cairo_metal")
+        sys.modules["cairo"] = _cairo_metal
+        try:
+            sys.__stderr__.write("[manim] GPU rasterization: cairo_metal (Metal) active\\n")
+            sys.__stderr__.flush()
+        except Exception:
+            pass
+    except Exception as _cm_err:
+        try:
+            sys.__stderr__.write(
+                f"[manim] GPU rasterization unavailable "
+                f"({type(_cm_err).__name__}); using software cairo\\n")
+            sys.__stderr__.flush()
+        except Exception:
+            pass
+
 __codebench_stdout = ""
 __codebench_stderr = ""
 __codebench_plot_path = ""
@@ -2084,6 +2131,20 @@ try:
             _GIF_MAX_W = 480
 
             def _capture_write_frame(self_fw, frame_or_renderer, num_frames=1):
+                # Cooperative Stop: the app writes _cancel_render.txt into
+                # the tool dir when the user taps the red Stop button. We
+                # check it once per frame and raise KeyboardInterrupt so the
+                # render aborts at the next frame boundary — reliable even
+                # when PyErr_SetInterrupt can't reach this thread / is stuck
+                # behind a long C call.
+                _cp = os.path.join(globals().get('__codebench_tool_dir', ''),
+                                   '_cancel_render.txt')
+                if _cp and os.path.exists(_cp):
+                    try:
+                        os.remove(_cp)
+                    except OSError:
+                        pass
+                    raise KeyboardInterrupt("render stopped by user")
                 # Collect a downsized RGB copy for the GIF path only.
                 if _collect_enabled[0] and len(_collected_frames) < _MAX_COLLECT:
                     try:
@@ -2222,6 +2283,15 @@ try:
                 # just wastes (a lot of) RAM and crashes iPad on big scenes.
                 _collect_enabled[0] = (_fmt == 'gif')
                 _collected_frames.clear()
+                # Clear any stale Stop sentinel from a previous run so this
+                # render isn't aborted on its first frame.
+                try:
+                    _cp_start = os.path.join(
+                        globals().get('__codebench_tool_dir', ''), '_cancel_render.txt')
+                    if _cp_start and os.path.exists(_cp_start):
+                        os.remove(_cp_start)
+                except OSError:
+                    pass
                 _orig_render(self, *args, **kwargs)
                 print(f"[manim-debug] frames_written={len(_collected_frames)} skip={getattr(self.renderer, 'skip_animations', '?')} sections_skip={getattr(self.renderer.file_writer.sections[-1], 'skip_animations', '?') if hasattr(self.renderer, 'file_writer') and self.renderer.file_writer.sections else '?'}")
                 try:
@@ -2901,6 +2971,13 @@ try:
                                       flush=True)
                         except Exception as _pe:
                             _log(f"couldn't locate {_scene_name} movie file: {_pe}")
+                    except KeyboardInterrupt:
+                        # User tapped Stop — abort this scene AND every
+                        # remaining scene (don't fall through to the next
+                        # one in the auto-render loop).
+                        print("[manim] render stopped by user — "
+                              "aborting remaining scenes.", flush=True)
+                        break
                     except BaseException as _render_err:
                         import traceback as _tb
                         print(f"[manim] {_scene_name}.render() failed: "
