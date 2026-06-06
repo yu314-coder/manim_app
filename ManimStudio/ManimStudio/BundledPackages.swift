@@ -11,7 +11,7 @@
 import Foundation
 
 enum BundledPackages {
-    /// 56 distributions bundled at build time.
+    /// 60 distributions bundled at build time.
     static let all: [PackageInfo] = [
         PackageInfo(name: "attrs", version: "24.2.0", summary: "Classes Without Boilerplate", location: nil, category: "Data"),
         PackageInfo(name: "audioop-lts", version: "0.2.1", summary: "audioop standard-library replacement for Python 3.13+.", location: nil, category: "Media"),
@@ -35,6 +35,7 @@ enum BundledPackages {
         PackageInfo(name: "manim", version: "0.19.0", summary: "Animation engine for explanatory math videos.", location: nil, category: "Animation"),
         PackageInfo(name: "manimpango", version: "0.6.1", summary: "Bindings for Pango (text layout) for use by manim", location: nil, category: "Animation"),
         PackageInfo(name: "mapbox-earcut", version: "1.0.3", summary: "Python bindings for the mapbox/earcut polygon-triangulation library", location: nil, category: "Animation"),
+        PackageInfo(name: "markdown-it-py", version: "3.0.0", summary: "Markdown parser, used by rich for console rendering.", location: nil, category: "Utility"),
         PackageInfo(name: "MarkupSafe", version: "3.0.3", summary: "Safely add untrusted strings to HTML/XML markup.", location: nil, category: "Web / HTTP"),
         PackageInfo(name: "matplotlib", version: "3.9.0", summary: "Python plotting package", location: nil, category: "Plotting"),
         PackageInfo(name: "mdurl", version: "0.1.2", summary: "Markdown URL utilities", location: nil, category: "Utility"),
@@ -58,15 +59,18 @@ enum BundledPackages {
         PackageInfo(name: "regex", version: "2024.11.6", summary: "Alternative regular expression module, to replace re.", location: nil, category: "Data"),
         PackageInfo(name: "requests", version: "2.33.1", summary: "Python HTTP for Humans.", location: nil, category: "Web / HTTP"),
         PackageInfo(name: "rich", version: "13.7.0", summary: "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal", location: nil, category: "Utility"),
+        PackageInfo(name: "rpds-py", version: "0.22.3", summary: "Persistent data structures (Rust), used by jsonschema/referencing.", location: nil, category: "Data"),
         PackageInfo(name: "scikit-learn", version: "1.8.0", summary: "Machine-learning library (clustering, decomposition, …).", location: nil, category: "Scientific"),
         PackageInfo(name: "scipy", version: "1.15.0", summary: "Fundamental algorithms for scientific computing in Python", location: nil, category: "Scientific"),
         PackageInfo(name: "screeninfo", version: "0.8.1", summary: "Fetch location and size of physical screens.", location: nil, category: "Utility"),
         PackageInfo(name: "skia-pathops", version: "0.9.2", summary: "Boolean ops on Bézier paths via Skia (Union/Difference/…).", location: nil, category: "Animation"),
         PackageInfo(name: "soupsieve", version: "2.8", summary: "A modern CSS selector implementation for Beautiful Soup.", location: nil, category: "Web / HTTP"),
+        PackageInfo(name: "srt", version: "3.5.3", summary: "SubRip subtitle (.srt) parser/composer; manim subtitle export.", location: nil, category: "Utility"),
         PackageInfo(name: "svgelements", version: "1.9.6", summary: "Svg Elements Parsing", location: nil, category: "Animation"),
         PackageInfo(name: "sympy", version: "1.14.0", summary: "Computer algebra system (CAS) in Python", location: nil, category: "Scientific"),
         PackageInfo(name: "tornado", version: "6.5.5", summary: "Tornado is a Python web framework and asynchronous networking library, originally developed at FriendFeed.", location: nil, category: "Web / HTTP"),
         PackageInfo(name: "tqdm", version: "4.67.3", summary: "Fast, Extensible Progress Meter", location: nil, category: "Utility"),
+        PackageInfo(name: "typing-extensions", version: "4.15.0", summary: "Backported / experimental typing primitives.", location: nil, category: "Utility"),
         PackageInfo(name: "urllib3", version: "2.6.3", summary: "HTTP library with thread-safe connection pooling, file post, and more.", location: nil, category: "Web / HTTP"),
         PackageInfo(name: "watchdog", version: "4.0.0", summary: "Filesystem events monitoring", location: nil, category: "Utility"),
     ]

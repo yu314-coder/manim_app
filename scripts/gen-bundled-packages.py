@@ -51,6 +51,17 @@ MANUAL = {
                        "On-device LaTeX → SVG bridge (busytex) for MathTex/Tex."),
     "cairo-metal": ("cairo-metal", "0.1.0",
                     "Experimental Metal GPU backend for cairo (pycairo drop-in)."),
+    # importable in the bundle but their dist-info lacks a matching
+    # top_level.txt, so the intersection scan misses them (transitive deps
+    # of rich / jsonschema / manim that ARE shipped).
+    "markdown-it-py": ("markdown-it-py", "3.0.0",
+                       "Markdown parser, used by rich for console rendering."),
+    "rpds-py": ("rpds-py", "0.22.3",
+                "Persistent data structures (Rust), used by jsonschema/referencing."),
+    "srt": ("srt", "3.5.3",
+            "SubRip subtitle (.srt) parser/composer; manim subtitle export."),
+    "typing-extensions": ("typing-extensions", "4.15.0",
+                          "Backported / experimental typing primitives."),
 }
 
 DENY = {"attr"}  # stray attr 0.3.2 — keep attrs instead
