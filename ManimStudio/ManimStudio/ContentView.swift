@@ -364,16 +364,6 @@ struct ContentView: View {
         }
         isRendering = false
         BackgroundTaskGuard.shared.end()
-        // A render just warmed Python — manim/numpy/scipy/matplotlib are
-        // now imported in sys.modules — so this is the cheapest moment to
-        // build the editor's library-completion index: the introspection
-        // pass reuses the already-loaded modules instead of cold-importing
-        // them (which is what made it a 10–30 s pass elsewhere). build() is
-        // guarded (in-flight + disk cache keyed by app build version), so it
-        // does real work only once per install and no-ops on later renders.
-        // Triggering it here — not on the Packages tab — keeps that tab's
-        // first open instant.
-        LibrarySymbolBuilder.shared.build { _ in }
     }
 
     /// Pull `File "<string>", line N` (and similar) out of a Python

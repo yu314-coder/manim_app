@@ -984,7 +984,7 @@ private struct HelpSheet: View {
         ("Render produces no video file",
          "Check the terminal pane for a Python traceback. Common causes: a Scene class that raises in construct(), a missing font file, or insufficient disk space (clear ToolOutputs in Settings)."),
         ("Editor completion is empty",
-         "manim and Python builtins always autocomplete. Full library APIs (numpy / scipy / matplotlib …) come from a symbol index built in the background after your first render — when those libraries are already loaded — then cached. Run one render and they'll populate."),
+         "manim, Python builtins, and the full bundled-library APIs (numpy / scipy / sympy / matplotlib …) autocomplete from a baked-in symbol index that loads with the editor — no setup, no first render needed. If it ever looks incomplete, fully quit and reopen the app."),
         ("\"symbol not found in flat namespace\" on import",
          "Means a C extension references a symbol that isn't bundled. Send the log file (Settings → Diagnostics → Share log file) — these are usually one-line stub additions."),
         ("Files app doesn't show my renders",
