@@ -836,7 +836,7 @@ private struct HelpSheet: View {
         ("Getting started",
          "Edit Python code in the Workspace tab. Define one or more `class MyScene(Scene): def construct(self): …` classes, then tap Render or Preview. Output appears in the preview pane and in the live terminal."),
         ("Render vs Preview",
-         "Render uses your Final Render quality (set in the right sidebar — defaults to 1080p / 30 fps / VideoToolbox). Preview always renders at 480p / 15 fps regardless of the sidebar — for tight iteration loops."),
+         "Render uses your Final Render quality (right sidebar or Settings — defaults to 1080p / 30 fps). Preview uses the separate Quick Preview quality (defaults to 480p / 15 fps) for tight iteration loops; raise it to 720p or 1080p in the sidebar when you need a closer look."),
         ("Scene picker",
          "When more than one Scene class is detected, the dropdown next to Render lets you pick one. \"All scenes\" renders every Scene subclass in source order."),
         ("LaTeX (Tex / MathTex)",
@@ -846,9 +846,13 @@ private struct HelpSheet: View {
         ("Workspace, Assets, History",
          "Workspace is the cwd the shell starts in. Assets is for files you import (images, audio, fonts). History scans ToolOutputs and shows every render with thumbnail / share / delete."),
         ("Packages tab",
-         "Lists every importable Python package bundled in the app — version, install path, short description. Opening this tab also rebuilds the Monaco completion index in the background."),
+         "Lists every Python package bundled in the app — name, version, category, short description. Fully offline; filter by category or search. Opening it also builds the editor's library-completion index in the background the first time (then it's cached)."),
         ("GPU button (lightning)",
-         "Toggles VideoToolbox hardware encode for the concat stage. ON is ~5× faster on iPad. OFF falls back to libx264 software (slower but byte-identical across devices)."),
+         "Turns on Metal-accelerated cairo rasterization plus VideoToolbox hardware H.264 encoding. It mainly speeds the encode stage — the per-frame math (manim's Python interpolation) dominates total render time, so the biggest speed levers are lowering the FPS or the resolution, not this toggle. OFF uses the CPU cairo backend and the software encoder."),
+        ("Output formats",
+         "The Final Render format (right sidebar or Settings) can be mp4 (H.264 video), gif (looping animation), or html (a self-contained player page). Preview always uses mp4 for speed."),
+        ("Appearance",
+         "The app uses a fixed dark theme. Pick an accent colour in Settings → Accent colour or the palette button in the header — it retints buttons, highlights, selection and the signature gradient across the whole app."),
     ]
 
     private let shortcutGroups: [(String, [(String, String)])] = [
@@ -859,12 +863,9 @@ private struct HelpSheet: View {
         ]),
         ("Render", [
             ("⌘ R",       "Render (Final quality)"),
-            ("⇧ ⌘ R",     "Preview (480p / 15 fps)"),
+            ("⇧ ⌘ R",     "Preview (Quick Preview quality)"),
             ("⌘ .",       "Stop render"),
             ("⌥ ⌘ G",     "Toggle GPU acceleration"),
-            ("F5",        "Render (legacy)"),
-            ("F6",        "Preview (legacy)"),
-            ("Esc",       "Stop render (legacy)"),
         ]),
         ("View", [
             ("⌘ 1",       "Gallery tab"),
@@ -902,7 +903,6 @@ private struct HelpSheet: View {
         ("Help / Settings", [
             ("⌘ ?",       "Open this help"),
             ("⇧ ⌘ K",     "Keyboard shortcuts"),
-            ("⌘ ,",       "Settings (system)"),
         ]),
         ("Shell", [
             ("help",    "List all builtins"),
@@ -962,12 +962,12 @@ private struct HelpSheet: View {
     ]
 
     private let faqs: [(String, String)] = [
-        ("Why does Preview render at 480p even though I set 1080p?",
-         "Preview is intentionally fixed at 480p / 15 fps for iteration speed. Render uses the Final quality from the sidebar."),
+        ("Why does Preview look lower-res than Render?",
+         "Preview has its own Quick Preview quality (defaults to 480p / 15 fps) in the right sidebar, separate from Final Render quality — so you can iterate fast and still render at full quality. Raise Quick Preview to 720p/1080p for a closer look, or press ⌘R for a Final render."),
         ("Where can I find my renders?",
          "Files app → On My iPad → Manim Studio → ToolOutputs/. Or use the History tab in the app."),
         ("The app freezes on launch.",
-         "Close it once and reopen. The first launch after a new build imports manim/numpy/scipy/matplotlib (~10 s) and caches the symbol index. Subsequent launches read the cache and are instant."),
+         "Close it once and reopen. The first launch after a new build warms up Python and imports manim/numpy/scipy/matplotlib (~10 s). Subsequent launches are much faster."),
         ("`pip install …` doesn't work.",
          "Correct — pip is intentionally disabled. iOS app sandboxes don't expose a writable site-packages, and most pip wheels need a working compiler / linker which iOS forbids. The Packages tab lists everything pre-bundled."),
         ("Can I use my own fonts?",
@@ -984,9 +984,9 @@ private struct HelpSheet: View {
         ("Render produces no video file",
          "Check the terminal pane for a Python traceback. Common causes: a Scene class that raises in construct(), a missing font file, or insufficient disk space (clear ToolOutputs in Settings)."),
         ("Editor completion is empty",
-         "Open the Packages tab once and let it finish loading. That builds the symbol index for Monaco and caches it for next launch."),
+         "manim and Python builtins always autocomplete. Full library APIs (numpy / scipy / matplotlib …) come from a symbol index built in the background the first time you open the Packages tab, then cached — open it once and give it a few seconds."),
         ("\"symbol not found in flat namespace\" on import",
-         "Means a C extension references a symbol that isn't bundled. Send the log file (Settings → Share log file) — these are usually one-line stub additions."),
+         "Means a C extension references a symbol that isn't bundled. Send the log file (Settings → Diagnostics → Share log file) — these are usually one-line stub additions."),
         ("Files app doesn't show my renders",
          "Documents must be exposed via UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace (both set in Info.plist). Sometimes Files takes a few seconds to refresh after a render — pull-to-refresh in Files."),
     ]
