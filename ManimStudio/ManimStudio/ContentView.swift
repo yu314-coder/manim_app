@@ -46,6 +46,9 @@ struct ContentView: View {
     /// markers when a render fails. Reset on each render start.
     @State private var renderErrorMarkers: [MonacoEditorView.EditorMarker] = []
 
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var compact: Bool { hSizeClass == .compact }
+
     private var detectedScenes: [String] {
         SceneDetector.detect(in: sourceCode)
     }
@@ -66,7 +69,12 @@ struct ContentView: View {
                     showSaver = true
                 }
             )
-            TabBarView(selection: $selectedTab)
+            // iPad keeps the top pill strip; iPhone moves navigation to a
+            // native bottom tab bar (added via .safeAreaInset below) so the
+            // nav is thumb-reachable instead of a third stacked top row.
+            if !compact {
+                TabBarView(selection: $selectedTab)
+            }
 
             ZStack {
                 // Workspace is KEPT ALIVE across tab switches (hidden, not
@@ -113,6 +121,14 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Theme.bgPrimary.ignoresSafeArea())
+        // iPhone: native bottom tab bar, pinned above the home indicator
+        // (its material bleeds under the indicator). iPad keeps the top
+        // pill strip, so this inset is compact-only.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if compact {
+                BottomTabBar(selection: $selectedTab)
+            }
+        }
         // Live RAM HUD, bottom-right — Workspace tab only, iPad only.
         // Samples the app's phys_footprint every second and graphs it
         // against device RAM — a debugging aid for on-device jetsam
@@ -200,6 +216,7 @@ struct ContentView: View {
 
     private func triggerRender(quick: Bool) {
         guard !isRendering else { return }
+        Haptics.impact(quick ? .light : .medium)
         // Clear stale error markers before each render so the editor
         // gutter reflects only the current run's outcome.
         renderErrorMarkers = []
@@ -335,6 +352,16 @@ struct ContentView: View {
                     userInfo: ["markers": markers])
             }
         }
+        // Haptic confirmation the run finished — success buzz only for a
+        // Final render (Preview iterates too fast to buzz every time); an
+        // error buzz fires for any run that produced no output.
+        let producedOutput = (result.imagePath.flatMap {
+            FileManager.default.fileExists(atPath: $0) ? $0 : nil }) != nil
+        if producedOutput {
+            if label == "render" { Haptics.notify(.success) }
+        } else {
+            Haptics.notify(.error)
+        }
         isRendering = false
         BackgroundTaskGuard.shared.end()
     }
@@ -417,6 +444,7 @@ struct ContentView: View {
 
     private func stopRender() {
         guard isRendering else { return }
+        Haptics.impact(.rigid)
         // Three escalating stop signals:
         //  1. Cooperative cancel sentinel — the render wrapper checks it
         //     once per frame and raises KeyboardInterrupt. This is the

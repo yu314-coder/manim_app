@@ -10,7 +10,7 @@ struct WorkspaceView: View {
     @State private var sidebarOpen = true
     @State private var hSplit: CGFloat = 0.5   // editor↔preview
     @State private var vSplit: CGFloat = 0.7   // top↔terminal
-    @State private var compactPane: CompactPane = .preview
+    @State private var compactPane: CompactPane = .editor   // open on the code editor
     @State private var compactSheet: CompactSheet? = nil
 
     /// On iPhone the three-pane horizontal layout is cramped to the
@@ -117,6 +117,8 @@ struct WorkspaceView: View {
             HStack(spacing: 6) {
                 ForEach(CompactPane.allCases) { pane in
                     Button {
+                        guard compactPane != pane else { return }
+                        Haptics.selection()
                         withAnimation(.easeInOut(duration: 0.15)) { compactPane = pane }
                     } label: {
                         HStack(spacing: 4) {
