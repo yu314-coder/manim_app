@@ -45,6 +45,14 @@ struct HeaderView: View {
     @Environment(\.horizontalSizeClass) private var hSizeClass
     private var compact: Bool { hSizeClass == .compact }
 
+    /// Marketing version straight from the bundle
+    /// (CFBundleShortVersionString = project MARKETING_VERSION), so the
+    /// header label always matches the real build instead of a hardcoded
+    /// string that silently drifts out of sync.
+    private var appVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.3"
+    }
+
     var body: some View {
         Group {
             if compact { compactBody } else { regularBody }
@@ -149,7 +157,7 @@ struct HeaderView: View {
                     Text("Manim Animation Studio")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Professional Edition v1.1.2.0")
+                    Text("Professional Edition v\(appVersion)")
                         .font(.system(size: 10))
                         .foregroundStyle(Theme.textDim)
                 }
