@@ -40,15 +40,13 @@ struct PackagesView: View {
         }
         .padding(16)
         .background(Theme.bgPrimary)
-        // Build the editor's library-completion index in the background
-        // (full numpy/scipy/manim/... APIs). Disk-cached by app build
-        // version, so it's a no-op after the first time and never blocks
-        // this tab (the package list is the baked-in BundledPackages.all).
-        // The old Python-backed package scan used to kick this off; that
-        // scan was removed, so we trigger it here to keep library
-        // autocomplete populated. Monaco merges it with its always-present
-        // hardcoded manim/Python completions.
-        .onAppear { LibrarySymbolBuilder.shared.build { _ in } }
+        // Deliberately NO Python work on this tab: the list is the baked-in
+        // BundledPackages.all, so the tab opens instantly. (An earlier
+        // version kicked off the editor's library-completion index build
+        // here, which janked the first open.) That index is now built after
+        // the first render instead — see ContentView.logStream_done — when
+        // Python is already warm and the libraries are imported, so it's
+        // quick and never touches this tab.
     }
 
     // MARK: header
