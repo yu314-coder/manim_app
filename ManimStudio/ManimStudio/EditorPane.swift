@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct EditorPane: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @Binding var source: String
     @State private var fontSize: CGFloat = 14
     @State private var monaco = MonacoController()

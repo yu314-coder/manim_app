@@ -7,6 +7,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct AssetsView: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @State private var entries: [Entry] = []
     @State private var currentDir: URL = AssetsView.assetsRoot()
     @State private var showImporter = false

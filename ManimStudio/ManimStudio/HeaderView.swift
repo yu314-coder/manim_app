@@ -24,12 +24,14 @@ struct HeaderView: View {
     @AppStorage("manim_gpu_on") private var gpuOn = true
     @State private var autosaveText = "Autosaved"
 
-    // Persistent UI state — used by Settings/Theme sheets.
-    @AppStorage("manim_theme_mode") private var themeMode: String = "dark"
-                                                        // "dark" | "light" | "system"
+    // Persistent UI state — used by the Settings sheet.
     @AppStorage("manim_accent_hex") private var accentHex: String = "6366F1"
                                                         // indigo default
     @AppStorage("manim_terminal_font") private var terminalFontSize: Double = 13
+
+    // Observe the accent so the header's gradient buttons retint live the
+    // moment the colour changes in Settings or the colour popover.
+    @ObservedObject private var theme = ThemeManager.shared
 
     @State private var showSettings = false
     @State private var showHelp     = false
@@ -47,10 +49,9 @@ struct HeaderView: View {
         Group {
             if compact { compactBody } else { regularBody }
         }
-        .preferredColorScheme(themeColorScheme)
+        .preferredColorScheme(.dark)   // Resonance is a dark-only design
         .sheet(isPresented: $showSettings) {
-            SettingsSheet(themeMode: $themeMode,
-                          accentHex: $accentHex,
+            SettingsSheet(accentHex: $accentHex,
                           terminalFontSize: $terminalFontSize,
                           gpuOn: $gpuOn)
         }
@@ -80,7 +81,6 @@ struct HeaderView: View {
                 Divider()
                 Toggle(isOn: $gpuOn) { Label("GPU acceleration", systemImage: "bolt.fill") }
                 Button { showColors = true }  label: { Label("Accent color", systemImage: "paintpalette") }
-                Button { cycleTheme() }       label: { Label("Theme: \(themeMode.capitalized)", systemImage: themeIcon) }
                 Divider()
                 Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                 Button { showHelp = true }     label: { Label("Help",     systemImage: "questionmark.circle") }
@@ -226,7 +226,6 @@ struct HeaderView: View {
                 .overlay(Capsule().stroke(Theme.success.opacity(0.4), lineWidth: 1))
 
                 headerBtn("gearshape", "Settings") { showSettings.toggle() }
-                headerBtn(themeIcon, "Theme: \(themeMode.capitalized)") { cycleTheme() }
                 headerBtn("questionmark.circle", "Help") { showHelp.toggle() }
             }
         }
@@ -236,30 +235,6 @@ struct HeaderView: View {
             Theme.bgSecondary
                 .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
         )
-    }
-
-    // MARK: theme
-
-    private var themeIcon: String {
-        switch themeMode {
-        case "light":  return "sun.max"
-        case "system": return "circle.lefthalf.filled"
-        default:       return "moon"
-        }
-    }
-    private var themeColorScheme: ColorScheme? {
-        switch themeMode {
-        case "light":  return .light
-        case "dark":   return .dark
-        default:       return nil   // follow system
-        }
-    }
-    private func cycleTheme() {
-        switch themeMode {
-        case "dark":   themeMode = "light"
-        case "light":  themeMode = "system"
-        default:       themeMode = "dark"
-        }
     }
 
     // MARK: scene picker
@@ -388,7 +363,6 @@ struct HeaderView: View {
 
 private struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Binding var themeMode: String
     @Binding var accentHex: String
     @Binding var terminalFontSize: Double
     @Binding var gpuOn: Bool
@@ -399,6 +373,11 @@ private struct SettingsSheet: View {
     @AppStorage("manim_format")        private var format = "mp4"
     @AppStorage("manim_terminal_font_family") private var terminalFontFamily = "Menlo"
 
+    /// Quick accent presets (default indigo first). Uppercase hex so the
+    /// selected-ring comparison against accentHex.uppercased() matches.
+    private static let accentPresets = ["6366F1", "8B5CF6", "EC4899", "F43F5E",
+                                        "F59E0B", "10B981", "06B6D4", "3B82F6"]
+
     @State private var confirmReset = false
     @State private var confirmClearOutputs = false
     @State private var confirmClearLogs = false
@@ -407,15 +386,10 @@ private struct SettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                // — Appearance ————————————————————————————————
-                Section("Appearance") {
-                    Picker("Theme", selection: $themeMode) {
-                        Label("Dark",   systemImage: "moon.fill").tag("dark")
-                        Label("Light",  systemImage: "sun.max.fill").tag("light")
-                        Label("System", systemImage: "circle.lefthalf.filled").tag("system")
-                    }
+                // — Accent ————————————————————————————————————
+                Section {
                     HStack {
-                        Text("Accent")
+                        Text("Hex")
                         Spacer()
                         TextField("Hex", text: $accentHex)
                             .frame(width: 90)
@@ -428,6 +402,31 @@ private struct SettingsSheet: View {
                             .frame(width: 18, height: 18)
                             .overlay(Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 1))
                     }
+                    HStack(spacing: 12) {
+                        ForEach(Self.accentPresets, id: \.self) { hx in
+                            Button { accentHex = hx } label: {
+                                Circle()
+                                    .fill(Color(hex: hx) ?? .gray)
+                                    .frame(width: 26, height: 26)
+                                    .overlay(Circle().stroke(.white,
+                                        lineWidth: accentHex.uppercased() == hx ? 2 : 0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                    // Live preview — retints the instant the accent changes.
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Theme.accentGradient(forHex: accentHex))
+                        .frame(height: 24)
+                        .overlay(Text("Signature gradient")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9)))
+                } header: {
+                    Text("Accent colour")
+                } footer: {
+                    Text("Tints buttons, highlights, selection and the signature gradient across the app. The app uses a fixed dark theme.")
                 }
 
                 // — Render Log ─────────────────────────────────────
@@ -464,7 +463,7 @@ private struct SettingsSheet: View {
                         Label("Final FPS", systemImage: "speedometer")
                     }
                     Picker(selection: $format) {
-                        ForEach(["mp4", "mov", "gif", "png"], id: \.self) { Text($0).tag($0) }
+                        ForEach(["mp4", "gif", "html"], id: \.self) { Text($0).tag($0) }
                     } label: {
                         Label("Output format", systemImage: "doc")
                     }
@@ -585,7 +584,6 @@ private struct SettingsSheet: View {
                     "manim_preview_quality", "manim_preview_fps",
                     "manim_format", "manim_quality", "manim_fps"]
         for k in keys { UserDefaults.standard.removeObject(forKey: k) }
-        themeMode = "dark"
         accentHex = "6366F1"
         terminalFontSize = 13
         terminalFontFamily = "Menlo"

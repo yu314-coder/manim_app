@@ -26,6 +26,7 @@ import UIKit
 import WebKit
 
 struct PreviewPane: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @Binding var videoURL: URL?
     /// Holder for the live <video> WKWebView so the screenshot action
     /// can read the element's current playback time and capture the
@@ -209,6 +210,14 @@ struct PreviewPane: View {
     }
 
     private func saveImageURLToPhotos(_ url: URL) {
+        // Animated GIFs must be saved as the FILE (PHAssetCreationRequest),
+        // not decoded through UIImage(contentsOfFile:) — that keeps only the
+        // first frame and the saved "GIF" wouldn't animate. Still images
+        // (png/jpg) go through the UIImage path which is fine for them.
+        if url.pathExtension.lowercased() == "gif" {
+            saveFileToPhotos(url, resourceType: .photo)
+            return
+        }
         guard let ui = UIImage(contentsOfFile: url.path) else {
             flash("Couldn't load image")
             return
@@ -216,6 +225,34 @@ struct PreviewPane: View {
         savePhoto(ui) { ok in
             if ok { flash("✓ Saved to Photos") }
             else  { fallbackShareImage(ui) }
+        }
+    }
+
+    /// Save a media file to Photos preserving its on-disk encoding (so an
+    /// animated GIF keeps every frame). Mirrors the RenderCompleteSheet path.
+    private func saveFileToPhotos(_ url: URL, resourceType: PHAssetResourceType) {
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        func proceed(_ granted: Bool) {
+            guard granted else { flash("Photos access denied"); return }
+            PHPhotoLibrary.shared().performChanges {
+                let req = PHAssetCreationRequest.forAsset()
+                req.addResource(with: resourceType, fileURL: url, options: nil)
+            } completionHandler: { ok, err in
+                DispatchQueue.main.async {
+                    if ok { flash("✓ Saved to Photos") }
+                    else  { flash("Couldn't save: \(err?.localizedDescription ?? "unknown")") }
+                }
+            }
+        }
+        switch status {
+        case .authorized, .limited:
+            proceed(true)
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { s in
+                DispatchQueue.main.async { proceed(s == .authorized || s == .limited) }
+            }
+        default:
+            proceed(false)
         }
     }
 

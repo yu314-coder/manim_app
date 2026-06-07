@@ -9,6 +9,7 @@
 import SwiftUI
 
 struct PackagesView: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @State private var query = ""
     @State private var selectedCategory: String? = nil   // nil = All
 

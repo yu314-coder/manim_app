@@ -2,6 +2,7 @@
 import SwiftUI
 
 struct SystemView: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @State private var infos: [(String, String, String)] = [
         ("Python",          "3.14",        "chevron.left.forwardslash.chevron.right"),
         ("Platform",        "iOS / iPadOS","ipad"),

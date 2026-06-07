@@ -6,6 +6,7 @@ import UIKit
 import AVKit
 
 struct HistoryView: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @State private var entries: [Entry] = []
     @State private var shareURL: URL? = nil
     @State private var playerURL: URL? = nil

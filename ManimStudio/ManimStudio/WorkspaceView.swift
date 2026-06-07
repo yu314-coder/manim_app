@@ -3,6 +3,7 @@
 import SwiftUI
 
 struct WorkspaceView: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @Binding var sourceCode: String
     @Binding var isRendering: Bool
     @Binding var renderedVideoURL: URL?

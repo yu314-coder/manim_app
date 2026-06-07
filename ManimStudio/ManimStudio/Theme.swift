@@ -11,6 +11,7 @@
 // of the app compiles unchanged.
 
 import SwiftUI
+import Combine
 
 enum Theme {
     // ─────────────────────────────────────────────────────────
@@ -60,32 +61,96 @@ enum Theme {
     static let textSecondary = ion
     static let textDim       = dim
 
-    static let accentPrimary   = indigo
-    static let accentSecondary = violet
-    static let accentTertiary  = pink
+    // ── Accent tokens ────────────────────────────────────────
+    // Derive from the user-chosen accent (UserDefaults["manim_accent_hex"],
+    // surfaced live via ThemeManager). At the default indigo they
+    // reproduce the original curated [indigo, violet, pink] triplet
+    // exactly; choose another colour and the signature gradient, accent
+    // fills, selection and glow all retint together. The fixed named
+    // colours (indigo/violet/pink) are deliberately NOT touched — they
+    // double as category / semantic colours elsewhere in the app.
+    static var accentPrimary:   Color { accentStops()[0] }
+    static var accentSecondary: Color { accentStops()[1] }
+    static var accentTertiary:  Color { accentStops()[2] }
     static let success         = green
     static let warning         = amber
     static let error           = red
     static let info            = trace
     static let cyan            = trace
 
-    // Signature gradient (indigo → violet → pink, 135°)
-    static let signatureGradient = LinearGradient(
-        colors: [indigo, violet, pink],
-        startPoint: .topLeading, endPoint: .bottomTrailing
-    )
-    static let signatureGradientSoft = LinearGradient(
-        colors: [indigo.opacity(0.6), violet.opacity(0.55), pink.opacity(0.5)],
-        startPoint: .topLeading, endPoint: .bottomTrailing
-    )
+    /// Three cohesive stops for the current accent.
+    static func accentStops() -> [Color] {
+        accentStops(forHex: ThemeManager.shared.accentHex)
+    }
+
+    /// Three cohesive stops derived from an explicit hex. Used by the
+    /// Settings preview for instant feedback before the change has
+    /// propagated through ThemeManager. The default indigo short-circuits
+    /// to the curated brand triplet so existing installs look identical.
+    static func accentStops(forHex hex: String) -> [Color] {
+        if hex.uppercased() == "6366F1" { return [indigo, violet, pink] }
+        guard let base = Color(hex: hex) else { return [indigo, violet, pink] }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(base).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        func stop(_ dh: CGFloat) -> Color {
+            Color(hue: Double((h + dh).truncatingRemainder(dividingBy: 1.0)),
+                  saturation: Double(min(max(s, 0.55), 0.95)),
+                  brightness: Double(min(max(b, 0.80), 1.0)))
+        }
+        return [stop(0), stop(0.09), stop(0.18)]
+    }
+
+    // Signature gradient (accent → +2 analogous stops, 135°)
+    static var signatureGradient: LinearGradient { accentGradient(forHex: ThemeManager.shared.accentHex) }
+    static func accentGradient(forHex hex: String) -> LinearGradient {
+        LinearGradient(colors: accentStops(forHex: hex),
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+    static var signatureGradientSoft: LinearGradient {
+        let c = accentStops()
+        return LinearGradient(
+            colors: [c[0].opacity(0.6), c[1].opacity(0.55), c[2].opacity(0.5)],
+            startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
 
     static let borderSubtle = hairline
     static let borderActive = hairBright
-    static let glowPrimary  = violet.opacity(0.45)
+    static var glowPrimary:  Color { accentStops()[1].opacity(0.45) }
 
     // Legacy font fields (kept so older call-sites still resolve).
     static let uiFont   = Font.system(.body,  design: .default)
     static let monoFont = Font.system(.body,  design: .monospaced)
+}
+
+// ─────────────────────────────────────────────────────────────
+// ThemeManager — publishes the accent-colour choice so accent-bearing
+// views retint live the moment it changes. Backed by
+// UserDefaults["manim_accent_hex"], the same key the Settings sheet and
+// the colour popover write via @AppStorage. A view shows accent live by
+// declaring `@ObservedObject private var theme = ThemeManager.shared`;
+// the subscription alone re-runs the view's body when the accent
+// changes, so it re-reads the computed Theme.signatureGradient /
+// accentPrimary tokens above. The singleton lives for the app's
+// lifetime (static let), so @ObservedObject — not @StateObject — is
+// correct at the use sites.
+// ─────────────────────────────────────────────────────────────
+final class ThemeManager: ObservableObject {
+    static let shared = ThemeManager()
+    @Published private(set) var accentHex: String
+
+    private init() {
+        accentHex = UserDefaults.standard.string(forKey: "manim_accent_hex") ?? "6366F1"
+        // The accent pickers write the key via @AppStorage; mirror it into
+        // the @Published property so observers refresh. Guard against the
+        // echo so we don't loop on our own (indirect) writes.
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            let v = UserDefaults.standard.string(forKey: "manim_accent_hex") ?? "6366F1"
+            if v != self.accentHex { self.accentHex = v }
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────

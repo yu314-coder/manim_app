@@ -267,6 +267,23 @@ final class PythonRuntime {
         try? Data("stop".utf8).write(to: sentinel)
     }
 
+    /// Map a quality label ("480p"…"8K") to manim's 0-5 preset index.
+    /// Single source of truth for the conversion: both settings surfaces
+    /// (the ControlsSidebar drawer and the gear Settings sheet) store the
+    /// human label, and the renderer converts it here so neither UI has to
+    /// be alive for the choice to take effect.
+    static func qualityIndex(_ q: String) -> Int {
+        switch q.lowercased() {
+        case "120p", "240p", "360p", "480p": return 0
+        case "720p":  return 1
+        case "1080p": return 2
+        case "1440p": return 3
+        case "4k":    return 4
+        case "8k":    return 5
+        default:      return 2
+        }
+    }
+
     /// Eagerly boot Python (Py_Initialize + stdio redirect) and start
     /// the REPL thread. Call this from CodeEditorViewController when
     /// the terminal view appears, so the user can type commands
@@ -798,14 +815,16 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             //
             // Preview-vs-Render dispatch: ContentView sets the env var
             // OFFLINAI_MANIM_QUALITY = "low_quality" | "high_quality"
-            // before each call. When that env var is "low_quality" we
-            // FORCE quality=0 / fps=15 regardless of what ControlsSidebar
-            // wrote into UserDefaults["manim_quality"|"manim_fps"]. The
-            // user explicitly tapped Preview to iterate quickly — they
-            // don't want a 1080p60 render. Without this override the
-            // wrapper script reads the UserDefault straight, which is
-            // always the FINAL render setting, so Preview rendered at
-            // 1080p60 too.
+            // before each call. When it is "low_quality" we read the
+            // Quick-Preview keys (manim_preview_quality / _fps); otherwise
+            // the Final-render keys (manim_final_quality / _fps). Both hold
+            // the human quality label ("480p"…"8K") written by either
+            // ControlsSidebar or the gear Settings sheet via @AppStorage;
+            // qualityIndex() converts it to manim's 0-5 preset index here.
+            // Reading the keys per-call (rather than a precomputed index)
+            // means a Preview honours the Quick-Preview pickers while a
+            // Render honours the Final pickers — no settings surface has
+            // to be on screen for the choice to take effect.
             let envQuality: String = {
                 guard let p = getenv("OFFLINAI_MANIM_QUALITY") else { return "" }
                 return String(cString: p)
@@ -814,12 +833,25 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             let manimQuality: Int
             let manimFPS: Int
             if isPreview {
-                manimQuality = 0
-                manimFPS     = 15
+                // Quick Preview honours the ControlsSidebar "Quick Preview"
+                // pickers (manim_preview_quality / manim_preview_fps) so those
+                // controls actually do something — they used to be ignored
+                // (preview was hardcoded 480p15). Defaults stay 480p @ 15 fps.
+                let pq = UserDefaults.standard.string(forKey: "manim_preview_quality") ?? "480p"
+                manimQuality = Self.qualityIndex(pq)
+                let pf = UserDefaults.standard.integer(forKey: "manim_preview_fps")
+                manimFPS     = pf > 0 ? pf : 15
             } else {
-                manimQuality = UserDefaults.standard.integer(forKey: "manim_quality")  // 0=low / 1=med / 2=high
-                let storedFPS = UserDefaults.standard.integer(forKey: "manim_fps")
-                manimFPS     = storedFPS > 0 ? storedFPS : 24
+                // Final render. Read the quality/fps LABELS written by BOTH the
+                // ControlsSidebar drawer AND the gear Settings sheet (they share
+                // manim_final_quality / manim_final_fps via @AppStorage), and
+                // convert the label to manim's 0-5 preset index HERE. Doing the
+                // conversion at render time means the setting takes effect no
+                // matter which settings surface is currently on screen.
+                let fq = UserDefaults.standard.string(forKey: "manim_final_quality") ?? "1080p"
+                manimQuality = Self.qualityIndex(fq)
+                let storedFPS = UserDefaults.standard.integer(forKey: "manim_final_fps")
+                manimFPS     = storedFPS > 0 ? storedFPS : 30
             }
             try setGlobalString(String(manimQuality), key: "__codebench_manim_quality", globals: globals)
             try setGlobalString(String(manimFPS),    key: "__codebench_manim_fps",     globals: globals)

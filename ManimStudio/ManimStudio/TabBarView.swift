@@ -2,6 +2,7 @@
 import SwiftUI
 
 struct TabBarView: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @Binding var selection: AppTab
     @Environment(\.horizontalSizeClass) private var hSizeClass
 

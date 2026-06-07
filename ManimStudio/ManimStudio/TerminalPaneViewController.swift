@@ -32,6 +32,7 @@ final class TerminalPaneViewController: UIViewController {
     var onInterrupt: (() -> Void)?
 
     private var fontSize: CGFloat = 13
+    private var fontFamily: String = "Menlo"
 
     // MARK: - Lifecycle
 
@@ -44,8 +45,12 @@ final class TerminalPaneViewController: UIViewController {
         terminal.terminalDelegate = PTYBridge.shared
         PTYBridge.shared.terminalView = terminal
 
-        // Apply the default font
+        // Apply the saved font prefs, and live-update when the Settings
+        // sheet changes terminal font size / family.
         applyFontSize()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(fontPrefsChanged),
+            name: UserDefaults.didChangeNotification, object: nil)
 
         // After a tick (once the terminal has laid out and knows its
         // column count) send the size over to the PTY so rich / textual
@@ -202,12 +207,14 @@ final class TerminalPaneViewController: UIViewController {
     }
 
     @objc private func didTapFontSmaller() {
-        fontSize = max(9, fontSize - 1)
+        // Persist first; applyFontSize() reads the value back from defaults
+        // so the +/- buttons and the Settings slider stay in sync.
+        UserDefaults.standard.set(Double(max(9, fontSize - 1)), forKey: "manim_terminal_font")
         applyFontSize()
     }
 
     @objc private func didTapFontLarger() {
-        fontSize = min(22, fontSize + 1)
+        UserDefaults.standard.set(Double(min(22, fontSize + 1)), forKey: "manim_terminal_font")
         applyFontSize()
     }
 
@@ -253,10 +260,41 @@ final class TerminalPaneViewController: UIViewController {
     }
 
     private func applyFontSize() {
-        let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        terminal.font = font
+        let d = UserDefaults.standard
+        let sz = d.object(forKey: "manim_terminal_font") as? Double ?? 13
+        fontSize   = CGFloat(max(9, min(22, sz)))
+        fontFamily = d.string(forKey: "manim_terminal_font_family") ?? "Menlo"
+        terminal.font = Self.resolveFont(size: fontSize, family: fontFamily)
         syncSizeToPTY()
     }
+
+    /// Resolve a font-family label from Settings ("Menlo" / "SF Mono" /
+    /// "Courier") to a concrete UIFont, falling back to the system
+    /// monospaced face if the named font can't be loaded.
+    private static func resolveFont(size: CGFloat, family: String) -> UIFont {
+        let named: UIFont?
+        switch family {
+        case "SF Mono": named = UIFont(name: "SFMono-Regular", size: size)
+        case "Courier": named = UIFont(name: "Courier", size: size)
+        case "Menlo":   named = UIFont(name: "Menlo", size: size)
+        default:        named = nil
+        }
+        return named ?? UIFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    /// React to the Settings sheet writing manim_terminal_font[_family].
+    /// UserDefaults.didChangeNotification fires for ANY key, so re-apply
+    /// only when the terminal's own prefs actually changed (avoids spamming
+    /// the PTY with size syncs during a render).
+    @objc private func fontPrefsChanged() {
+        let d = UserDefaults.standard
+        let sz  = CGFloat(max(9, min(22, d.object(forKey: "manim_terminal_font") as? Double ?? 13)))
+        let fam = d.string(forKey: "manim_terminal_font_family") ?? "Menlo"
+        guard sz != fontSize || fam != fontFamily else { return }
+        DispatchQueue.main.async { [weak self] in self?.applyFontSize() }
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 
     private func syncSizeToPTY() {
         // After font or view size change, tell the PTY the new cols/rows.

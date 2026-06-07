@@ -3,40 +3,26 @@
 import SwiftUI
 
 struct ControlsSidebar: View {
+    @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @Binding var isOpen: Bool
 
-    // Persisted so PythonRuntime (which reads UserDefaults["manim_quality"]
-    // and ["manim_fps"] inline in the wrapper script) actually picks up
-    // the user's choice, and so values survive relaunches.
+    // Persisted via @AppStorage so the choices survive relaunches AND so
+    // PythonRuntime can read them straight from UserDefaults inline before
+    // every render (manim_preview_quality / _fps for Preview, manim_final_
+    // quality / _fps for Render). The gear Settings sheet writes the same
+    // final-render keys, so either surface is authoritative.
     @AppStorage("manim_preview_quality") private var previewQuality = "480p"
     @AppStorage("manim_preview_fps")     private var previewFPS = 15
     @AppStorage("manim_final_quality")   private var finalQuality = "1080p"
     @AppStorage("manim_final_fps")       private var finalFPS = 30
     @AppStorage("manim_format")          private var format = "mp4"
 
-    /// Map a quality label → a resolution index the wrapper resolves to a
-    /// real Manim resolution:
-    ///   0 = 480p   (low_quality,        854×480)
-    ///   1 = 720p   (medium_quality,     1280×720)
-    ///   2 = 1080p  (high_quality,       1920×1080)
-    ///   3 = 1440p  (production_quality, 2560×1440)
-    ///   4 = 4K     (fourk_quality,      3840×2160)
-    ///   5 = 8K     (custom,             7680×4320)
-    /// 4K and 8K render at true resolution but are extremely memory-heavy
-    /// on iPad — watch the RAM HUD; they can hit the jetsam ceiling.
-    private static func qualityIndex(_ q: String) -> Int {
-        switch q.lowercased() {
-        case "120p","240p","360p","480p": return 0
-        case "720p":                       return 1
-        case "1080p":                      return 2
-        case "1440p":                      return 3
-        case "4k":                         return 4
-        case "8k":                         return 5
-        default:                           return 2
-        }
-    }
-
-    private let previewQualities = ["120p", "240p", "360p", "480p", "720p", "1080p"]
+    // Quality labels map to manim's 0-5 preset index in
+    // PythonRuntime.qualityIndex (the single source of truth):
+    //   480p→0  720p→1  1080p→2  1440p→3  4K→4  8K→5.
+    // 4K/8K render at true resolution but are very memory-heavy on iPad —
+    // watch the RAM HUD; they can hit the jetsam ceiling.
+    private let previewQualities = ["480p", "720p", "1080p"]
     private let finalQualities   = ["8K", "4K", "1440p", "1080p", "720p", "480p"]
     // mp4  — H.264 video (default)
     // gif  — animated GIF assembled from frames
@@ -75,18 +61,13 @@ struct ControlsSidebar: View {
         .padding(12)
         .background(Theme.bgSecondary)
         .overlay(Rectangle().fill(Theme.borderSubtle).frame(width: 1), alignment: .leading)
-        // Mirror to the canonical keys PythonRuntime reads inline before
-        // every render. Final values take effect for Render; Preview is
-        // hardcoded low_quality on the Python side via an env var so its
-        // numbers here are presentational only.
-        .onAppear  { writeThrough() }
-        .onChange(of: finalQuality) { _, _ in writeThrough() }
-        .onChange(of: finalFPS)     { _, _ in writeThrough() }
-    }
-
-    private func writeThrough() {
-        UserDefaults.standard.set(Self.qualityIndex(finalQuality), forKey: "manim_quality")
-        UserDefaults.standard.set(finalFPS, forKey: "manim_fps")
+        // All five controls persist straight to UserDefaults via @AppStorage
+        // (manim_preview_quality / _fps, manim_final_quality / _fps,
+        // manim_format). PythonRuntime reads those keys inline before every
+        // render and converts the quality label to manim's preset index, so
+        // there's nothing to mirror here — and the gear Settings sheet, which
+        // writes the same keys, stays authoritative even when this drawer is
+        // closed.
     }
 
     @ViewBuilder
