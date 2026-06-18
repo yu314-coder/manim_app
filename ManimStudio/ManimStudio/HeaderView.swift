@@ -103,7 +103,11 @@ struct HeaderView: View {
 
             scenePicker
 
-            Spacer(minLength: 4)
+            // Live memory sparkline, centred between the scene picker and
+            // the Run button — the iPhone equivalent of the iPad RAM HUD.
+            Spacer(minLength: 6)
+            CompactRAMGraph()
+            Spacer(minLength: 6)
 
             // Render / Preview / Stop — iconified versions to fit.
             Button(action: onRender) {

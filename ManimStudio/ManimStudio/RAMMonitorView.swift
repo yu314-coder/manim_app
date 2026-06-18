@@ -203,3 +203,75 @@ struct RAMMonitorView: View {
         .accessibilityHidden(true)
     }
 }
+
+// MARK: - Compact inline RAM graph (iPhone header)
+
+/// A small live RAM sparkline + MB readout sized to sit INLINE in the
+/// compact (iPhone) header, between the scene picker and the Run button.
+/// iPhone has no room for the floating iPad HUD, so this is the phone's
+/// equivalent. Reuses `RAMSampler` and the same amber→red jetsam tint.
+struct CompactRAMGraph: View {
+    @StateObject private var sampler = RAMSampler()
+    private static let mb = 1024.0 * 1024.0
+
+    private var usedMB: Double { Double(sampler.usedBytes) / Self.mb }
+    private var pct: Double {
+        guard sampler.totalBytes > 0 else { return 0 }
+        return Double(sampler.usedBytes) / Double(sampler.totalBytes) * 100
+    }
+    private var tint: Color {
+        switch pct {
+        case ..<25: return Theme.green
+        case ..<45: return Theme.amber
+        default:    return Theme.red
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            sparkline.frame(width: 34, height: 16)
+            Text(String(format: "%.0f", usedMB))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(tint)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 7).padding(.vertical, 4)
+        .background(
+            Capsule().fill(Theme.bgTertiary)
+                .overlay(Capsule().stroke(Theme.borderSubtle, lineWidth: 1))
+        )
+        .fixedSize()
+        .accessibilityLabel("Memory \(Int(usedMB)) megabytes, \(Int(pct)) percent")
+    }
+
+    private var sparkline: some View {
+        Canvas { ctx, size in
+            let s = sampler.history
+            guard s.count > 1 else { return }
+            let maxV = max(s.max() ?? 1, 1) * 1.15
+            let n = s.count
+            let dx = size.width / CGFloat(max(n - 1, 1))
+            func pt(_ i: Int) -> CGPoint {
+                CGPoint(x: CGFloat(i) * dx,
+                        y: size.height - CGFloat(s[i] / maxV) * size.height)
+            }
+            var area = Path()
+            area.move(to: CGPoint(x: 0, y: size.height))
+            for i in 0..<n { area.addLine(to: pt(i)) }
+            area.addLine(to: CGPoint(x: CGFloat(n - 1) * dx, y: size.height))
+            area.closeSubpath()
+            ctx.fill(area, with: .linearGradient(
+                Gradient(colors: [tint.opacity(0.35), tint.opacity(0.02)]),
+                startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
+            var line = Path()
+            line.move(to: pt(0))
+            for i in 1..<n { line.addLine(to: pt(i)) }
+            ctx.stroke(line, with: .color(tint),
+                       style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+            let last = pt(n - 1)
+            ctx.fill(Path(ellipseIn: CGRect(x: last.x - 2, y: last.y - 2, width: 4, height: 4)),
+                     with: .color(tint))
+        }
+        .accessibilityHidden(true)
+    }
+}
