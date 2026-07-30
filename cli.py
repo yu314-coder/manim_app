@@ -18,6 +18,9 @@ import re
 import subprocess
 import argparse
 import ast
+import traceback
+
+from scene_parser import extract_all_scene_classes
 
 # ── Shared constants (same values as app.py) ──
 USER_DATA_DIR = os.path.join(os.path.expanduser('~'), '.manim_studio')
@@ -37,7 +40,7 @@ QUALITY_PRESETS = {
     "8K": ("-qk", 7680, 4320),
 }
 
-APP_VERSION = "1.1.3.0"
+APP_VERSION = "1.1.4.0"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -86,55 +89,6 @@ def get_clean_environment():
         env['PATH'] = os.pathsep.join(path_parts)
 
     return env
-
-
-def extract_all_scene_classes(code):
-    """Return every Scene-subclass class in ``code`` as
-    ``[{name, line, parent}]``. AST-first with a regex fallback so
-    partially-edited files still produce useful output.
-
-    Previously the module used ``re.search`` which returned only the
-    first match — meaning files with 2+ scenes only ever had the first
-    one detected. Fixed April 2026."""
-
-    def _parent_contains_scene(base_node) -> bool:
-        if isinstance(base_node, ast.Name):
-            return 'Scene' in base_node.id
-        if isinstance(base_node, ast.Attribute):
-            return 'Scene' in base_node.attr
-        if isinstance(base_node, ast.Subscript):
-            return _parent_contains_scene(base_node.value)
-        if isinstance(base_node, ast.Call):
-            return _parent_contains_scene(base_node.func)
-        return False
-
-    def _parent_label(base_node) -> str:
-        try:
-            return ast.unparse(base_node)
-        except Exception:
-            return '?'
-
-    scenes = []
-    try:
-        tree = ast.parse(code)
-    except SyntaxError:
-        for m in re.finditer(
-                r'^[ \t]*class\s+(\w+)\s*\(([^)]*)\)\s*:',
-                code, flags=re.MULTILINE):
-            parents = m.group(2)
-            if 'Scene' in parents:
-                line = code.count('\n', 0, m.start()) + 1
-                scenes.append({'name': m.group(1), 'line': line,
-                                'parent': parents.strip()})
-        return scenes
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
-        if any(_parent_contains_scene(b) for b in node.bases):
-            scenes.append({'name': node.name, 'line': node.lineno,
-                            'parent': ', '.join(_parent_label(b) for b in node.bases)})
-    return scenes
 
 
 def extract_scene_name(code):
@@ -203,7 +157,7 @@ def _find_output_video(output_dir, fmt='mp4'):
 # ═══════════════════════════════════════════════════════════════
 
 def render(code, quality='720p', fps=30, width=None, height=None,
-           format='mp4', scene_name=None, output_dir=None):
+           format='mp4', scene_name=None, output_dir=None, timeout=3600):
     """
     Render a Manim scene headlessly. Returns a result dict:
       {status, output_file, scene_name, resolution, fps, format}
@@ -269,7 +223,7 @@ def render(code, quality='720p', fps=30, width=None, height=None,
             text=True,
             env=get_clean_environment(),
             cwd=output_dir,
-            timeout=3600,
+            timeout=timeout,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
         )
 
@@ -292,7 +246,7 @@ def render(code, quality='720p', fps=30, width=None, height=None,
     except FileNotFoundError as e:
         return {'status': 'error', 'error': str(e)}
     except subprocess.TimeoutExpired:
-        return {'status': 'error', 'error': 'Render timed out (1 hour limit)'}
+        return {'status': 'error', 'error': f'Render timed out ({timeout}s limit)'}
     finally:
         try:
             os.remove(temp_file)
@@ -348,6 +302,11 @@ class MCPServer:
                     'scene_name': {
                         'type': 'string',
                         'description': 'Scene class name (auto-detected if omitted)',
+                    },
+                    'timeout': {
+                        'type': 'integer',
+                        'default': 3600,
+                        'description': 'Render timeout in seconds',
                     },
                 },
                 'required': ['code'],
@@ -488,6 +447,18 @@ class MCPServer:
         name = params.get('name', '')
         args = params.get('arguments', {})
 
+        # Lightweight validation: check the tool's declared required keys
+        # before dispatch (a missing key would otherwise raise KeyError).
+        tool = self.TOOLS.get(name)
+        if tool is not None:
+            missing = [k for k in tool['inputSchema'].get('required', [])
+                       if k not in args]
+            if missing:
+                return self._error_resp(
+                    req_id, -32602,
+                    f"Missing required argument(s) for '{name}': "
+                    f"{', '.join(missing)}")
+
         try:
             if name == 'render_manim_animation':
                 res = render(
@@ -498,6 +469,7 @@ class MCPServer:
                     fps=args.get('fps', 30),
                     format=args.get('format', 'mp4'),
                     scene_name=args.get('scene_name'),
+                    timeout=args.get('timeout', 3600),
                 )
                 is_err = res['status'] != 'success'
                 text = json.dumps(res, indent=2)
@@ -553,6 +525,8 @@ class MCPServer:
             return self._error_resp(req_id, -32602, f'Unknown tool: {name}')
 
         except Exception as e:
+            # Log full traceback to stderr (stdout is the JSON-RPC channel).
+            _log(f"[MCP] Tool '{name}' raised:\n{traceback.format_exc()}")
             return self._result(req_id, {
                 'content': [{'type': 'text', 'text': str(e)}],
                 'isError': True,
@@ -599,6 +573,8 @@ def cli_main(argv=None):
     rp.add_argument('--scene', '-s',
                      help='Scene class name (auto-detected if omitted)')
     rp.add_argument('--output-dir', '-o', help='Output directory')
+    rp.add_argument('--timeout', type=int, default=3600,
+                     help='Render timeout in seconds (default: 3600)')
 
     # ── validate ──
     vp = sub.add_parser('validate', help='Validate scene code for errors')
@@ -624,6 +600,7 @@ def cli_main(argv=None):
             format=args.format,
             scene_name=args.scene,
             output_dir=args.output_dir,
+            timeout=args.timeout,
         )
         print(json.dumps(result, indent=2))
         sys.exit(0 if result['status'] == 'success' else 1)

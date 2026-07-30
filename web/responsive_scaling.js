@@ -458,18 +458,23 @@
     }
 
     /**
-     * Detect zoom level changes (browser zoom)
+     * Detect zoom level changes (browser zoom) — event-driven via matchMedia
+     * instead of polling devicePixelRatio every 500ms. Each zoom change
+     * invalidates the media query, fires `change` once, and we re-arm a new
+     * query for the new ratio.
      */
     function detectZoomChanges() {
-        let lastDevicePixelRatio = window.devicePixelRatio;
-
-        setInterval(() => {
-            if (window.devicePixelRatio !== lastDevicePixelRatio) {
+        const watch = () => {
+            const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+            const onChange = () => {
+                mq.removeEventListener('change', onChange);
                 console.log('[RESPONSIVE] Zoom level changed, recalculating...');
-                lastDevicePixelRatio = window.devicePixelRatio;
                 initializeResponsiveScaling();
-            }
-        }, 500);
+                watch(); // re-arm for the new ratio
+            };
+            mq.addEventListener('change', onChange);
+        };
+        watch();
     }
 
     /**
@@ -566,62 +571,39 @@
                                document.msFullscreenElement);
 
         console.log(`[RESPONSIVE] Fullscreen ${isFullscreen ? 'entered' : 'exited'}`);
-        console.log(`[RESPONSIVE] Current window size: ${window.innerWidth}x${window.innerHeight}`);
 
-        // Clear any pending resize timeouts to avoid conflicts
+        // Clear any pending work from a previous transition
         clearTimeout(window.__resizeTimeout);
-        clearTimeout(window.__fullscreenRecalcTimeout1);
-        clearTimeout(window.__fullscreenRecalcTimeout2);
-        clearTimeout(window.__fullscreenRecalcTimeout3);
-        clearTimeout(window.__fullscreenRecalcTimeout4);
+        if (window.__fullscreenSettleCancel) window.__fullscreenSettleCancel();
 
-        // CRITICAL: Multiple recalculations at different intervals
-        // Browsers update window dimensions at different times after fullscreen change
-
-        // Immediate recalculation (may have stale dimensions)
+        // Immediate pass so the UI tracks the transition
         requestAnimationFrame(() => {
-            console.log('[RESPONSIVE] Immediate recalculation...');
             window.dispatchEvent(new Event('resize'));
             forceTerminalResize();
         });
 
-        // First delay - 50ms (catch early dimension updates)
-        window.__fullscreenRecalcTimeout1 = setTimeout(() => {
-            console.log(`[RESPONSIVE] Recalc #1: Window size: ${window.innerWidth}x${window.innerHeight}`);
-            forceCompleteLayoutRecalc();
-            initializeResponsiveScaling();
-            document.body.offsetHeight; // Trigger reflow
-        }, 50);
-
-        // Second delay - 200ms (layout should be updating)
-        window.__fullscreenRecalcTimeout2 = setTimeout(() => {
-            console.log(`[RESPONSIVE] Recalc #2: Window size: ${window.innerWidth}x${window.innerHeight}`);
-            forceCompleteLayoutRecalc();
-            initializeResponsiveScaling();
-            forceTerminalResize(); // First terminal resize attempt
-            document.body.offsetHeight; // Trigger reflow
-        }, 200);
-
-        // Third delay - 400ms (ensure all browsers have updated)
-        window.__fullscreenRecalcTimeout3 = setTimeout(() => {
-            console.log(`[RESPONSIVE] Recalc #3: Window size: ${window.innerWidth}x${window.innerHeight}`);
-            forceCompleteLayoutRecalc();
-            initializeResponsiveScaling();
-            forceTerminalResize(); // Second terminal resize attempt
-
-            // Force CSS media queries to re-evaluate
-            document.documentElement.style.display = 'none';
-            document.documentElement.offsetHeight; // Trigger reflow
-            document.documentElement.style.display = '';
-        }, 400);
-
-        // Fourth delay - 800ms (final resize to be absolutely sure)
-        window.__fullscreenRecalcTimeout4 = setTimeout(() => {
-            console.log(`[RESPONSIVE] Recalc #4 (Final): Window size: ${window.innerWidth}x${window.innerHeight}`);
-            forceCompleteLayoutRecalc();
-            forceTerminalResize(); // Final terminal resize
-            console.log('[RESPONSIVE] Layout fully recalculated after fullscreen change');
-        }, 800);
+        // ...then ONE full recalc once window dimensions settle (stable for
+        // 3 consecutive frames, 1s cap). Replaces the old 50/200/400/800ms
+        // cascade of forced display:none reflows, which thrashed layout.
+        let cancelled = false;
+        window.__fullscreenSettleCancel = () => { cancelled = true; };
+        const t0 = performance.now();
+        let lastW = -1, lastH = -1, stable = 0;
+        const tick = () => {
+            if (cancelled) return;
+            const w = window.innerWidth, h = window.innerHeight;
+            stable = (w === lastW && h === lastH) ? stable + 1 : 0;
+            lastW = w; lastH = h;
+            if (stable >= 3 || performance.now() - t0 > 1000) {
+                console.log(`[RESPONSIVE] Fullscreen settled at ${w}x${h}, recalculating`);
+                forceCompleteLayoutRecalc();
+                initializeResponsiveScaling();
+                forceTerminalResize();
+                return;
+            }
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
     }
 
     /**

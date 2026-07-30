@@ -4,7 +4,7 @@
 
 A powerful, feature-rich desktop application for creating stunning mathematical animations using [Manim Community Edition](https://www.manim.community/). Built with Python, PyWebView, and modern web technologies.
 
-![Version](https://img.shields.io/badge/version-1.1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.4.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8+-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-orange)
@@ -609,7 +609,30 @@ If you find this project useful, please consider giving it a star on GitHub!
 
 ## 📝 Changelog
 
-### v1.1.3.0 (Latest)
+### v1.1.4.0 (Latest)
+
+**AI Assist and model selection:**
+- ✨ **Direct Codex model picker** — the AI Assist provider test now opens the model selector immediately instead of showing an intermediate “Upgrade → GPT-5.6 Terra” state.
+- ✨ **Current Codex lineup** — added GPT-5.6 Sol, Terra, and Luna metadata, refreshed fallbacks/migrations for retired Codex IDs, and kept visible models from the installed Codex catalog selectable.
+- ✨ **Stronger Codex discovery on Windows** — resolves the real `codex.cmd` launcher, reads the local Codex model cache/catalog, and falls back safely when catalog discovery is unavailable.
+- ✨ **Updated Claude registry** — refreshed current model aliases, task defaults, fallback chains, and migrations while preserving explicitly selected previous-generation IDs.
+- 🐛 **AI Assist sizing fixed** — provider-test, loading, success, and model-selection states now fit the same panel/window dimensions without clipping or mismatched empty space.
+- 🐛 **Model labels cleaned up** — removed stale upgrade messaging and corrected selected-model rendering in both the docked panel and standalone AI Edit window.
+
+**Runtime and rendering:**
+- ⚡ **Lower UI/render overhead** — batched streamed render output, replaced hot polling paths with event-driven notifications, capped terminal buffers, and reduced repeated environment/GPU/dependency work.
+- ⚡ **Faster responsive layout** — reduced resize/DPI churn and unnecessary editor/terminal relayout work.
+- 🐛 **More reliable multi-scene and narration flows** — improved scene parsing, render coordination, narration processing, and failure cleanup.
+- 🧹 **Legacy frontend cleanup** — removed unused Flask/legacy renderer scripts and retired duplicate web assets no longer loaded by the desktop UI.
+
+**CLI, MCP, and packaging:**
+- ✨ **Shared scene parser** — GUI, CLI, and MCP now use the same AST-based scene discovery implementation.
+- ✨ **Configurable render timeout** — CLI and MCP render calls accept a timeout value and return clearer timeout errors.
+- 🐛 **MCP argument validation and diagnostics** — missing required tool arguments return structured errors, with backend tracebacks kept off the JSON-RPC stdout channel.
+- 📦 **Nuitka one-file reliability** — fixed newer pywebview platform-module inclusion, added compact cached extraction, refreshed build flags, and bumped executable/UI metadata to `1.1.4.0`.
+- 🧹 **Generated build artifacts ignored** — Nuitka caches and crash reports no longer appear as source changes.
+
+### v1.1.3.0
 
 **New features:**
 - ✨ **F-09 Agent Memory** — per-project `style.md` auto-injected as a system preamble on every AI edit/agent turn. Editable via the 🧠 brain icon in the AI Edit panel header. Heuristic detects user corrections (e.g. "no, use BLUE instead of RED") and proposes memory updates with one-click accept/dismiss. Prefix `#ignore-style` on a single message to skip the preamble for that turn.

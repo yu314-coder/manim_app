@@ -11,9 +11,12 @@ import tempfile
 import subprocess
 import json
 import threading
+from collections import deque
 import time
 from pathlib import Path
 import re
+
+from scene_parser import extract_all_scene_classes
 import socket
 
 # Fix encoding issues on Windows - ensure UTF-8 encoding for stdout/stderr
@@ -30,7 +33,7 @@ if sys.platform == 'win32':
         pass  # No console available (GUI double-click) — app logs to file instead
 
 # App version
-APP_VERSION = "1.1.3.0"
+APP_VERSION = "1.1.4.0"
 
 # Terminal emulation with PTY support
 try:
@@ -71,12 +74,23 @@ os.environ['PYTHONIOENCODING'] = 'utf-8'
 os.environ['PYTHONLEGACYWINDOWSFSENCODING'] = '0'
 os.environ['PYTHONUTF8'] = '1'
 
+_clean_env_cache = None
+
+
 def get_clean_environment():
     """
     Get a clean environment for running Python subprocesses.
     This prevents the exe from accidentally being used as Python interpreter.
     Critical: Removes PYTHONPATH and PYTHONHOME to prevent circular execution.
+
+    The result is computed once and copied per call — it derives only from
+    process-start state, and rebuilding it (with several print()s) on every
+    subprocess spawn was measurable noise on the render path.
     """
+    global _clean_env_cache
+    if _clean_env_cache is not None:
+        return dict(_clean_env_cache)
+
     env = os.environ.copy()
 
     # CRITICAL: REMOVE (not just clear) these variables to prevent exe interference
@@ -148,6 +162,7 @@ def get_clean_environment():
         env['PATH'] = os.pathsep.join(current_paths)
         print(f"[ENV] PATH configured with {len(current_paths)} entries")
 
+    _clean_env_cache = dict(env)
     return env
 
 # ── Init feature modules ──
@@ -199,12 +214,22 @@ def check_gpu_detection_packages():
         return True, []
 
 # Function to detect GPU availability
+_gpu_detect_cache = None
+
+
 def detect_gpu():
     """
     Detect if the system has a GPU available for OpenGL rendering
     Prioritizes discrete GPUs (NVIDIA, AMD) over integrated GPUs (Intel)
     Returns: dict with 'available' (bool for OpenGL accel), 'gpu_present' (bool for any GPU), and 'info' (str) keys
+
+    Result is memoized: detection builds a real OpenGL context (or shells
+    out to PowerShell CIM) and GPU identity doesn't change mid-session.
     """
+    global _gpu_detect_cache
+    if _gpu_detect_cache is not None:
+        return dict(_gpu_detect_cache)
+
     gpu_info = {
         'available': False,       # True only for discrete GPUs (NVIDIA/AMD) - enables GPU acceleration
         'gpu_present': False,     # True for any GPU (including Intel) - for performance monitoring
@@ -276,21 +301,33 @@ def detect_gpu():
             # OpenGL not installed, try alternative detection methods
             print("[GPU DETECT] OpenGL not available, trying alternative methods...")
 
-            # Windows: Use wmic to detect GPU
+            # Windows: query GPUs via CIM (wmic is deprecated on Win11)
             if os.name == 'nt':
                 try:
                     result = subprocess.run(
-                        ['wmic', 'path', 'win32_VideoController', 'get', 'name'],
+                        ['powershell', '-NoProfile', '-Command',
+                         '(Get-CimInstance Win32_VideoController).Name'],
                         capture_output=True,
                         text=True,
-                        timeout=5,
+                        timeout=15,
                         creationflags=subprocess.CREATE_NO_WINDOW
                     )
-
-                    if result.returncode == 0:
-                        lines = result.stdout.strip().split('\n')
+                    if result.returncode == 0 and result.stdout.strip():
+                        gpu_names = [ln.strip() for ln in result.stdout.strip().split('\n') if ln.strip()]
+                    else:
+                        # Legacy fallback for systems without CIM cmdlets
+                        result = subprocess.run(
+                            ['wmic', 'path', 'win32_VideoController', 'get', 'name'],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                            creationflags=subprocess.CREATE_NO_WINDOW
+                        )
                         # First line is header "Name", rest are GPU names
+                        lines = result.stdout.strip().split('\n') if result.returncode == 0 else ['']
                         gpu_names = [line.strip() for line in lines[1:] if line.strip()]
+
+                    if result.returncode == 0 or gpu_names:
 
                         if gpu_names:
                             # Filter out Microsoft Basic Display Adapter (software renderer)
@@ -362,6 +399,7 @@ def detect_gpu():
         print(f"[GPU DETECT] Error during GPU detection: {e}")
         gpu_info['info'] = f'Detection error: {str(e)}'
 
+    _gpu_detect_cache = dict(gpu_info)
     return gpu_info
 
 
@@ -481,6 +519,11 @@ def patch_manim_gpu_encoder(enable=False):
 
 
 # Function to get performance metrics
+# Static facts cached across polls: whether nvidia-smi exists at all, and
+# the wmic-derived GPU identity (name + VRAM total never change mid-session).
+_PERF_STATE = {'nvidia_smi_missing': False, 'static_gpu': None}
+
+
 def get_performance_metrics():
     """
     Get current system performance metrics including CPU, GPU, RAM, and VRAM
@@ -505,8 +548,10 @@ def get_performance_metrics():
         try:
             import psutil
 
-            # CPU usage
-            metrics['cpu_percent'] = psutil.cpu_percent(interval=0.1)
+            # CPU usage — interval=None is non-blocking: it returns the
+            # average since the previous call instead of sleeping 100ms.
+            # (First call returns 0.0, which the next poll corrects.)
+            metrics['cpu_percent'] = psutil.cpu_percent(interval=None)
             metrics['cpu_count'] = psutil.cpu_count()
 
             # RAM usage
@@ -518,17 +563,16 @@ def get_performance_metrics():
         except ImportError:
             print("[PERF] psutil not available, skipping CPU/RAM metrics")
 
-        # GPU metrics
+        # GPU metrics — live utilization needs nvidia-smi; everything the
+        # fallback path can provide is static identity, so it runs at most
+        # once per session instead of respawning wmic every poll.
         try:
-            # Try NVIDIA GPU first using nvidia-smi
-            if os.name == 'nt':
-                nvidia_smi = 'nvidia-smi'
-            else:
-                nvidia_smi = 'nvidia-smi'
+            if _PERF_STATE['nvidia_smi_missing']:
+                raise FileNotFoundError('nvidia-smi (cached miss)')
 
             # Query GPU utilization and memory
             result = subprocess.run(
-                [nvidia_smi, '--query-gpu=utilization.gpu,memory.used,memory.total,name', '--format=csv,noheader,nounits'],
+                ['nvidia-smi', '--query-gpu=utilization.gpu,memory.used,memory.total,name', '--format=csv,noheader,nounits'],
                 capture_output=True,
                 text=True,
                 timeout=2,
@@ -546,16 +590,15 @@ def get_performance_metrics():
                         metrics['vram_total_gb'] = float(parts[2]) / 1024  # Convert MB to GB
                         metrics['vram_percent'] = (metrics['vram_used_gb'] / metrics['vram_total_gb'] * 100) if metrics['vram_total_gb'] > 0 else 0
                         metrics['gpu_name'] = parts[3]
-                        print(f"[PERF] NVIDIA GPU detected: {metrics['gpu_name']}")
 
         except FileNotFoundError:
-            # nvidia-smi not found, try AMD or Intel
-            print("[PERF] nvidia-smi not found, trying alternative GPU detection")
+            # nvidia-smi not found — remember that and serve the static
+            # identity from cache (populated once via wmic on Windows).
+            _PERF_STATE['nvidia_smi_missing'] = True
 
-            # Try Windows Performance Counter for GPU (works for Intel, AMD, NVIDIA)
-            if os.name == 'nt':
+            if _PERF_STATE['static_gpu'] is None and os.name == 'nt':
+                static = {'gpu_name': 'N/A', 'vram_total_gb': 0.0}
                 try:
-                    # Use wmic to get GPU info
                     result = subprocess.run(
                         ['wmic', 'path', 'win32_VideoController', 'get', 'name,AdapterRAM'],
                         capture_output=True,
@@ -566,23 +609,24 @@ def get_performance_metrics():
 
                     if result.returncode == 0:
                         lines = result.stdout.strip().split('\n')
-                        if len(lines) > 1:
-                            # Parse GPU name and VRAM
-                            for line in lines[1:]:
-                                parts = line.strip().split()
-                                if parts and 'basic display' not in line.lower():
-                                    # Try to extract VRAM (last number in line)
-                                    try:
-                                        vram_bytes = int(parts[-1])
-                                        metrics['vram_total_gb'] = vram_bytes / (1024**3)
-                                        metrics['gpu_name'] = ' '.join(parts[:-1])
-                                        print(f"[PERF] GPU detected via wmic: {metrics['gpu_name']}")
-                                        break
-                                    except (ValueError, IndexError):
-                                        pass
-
+                        for line in lines[1:]:
+                            parts = line.strip().split()
+                            if parts and 'basic display' not in line.lower():
+                                try:
+                                    vram_bytes = int(parts[-1])
+                                    static['vram_total_gb'] = vram_bytes / (1024**3)
+                                    static['gpu_name'] = ' '.join(parts[:-1])
+                                    print(f"[PERF] GPU detected via wmic (cached for session): {static['gpu_name']}")
+                                    break
+                                except (ValueError, IndexError):
+                                    pass
                 except Exception as e:
                     print(f"[PERF] wmic GPU detection failed: {e}")
+                _PERF_STATE['static_gpu'] = static
+
+            if _PERF_STATE['static_gpu']:
+                metrics['gpu_name'] = _PERF_STATE['static_gpu']['gpu_name']
+                metrics['vram_total_gb'] = _PERF_STATE['static_gpu']['vram_total_gb']
 
         except Exception as e:
             print(f"[PERF] GPU metrics collection failed: {e}")
@@ -1138,7 +1182,7 @@ app_state = {
     'terminal_process': None,  # Persistent cmd.exe session
     'terminal_thread': None,  # Thread for reading terminal output
     'terminal_output_buffer': [],  # Buffer for terminal output (gets cleared when sent to frontend)
-    'terminal_error_buffer': [],  # Persistent buffer for error checking (keeps last 1000 lines)
+    'terminal_error_buffer': deque(maxlen=5000),  # Persistent buffer for error checking (auto-capped)
     'dependency_cache': None,  # Cached dependency check results (python/latex/etc)
     'dependency_last_checked': 0.0,  # Unix timestamp of last completed check
     'dependency_check_in_progress': False,  # Prevent overlapping checks
@@ -1208,6 +1252,64 @@ def safe_evaluate_js(window, js_code):
         else:
             print(f"[WINDOW] Error evaluating JS: {e}")
             raise  # Re-raise if it's not a disposal error
+
+
+class JsLineBatcher:
+    """Coalesces streamed subprocess output lines into ~10 Hz evaluate_js
+    calls instead of one blocking IPC round-trip per line. A manim render
+    with progress bars emits thousands of lines; per-line IPC stalls the
+    reader thread on the UI thread for the whole render."""
+
+    def __init__(self, js_fn='updateRenderOutput', interval=0.1):
+        self.js_fn = js_fn
+        self.interval = interval
+        self._buf = []
+        self._last_flush = 0.0
+
+    def add(self, line):
+        self._buf.append(line)
+        if time.monotonic() - self._last_flush >= self.interval:
+            self.flush()
+
+    def flush(self):
+        if not self._buf:
+            return
+        self._last_flush = time.monotonic()
+        chunk, self._buf = self._buf, []
+        window = app_state.get('window')
+        if not window:
+            return
+        try:
+            # \r\n so xterm returns the cursor to column 0 on each line
+            safe = json.dumps('\r\n'.join(chunk))
+            window.evaluate_js(
+                f'if(window.{self.js_fn}){{window.{self.js_fn}({safe})}}'
+            )
+        except Exception as e:
+            if "disposed" not in str(e).lower():
+                print(f"[OUTPUT BATCH] Error updating output: {e}")
+
+
+_TERM_NUDGE_STATE = {'last': 0.0}
+
+
+def _nudge_terminal_frontend():
+    """Tell the frontend that new terminal output is buffered — the
+    event-driven replacement for the old 50-500ms polling loop. Throttled
+    to 20 Hz; the frontend drains the whole buffer on each nudge and
+    schedules a trailing drain, so throttled-away nudges cannot strand
+    data in the buffer."""
+    now = time.monotonic()
+    if now - _TERM_NUDGE_STATE['last'] < 0.05:
+        return
+    _TERM_NUDGE_STATE['last'] = now
+    window = app_state.get('window')
+    if not window:
+        return
+    try:
+        window.evaluate_js('if(window.terminalPushDrain){window.terminalPushDrain()}')
+    except Exception:
+        pass  # window disposed/navigating; buffered output survives for the next drain
 
 
 # ANSI escape sequences (used by Manim's coloured terminal output) and other
@@ -1627,6 +1729,7 @@ def kill_process_tree(pid):
             subprocess.run(
                 ['taskkill', '/F', '/T', '/PID', str(pid)],
                 capture_output=True,
+                timeout=15,
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
             print(f"[STOP] taskkill /F /T /PID {pid} completed")
@@ -1762,67 +1865,7 @@ def check_terminal_output_for_errors():
     return (False, None)
 
 
-def extract_all_scene_classes(code):
-    """Return a list of every Scene-subclass class in ``code``.
-
-    Output: ``[{name, line, parent}]`` — one entry per class whose direct
-    parent (or any parent in the ``(...)`` inheritance list) has ``Scene``
-    in its identifier. Works via ``ast`` parsing; falls back to a regex
-    line-scan if AST parsing fails (e.g. in the middle of an edit).
-
-    Fixes the long-standing "only the first scene is detected" bug: we no
-    longer use ``re.search`` (which stops at the first hit) anywhere in
-    the detection path.
-    """
-    import ast as _ast
-
-    def _parent_contains_scene(base_node) -> bool:
-        # Accept any base whose name string contains 'Scene'. Covers Scene,
-        # ThreeDScene, MovingCameraScene, ZoomedScene, VectorScene,
-        # ReconfigurableScene, SpecialThreeDScene, InteractiveScene, and
-        # user subclasses that embed the word.
-        if isinstance(base_node, _ast.Name):
-            return 'Scene' in base_node.id
-        if isinstance(base_node, _ast.Attribute):
-            return 'Scene' in base_node.attr
-        if isinstance(base_node, _ast.Subscript):
-            return _parent_contains_scene(base_node.value)
-        if isinstance(base_node, _ast.Call):
-            return _parent_contains_scene(base_node.func)
-        return False
-
-    def _parent_label(base_node) -> str:
-        try:
-            return _ast.unparse(base_node)
-        except Exception:
-            return '?'
-
-    scenes = []
-    try:
-        tree = _ast.parse(code)
-    except SyntaxError:
-        # Regex fallback for partial/mid-edit code. Iterates ALL matches
-        # (the old bug was using re.search which stops at match 1).
-        for m in re.finditer(
-                r'^[ \t]*class\s+(\w+)\s*\(([^)]*)\)\s*:',
-                code, flags=re.MULTILINE):
-            parents = m.group(2)
-            if 'Scene' in parents:
-                line = code.count('\n', 0, m.start()) + 1
-                scenes.append({'name': m.group(1), 'line': line,
-                                'parent': parents.strip()})
-        return scenes
-
-    for node in _ast.walk(tree):
-        if not isinstance(node, _ast.ClassDef):
-            continue
-        if any(_parent_contains_scene(b) for b in node.bases):
-            scenes.append({
-                'name': node.name,
-                'line': node.lineno,
-                'parent': ', '.join(_parent_label(b) for b in node.bases),
-            })
-    return scenes
+# extract_all_scene_classes is imported from scene_parser (shared with cli.py)
 
 
 def extract_scene_name(code):
@@ -2193,17 +2236,40 @@ class MyScene(Scene):
         return os.path.join(USER_DATA_DIR, 'render_history.json')
 
     def get_render_history(self):
-        """Return the list of render history entries (newest first)."""
+        """Return the list of render history entries (newest first).
+
+        Entries whose output file has vanished are auto-pruned once they are
+        older than 24h — preview outputs are deleted by the shutdown cleanup,
+        so without pruning the list fills up with dead "file missing" rows.
+        The 24h grace keeps today's renders visible even if the file moved.
+        """
         try:
             path = self._render_history_file()
             if not os.path.exists(path):
                 return {'status': 'success', 'entries': []}
             with open(path, 'r', encoding='utf-8') as f:
                 entries = json.load(f)
-            # Mark entries whose output file no longer exists
-            for entry in entries:
-                entry['file_exists'] = os.path.exists(entry.get('output_path', ''))
-            return {'status': 'success', 'entries': entries}
+
+            def _prune(entry):
+                if os.path.exists(entry.get('output_path', '')):
+                    entry['file_exists'] = True
+                    return False
+                entry['file_exists'] = False
+                try:
+                    from datetime import datetime, timezone
+                    ts = datetime.fromisoformat(entry.get('timestamp', '').replace('Z', '+00:00'))
+                    age_s = (datetime.now(timezone.utc) - ts).total_seconds()
+                    return age_s > 86400
+                except Exception:
+                    return True  # missing file + unparseable timestamp → junk
+
+            kept = [e for e in entries if not _prune(e)]
+            if len(kept) != len(entries):
+                print(f"[HISTORY] Pruned {len(entries) - len(kept)} stale entries (file missing >24h)")
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(kept, f, indent=2)
+
+            return {'status': 'success', 'entries': kept}
         except Exception as e:
             print(f"[HISTORY ERROR] {e}")
             return {'status': 'error', 'message': str(e), 'entries': []}
@@ -2444,17 +2510,19 @@ class MyScene(Scene):
             with open(temp_file, 'w', encoding='utf-8', newline='\n', errors='replace') as f:
                 f.write(code_with_encoding)
 
-            # Also save a debug copy with hex dump
-            debug_file = temp_file + '.debug.txt'
-            with open(debug_file, 'w', encoding='utf-8') as f:
-                f.write("=== ORIGINAL CODE (first 1000 chars) ===\n")
-                f.write(code[:1000])
-                f.write("\n\n=== HEX DUMP (first 500 bytes) ===\n")
-                for i, byte in enumerate(code[:500].encode('utf-8')):
-                    f.write(f"{byte:02X} ")
-                    if (i + 1) % 16 == 0:
-                        f.write("\n")
-            print(f"[DEBUG] Saved debug file to: {debug_file}")
+            # Debug hex dump of the temp file — opt-in via MANIM_STUDIO_DEBUG
+            # (used to be written on every render and never cleaned up)
+            if os.environ.get('MANIM_STUDIO_DEBUG'):
+                debug_file = temp_file + '.debug.txt'
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    f.write("=== ORIGINAL CODE (first 1000 chars) ===\n")
+                    f.write(code[:1000])
+                    f.write("\n\n=== HEX DUMP (first 500 bytes) ===\n")
+                    for i, byte in enumerate(code[:500].encode('utf-8')):
+                        f.write(f"{byte:02X} ")
+                        if (i + 1) % 16 == 0:
+                            f.write("\n")
+                print(f"[DEBUG] Saved debug file to: {debug_file}")
 
             # Ensure file is flushed to disk and fully closed
             time.sleep(0.2)  # Increased delay to ensure file is available
@@ -2482,94 +2550,9 @@ class MyScene(Scene):
             if not scene_name:
                 return {'status': 'error', 'message': 'No scene class found'}
 
-            # Get manim executable path (in venv Scripts folder)
-            if os.name == 'nt':
-                manim_exe = os.path.join(VENV_DIR, 'Scripts', 'manim.exe')
-            else:
-                manim_exe = os.path.join(VENV_DIR, 'bin', 'manim')
-
-            # Fallback to python -m manim if executable not found
-            if not os.path.exists(manim_exe):
-                print(f"[WARNING] Manim executable not found at {manim_exe}, using python -m manim")
-                cmd = [PYTHON_EXE, '-m', 'manim']
-            else:
-                cmd = [manim_exe]
-
-            # Convert quality preset to flag
-            quality_flag = self._get_quality_flag(quality)
-
-            # Add file, scene, and quality flag
-            cmd.extend([temp_file, scene_name, quality_flag])
-
-            # Add render directory as media directory (output goes here)
-            cmd.extend(['--media_dir', RENDER_DIR])
-
-            # ALWAYS add FPS to allow user override (manim accepts --frame_rate even with preset flags)
-            # This allows custom FPS with any quality setting
-            cmd.extend(['--frame_rate', str(fps)])
-            print(f"[RENDER] Using FPS: {fps}")
-
-            # Add format if specified
-            if format and format.lower() != 'mp4':
-                cmd.extend(['--format', format.lower()])
-
-            # Check settings for cache preference (default: enable caching)
-            settings_file = os.path.join(USER_DATA_DIR, 'settings.json')
-            disable_cache = False  # Default to enabled
-            try:
-                if os.path.exists(settings_file):
-                    import json
-                    with open(settings_file, 'r') as f:
-                        settings = json.load(f)
-                        disable_cache = settings.get('disableCache', False)
-            except Exception as e:
-                print(f"[RENDER] Could not load cache setting: {e}, using default (enabled)")
-
-            if disable_cache:
-                cmd.extend(['--disable_caching'])
-                print(f"[RENDER] Caching DISABLED per user settings")
-            else:
-                print(f"[RENDER] Caching ENABLED per user settings")
-
-            # Force progress bar display
-            cmd.extend(['--progress_bar', 'display'])
-            print(f"[RENDER] Progress bar ENABLED")
-
-            # Add GPU acceleration (OpenGL renderer + GPU encoder) if requested
-            print(f"[GPU CHECK] Checking gpu_accelerate flag: {gpu_accelerate}")
-            if gpu_accelerate:
-                cmd.extend([
-                    '--renderer=opengl', '--write_to_movie',
-                    '--use_projection_fill_shaders',
-                    '--use_projection_stroke_shaders',
-                ])
-                print(f"[GPU] OK GPU acceleration ENABLED - OpenGL + projection shaders + write_to_movie")
-                # Enable GPU video encoder (h264_nvenc / h264_amf / h264_qsv)
-                patch_manim_gpu_encoder(enable=True)
-                gpu_enc = detect_gpu_encoder()
-                if gpu_enc:
-                    print(f"[GPU] Video encoding: {gpu_enc} (hardware accelerated)")
-                else:
-                    print(f"[GPU] Video encoding: libx264 (CPU, no GPU encoder available)")
-            else:
-                cmd.extend(['--renderer=cairo'])
-                patch_manim_gpu_encoder(enable=False)
-                print(f"[GPU] DISABLED GPU acceleration - using --renderer=cairo + libx264")
-
-            print(f"[RENDER] Full command: {' '.join(cmd)}")
-
-            # Send command to terminal PTY instead of running in subprocess
-            # Terminal is in ASSETS_DIR, but render temp file is in RENDER_DIR, so we need full paths
-            # Build command string with proper quoting
-            cmd_parts = []
-            for arg in cmd:
-                # Quote arguments that have spaces or are paths
-                if ' ' in arg or arg == temp_file or '\\' in arg:
-                    cmd_parts.append(f'"{arg}"')
-                else:
-                    cmd_parts.append(arg)
-
-            cmd_string = ' '.join(cmd_parts)
+            cmd, cmd_string = self._build_manim_command(
+                temp_file, scene_name, quality, fps, format,
+                gpu_accelerate, RENDER_DIR, 'RENDER')
             print(f"[RENDER] Sending to terminal: {cmd_string}")
 
             if app_state['terminal_process'] is not None:
@@ -2580,7 +2563,7 @@ class MyScene(Scene):
                         time.sleep(0.2)
 
                     # Clear error buffer for fresh error detection
-                    app_state['terminal_error_buffer'] = []
+                    app_state['terminal_error_buffer'] = deque(maxlen=5000)
                     print("[RENDER] Cleared error buffer for new render")
 
                     # Send command to terminal
@@ -2599,7 +2582,7 @@ class MyScene(Scene):
                     def watch_render():
                         import time
                         import shutil
-                        max_wait = 259200  # 72 hours for render (3 days for extremely complex animations)
+                        max_wait = 14400  # 4h cap — a watcher stuck longer than this is a wedged job, not a render
                         start_time = time.time()
 
                         print(f"[RENDER WATCHER] Waiting for render to complete...")
@@ -2865,26 +2848,25 @@ class MyScene(Scene):
 
                     app_state['render_process'] = process
 
-                    # Read output line by line
+                    # Read output line by line, coalescing UI updates (one
+                    # evaluate_js per ~100ms instead of per line)
+                    ui_batch = JsLineBatcher()
                     for line in iter(process.stdout.readline, ''):
                         if line:
                             line = line.rstrip()
                             output_lines.append(line)
                             print(f"[Render] {line}")
+                            ui_batch.add(line)
+                    ui_batch.flush()
 
-                            # Send to UI using evaluate_js
-                            if app_state['window']:
-                                try:
-                                    safe_line = line.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', '\\n')
-                                    app_state['window'].evaluate_js(
-                                        f'if(window.updateRenderOutput){{window.updateRenderOutput("{safe_line}")}}'
-                                    )
-                                except Exception as e:
-                                    # Ignore errors when window is disposed/closed
-                                    if "disposed" not in str(e).lower():
-                                        print(f"[RENDER] Error updating output: {e}")
-
-                    process.wait()
+                    try:
+                        # stdout already hit EOF above, so the process is exiting;
+                        # the timeout guards against a wedged child holding the thread forever
+                        process.wait(timeout=60)
+                    except subprocess.TimeoutExpired:
+                        print("[Render] Process closed stdout but didn't exit — killing")
+                        process.kill()
+                        process.wait()
 
                     print(f"Render process finished with code: {process.returncode}")
 
@@ -3027,7 +3009,7 @@ class MyScene(Scene):
                     try:
                         if os.path.exists(temp_file):
                             os.remove(temp_file)
-                    except:
+                    except Exception:
                         pass
 
             threading.Thread(target=render_thread, daemon=True).start()
@@ -3052,6 +3034,86 @@ class MyScene(Scene):
                 # Invalid quality - fallback to 720p
                 print(f"[WARNING] Invalid quality '{quality}', using 720p fallback")
                 return QUALITY_PRESETS["720p"][0]
+
+    def _build_manim_command(self, temp_file, scene_name, quality, fps,
+                             format, gpu_accelerate, media_dir, log_tag):
+        """Build the manim CLI invocation shared by render and preview.
+
+        Returns ``(cmd_list, cmd_string)``: the list form for the subprocess
+        fallback and a quoted string for the persistent terminal. This was
+        previously duplicated byte-for-byte in render_animation and
+        quick_preview (differing only in media_dir and log prefix).
+        """
+        if os.name == 'nt':
+            manim_exe = os.path.join(VENV_DIR, 'Scripts', 'manim.exe')
+        else:
+            manim_exe = os.path.join(VENV_DIR, 'bin', 'manim')
+
+        # Fallback to python -m manim if executable not found
+        if not os.path.exists(manim_exe):
+            print(f"[WARNING] Manim executable not found at {manim_exe}, using python -m manim")
+            cmd = [PYTHON_EXE, '-m', 'manim']
+        else:
+            cmd = [manim_exe]
+
+        # File, scene, quality, output dir
+        cmd.extend([temp_file, scene_name, self._get_quality_flag(quality)])
+        cmd.extend(['--media_dir', media_dir])
+
+        # ALWAYS add FPS to allow user override (manim accepts --frame_rate
+        # even with preset flags)
+        cmd.extend(['--frame_rate', str(fps)])
+        print(f"[{log_tag}] Using FPS: {fps}")
+
+        if format and format.lower() != 'mp4':
+            cmd.extend(['--format', format.lower()])
+
+        # Check settings for cache preference (default: enable caching)
+        settings_file = os.path.join(USER_DATA_DIR, 'settings.json')
+        disable_cache = False
+        try:
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f:
+                    disable_cache = json.load(f).get('disableCache', False)
+        except Exception as e:
+            print(f"[{log_tag}] Could not load cache setting: {e}, using default (enabled)")
+        if disable_cache:
+            cmd.extend(['--disable_caching'])
+        print(f"[{log_tag}] Caching {'DISABLED' if disable_cache else 'ENABLED'} per user settings")
+
+        # Force progress bar display
+        cmd.extend(['--progress_bar', 'display'])
+
+        # GPU acceleration (OpenGL renderer + GPU encoder) if requested
+        if gpu_accelerate:
+            cmd.extend([
+                '--renderer=opengl', '--write_to_movie',
+                '--use_projection_fill_shaders',
+                '--use_projection_stroke_shaders',
+            ])
+            print(f"[GPU] OK GPU acceleration ENABLED - OpenGL + projection shaders + write_to_movie")
+            # Enable GPU video encoder (h264_nvenc / h264_amf / h264_qsv)
+            patch_manim_gpu_encoder(enable=True)
+            gpu_enc = detect_gpu_encoder()
+            if gpu_enc:
+                print(f"[GPU] Video encoding: {gpu_enc} (hardware accelerated)")
+            else:
+                print(f"[GPU] Video encoding: libx264 (CPU, no GPU encoder available)")
+        else:
+            cmd.extend(['--renderer=cairo'])
+            patch_manim_gpu_encoder(enable=False)
+            print(f"[GPU] DISABLED GPU acceleration - using --renderer=cairo + libx264")
+
+        print(f"[{log_tag}] Full command: {' '.join(cmd)}")
+
+        # Quoted command string for the persistent terminal (paths need quotes)
+        cmd_parts = []
+        for arg in cmd:
+            if ' ' in arg or arg == temp_file or '\\' in arg:
+                cmd_parts.append(f'"{arg}"')
+            else:
+                cmd_parts.append(arg)
+        return cmd, ' '.join(cmd_parts)
 
     def render_combined_scenes(self, code, scene_names, quality='720p',
                                 fps=None, gpu_accelerate=False, format='mp4'):
@@ -3147,7 +3209,7 @@ class MyScene(Scene):
                 import multi_scene
 
                 # Reset error buffer so detection is fresh.
-                app_state['terminal_error_buffer'] = []
+                app_state['terminal_error_buffer'] = deque(maxlen=5000)
 
                 # Stream every manim line to the on-screen terminal so the
                 # user can watch progress just like a regular render.
@@ -3156,10 +3218,7 @@ class MyScene(Scene):
                 def _on_terminal(line):
                     # Push into the error buffer (for traceback detection)
                     # and also print to the host stdout for the log.
-                    app_state['terminal_error_buffer'].append(line)
-                    if len(app_state['terminal_error_buffer']) > 5000:
-                        app_state['terminal_error_buffer'] = \
-                            app_state['terminal_error_buffer'][-5000:]
+                    app_state['terminal_error_buffer'].append(line)  # deque auto-caps
                     # Mirror to xterm.js by injecting the line directly.
                     if app_state.get('window'):
                         try:
@@ -3280,7 +3339,7 @@ class MyScene(Scene):
                 try:
                     if hasattr(app_state['preview_process'], 'poll'):
                         preview_process_running = (app_state['preview_process'].poll() is None)
-                except:
+                except Exception:
                     pass
 
             if not preview_process_running:
@@ -3336,17 +3395,19 @@ class MyScene(Scene):
             with open(temp_file, 'w', encoding='utf-8', newline='\n', errors='replace') as f:
                 f.write(code_with_encoding)
 
-            # Also save a debug copy with hex dump
-            debug_file = temp_file + '.debug.txt'
-            with open(debug_file, 'w', encoding='utf-8') as f:
-                f.write("=== ORIGINAL CODE (first 1000 chars) ===\n")
-                f.write(code[:1000])
-                f.write("\n\n=== HEX DUMP (first 500 bytes) ===\n")
-                for i, byte in enumerate(code[:500].encode('utf-8')):
-                    f.write(f"{byte:02X} ")
-                    if (i + 1) % 16 == 0:
-                        f.write("\n")
-            print(f"[DEBUG] Saved debug file to: {debug_file}")
+            # Debug hex dump of the temp file — opt-in via MANIM_STUDIO_DEBUG
+            # (used to be written on every render and never cleaned up)
+            if os.environ.get('MANIM_STUDIO_DEBUG'):
+                debug_file = temp_file + '.debug.txt'
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    f.write("=== ORIGINAL CODE (first 1000 chars) ===\n")
+                    f.write(code[:1000])
+                    f.write("\n\n=== HEX DUMP (first 500 bytes) ===\n")
+                    for i, byte in enumerate(code[:500].encode('utf-8')):
+                        f.write(f"{byte:02X} ")
+                        if (i + 1) % 16 == 0:
+                            f.write("\n")
+                print(f"[DEBUG] Saved debug file to: {debug_file}")
 
             # Ensure file is flushed to disk and fully closed
             time.sleep(0.2)  # Increased delay to ensure file is available
@@ -3370,94 +3431,9 @@ class MyScene(Scene):
             if not scene_name:
                 return {'status': 'error', 'message': 'No scene class found'}
 
-            # Get manim executable path (in venv Scripts folder)
-            if os.name == 'nt':
-                manim_exe = os.path.join(VENV_DIR, 'Scripts', 'manim.exe')
-            else:
-                manim_exe = os.path.join(VENV_DIR, 'bin', 'manim')
-
-            # Fallback to python -m manim if executable not found
-            if not os.path.exists(manim_exe):
-                print(f"[WARNING] Manim executable not found at {manim_exe}, using python -m manim")
-                cmd = [PYTHON_EXE, '-m', 'manim']
-            else:
-                cmd = [manim_exe]
-
-            # Convert quality preset to flag or resolution
-            quality_flag = self._get_quality_flag(quality)
-
-            # Add file, scene, and quality flag
-            cmd.extend([temp_file, scene_name, quality_flag])
-
-            # Add preview directory as media directory (output goes here)
-            cmd.extend(['--media_dir', PREVIEW_DIR])
-
-            # ALWAYS add FPS to allow user override (manim accepts --frame_rate even with preset flags)
-            # This allows custom FPS with any quality setting
-            cmd.extend(['--frame_rate', str(fps)])
-            print(f"[PREVIEW] Using FPS: {fps}")
-
-            # Add format if specified
-            if format and format.lower() != 'mp4':
-                cmd.extend(['--format', format.lower()])
-
-            # Check settings for cache preference (default: enable caching)
-            settings_file = os.path.join(USER_DATA_DIR, 'settings.json')
-            disable_cache = False  # Default to enabled
-            try:
-                if os.path.exists(settings_file):
-                    import json
-                    with open(settings_file, 'r') as f:
-                        settings = json.load(f)
-                        disable_cache = settings.get('disableCache', False)
-            except Exception as e:
-                print(f"[PREVIEW] Could not load cache setting: {e}, using default (enabled)")
-
-            if disable_cache:
-                cmd.extend(['--disable_caching'])
-                print(f"[PREVIEW] Caching DISABLED per user settings")
-            else:
-                print(f"[PREVIEW] Caching ENABLED per user settings")
-
-            # Force progress bar display
-            cmd.extend(['--progress_bar', 'display'])
-            print(f"[PREVIEW] Progress bar ENABLED")
-
-            # Add GPU acceleration (OpenGL renderer + GPU encoder) if requested
-            print(f"[GPU CHECK] Checking gpu_accelerate flag: {gpu_accelerate}")
-            if gpu_accelerate:
-                cmd.extend([
-                    '--renderer=opengl', '--write_to_movie',
-                    '--use_projection_fill_shaders',
-                    '--use_projection_stroke_shaders',
-                ])
-                print(f"[GPU] OK GPU acceleration ENABLED - OpenGL + projection shaders + write_to_movie")
-                # Enable GPU video encoder (h264_nvenc / h264_amf / h264_qsv)
-                patch_manim_gpu_encoder(enable=True)
-                gpu_enc = detect_gpu_encoder()
-                if gpu_enc:
-                    print(f"[GPU] Video encoding: {gpu_enc} (hardware accelerated)")
-                else:
-                    print(f"[GPU] Video encoding: libx264 (CPU, no GPU encoder available)")
-            else:
-                cmd.extend(['--renderer=cairo'])
-                patch_manim_gpu_encoder(enable=False)
-                print(f"[GPU] DISABLED GPU acceleration - using --renderer=cairo + libx264")
-
-            print(f"[PREVIEW] Full command: {' '.join(cmd)}")
-
-            # Send command to terminal PTY instead of running in subprocess
-            # Terminal is in ASSETS_DIR, but preview temp file is in PREVIEW_DIR, so we need full paths
-            # Build command string with proper quoting
-            cmd_parts = []
-            for arg in cmd:
-                # Quote arguments that have spaces or are paths
-                if ' ' in arg or arg == temp_file or '\\' in arg:
-                    cmd_parts.append(f'"{arg}"')
-                else:
-                    cmd_parts.append(arg)
-
-            cmd_string = ' '.join(cmd_parts)
+            cmd, cmd_string = self._build_manim_command(
+                temp_file, scene_name, quality, fps, format,
+                gpu_accelerate, PREVIEW_DIR, 'PREVIEW')
             print(f"[PREVIEW] Sending to terminal: {cmd_string}")
 
             if app_state['terminal_process'] is not None:
@@ -3468,7 +3444,7 @@ class MyScene(Scene):
                         time.sleep(0.2)
 
                     # Clear error buffer for fresh error detection
-                    app_state['terminal_error_buffer'] = []
+                    app_state['terminal_error_buffer'] = deque(maxlen=5000)
                     print("[PREVIEW] Cleared error buffer for new preview")
 
                     # Send command to terminal
@@ -3487,7 +3463,7 @@ class MyScene(Scene):
                     def watch_preview():
                         import time
                         import shutil
-                        max_wait = 259200  # 72 hours for preview (3 days for extremely complex animations)
+                        max_wait = 7200  # 2h cap for previews — they are low-res quick runs by design
                         start_time = time.time()
 
                         print(f"[PREVIEW WATCHER] Waiting for preview to complete...")
@@ -3630,7 +3606,7 @@ class MyScene(Scene):
                                                                 stable_count = 0
                                                             prev_size = curr_size
                                                             time.sleep(0.5)
-                                                        except:
+                                                        except Exception:
                                                             time.sleep(0.5)
 
                                                     print(f"[PREVIEW WATCHER] Source file stable at {prev_size} bytes")
@@ -3883,25 +3859,25 @@ class MyScene(Scene):
 
                     app_state['preview_process'] = process
 
-                    # Read output
+                    # Read output, coalescing UI updates (one evaluate_js
+                    # per ~100ms instead of per line)
+                    ui_batch = JsLineBatcher()
                     for line in iter(process.stdout.readline, ''):
                         if line:
                             line = line.rstrip()
                             output_lines.append(line)
                             print(f"[Preview] {line}")
+                            ui_batch.add(line)
+                    ui_batch.flush()
 
-                            if app_state['window']:
-                                try:
-                                    safe_line = line.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'").replace('\n', '\\n')
-                                    app_state['window'].evaluate_js(
-                                        f'if(window.updateRenderOutput){{window.updateRenderOutput("{safe_line}")}}'
-                                    )
-                                except Exception as e:
-                                    # Ignore errors when window is disposed/closed
-                                    if "disposed" not in str(e).lower():
-                                        print(f"[PREVIEW] Error updating output: {e}")
-
-                    process.wait()
+                    try:
+                        # stdout already hit EOF above, so the process is exiting;
+                        # the timeout guards against a wedged child holding the thread forever
+                        process.wait(timeout=60)
+                    except subprocess.TimeoutExpired:
+                        print("[Preview] Process closed stdout but didn't exit — killing")
+                        process.kill()
+                        process.wait()
 
                     print(f"Preview finished with code: {process.returncode}")
 
@@ -3994,7 +3970,7 @@ class MyScene(Scene):
                     try:
                         if os.path.exists(temp_file):
                             os.remove(temp_file)
-                    except:
+                    except Exception:
                         pass
 
             threading.Thread(target=preview_thread, daemon=True).start()
@@ -4977,7 +4953,7 @@ class MyScene(Scene):
 
                 app_state['terminal_process'] = terminal_process
                 app_state['terminal_output_buffer'] = []
-                app_state['terminal_error_buffer'] = []
+                app_state['terminal_error_buffer'] = deque(maxlen=5000)
 
                 # Start background thread to read terminal output
                 def read_terminal_output():
@@ -4988,21 +4964,18 @@ class MyScene(Scene):
                             # pywinpty.PTY.read() reads all available data
                             data = terminal_process.read()
                             if data:
-                                app_state['terminal_output_buffer'].append(data)
-                                app_state['terminal_error_buffer'].append(data)
-
-                                # Keep error buffer to last 1000 items to prevent memory bloat
-                                if len(app_state['terminal_error_buffer']) > 1000:
-                                    app_state['terminal_error_buffer'] = app_state['terminal_error_buffer'][-1000:]
-
-                                # Debug: Print when we receive progress bar updates (contains \r or ANSI codes)
-                                if '\r' in data or '\x1b[' in data:
-                                    # This is likely a progress bar update
-                                    pass  # Silent - just capturing it
+                                buf = app_state['terminal_output_buffer']
+                                buf.append(data)
+                                if len(buf) > 5000:  # cap: don't grow forever if frontend stops draining
+                                    del buf[:len(buf) - 5000]
+                                app_state['terminal_error_buffer'].append(data)  # deque auto-caps
+                                _nudge_terminal_frontend()
                         except Exception as e:
                             error_msg = str(e).lower()
-                            # Ignore common non-error conditions
-                            if "closed" not in error_msg and "timeout" not in error_msg and "no data" not in error_msg:
+                            # Stop the thread when this terminal is gone or replaced
+                            if app_state.get('terminal_process') is not terminal_process or 'closed' in error_msg or 'eof' in error_msg:
+                                break
+                            if "timeout" not in error_msg and "no data" not in error_msg:
                                 print(f"[TERMINAL PTY ERROR] {e}")
                             time.sleep(0.01)
                     print("[TERMINAL PTY] Background reader thread stopped")
@@ -5068,19 +5041,19 @@ class MyScene(Scene):
 
                 app_state['terminal_process'] = terminal_process
                 app_state['terminal_output_buffer'] = []
-                app_state['terminal_error_buffer'] = []
+                app_state['terminal_error_buffer'] = deque(maxlen=5000)
 
                 def read_terminal_output():
                     while terminal_process.poll() is None:
                         try:
                             line = terminal_process.stdout.readline()
                             if line:
-                                app_state['terminal_output_buffer'].append(line)
-                                app_state['terminal_error_buffer'].append(line)
-
-                                # Keep error buffer to last 1000 items to prevent memory bloat
-                                if len(app_state['terminal_error_buffer']) > 1000:
-                                    app_state['terminal_error_buffer'] = app_state['terminal_error_buffer'][-1000:]
+                                buf = app_state['terminal_output_buffer']
+                                buf.append(line)
+                                if len(buf) > 5000:  # cap: don't grow forever if frontend stops draining
+                                    del buf[:len(buf) - 5000]
+                                app_state['terminal_error_buffer'].append(line)  # deque auto-caps
+                                _nudge_terminal_frontend()
 
                                 print(f"[TERMINAL] {line.rstrip()}")
                         except Exception as e:
@@ -5285,14 +5258,16 @@ class MyScene(Scene):
             buf = b''
             while app_state['lsp_running']:
                 try:
-                    # Accumulate bytes until we have the full header block
+                    # Accumulate header lines (each ends with \r\n; a blank
+                    # line terminates the block). readline() is buffered —
+                    # far cheaper than the old read(1)-per-byte loop.
                     while b'\r\n\r\n' not in buf:
-                        byte = proc.stdout.read(1)
-                        if not byte:            # EOF — server exited
+                        chunk = proc.stdout.readline()
+                        if not chunk:           # EOF — server exited
                             app_state['lsp_running'] = False
                             print('[LSP] Server stdout closed (EOF)')
                             return
-                        buf += byte
+                        buf += chunk
 
                     header_raw, buf = buf.split(b'\r\n\r\n', 1)
                     content_length = 0
@@ -5437,7 +5412,7 @@ class MyScene(Scene):
                             'modified': stat.st_mtime,
                             'previewable': ext in previewable_ext
                         })
-                    except:
+                    except Exception:
                         continue
 
             files.sort(key=lambda x: x['modified'], reverse=True)
@@ -6107,7 +6082,10 @@ class MyScene(Scene):
             if time.time() - ts > self._DEP_DISK_TTL:
                 return None  # Stale
             return data.get('results')
-        except Exception:
+        except Exception as e:
+            # A corrupt/unreadable cache silently forces a full re-check
+            # every launch — leave a trace so that's diagnosable.
+            print(f"[DEPENDENCY] Disk cache unreadable ({e}); will run live check")
             return None
 
     def _save_dep_disk_cache(self, results):
@@ -6116,13 +6094,14 @@ class MyScene(Scene):
             os.makedirs(os.path.dirname(self._DEP_CACHE_FILE), exist_ok=True)
             with open(self._DEP_CACHE_FILE, 'w', encoding='utf-8') as f:
                 f.write(json.dumps({'timestamp': time.time(), 'results': results}))
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[DEPENDENCY] Failed to persist disk cache: {e}")
 
     def _refresh_dependency_cache(self, reason='manual'):
         """
         Refresh cached dependency status.
-        Returns True if this call performed a check, False if another check is already in progress.
+        Returns 'disk' if served from the disk cache, True if a live
+        subprocess check ran, False if another check is already in progress.
         """
         lock = app_state['dependency_check_lock']
         with lock:
@@ -6141,7 +6120,7 @@ class MyScene(Scene):
                         app_state['dependency_last_checked'] = now
                         app_state['dependency_check_error'] = None
                     print(f"[DEPENDENCY] Loaded from disk cache (skipped subprocess calls)")
-                    return True
+                    return 'disk'
 
             print(f"[DEPENDENCY] Running dependency check ({reason})...")
             results = self._perform_prerequisite_check()
@@ -6189,13 +6168,17 @@ class MyScene(Scene):
 
         def run_checker():
             # Try disk cache immediately (no subprocess calls)
-            self._refresh_dependency_cache(reason='startup')
+            startup_result = self._refresh_dependency_cache(reason='startup')
 
             # Revalidate with real subprocess calls after 10s
-            # (catches cases where user uninstalled something since last run)
-            if app_state['dependency_stop_event'].wait(10):
-                return
-            self._refresh_dependency_cache(reason='revalidate')
+            # (catches cases where user uninstalled something since last run).
+            # Skip when startup already ran the live sweep (cold/stale disk
+            # cache falls through to a real check) — revalidating 10s later
+            # would just duplicate the same subprocess calls.
+            if startup_result == 'disk':
+                if app_state['dependency_stop_event'].wait(10):
+                    return
+                self._refresh_dependency_cache(reason='revalidate')
 
             # Periodic refresh every 5 minutes.
             while not app_state['dependency_stop_event'].wait(300):
@@ -6372,6 +6355,7 @@ class MyScene(Scene):
                 capture_output=True,
                 text=True,
                 env=env,
+                timeout=300,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
 
@@ -6399,6 +6383,7 @@ class MyScene(Scene):
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 env=env,
+                timeout=600,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
 
@@ -6611,7 +6596,7 @@ class MyScene(Scene):
                     try:
                         with open(dest_path, 'rb') as f:
                             os.fsync(f.fileno())
-                    except:
+                    except Exception:
                         pass  # If fsync fails, continue anyway
 
                     uploaded_files.append(filename)
@@ -6685,7 +6670,7 @@ class MyScene(Scene):
                 # Force filesystem sync to ensure file is written
                 try:
                     os.fsync(f.fileno())
-                except:
+                except Exception:
                     pass
 
             print(f'[UPLOAD] Saved {filename} to assets ({len(file_data)} bytes)')
@@ -6974,7 +6959,7 @@ class MyScene(Scene):
                         # Get video duration using ffprobe if available
                         try:
                             duration = self._get_video_duration(full_path)
-                        except:
+                        except Exception:
                             duration = 0
 
                         video_files.append({
@@ -7131,7 +7116,7 @@ class MyScene(Scene):
             # Clean up concat file
             try:
                 os.remove(concat_file)
-            except:
+            except Exception:
                 pass
 
             if result.returncode == 0:
@@ -7376,7 +7361,7 @@ class MyScene(Scene):
                                         'type': 'critical',
                                         'message': f'Will modify {pkg_name} which is critical for Manim'
                                     })
-                except:
+                except Exception:
                     # Fallback: parse text output
                     lines = result.stdout.split('\n')
                     for line in lines:
@@ -8128,7 +8113,7 @@ if __name__ == '__main__':
                 original_print(*args, **kwargs)
                 try:
                     original_print(*args, **kwargs, file=log_handle, flush=True)
-                except:
+                except Exception:
                     pass
 
             # Replace built-in print

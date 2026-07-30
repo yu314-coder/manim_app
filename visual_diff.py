@@ -86,12 +86,12 @@ def _hash_frame_np(img_gray_small):
     variant — faster than DCT pHash and plenty accurate for UI diffs).
     Accepts a numpy 2D array of shape (8, 8) in uint8.
     Returns hex string."""
+    import numpy as np
     mean = img_gray_small.mean()
     bits = (img_gray_small >= mean).flatten()
-    val = 0
-    for b in bits:
-        val = (val << 1) | int(bool(b))
-    return f'{val:016x}'
+    # np.packbits packs bits[0] into the MSB of byte 0 (bitorder='big'),
+    # matching the old `val = (val << 1) | b` loop bit-for-bit.
+    return np.packbits(bits).tobytes().hex()
 
 
 def _try_hash_via_cv2(video_path: str):

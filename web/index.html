@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manim Studio - Professional Edition</title>
     <link rel="stylesheet" href="styles.css?v=2026-05-06-codex-discovery">
-    <link rel="stylesheet" href="ai-edit.css?v=2026-05-06-codex-discovery">
+    <link rel="stylesheet" href="ai-edit.css?v=2026-07-30-model-picker-fit2">
     <link rel="stylesheet" href="ui-enhancements.css?v=2025-02-25-ai-edit">
     <link rel="stylesheet" href="monaco/vs/editor/editor.main.css">
     <link rel="stylesheet" href="app_features.css?v=2025-01-26-v13">
@@ -823,7 +823,7 @@
             <div class="logo">🎬</div>
             <div class="title-section">
                 <h1 class="app-title">Manim Animation Studio</h1>
-                <span class="app-subtitle">Professional Edition <span id="appVersion">v1.1.3.0</span></span>
+                <span class="app-subtitle">Professional Edition <span id="appVersion">v1.1.4.0</span></span>
             </div>
             <!-- App state indicator: invisible but DOM-present for AI screen readers -->
             <div id="appStateIndicator" role="status" aria-live="polite" data-testid="app-state"
@@ -2331,7 +2331,7 @@
     <!-- Include the modal HTML -->
     <script>
         // Load and inject the modals HTML
-        fetch('app_features_modals.html?v=2026-05-08-v1.1.3.0')
+        fetch('app_features_modals.html?v=2026-07-30-v1.1.4.0')
             .then(response => response.text())
             .then(html => {
                 // Create temp div to parse HTML
@@ -2351,22 +2351,18 @@
             .catch(err => console.error('Failed to load modals:', err));
     </script>
 
-    <!-- xterm.js Terminal Emulator -->
-    <script>
-        console.log('[XTERM LOAD] About to load xterm.js...');
-        console.log('[XTERM LOAD] Document readyState:', document.readyState);
-    </script>
-    <script src="xterm/xterm.js" onload="console.log('[XTERM LOAD] xterm.js loaded successfully. Terminal available:', typeof Terminal !== 'undefined')" onerror="console.error('[XTERM LOAD] Failed to load xterm.js!')"></script>
-    <script src="xterm/addon-fit.js" onload="console.log('[XTERM LOAD] addon-fit.js loaded')" onerror="console.warn('[XTERM LOAD] addon-fit.js not found')"></script>
-    <script src="xterm/addon-webgl.js" onload="console.log('[XTERM LOAD] addon-webgl.js loaded')" onerror="console.warn('[XTERM LOAD] addon-webgl.js not found')"></script>
-    <script src="xterm/addon-web-links.js" onload="console.log('[XTERM LOAD] addon-web-links.js loaded')" onerror="console.warn('[XTERM LOAD] addon-web-links.js not found')"></script>
-    <script src="xterm/addon-search.js" onload="console.log('[XTERM LOAD] addon-search.js loaded')" onerror="console.warn('[XTERM LOAD] addon-search.js not found')"></script>
-    <script src="xterm/addon-unicode11.js" onload="console.log('[XTERM LOAD] addon-unicode11.js loaded')" onerror="console.warn('[XTERM LOAD] addon-unicode11.js not found')"></script>
-    <script src="xterm/addon-clipboard.js" onload="console.log('[XTERM LOAD] addon-clipboard.js loaded')" onerror="console.warn('[XTERM LOAD] addon-clipboard.js not found')"></script>
-    <script>
-        console.log('[XTERM LOAD] After loading xterm.js - Terminal constructor:', typeof Terminal);
-        console.log('[XTERM LOAD] After loading xterm.js - window.Terminal:', typeof window.Terminal);
-    </script>
+    <!-- xterm.js Terminal Emulator
+         MUST load synchronously (no defer) and BEFORE monaco/vs/loader.js:
+         these are UMD bundles — once Monaco's AMD loader defines define.amd,
+         they register as anonymous AMD modules instead of setting
+         window.Terminal / window.FitAddon, leaving the terminal blank. -->
+    <script src="xterm/xterm.js" onload="console.log('[XTERM LOAD] xterm.js loaded. Terminal available:', typeof Terminal !== 'undefined')" onerror="console.error('[XTERM LOAD] Failed to load xterm.js!')"></script>
+    <script src="xterm/addon-fit.js" onerror="console.warn('[XTERM LOAD] addon-fit.js not found')"></script>
+    <script src="xterm/addon-webgl.js" onerror="console.warn('[XTERM LOAD] addon-webgl.js not found')"></script>
+    <script src="xterm/addon-web-links.js" onerror="console.warn('[XTERM LOAD] addon-web-links.js not found')"></script>
+    <script src="xterm/addon-search.js" onerror="console.warn('[XTERM LOAD] addon-search.js not found')"></script>
+    <script src="xterm/addon-unicode11.js" onerror="console.warn('[XTERM LOAD] addon-unicode11.js not found')"></script>
+    <script src="xterm/addon-clipboard.js" onerror="console.warn('[XTERM LOAD] addon-clipboard.js not found')"></script>
 
     <!-- Monaco Editor - AMD Loader -->
     <script src="monaco/vs/loader.js"></script>
@@ -2393,16 +2389,13 @@
 
     <!-- Main Application Script - Load renderer_desktop.js directly -->
     <!-- Cache buster added to force reload after fixes - change version to force reload -->
-    <script defer src="renderer_desktop.js?v=2026-05-06-codex-discovery"></script>
+    <script defer src="renderer_desktop.js?v=2026-07-18-opt-round2"></script>
 
     <!-- AI Edit Panel (Claude Code + OpenAI Codex) -->
-    <script defer src="ai-edit.js?v=2026-05-06-codex-discovery"></script>
+    <script defer src="ai-edit.js?v=2026-07-30-direct-model-selection"></script>
 
     <!-- Narration: auto TTS on render/preview when code has narrate() calls -->
     <script defer src="narration.js?v=2025-02-28"></script>
-
-    <!-- New Features: File Upload via PyWebView Dialog -->
-    <script defer src="new_features.js?v=2025-01-26-windows-details-view"></script>
 
     <!-- App Features: Theme Toggle, Help Modal, Settings Dialog -->
     <script defer src="app_features.js?v=2026-05-06-codex-discovery"></script>
@@ -2411,7 +2404,7 @@
     <script defer src="simple_assets.js?v=2026-03-06"></script>
 
     <!-- Responsive Scaling & DPI Detection -->
-    <script defer src="responsive_scaling.js?v=2025-02-05"></script>
+    <script defer src="responsive_scaling.js?v=2026-07-18-opt-round2"></script>
 
     <!-- ══════════════════════════════════════════════════════════════════
          F-03 / F-08 / F-04 / F-01 / F-12 — Advanced feature modals
