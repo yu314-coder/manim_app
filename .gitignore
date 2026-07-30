@@ -4,3 +4,6 @@ __pycache__/
 .claude/
 *.pyc
 web/temp_assets/
+.build_venv/
+.nuitka_cache/
+nuitka-crash-report.xml

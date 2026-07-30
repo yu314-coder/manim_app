@@ -1,16 +1,11 @@
 # Non-Agent Edit
 
 ## With Selection
-Edit `scene.py`. ONLY modify lines {{SEL_START}}-{{SEL_END}}.
-
-Selected code:
-```python
-{{SELECTED_CODE}}
-```
+Read `scene.py` first. The user selected lines {{SEL_START}}-{{SEL_END}} — ONLY modify those lines.
 
 Instruction: {{PROMPT}}
 
-Apply changes to scene.py.
+Apply changes to scene.py, leaving all other lines untouched.
 
 ## Without Selection
 Read `scene.py` first, then edit it.

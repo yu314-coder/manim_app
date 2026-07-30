@@ -3,10 +3,31 @@
  * Native desktop app using PyWebView API instead of Electron IPC
  */
 
+// ── Debug logging gate ──
+// The frontend has hundreds of console.log calls, many on hot paths
+// (keystrokes, render streaming, asset refresh). Silence console.log for
+// normal runs; run localStorage.setItem('msDebug', '1') in devtools and
+// reload to get them back. console.warn / console.error always stay live.
+if (!localStorage.getItem('msDebug')) {
+    console.log = () => {};
+}
+
 // App state
 let currentFile = null;
 let editor = null;
 let isAppClosing = false; // Flag to prevent API calls during shutdown
+
+// Starter code shown in a fresh editor (also used to decide whether an
+// autosave is worth offering to recover)
+const DEFAULT_CODE_TEMPLATE = `from manim import *
+
+class MyScene(Scene):
+    def construct(self):
+        # Your animation code here
+        text = Text("Hello, Manim!")
+        self.play(Write(text))
+        self.wait()
+`;
 
 const job = {
     running: false,
@@ -32,6 +53,21 @@ let currentPreviewBlobUrl = null;
 // Render history tracking — records metadata when a render/preview starts
 let _renderMeta = { startTime: 0, mode: '', quality: '', fps: 0, sceneName: '', format: '' };
 let currentPreviewPath = null; // Track current preview path to avoid unnecessary reloads
+
+// Shared "editor is ready" gate. Consumers call window.whenEditorReady(cb)
+// instead of each running their own 500ms setInterval poll for `editor`.
+// initializeEditor() resolves it right after monaco.editor.create().
+window.whenEditorReady = (() => {
+    let ready = false;
+    const waiters = [];
+    window._signalEditorReady = () => {
+        ready = true;
+        waiters.splice(0).forEach(cb => {
+            try { cb(); } catch (e) { console.error('[EDITOR READY] callback failed:', e); }
+        });
+    };
+    return (cb) => { if (ready) { cb(); } else { waiters.push(cb); } };
+})();
 
 // Initialize Monaco Editor using AMD require
 function initializeEditor() {
@@ -67,20 +103,9 @@ function initializeEditor() {
             return;
         }
 
-        // Default code template
-        const defaultCode = `from manim import *
-
-class MyScene(Scene):
-    def construct(self):
-        # Your animation code here
-        text = Text("Hello, Manim!")
-        self.play(Write(text))
-        self.wait()
-`;
-
         // Create Monaco Editor instance
         editor = monaco.editor.create(container, {
-            value: defaultCode,
+            value: DEFAULT_CODE_TEMPLATE,
             language: 'python',
             theme: 'vs-dark',
             fontSize: 14,
@@ -152,6 +177,9 @@ class MyScene(Scene):
             skel.classList.add('hidden');
             setTimeout(() => skel.remove(), 300);
         }
+
+        // Wake everything queued on window.whenEditorReady()
+        window._signalEditorReady();
 
         // Event listeners
         let errorCheckTimeout = null;
@@ -276,62 +304,6 @@ class MyScene(Scene):
 // Helper functions
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Force refresh the UI by clearing and repopulating the DOM
-async function forceRefreshAssetsUI() {
-    console.log('[FORCE-REFRESH] Starting forced UI refresh');
-
-    const container = document.getElementById('assetsGrid');
-    if (!container) {
-        console.error('[FORCE-REFRESH] assetsGrid container not found!');
-        return;
-    }
-
-    // Step 1: Clear the DOM completely
-    console.log('[FORCE-REFRESH] Clearing container');
-    container.innerHTML = '';
-
-    // Step 2: Force a reflow to ensure browser processes the clear
-    void container.offsetHeight;
-
-    // Step 3: Wait for browser to paint
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-    // Step 4: Fetch fresh data and repopulate
-    console.log('[FORCE-REFRESH] Fetching fresh assets');
-    await refreshAssets(false);
-
-    // Step 5: Force another paint
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-    console.log('[FORCE-REFRESH] UI refresh complete');
-}
-
-// Retry refresh until files appear or max attempts reached
-async function refreshAssetsWithRetry(initialDelayMs = 800, retryDelayMs = 500, maxAttempts = 2) {
-    console.log(`[REFRESH-RETRY] Starting retry mechanism (initial delay: ${initialDelayMs}ms, retry delay: ${retryDelayMs}ms, ${maxAttempts} attempts)`);
-
-    // Initial delay to let files be written to disk
-    console.log(`[REFRESH-RETRY] Waiting ${initialDelayMs}ms for files to be written...`);
-    await delay(initialDelayMs);
-
-    for (let i = 0; i < maxAttempts; i++) {
-        console.log(`[REFRESH-RETRY] Attempt ${i + 1}/${maxAttempts}`);
-
-        // Force complete UI refresh
-        await forceRefreshAssetsUI();
-
-        console.log(`[REFRESH-RETRY] Refreshed, current count: ${allAssets.length}`);
-
-        // Wait before next attempt (if not the last one)
-        if (i < maxAttempts - 1) {
-            await delay(retryDelayMs);
-        }
-    }
-
-    console.log(`[REFRESH-RETRY] Completed ${maxAttempts} refresh attempts`);
-    return true;
 }
 
 function getEditorValue() {
@@ -845,6 +817,22 @@ async function checkForAutosaves() {
         const result = await pywebview.api.get_autosave_files();
 
         if (result.status === 'success' && result.files.length > 0) {
+            // Don't interrupt every launch: skip the dialog when the newest
+            // autosave adds nothing over what the editor already shows
+            // (typically the untouched default template autosaved by a
+            // previous session).
+            try {
+                const latest = await pywebview.api.load_autosave(result.files[0].autosave_file);
+                if (latest.status === 'success') {
+                    const saved = (latest.code || '').trim();
+                    const current = ((editor ? getEditorValue() : '') || DEFAULT_CODE_TEMPLATE).trim();
+                    if (saved === current || saved === DEFAULT_CODE_TEMPLATE.trim()) {
+                        console.log('[AUTOSAVE] Latest autosave matches current/default content — skipping recovery dialog');
+                        return;
+                    }
+                }
+            } catch (e) { /* comparison failed — fall through to the dialog */ }
+
             showAutosaveRecoveryDialog(result.files);
         }
     } catch (err) {
@@ -946,6 +934,25 @@ async function checkCodeErrors() {
     if (!editor || !pywebview?.api) {
         console.log('[ERROR CHECK] Editor or API not ready');
         return;
+    }
+
+    // basedpyright (LSP) already publishes diagnostics as Monaco markers on
+    // every edit — build the errors panel from those markers instead of
+    // running a second backend syntax check over IPC per keystroke.
+    if (window._lspClient && window._lspClient._initialized && typeof monaco !== 'undefined') {
+        const model = editor.getModel();
+        if (model) {
+            const errors = monaco.editor.getModelMarkers({ resource: model.uri })
+                .filter(m => m.severity >= monaco.MarkerSeverity.Warning)
+                .map(m => ({
+                    line: m.startLineNumber,
+                    column: m.startColumn,
+                    message: m.message,
+                    type: m.severity === monaco.MarkerSeverity.Error ? 'error' : 'warning'
+                }));
+            displayErrors(errors);
+            return;
+        }
     }
 
     const code = getEditorValue();
@@ -1788,8 +1795,8 @@ async function saveRenderedFile(sourcePath, suggestedName) {
 
             // Only refresh assets if the file was from assets folder, not render folder
             // (render folder is already cleared after save)
-            if (!sourcePath.includes('render')) {
-                refreshAssets();
+            if (!sourcePath.includes('render') && window.loadAssets) {
+                window.loadAssets();
             }
         } else if (result.status === 'cancelled') {
             console.log('[SAVE] User cancelled save dialog');
@@ -2250,247 +2257,9 @@ function formatDate(timestamp) {
     }
 }
 
-// Global state for assets
-let allAssets = [];
-let currentFilter = 'all';
-let searchQuery = '';
-let currentAsset = null; // Currently selected asset for modal
-
-async function refreshAssets(preserveOnEmpty = false) {
-    console.log('============================================');
-    console.log('📦 REFRESHING ASSETS...');
-    console.log(`[ASSETS] preserveOnEmpty: ${preserveOnEmpty}`);
-    console.log('============================================');
-
-    try {
-        console.log('[ASSETS] Checking pywebview API...');
-        if (typeof pywebview === 'undefined' || !pywebview.api) {
-            console.error('[ASSETS] ✗ PyWebView API not available!');
-            return;
-        }
-        console.log('[ASSETS] ✓ PyWebView API available');
-
-        console.log('[ASSETS] Calling list_media_files()...');
-        const res = await pywebview.api.list_media_files();
-        console.log('[ASSETS] Response:', res);
-
-        if (!res.files || res.files.length === 0) {
-            console.log('[ASSETS] No files found in response');
-            // Only clear the UI if we're not preserving on empty
-            if (!preserveOnEmpty) {
-                console.log('[ASSETS] Clearing UI (preserveOnEmpty=false)');
-                allAssets = [];
-                displayAssets([]);
-            } else {
-                console.log('[ASSETS] Keeping existing UI (preserveOnEmpty=true)');
-            }
-            return;
-        }
-
-        allAssets = res.files;
-        console.log(`[ASSETS] ✅ Found ${allAssets.length} assets:`, allAssets.map(f => f.name));
-        console.log('[ASSETS] About to call displayAssets() with', allAssets.length, 'files');
-        console.log('[ASSETS] allAssets array:', allAssets);
-        displayAssets(allAssets);
-        console.log('[ASSETS] displayAssets() call completed');
-    } catch (err) {
-        console.error('[ASSETS] ❌ Failed to refresh assets:', err);
-        console.error('[ASSETS] Error stack:', err.stack);
-        // On error during drag-drop, preserve the UI
-        if (preserveOnEmpty) {
-            console.log('[ASSETS] Error occurred but preserving UI');
-        }
-    }
-}
-
-// COMPLETELY REWRITTEN displayAssets() - Using pure innerHTML for better compatibility
-function displayAssets(files) {
-    try {
-        console.log('============================================');
-        console.log('[ASSETS] displayAssets() START');
-        console.log('[ASSETS] Files parameter:', files);
-        console.log('[ASSETS] Files type:', typeof files);
-        console.log('[ASSETS] Files is array?', Array.isArray(files));
-        console.log('[ASSETS] Files length:', files ? files.length : 'null/undefined');
-        console.log('============================================');
-
-        const container = document.getElementById('assetsGrid');
-
-        if (!container) {
-            console.error('[ASSETS] ❌ CRITICAL: assetsGrid element not found!');
-            alert('ERROR: Assets container not found in DOM!');
-            return;
-        }
-
-        console.log('[ASSETS] ✓ Container found, ID:', container.id);
-        console.log('[ASSETS] Container display style:', window.getComputedStyle(container).display);
-        console.log('[ASSETS] Container visibility:', window.getComputedStyle(container).visibility);
-
-        // Empty state
-        if (!files || files.length === 0) {
-            console.log('[ASSETS] No files - showing empty state');
-            container.innerHTML = `
-                <div class="empty-state" style="padding: 40px; text-align: center;">
-                    <i class="fas fa-box-open" style="font-size: 48px; color: #666; margin-bottom: 16px;"></i>
-                    <p style="color: #999; font-size: 16px;">No assets yet. Render something!</p>
-                </div>
-            `;
-            updateAssetsCount(0);
-            return;
-        }
-
-        // Apply filters
-        let filteredFiles = files;
-
-        if (searchQuery) {
-            filteredFiles = filteredFiles.filter(file =>
-                file.name.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-        }
-
-        if (currentFilter !== 'all') {
-            filteredFiles = filteredFiles.filter(file => {
-                const ext = file.name.split('.').pop().toLowerCase();
-                if (currentFilter === 'video') {
-                    return ['mp4', 'mov', 'webm', 'avi'].includes(ext);
-                } else if (currentFilter === 'image') {
-                    return ['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext);
-                }
-                return true;
-            });
-        }
-
-        if (filteredFiles.length === 0) {
-            console.log('[ASSETS] No files match filters');
-            container.innerHTML = `
-                <div class="empty-state" style="padding: 40px; text-align: center;">
-                    <i class="fas fa-filter" style="font-size: 48px; color: #666; margin-bottom: 16px;"></i>
-                    <p style="color: #999; font-size: 16px;">No assets match your filters</p>
-                </div>
-            `;
-            updateAssetsCount(0);
-            return;
-        }
-
-        updateAssetsCount(filteredFiles.length);
-
-        // Build HTML string for ALL assets at once
-        console.log('[ASSETS] Building HTML for', filteredFiles.length, 'files...');
-        let assetsHTML = '';
-
-        filteredFiles.forEach((file, index) => {
-            console.log(`[ASSETS] [${index + 1}/${filteredFiles.length}] ${file.name}`);
-
-            const ext = file.name.split('.').pop().toLowerCase();
-            const isVideo = ['mp4', 'mov', 'webm', 'avi'].includes(ext);
-            const isImage = ['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext);
-
-            const badge = getFileTypeBadge(file.name);
-            const icon = getFileTypeIcon(file.name);
-
-            // Escape user-controlled strings to prevent XSS
-            const safeName = escapeHtml(file.name);
-            const safePath = escapeHtml(file.path.replace(/\\/g, '/'));
-
-            // Convert Windows path to web path
-            const webPath = file.path.replace(/\\/g, '/');
-
-            // Build thumbnail
-            let thumbnailHTML = '';
-            if (isVideo) {
-                thumbnailHTML = `<video src="${safePath}" muted style="width: 100%; height: 100%; object-fit: cover;"></video>`;
-            } else if (isImage) {
-                thumbnailHTML = `<img src="${safePath}" alt="${safeName}" style="width: 100%; height: 100%; object-fit: cover;">`;
-            } else {
-                thumbnailHTML = `<i class="fas ${icon}" style="font-size: 48px; color: var(--accent-primary);"></i>`;
-            }
-
-            // Build complete asset card HTML
-            assetsHTML += `
-            <div class="asset-item" onclick="openAssetByIndex(${index})" style="
-                background: var(--bg-secondary);
-                border: 1px solid var(--border-color);
-                border-radius: 8px;
-                padding: 12px;
-                cursor: pointer;
-                transition: all 0.2s ease;
-            " onmouseover="this.style.borderColor='var(--accent-primary)'" onmouseout="this.style.borderColor='var(--border-color)'">
-                <div class="asset-thumbnail" style="
-                    width: 100%;
-                    height: 150px;
-                    background: var(--bg-primary);
-                    border-radius: 6px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    overflow: hidden;
-                    margin-bottom: 12px;
-                ">
-                    ${thumbnailHTML}
-                </div>
-                <div class="asset-info">
-                    <div class="asset-name" title="${safeName}" style="
-                        font-weight: 500;
-                        color: var(--text-primary);
-                        margin-bottom: 8px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                    ">${safeName}</div>
-                    <div class="asset-meta" style="
-                        display: flex;
-                        flex-wrap: wrap;
-                        gap: 8px;
-                        font-size: 12px;
-                        color: var(--text-secondary);
-                    ">
-                        <span class="asset-type-badge ${badge.class}" style="
-                            background: var(--accent-primary);
-                            color: white;
-                            padding: 2px 8px;
-                            border-radius: 4px;
-                            font-weight: 500;
-                        ">${badge.text}</span>
-                        <span class="asset-size">
-                            <i class="fas fa-hdd"></i> ${formatBytes(file.size)}
-                        </span>
-                        <span class="asset-date">
-                            <i class="fas fa-clock"></i> ${formatDate(file.mtime)}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        `;
-        });
-
-        // Set ALL HTML at once (much faster and more reliable than appendChild)
-        console.log('[ASSETS] Setting container innerHTML...');
-        console.log('[ASSETS] HTML length:', assetsHTML.length, 'characters');
-        container.innerHTML = assetsHTML;
-
-        console.log('[ASSETS] ============================================');
-        console.log('[ASSETS] ✅ COMPLETE - Displayed', filteredFiles.length, 'assets');
-        console.log('[ASSETS] Container children:', container.children.length);
-        console.log('[ASSETS] Container innerHTML length:', container.innerHTML.length);
-        console.log('[ASSETS] First child element:', container.firstChild);
-        console.log('[ASSETS] ============================================');
-
-    } catch (error) {
-        console.error('[ASSETS] ❌❌❌ EXCEPTION IN displayAssets():', error);
-        console.error('[ASSETS] Error message:', error.message);
-        console.error('[ASSETS] Error stack:', error.stack);
-        alert(`CRITICAL ERROR in displayAssets(): ${error.message}`);
-    }
-}
-
-// Helper function to open asset by index (since we're using inline onclick)
-window.openAssetByIndex = function(index) {
-    const file = allAssets[index];
-    if (file) {
-        console.log('📺 Asset clicked:', file.name);
-        openAssetModal(file);
-    }
-};
+// Currently selected asset for modal (used by openAssetModal/closeAssetModal).
+// The asset list itself lives in simple_assets.js (window.loadAssets).
+let currentAsset = null;
 
 // Open asset preview modal
 function openAssetModal(file) {
@@ -2570,33 +2339,6 @@ function updateAssetsCount(count) {
     }
 }
 
-// Setup assets search
-function setupAssetsSearch() {
-    const searchInput = document.getElementById('assetsSearchInput');
-    if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            searchQuery = e.target.value;
-            displayAssets(allAssets);
-        });
-    }
-}
-
-// Setup assets filters
-function setupAssetsFilters() {
-    const filterButtons = document.querySelectorAll('.filter-btn');
-    filterButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            // Remove active class from all
-            filterButtons.forEach(b => b.classList.remove('active'));
-            // Add active to clicked
-            btn.classList.add('active');
-            // Update filter
-            currentFilter = btn.getAttribute('data-filter');
-            displayAssets(allAssets);
-        });
-    });
-}
-
 // Setup asset modal handlers
 function setupAssetModal() {
     // Close button
@@ -2663,14 +2405,12 @@ let fitAddon = null; // xterm.js FitAddon instance
 async function startTerminalPolling() {
     if (terminalPollInterval) return; // Already polling
 
-    console.log('[TERMINAL] Starting PTY output polling for xterm.js...');
+    console.log('[TERMINAL] Starting push-driven terminal output (with slow fallback poll)...');
 
-    // Adaptive polling: faster when active, slower when idle
-    let consecutiveEmptyPolls = 0;
-    let currentPollInterval = 50; // Start at 50ms (20 calls/sec max)
-    const MIN_INTERVAL = 50;      // Fastest: 50ms when active
-    const MAX_INTERVAL = 500;     // Slowest: 500ms when idle
-    const EMPTY_POLLS_THRESHOLD = 10; // After 10 empty polls, slow down
+    // Output delivery is event-driven: the Python PTY reader calls
+    // window.terminalPushDrain() when new output is buffered. The interval
+    // below is only a slow safety net (missed nudge, startup backlog).
+    const FALLBACK_INTERVAL = 2000;
 
     // Throttle scroll operations using requestAnimationFrame
     let scrollPending = false;
@@ -2738,49 +2478,51 @@ async function startTerminalPolling() {
         }
     };
 
-    const poll = async () => {
+    let draining = false;
+    const drain = async () => {
+        if (document.hidden) return; // skip IPC round-trips while window is hidden
+        if (draining) return;        // one in-flight drain at a time
+        draining = true;
         try {
             attachViewportTracking();
 
             const res = await pywebview.api.get_terminal_output();
-            if (res.status === 'success' && res.output && term) {
-                if (res.output.length > 0) {
-                    // Preserve user scroll position if they scrolled up.
-                    const shouldAutoScroll = autoFollowOutput && !isDraggingScrollbar;
+            if (res.status === 'success' && res.output && res.output.length > 0 && term) {
+                // Preserve user scroll position if they scrolled up.
+                const shouldAutoScroll = autoFollowOutput && !isDraggingScrollbar;
 
-                    // Got output - write it
-                    term.write(res.output);
+                term.write(res.output);
 
-                    // Schedule scroll (throttled with RAF) only when following output
-                    if (shouldAutoScroll) {
-                        scheduleScroll();
-                    }
-
-                    // Reset to fast polling when we have output
-                    consecutiveEmptyPolls = 0;
-                    if (currentPollInterval !== MIN_INTERVAL) {
-                        currentPollInterval = MIN_INTERVAL;
-                        clearInterval(terminalPollInterval);
-                        terminalPollInterval = setInterval(poll, currentPollInterval);
-                    }
-                } else {
-                    // No output - slow down polling gradually
-                    consecutiveEmptyPolls++;
-                    if (consecutiveEmptyPolls >= EMPTY_POLLS_THRESHOLD && currentPollInterval < MAX_INTERVAL) {
-                        currentPollInterval = Math.min(currentPollInterval + 10, MAX_INTERVAL);
-                        clearInterval(terminalPollInterval);
-                        terminalPollInterval = setInterval(poll, currentPollInterval);
-                        console.log(`[TERMINAL] Slowing poll to ${currentPollInterval}ms (idle)`);
-                    }
+                // Schedule scroll (throttled with RAF) only when following output
+                if (shouldAutoScroll) {
+                    scheduleScroll();
                 }
             }
         } catch (err) {
-            console.error('[TERMINAL] Poll error:', err);
+            console.error('[TERMINAL] Drain error:', err);
+        } finally {
+            draining = false;
         }
     };
 
-    // Start polling
-    terminalPollInterval = setInterval(poll, currentPollInterval);
+    // Called by the Python PTY reader when new output is buffered. The
+    // backend throttles nudges to 20 Hz, so a chunk can arrive just after
+    // a skipped nudge — the trailing drain 120ms later picks it up.
+    let trailingDrain = null;
+    window.terminalPushDrain = () => {
+        drain();
+        clearTimeout(trailingDrain);
+        trailingDrain = setTimeout(drain, 120);
+    };
+
+    // Slow safety-net poll + initial drain of any startup backlog
+    terminalPollInterval = setInterval(drain, FALLBACK_INTERVAL);
+    drain();
+
+    // Catch up promptly when the window becomes visible again
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) drain();
+    });
 }
 
 async function executeCommand(command) {
@@ -3136,6 +2878,12 @@ window.addEventListener('beforeunload', () => {
         console.error('[SHUTDOWN] Error during autosave:', err);
     }
 
+    // Stop background polling so no IPC fires during teardown
+    if (terminalPollInterval) {
+        clearInterval(terminalPollInterval);
+        terminalPollInterval = null;
+    }
+
     isAppClosing = true;
 });
 
@@ -3203,8 +2951,6 @@ window.addEventListener('pywebviewready', () => {
     }, 300000);
 
     // Setup assets functionality
-    setupAssetsSearch();
-    setupAssetsFilters();
     setupAssetModal();
 
     // Tab switching functionality
@@ -3224,11 +2970,13 @@ window.addEventListener('pywebviewready', () => {
             pill.classList.add('active');
             document.getElementById(`${tabName}-panel`)?.classList.add('active');
 
-            // Lazy-load assets on first visit, skip re-fetch on subsequent visits
+            // Lazy-load assets on first visit, skip re-fetch on subsequent visits.
+            // Must go through window.loadAssets (simple_assets.js) — it owns the
+            // #simpleAssetsContainer list that is actually in the DOM.
             if (tabName === 'assets') {
-                if (!assetsTabLoaded) {
+                if (!assetsTabLoaded && window.loadAssets) {
                     console.log('[TAB] Assets tab first visit, loading assets...');
-                    refreshAssets();
+                    window.loadAssets();
                     assetsTabLoaded = true;
                 }
             }
@@ -3289,7 +3037,6 @@ window.addEventListener('pywebviewready', () => {
     document.getElementById('renderBtn')?.addEventListener('click', renderAnimation);
     document.getElementById('previewBtn')?.addEventListener('click', quickPreview);
     document.getElementById('stopBtn')?.addEventListener('click', stopActiveRender);
-    document.getElementById('refreshAssetsBtn')?.addEventListener('click', refreshAssets);
     document.getElementById('clearErrorsBtn')?.addEventListener('click', clearErrors);
     document.getElementById('openAssetsFolderBtn')?.addEventListener('click', openMediaFolder);
     document.getElementById('openMediaFolderBtn')?.addEventListener('click', openMediaFolder);
@@ -3762,7 +3509,19 @@ window.addEventListener('pywebviewready', () => {
 
     // If not found, retry after script loads
     if (!terminalInitialized) {
-        setTimeout(tryInitTerminal, 500);
+        setTimeout(() => {
+            tryInitTerminal();
+            if (!terminalInitialized) {
+                // Surface the failure instead of leaving a silently blank panel.
+                // Common cause: xterm.js executed after Monaco's AMD loader and
+                // registered as an AMD module instead of setting window.Terminal.
+                console.error('❌ xterm.js Terminal constructor never became available');
+                const container = document.getElementById('terminalContainer');
+                if (container) {
+                    container.innerHTML = '<div style="color: #ff6b6b; padding: 20px; font-family: monospace;">Error: xterm.js library not loaded<br>Terminal constructor not found (check script load order vs Monaco AMD loader)</div>';
+                }
+            }
+        }, 500);
     }
 
     // Render Quality select - show/hide custom resolution
@@ -3900,28 +3659,7 @@ if ('Notification' in window && Notification.permission === 'default') {
 // ASSETS UPLOAD AND DRAG-DROP
 // ============================================================================
 
-window.uploadAssets = async function() {
-    try {
-        const result = await pywebview.api.select_files_to_upload();
-
-        if (result.status === 'success' && result.file_paths.length > 0) {
-            const uploadResult = await pywebview.api.upload_assets(result.file_paths);
-
-            if (uploadResult.status === 'success') {
-                showNotification('Upload Complete', uploadResult.message, 'success');
-                refreshAssets();
-            } else if (uploadResult.status === 'partial') {
-                showNotification('Upload Partial', uploadResult.message, 'info');
-                refreshAssets();
-            } else {
-                showNotification('Upload Failed', uploadResult.message, 'error');
-            }
-        }
-    } catch (error) {
-        console.error('[UPLOAD ERROR]', error);
-        showNotification('Upload Error', error.message, 'error');
-    }
-}
+// window.uploadAssets is owned by simple_assets.js (loads after this file).
 
 // Setup drag and drop for assets
 document.addEventListener('DOMContentLoaded', () => {
@@ -5031,15 +4769,11 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
     }
 
     // Hook into editor content changes
-    const origInit = window.initializeEditor;
-    const hookEditorChanges = setInterval(() => {
-        if (editor) {
-            clearInterval(hookEditorChanges);
-            editor.onDidChangeModelContent(() => {
-                scheduleOutlineRefresh();
-            });
-        }
-    }, 500);
+    window.whenEditorReady(() => {
+        editor.onDidChangeModelContent(() => {
+            scheduleOutlineRefresh();
+        });
+    });
 
     // Expose for external use
     window.refreshSceneOutline = refreshOutline;
@@ -5050,9 +4784,8 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
 // ═══════════════════════════════════════════════════════════════════════
 (function initBracketColorizer() {
     // Monaco 0.33+ has built-in bracket pair colorization
-    const hookEditor = setInterval(() => {
-        if (editor && monaco) {
-            clearInterval(hookEditor);
+    window.whenEditorReady(() => {
+        {
             // Enable bracket pair colorization and guides
             editor.updateOptions({
                 'bracketPairColorization.enabled': true,
@@ -5080,7 +4813,7 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
             document.head.appendChild(style);
             console.log('[BRACKETS] Bracket pair colorization enabled');
         }
-    }, 500);
+    });
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -5128,9 +4861,8 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
 
     let autoImportDebounce = null;
 
-    const hookEditor = setInterval(() => {
-        if (editor && monaco) {
-            clearInterval(hookEditor);
+    window.whenEditorReady(() => {
+        {
 
             // Register a code action provider for quick fixes
             monaco.languages.registerCodeActionProvider('python', {
@@ -5266,7 +4998,7 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
 
             console.log('[AUTO-IMPORT] Auto-import fixer initialized');
         }
-    }, 500);
+    });
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -5416,9 +5148,8 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
         }
     }
 
-    const hookEditor = setInterval(() => {
-        if (editor && monaco) {
-            clearInterval(hookEditor);
+    window.whenEditorReady(() => {
+        {
 
             // Ctrl+B: Toggle bookmark
             editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, toggleBookmark);
@@ -5445,7 +5176,7 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
 
             console.log('[BOOKMARKS] Editor bookmarks initialized (Ctrl+B, Ctrl+Up/Down)');
         }
-    }, 500);
+    });
 
     window.toggleBookmark = toggleBookmark;
     window.getBookmarks = () => [...bookmarks];
@@ -5795,10 +5526,11 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
             const q = name.toLowerCase();
             const matches = allNames.filter(n => n.toLowerCase().includes(q) || (MANIM_DOCS[n]?.cat || '').toLowerCase().includes(q));
             if (matches.length > 0) {
-                body.innerHTML += matches.map(n => {
+                // insertAdjacentHTML avoids re-parsing the existing content (innerHTML += does)
+                body.insertAdjacentHTML('beforeend', matches.map(n => {
                     const d = MANIM_DOCS[n];
                     return `<div class="docs-browse-item" data-name="${escapeAttr(n)}"><span class="item-name">${escapeH(n)}</span><span class="item-type">${escapeH(d?.cat || '')}</span></div>`;
-                }).join('');
+                }).join(''));
                 body.querySelectorAll('.docs-browse-item').forEach(el => {
                     el.addEventListener('click', () => showDocFor(el.dataset.name));
                 });
@@ -5868,14 +5600,18 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
         });
     }
 
-    // Search input
+    // Search input (debounced — filtering re-renders the whole list)
+    let browseDebounce = null;
     searchInp?.addEventListener('input', (e) => {
         const q = e.target.value.trim();
-        if (q.length > 0) {
-            showBrowseList(q);
-        } else {
-            body.innerHTML = '<div class="docs-empty"><i class="fas fa-book-open"></i>Right-click a Manim class in the editor<br>and select <b>Lookup Manim Docs</b><br><br>Or search above to browse</div>';
-        }
+        clearTimeout(browseDebounce);
+        browseDebounce = setTimeout(() => {
+            if (q.length > 0) {
+                showBrowseList(q);
+            } else {
+                body.innerHTML = '<div class="docs-empty"><i class="fas fa-book-open"></i>Right-click a Manim class in the editor<br>and select <b>Lookup Manim Docs</b><br><br>Or search above to browse</div>';
+            }
+        }, 100);
     });
 
     // If input is focused and empty, show full list
@@ -5887,9 +5623,8 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
     function escapeAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
     // Register Monaco context menu action
-    const hookEditor = setInterval(() => {
-        if (editor && monaco) {
-            clearInterval(hookEditor);
+    window.whenEditorReady(() => {
+        {
             editor.addAction({
                 id: 'lookup-manim-docs',
                 label: 'Lookup Manim Docs',
@@ -5909,7 +5644,31 @@ document.getElementById('findReplaceBtn')?.addEventListener('click', () => {
             });
             console.log('[DOCS] Manim docs context menu action registered');
         }
-    }, 500);
+    });
 
     window.openManimDocs = (name) => { if (name) showDocFor(name); else openDocsPanel(); };
+})();
+
+// ── No-backend notice ──────────────────────────────────────────────────────
+// When index.html is opened directly in a browser (file:// or a preview pane)
+// there is no pywebview backend: 'pywebviewready' never fires, so the terminal
+// never initializes and the panel would sit silently black. Show a notice
+// instead. In the real desktop app pywebview is injected before this timer
+// fires, so the notice never appears there.
+(function () {
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            if (typeof window.pywebview !== 'undefined') return;
+            const container = document.getElementById('terminalContainer');
+            if (container && !container.querySelector('.xterm') && !container.textContent.trim()) {
+                container.innerHTML = '<div id="noBackendNotice" style="color:#8a919e;padding:20px;font-family:monospace;line-height:1.6;">' +
+                    'Terminal unavailable — no Python backend detected.<br>' +
+                    'This page is running outside the desktop app (opened directly in a browser).<br>' +
+                    'Launch with <b>python app.py</b> to use the terminal, render and preview.</div>';
+            }
+        }, 3000);
+        window.addEventListener('pywebviewready', () => {
+            document.getElementById('noBackendNotice')?.remove();
+        });
+    });
 })();

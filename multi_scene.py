@@ -37,6 +37,9 @@ import time
 import uuid
 from typing import Callable, Optional
 
+# Hard wall-clock cap for the combined manim subprocess (seconds).
+_RENDER_HARD_CAP = 7200
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Paths produced by manim
@@ -224,8 +227,22 @@ def render_combined(code_file: str,
 
     reader = threading.Thread(target=_consume, daemon=True)
     reader.start()
-    proc.wait()
-    reader.join(timeout=2)
+    deadline = time.time() + _RENDER_HARD_CAP
+    while True:
+        try:
+            proc.wait(timeout=30)
+            break
+        except subprocess.TimeoutExpired:
+            if cancel_flag and cancel_flag.is_set():
+                proc.kill()
+                break
+            if time.time() > deadline:
+                proc.kill()
+                reader.join(timeout=30)
+                return {'ok': False,
+                        'error': f'render timed out after {_RENDER_HARD_CAP}s',
+                        'output': ''.join(output_lines)[-3000:]}
+    reader.join(timeout=30)
 
     if cancel_flag and cancel_flag.is_set():
         return {'ok': False, 'error': 'cancelled', 'output': ''.join(output_lines)}

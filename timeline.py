@@ -83,6 +83,12 @@ def _extract_wait_duration(call: ast.Call) -> float:
     return _DEFAULT_WAIT
 
 
+# Parse results are deterministic per (source, scene_name), so a tiny
+# FIFO cache lets the frontend re-poll without re-running ast.parse.
+_PARSE_CACHE = {}  # (hash(source), scene_name) -> result dict
+_PARSE_CACHE_MAX = 8
+
+
 def parse(scene_file: str, scene_name: Optional[str] = None) -> dict:
     """Return {status, model?, message?}."""
     try:
@@ -90,7 +96,21 @@ def parse(scene_file: str, scene_name: Optional[str] = None) -> dict:
             source = f.read()
     except OSError as e:
         return {'status': 'error', 'message': str(e)}
+    return _parse_source(source, scene_name)
 
+
+def _parse_source(source: str, scene_name: Optional[str] = None) -> dict:
+    key = (hash(source), scene_name)
+    cached = _PARSE_CACHE.get(key)
+    if cached is None:
+        cached = _parse_source_uncached(source, scene_name)
+        if len(_PARSE_CACHE) >= _PARSE_CACHE_MAX:
+            _PARSE_CACHE.pop(next(iter(_PARSE_CACHE)))  # evict oldest
+        _PARSE_CACHE[key] = cached
+    return cached
+
+
+def _parse_source_uncached(source: str, scene_name: Optional[str]) -> dict:
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
@@ -212,15 +232,7 @@ def parse_string(source: str, scene_name: Optional[str] = None) -> dict:
     """Same as ``parse`` but takes the source code directly instead of a
     file path. Lets the caller work with an unsaved editor buffer with
     no disk I/O."""
-    import tempfile, os as _os
-    fd, p = tempfile.mkstemp(suffix='.py')
-    try:
-        with _os.fdopen(fd, 'w', encoding='utf-8') as f:
-            f.write(source)
-        return parse(p, scene_name)
-    finally:
-        try: _os.unlink(p)
-        except OSError: pass
+    return _parse_source(source, scene_name)
 
 
 def apply_edits_to_source(source: str, edits: list) -> dict:

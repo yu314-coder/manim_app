@@ -17,6 +17,8 @@
     let attachedImages = [];  // [{name, path, dataUrl?}]
     let currentModels = [];
     let selectedModel = '';
+    let modelDetection = null;
+    let modelLoadGeneration = 0;
 
     // ─── Helpers ───
     function toast(msg, type) {
@@ -45,8 +47,58 @@
     // ═══════════════════════════════════════════════════════════════════
     function esc(s) {
         const d = document.createElement('div');
-        d.textContent = s;
+        d.textContent = String(s ?? '');
         return d.innerHTML;
+    }
+
+    function savedModel(provider) {
+        try { return localStorage.getItem(`aiEditModel:${provider}`) || ''; }
+        catch (_) { return ''; }
+    }
+
+    function saveModel(provider, model) {
+        try { localStorage.setItem(`aiEditModel:${provider}`, model || ''); }
+        catch (_) {}
+    }
+
+    function formatCatalogAge(timestamp) {
+        if (!timestamp) return '';
+        const seconds = Math.max(0, Date.now() / 1000 - Number(timestamp));
+        if (seconds < 90) return 'just updated';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+    }
+
+    function appendCatalogStatus(dropdown, detection, onRefresh) {
+        if (!dropdown || currentProvider !== 'codex') return;
+        const status = document.createElement('div');
+        const available = !!detection?.available;
+        status.className = `aim-catalog-status ${available ? 'available' : 'unavailable'}`;
+        status.setAttribute('data-testid', 'codex-catalog-status');
+
+        const source = detection?.source_label || 'Codex catalog unavailable';
+        const age = formatCatalogAge(detection?.updated_at);
+        const detail = available
+            ? `${detection.count || 0} models · ${source}${age ? ` · ${age}` : ''}`
+            : (detection?.error || 'Open Codex once to download its model catalog.');
+
+        status.innerHTML = `
+            <span class="aim-catalog-dot" aria-hidden="true"></span>
+            <div class="aim-catalog-copy">
+                <strong>${available ? 'Detected from Codex' : 'Detection unavailable'}</strong>
+                <span>${esc(detail)}</span>
+            </div>
+            <button class="aim-refresh-models" type="button"
+                    aria-label="Refresh Codex models" title="Refresh Codex models"
+                    data-testid="refresh-codex-models">
+                <i class="fas fa-rotate${detection?.refreshing ? ' fa-spin' : ''}"></i>
+            </button>`;
+        status.querySelector('.aim-refresh-models')?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            onRefresh();
+        });
+        dropdown.appendChild(status);
     }
 
     const TOOL_ICONS = {
@@ -219,27 +271,64 @@
         }
 
         // ── Load models (dropdown) ──
-        async function loadModels() {
+        async function loadModels(forceRefresh = false) {
             if (!await waitForApi()) return;
+            const providerAtLoad = currentProvider;
+            const loadGeneration = ++modelLoadGeneration;
+            if (modelBtn) {
+                modelBtn.disabled = true;
+                modelBtn.classList.add('loading');
+            }
+            if (modelLabel) modelLabel.textContent = 'Detecting…';
+            if (modelDropdown) {
+                modelDropdown.innerHTML = `
+                    <div class="aim-model-loading">
+                        <i class="fas fa-circle-notch fa-spin"></i>
+                        <span>Reading ${currentProvider === 'codex' ? 'Codex' : 'Claude'} models</span>
+                    </div>`;
+            }
             try {
                 const fn = currentProvider === 'claude' ? 'get_claude_models' : 'get_codex_models';
-                if (!pywebview.api[fn]) return;
-                const result = await pywebview.api[fn]();
+                if (!pywebview.api[fn]) throw new Error(`${fn} is unavailable`);
+                const result = providerAtLoad === 'codex'
+                    ? await pywebview.api[fn](forceRefresh)
+                    : await pywebview.api[fn]();
+                if (loadGeneration !== modelLoadGeneration ||
+                        providerAtLoad !== currentProvider) return;
                 currentModels = result.models || [];
-                selectedModel = '';
+                modelDetection = result.detection || null;
+                selectedModel = savedModel(currentProvider);
+                if (selectedModel && !currentModels.some(m => m.id === selectedModel)) {
+                    selectedModel = '';
+                    saveModel(currentProvider, '');
+                }
                 renderModelDropdown();
-            } catch (e) { console.log('[AI EDIT] Model load:', e); }
+            } catch (e) {
+                if (loadGeneration !== modelLoadGeneration ||
+                        providerAtLoad !== currentProvider) return;
+                console.log('[AI EDIT] Model load:', e);
+                modelDetection = { available: false, error: String(e) };
+                currentModels = [];
+                renderModelDropdown();
+            } finally {
+                if (loadGeneration === modelLoadGeneration && modelBtn) {
+                    modelBtn.disabled = false;
+                    modelBtn.classList.remove('loading');
+                }
+            }
         }
 
         function renderModelDropdown() {
             if (!modelDropdown) return;
             modelDropdown.innerHTML = '';
+            appendCatalogStatus(modelDropdown, modelDetection, () => loadModels(true));
 
             const tierIcons = {
                 premium:    { icon: 'fa-gem',              color: '#c084fc', label: 'Premium' },
-                standard:   { icon: 'fa-bolt',             color: '#60a5fa', label: 'Standard' },
+                standard:   { icon: 'fa-bolt',             color: '#60a5fa',
+                              label: currentProvider === 'codex' ? 'Available in Codex' : 'Standard' },
                 economy:    { icon: 'fa-feather',          color: '#34d399', label: 'Fast' },
-                discovered: { icon: 'fa-magnifying-glass', color: '#f59e0b', label: 'Discovered (auto-detected from Claude CLI history)' },
+                discovered: { icon: 'fa-hard-drive',       color: '#f59e0b', label: 'Local runtimes' },
             };
 
             // Default option
@@ -289,19 +378,20 @@
                         ? '<span class="aim-option-badge" style="background:rgba(168,85,247,0.15);color:#a855f7">adaptive</span>'
                         : '';
                     const recTags = (m.recommended_for || []).slice(0, 2).map(r =>
-                        `<span class="aim-rec-tag">${r}</span>`
+                        `<span class="aim-rec-tag">${esc(r)}</span>`
                     ).join('');
 
                     opt.innerHTML = `
                         <div class="aim-option-main">
                             <i class="fas ${t.icon} aim-option-icon" style="color:${t.color}"></i>
-                            <span class="aim-option-name">${m.display_name}</span>
+                            <span class="aim-option-name">${esc(m.display_name)}</span>
                             ${thinkBadge}
                         </div>
                         <div class="aim-option-meta">
                             ${costStr ? `<span class="aim-cost">${costStr}</span>` : ''}
                             ${recTags}
                         </div>
+                        ${m.description ? `<div class="aim-option-desc">${esc(m.description)}</div>` : ''}
                     `;
                     opt.addEventListener('click', () => selectModel(m.id, m.display_name));
                     modelDropdown.appendChild(opt);
@@ -317,6 +407,7 @@
 
         function selectModel(id, name) {
             selectedModel = id;
+            saveModel(currentProvider, id);
             if (modelLabel) modelLabel.textContent = name;
             if (modelDropdown) {
                 modelDropdown.classList.remove('show');
@@ -740,6 +831,7 @@
             if (!await waitForApi()) return;
             try {
                 await pywebview.api.open_ai_edit_window();
+                startPendingCodePoll(); // window mode is live — watch for its edits
                 closePanel();
             } catch (e) { console.error('[AI EDIT] Popout error:', e); }
         });
@@ -899,7 +991,17 @@
                     streamOutput.appendChild(responseContainer);
                 }
 
+                const pollStart = Date.now();
                 pollTimer = setInterval(async () => {
+                    // Safety valve: a backend that never reports done should
+                    // not leave the panel polling forever
+                    if (Date.now() - pollStart > 15 * 60 * 1000) {
+                        clearInterval(pollTimer); pollTimer = null;
+                        statusMsg.textContent = 'Timed out waiting for AI output (15 min)';
+                        toast('AI edit timed out', 'error');
+                        resetSendBtn();
+                        return;
+                    }
                     try {
                         const poll = await pywebview.api[pollFn]();
                         if (responseContainer) {
@@ -979,21 +1081,19 @@
         });
 
         // ── Register Monaco keybinding + selection listener ──
-        const hookEditor = setInterval(() => {
-            if (typeof editor !== 'undefined' && editor && typeof monaco !== 'undefined' && monaco) {
-                clearInterval(hookEditor);
-                editor.addAction({
-                    id: 'ai-edit-code', label: 'Edit with AI',
-                    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
-                    contextMenuGroupId: '9_ai', contextMenuOrder: 1,
-                    run: openAIEdit
-                });
-                editor.onDidChangeCursorSelection(() => {
-                    if (panelVisible) updateContextHint();
-                });
-                console.log('[AI EDIT] Panel registered');
-            }
-        }, 500);
+        // whenEditorReady is defined by renderer_desktop.js (loads earlier)
+        window.whenEditorReady(() => {
+            editor.addAction({
+                id: 'ai-edit-code', label: 'Edit with AI',
+                keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
+                contextMenuGroupId: '9_ai', contextMenuOrder: 1,
+                run: openAIEdit
+            });
+            editor.onDidChangeCursorSelection(() => {
+                if (panelVisible) updateContextHint();
+            });
+            console.log('[AI EDIT] Panel registered');
+        });
 
         // ── "Fix with AI" button ──
         const fixWithAIBtn = document.getElementById('fixWithAIBtn');
@@ -1011,17 +1111,26 @@
         });
 
         // ── Poll for pending AI code from window mode ──
-        setInterval(async () => {
-            if (typeof pywebview === 'undefined' || !pywebview?.api?.get_pending_ai_code) return;
-            try {
-                const res = await pywebview.api.get_pending_ai_code();
-                if (res.status === 'success' && res.code && typeof editor !== 'undefined' && editor) {
-                    editor.setValue(res.code);
-                    toast('AI edit applied from window', 'success');
-                    if (typeof performAutosave === 'function') performAutosave();
-                }
-            } catch(e) {}
-        }, 1000);
+        // Started lazily on first popout: until an AI Edit window exists
+        // there is nothing to poll for, so sessions that never use window
+        // mode pay zero IPC. Visibility-gated; cleared on unload.
+        let pendingCodePollTimer = null;
+        function startPendingCodePoll() {
+            if (pendingCodePollTimer) return;
+            pendingCodePollTimer = setInterval(async () => {
+                if (document.hidden) return;
+                if (typeof pywebview === 'undefined' || !pywebview?.api?.get_pending_ai_code) return;
+                try {
+                    const res = await pywebview.api.get_pending_ai_code();
+                    if (res.status === 'success' && res.code && typeof editor !== 'undefined' && editor) {
+                        editor.setValue(res.code);
+                        toast('AI edit applied from window', 'success');
+                        if (typeof performAutosave === 'function') performAutosave();
+                    }
+                } catch(e) { console.warn('[AI EDIT] pending-code poll error:', e); }
+            }, 1000);
+        }
+        window.addEventListener('beforeunload', () => clearInterval(pendingCodePollTimer));
 
         // ══════════════════════════════════════════════════════════════
         //  AGENT MODE — autonomous generate → render → fix loop
@@ -1464,27 +1573,64 @@
         }
 
         // ── Models (dropdown) ──
-        async function loadModels() {
+        async function loadModels(forceRefresh = false) {
             if (!await waitForApi()) return;
+            const providerAtLoad = currentProvider;
+            const loadGeneration = ++modelLoadGeneration;
+            if (modelBtn) {
+                modelBtn.disabled = true;
+                modelBtn.classList.add('loading');
+            }
+            if (modelLabel) modelLabel.textContent = 'Detecting…';
+            if (modelDropdown) {
+                modelDropdown.innerHTML = `
+                    <div class="aim-model-loading">
+                        <i class="fas fa-circle-notch fa-spin"></i>
+                        <span>Reading ${currentProvider === 'codex' ? 'Codex' : 'Claude'} models</span>
+                    </div>`;
+            }
             try {
                 const fn = currentProvider === 'claude' ? 'get_claude_models' : 'get_codex_models';
-                if (!pywebview.api[fn]) return;
-                const result = await pywebview.api[fn]();
+                if (!pywebview.api[fn]) throw new Error(`${fn} is unavailable`);
+                const result = providerAtLoad === 'codex'
+                    ? await pywebview.api[fn](forceRefresh)
+                    : await pywebview.api[fn]();
+                if (loadGeneration !== modelLoadGeneration ||
+                        providerAtLoad !== currentProvider) return;
                 currentModels = result.models || [];
-                selectedModel = '';
+                modelDetection = result.detection || null;
+                selectedModel = savedModel(currentProvider);
+                if (selectedModel && !currentModels.some(m => m.id === selectedModel)) {
+                    selectedModel = '';
+                    saveModel(currentProvider, '');
+                }
                 renderModelDropdown();
-            } catch (e) { console.log('[AI EDIT WIN] Model load:', e); }
+            } catch (e) {
+                if (loadGeneration !== modelLoadGeneration ||
+                        providerAtLoad !== currentProvider) return;
+                console.log('[AI EDIT WIN] Model load:', e);
+                modelDetection = { available: false, error: String(e) };
+                currentModels = [];
+                renderModelDropdown();
+            } finally {
+                if (loadGeneration === modelLoadGeneration && modelBtn) {
+                    modelBtn.disabled = false;
+                    modelBtn.classList.remove('loading');
+                }
+            }
         }
 
         function renderModelDropdown() {
             if (!modelDropdown) return;
             modelDropdown.innerHTML = '';
+            appendCatalogStatus(modelDropdown, modelDetection, () => loadModels(true));
 
             const tierIcons = {
                 premium:    { icon: 'fa-gem',              color: '#c084fc', label: 'Premium' },
-                standard:   { icon: 'fa-bolt',             color: '#60a5fa', label: 'Standard' },
+                standard:   { icon: 'fa-bolt',             color: '#60a5fa',
+                              label: currentProvider === 'codex' ? 'Available in Codex' : 'Standard' },
                 economy:    { icon: 'fa-feather',          color: '#34d399', label: 'Fast' },
-                discovered: { icon: 'fa-magnifying-glass', color: '#f59e0b', label: 'Discovered (auto-detected from Claude CLI history)' },
+                discovered: { icon: 'fa-hard-drive',       color: '#f59e0b', label: 'Local runtimes' },
             };
 
             const defOpt = document.createElement('button');
@@ -1525,10 +1671,11 @@
                     opt.innerHTML = `
                         <div class="aim-option-main">
                             <i class="fas ${t.icon} aim-option-icon" style="color:${t.color}"></i>
-                            <span class="aim-option-name">${m.display_name || m.display}</span>
+                            <span class="aim-option-name">${esc(m.display_name || m.display)}</span>
                             ${thinkBadge}
                         </div>
-                        ${costStr ? `<div class="aim-option-meta"><span class="aim-cost">${costStr}</span></div>` : ''}
+                        ${costStr ? `<div class="aim-option-meta"><span class="aim-cost">${esc(costStr)}</span></div>` : ''}
+                        ${m.description ? `<div class="aim-option-desc">${esc(m.description)}</div>` : ''}
                     `;
                     opt.addEventListener('click', () => selectModel(m.id, m.display_name || m.display));
                     modelDropdown.appendChild(opt);
@@ -1553,6 +1700,7 @@
 
         function selectModel(id, name) {
             selectedModel = id;
+            saveModel(currentProvider, id);
             if (modelLabel) modelLabel.textContent = name;
             if (modelDropdown) {
                 modelDropdown.classList.remove('show');
@@ -1707,7 +1855,17 @@
                 const pollFn = currentProvider === 'claude' ? 'ai_edit_claude_poll' : 'ai_edit_poll';
                 let lastLen = 0;  // used for Codex (cumulative); Claude uses incremental drain
 
+                const winPollStart = Date.now();
                 pollTimer = setInterval(async () => {
+                    // Safety valve — see panel-mode poll
+                    if (Date.now() - winPollStart > 15 * 60 * 1000) {
+                        clearInterval(pollTimer); pollTimer = null;
+                        if (statusMsg) statusMsg.textContent = 'Timed out waiting for AI output (15 min)';
+                        if (term) term.writeln('\n\x1b[31m[Timeout] No completion after 15 min.\x1b[0m');
+                        toast('AI edit timed out', 'error');
+                        resetWinSendBtn();
+                        return;
+                    }
                     try {
                         const poll = await pywebview.api[pollFn]();
                         // Write output to terminal

@@ -23,6 +23,10 @@ _get_clean_env = None
 _venv_dir = None
 _models_dir = None
 
+# Kill TTS generation if the subprocess produces no output for this long.
+# Generous because first-run model download/loading is slow.
+_NARR_OUTPUT_TIMEOUT = 300  # seconds
+
 
 def init_narration(preview_dir, get_clean_env_func, venv_dir, user_data_dir):
     """Initialise module-level dependencies (called once from app.py)."""
@@ -46,7 +50,7 @@ def _get_venv_python():
 # ── Helper script executed inside the venv to generate all TTS segments ──
 # Loads the Kokoro model once, processes every segment, streams progress to stdout.
 _TTS_GENERATE_SCRIPT = r'''
-import sys, json, os, urllib.request
+import sys, json, os, hashlib, shutil, urllib.request
 
 data = json.loads(sys.stdin.read())
 segments   = data["segments"]
@@ -54,6 +58,10 @@ voice      = data.get("voice", "af_heart")
 speed      = data.get("speed", 1.0)
 output_dir = data["output_dir"]
 models_dir = data.get("models_dir", "")
+cache_dir  = data.get("cache_dir", "")
+
+# Skip caching WAVs larger than this (keeps the cache dir bounded)
+_CACHE_MAX_BYTES = 50 * 1024 * 1024
 
 # ── Load Kokoro ONNX ──
 try:
@@ -65,35 +73,61 @@ except ImportError as e:
 model_path  = os.path.join(models_dir, "kokoro-v1.0.onnx")
 voices_path = os.path.join(models_dir, "voices-v1.0.bin")
 
-# Auto-download model files if missing
-_BASE_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
-for fname, fpath in [("kokoro-v1.0.onnx", model_path), ("voices-v1.0.bin", voices_path)]:
-    if not os.path.isfile(fpath):
-        url = f"{_BASE_URL}/{fname}"
-        print(json.dumps({"info": f"Downloading {fname}..."}), flush=True)
-        try:
-            os.makedirs(os.path.dirname(fpath), exist_ok=True)
-            urllib.request.urlretrieve(url, fpath)
-            size_mb = os.path.getsize(fpath) / (1024 * 1024)
-            print(json.dumps({"info": f"Downloaded {fname} ({size_mb:.1f} MB)"}), flush=True)
-        except Exception as dl_err:
-            print(json.dumps({"fatal": f"Failed to download {fname}: {dl_err}"}), flush=True)
-            sys.exit(1)
+kokoro = None
 
-try:
-    kokoro = kokoro_onnx.Kokoro(model_path, voices_path)
-except Exception as load_err:
-    print(json.dumps({"fatal": f"Cannot load Kokoro model: {load_err}"}), flush=True)
-    sys.exit(1)
+def _load_kokoro():
+    """Download model files if needed and load Kokoro (lazy — skipped
+    entirely when every segment is served from the cache)."""
+    global kokoro
+    if kokoro is not None:
+        return kokoro
+    # Auto-download model files if missing
+    _BASE_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+    for fname, fpath in [("kokoro-v1.0.onnx", model_path), ("voices-v1.0.bin", voices_path)]:
+        if not os.path.isfile(fpath):
+            url = f"{_BASE_URL}/{fname}"
+            print(json.dumps({"info": f"Downloading {fname}..."}), flush=True)
+            try:
+                os.makedirs(os.path.dirname(fpath), exist_ok=True)
+                urllib.request.urlretrieve(url, fpath)
+                size_mb = os.path.getsize(fpath) / (1024 * 1024)
+                print(json.dumps({"info": f"Downloaded {fname} ({size_mb:.1f} MB)"}), flush=True)
+            except Exception as dl_err:
+                print(json.dumps({"fatal": f"Failed to download {fname}: {dl_err}"}), flush=True)
+                sys.exit(1)
+    try:
+        kokoro = kokoro_onnx.Kokoro(model_path, voices_path)
+    except Exception as load_err:
+        print(json.dumps({"fatal": f"Cannot load Kokoro model: {load_err}"}), flush=True)
+        sys.exit(1)
+    return kokoro
 
 results = []
 for i, seg in enumerate(segments):
     audio_path = os.path.join(output_dir, f"segment_{i:03d}.wav")
+    seg_voice = seg.get("voice", "") or voice
+    cache_path = None
+    if cache_dir:
+        key = hashlib.sha1(
+            f"{seg_voice}|{speed}|{seg['text']}".encode("utf-8")).hexdigest()
+        cache_path = os.path.join(cache_dir, f"{key}.wav")
     try:
-        seg_voice = seg.get("voice", "") or voice
-        samples, sr = kokoro.create(seg["text"], voice=seg_voice, speed=speed)
-        sf.write(audio_path, samples, sr)
-        duration = round(len(samples) / sr, 3)
+        if cache_path and os.path.isfile(cache_path):
+            shutil.copyfile(cache_path, audio_path)
+            info = sf.info(audio_path)
+            duration = round(info.frames / info.samplerate, 3)
+        else:
+            samples, sr = _load_kokoro().create(seg["text"], voice=seg_voice, speed=speed)
+            sf.write(audio_path, samples, sr)
+            duration = round(len(samples) / sr, 3)
+            if cache_path and os.path.getsize(audio_path) <= _CACHE_MAX_BYTES:
+                try:
+                    # Write via temp + rename so a crash never leaves a
+                    # truncated WAV in the cache.
+                    shutil.copyfile(audio_path, cache_path + ".tmp")
+                    os.replace(cache_path + ".tmp", cache_path)
+                except OSError:
+                    pass
         entry = {"index": i, "audio_path": audio_path, "duration": duration, "status": "ok"}
     except Exception as exc:
         entry = {"index": i, "status": "error", "message": str(exc)}
@@ -125,6 +159,7 @@ class NarrationMixin:
     _narr_final_audio = None  # path to concatenated WAV
     _narr_subtitles_vtt = None  # path to generated WebVTT file
     _narr_done = False
+    _narr_last_output = 0.0   # timestamp of last subprocess output (watchdog)
 
     # ------------------------------------------------------------------ #
     #  Engine check (Kokoro)
@@ -229,6 +264,15 @@ class NarrationMixin:
         audio_dir = os.path.join(_preview_dir, f'narration_{ts}')
         os.makedirs(audio_dir, exist_ok=True)
 
+        # Segment WAV cache — identical (voice, speed, text) is reused
+        # instead of re-synthesized.
+        cache_dir = os.path.join(
+            os.path.expanduser('~'), '.manim_studio', 'narration_cache')
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+        except OSError:
+            cache_dir = ''  # cache unavailable — synthesize everything
+
         # Reset state
         NarrationMixin._narr_generating = True
         NarrationMixin._narr_progress = 0
@@ -241,6 +285,7 @@ class NarrationMixin:
         NarrationMixin._narr_texts = [s['text'] for s in segments]
         NarrationMixin._narr_final_audio = None
         NarrationMixin._narr_done = False
+        NarrationMixin._narr_last_output = time.time()
 
         # Write the helper script to the audio dir
         script_path = os.path.join(audio_dir, '_generate.py')
@@ -253,7 +298,8 @@ class NarrationMixin:
             'voice': voice,
             'speed': speed,
             'output_dir': audio_dir,
-            'models_dir': _models_dir
+            'models_dir': _models_dir,
+            'cache_dir': cache_dir
         })
 
         print(f"[NARRATION] Generating {len(segments)} segments, voice={voice}, speed={speed}")
@@ -277,7 +323,12 @@ class NarrationMixin:
                 proc = NarrationMixin._narr_proc
                 try:
                     for line in proc.stdout:
+                        NarrationMixin._narr_last_output = time.time()
                         NarrationMixin._narr_output_buf += line
+                        # Keep only the last ~64KB — the buffer is used for
+                        # error reporting, not full transcripts
+                        if len(NarrationMixin._narr_output_buf) > 65536:
+                            NarrationMixin._narr_output_buf = NarrationMixin._narr_output_buf[-65536:]
                         line = line.strip()
                         if not line:
                             continue
@@ -301,7 +352,9 @@ class NarrationMixin:
                         if msg.get('done'):
                             break
                 except Exception as e:
-                    NarrationMixin._narr_error = str(e)
+                    # Don't overwrite an error already set (e.g. by watchdog)
+                    if not NarrationMixin._narr_error:
+                        NarrationMixin._narr_error = str(e)
 
                 proc.wait()
                 NarrationMixin._narr_done = True
@@ -327,7 +380,26 @@ class NarrationMixin:
                 print(f"[NARRATION] Done. {len(NarrationMixin._narr_segments)} segments, "
                       f"error={NarrationMixin._narr_error}")
 
+            def _watchdog():
+                # Kill the subprocess if it stops producing output — a hung
+                # Kokoro would otherwise block the reader thread forever.
+                proc = NarrationMixin._narr_proc
+                while proc and proc.poll() is None:
+                    idle = time.time() - NarrationMixin._narr_last_output
+                    if idle > _NARR_OUTPUT_TIMEOUT:
+                        NarrationMixin._narr_error = (
+                            f'TTS generation stalled (no output for '
+                            f'{_NARR_OUTPUT_TIMEOUT}s) — process killed.')
+                        print(f"[NARRATION] Watchdog: {NarrationMixin._narr_error}")
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                        break
+                    time.sleep(5)
+
             threading.Thread(target=_reader, daemon=True).start()
+            threading.Thread(target=_watchdog, daemon=True).start()
             return {'status': 'started', 'total': len(segments),
                     'message': 'Generating narration...'}
 
@@ -557,6 +629,9 @@ def _generate_subtitles_vtt(segments, texts, audio_dir, gap_seconds=0.5):
         if duration <= 0:
             continue
         text = texts[i] if i < len(texts) else ''
+        # Sanitize for WebVTT: cue text must not contain newlines or "-->"
+        # (either would break cue parsing).
+        text = ' '.join(text.split()).replace('-->', '').strip()
         if not text:
             continue
 

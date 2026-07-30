@@ -58,6 +58,9 @@ STATE = {
 _LOCK = threading.Lock()
 _CANCEL = threading.Event()
 
+# Hard wall-clock cap for a single fragment render (seconds).
+_FRAGMENT_HARD_CAP = 7200
+
 _FALLBACK_REASONS = {
     'value_tracker': 'ValueTracker detected; cross-fragment state is unsafe',
     'narration': 'narrate() detected; audio retiming not supported in farm v1',
@@ -322,10 +325,33 @@ def _render_fragment(scene_file: str, scene_name: str, quality_flag: str,
                     on_progress(int(m.group(1)) / 100.0)
                 except Exception:
                     pass
-        rc = proc.wait()
+        deadline = time.time() + _FRAGMENT_HARD_CAP
+        while True:
+            try:
+                rc = proc.wait(timeout=30)
+                break
+            except subprocess.TimeoutExpired:
+                if _CANCEL.is_set():
+                    proc.kill()
+                    return {'ok': False, 'error': 'cancelled'}
+                if time.time() > deadline:
+                    proc.kill()
+                    return {'ok': False,
+                            'error': f'timed out after {_FRAGMENT_HARD_CAP}s'}
         if rc != 0:
             return {'ok': False, 'error': f'manim exited {rc}'}
-        # Locate the output
+        # Locate the output. Manim writes to a predictable path:
+        # <media_dir>/videos/<script_basename>/<res><fps>/<SceneName>.mp4
+        res_map = {'-ql': '480p', '-qm': '720p', '-qh': '1080p',
+                   '-qp': '1440p', '-qk': '2160p'}
+        expected = os.path.join(
+            out_dir, 'videos',
+            os.path.splitext(os.path.basename(scene_file))[0],
+            f'{res_map.get(quality_flag, "720p")}{fps}',
+            f'{scene_name}.mp4')
+        if os.path.isfile(expected):
+            return {'ok': True, 'video': expected}
+        # Fallback: the layout is version-sensitive — walk the tree.
         for root, _, files in os.walk(out_dir):
             for f in files:
                 if f.endswith('.mp4') and scene_name in f:
@@ -383,7 +409,7 @@ def farm_cancel() -> dict:
 def farm_render(scene_file: str, output_path: str, quality_flag: str = '-qm',
                 fps: int = 30, scene_name: Optional[str] = None,
                 manim_cmd: Optional[list] = None,
-                workers: int = 4) -> dict:
+                workers: int = max(1, (os.cpu_count() or 8) // 2)) -> dict:
     """Entry point. Runs async in a background thread. Returns immediately
     with {status: 'started', job_id} or {status: 'fallback', reason} if
     the scene can't be split safely."""

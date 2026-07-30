@@ -205,13 +205,15 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
         # Basic options
         "--standalone",  # Create standalone distribution
         "--assume-yes-for-downloads",  # Auto-accept downloads
+        "--python-flag=no_asserts",  # Strip assert statements (smaller, faster);
+                                     # Nuitka 2.x renamed the old --remove-asserts
 
         # Application info
         f"--output-filename={APP_NAME}.exe",
         "--company-name=ManimStudio",
         "--product-name=Manim Studio",
-        "--file-version=1.1.3.0",
-        "--product-version=1.1.3.0",
+        "--file-version=1.1.4.0",
+        "--product-version=1.1.4.0",
         "--file-description=Manim Animation Studio",
         "--copyright=Manim Studio 2025",
 
@@ -219,6 +221,10 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
         # 'attach' reuses parent console (needed for CLI/MCP mode) and
         # creates none when double-clicked (GUI stays clean).
         f"--windows-console-mode={console_mode}",
+
+        # (Windows runtime DLLs are bundled automatically in Nuitka 2.x
+        # standalone mode; the old --include-windows-runtime-dlls flag was
+        # removed upstream, so it's no longer passed.)
 
         # Enable multiprocessing plugin (REQUIRED for pywebview with disabled console)
         "--plugin-enable=multiprocessing",
@@ -241,6 +247,23 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
 
         # Ensure cli.py is compiled (used by CLI/MCP mode via conditional import)
         "--include-module=cli",
+        "--include-module=scene_parser",  # imported by cli
+
+        # Nuitka's bundled PywebViewPlugin hardcodes which webview.platforms.*
+        # submodules to include on Windows and doesn't know about win32.py
+        # (a helper added in newer pywebview releases that winforms.py
+        # imports directly: `from webview.platforms import win32`) — it
+        # actively excludes that module, breaking window creation at
+        # runtime with a misleading "pythonnet cannot be loaded" error.
+        # Two workarounds don't work: --include-module conflicts with the
+        # plugin's explicit veto and hard-aborts the build; a
+        # --user-package-configuration-file implicit-imports hint is
+        # silently overridden by the same veto (the plugin's decision is
+        # authoritative regardless of how Nuitka learns the module might be
+        # needed). The fix: disable the buggy built-in plugin and load a
+        # corrected copy (same logic, win32 added to the whitelist).
+        "--disable-plugins=pywebview",
+        f"--user-plugin={BASE_DIR / 'nuitka_pywebview_fix_plugin.py'}",
 
         # Note: pywebview plugin is always enabled by Nuitka, no need to specify it
 
@@ -266,6 +289,10 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
         # Deployment flags (antivirus compatibility)
         "--no-deployment-flag=self-execution",  # Prevent app from calling itself
         "--no-deployment-flag=uninstall-on-shutdown",  # Don't auto-uninstall
+        # NOTE: webview.platforms.win32 exclusion is fixed above via
+        # --include-module (surgical + doesn't disable anti-bloat globally,
+        # which had made LTO linking dramatically slower for no benefit —
+        # the module still wasn't included even with the flag set).
 
         # Output options
         f"--output-dir={OUTPUT_DIR}",
@@ -280,7 +307,6 @@ def build(onefile=False, console_mode="disable", use_lto=True, onefile_profile="
         nuitka_cmd.extend([
             "--onefile-tempdir-spec={CACHE_DIR}/{COMPANY}/{PRODUCT}/{VERSION}",
             "--onefile-cache-mode=cached",
-            "--include-windows-runtime-dlls=yes",
         ])
         if onefile_profile == "stable":
             nuitka_cmd.append("--onefile-no-compression")

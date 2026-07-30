@@ -66,6 +66,25 @@ _PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompts
 #  Capabilities, pricing, aliases, smart defaults, fallback chain
 # ═══════════════════════════════════════════════════════════════
 
+_codex_exe_cache = None
+
+
+def _codex_exe():
+    """Resolve the Codex CLI launcher to a full path (cached).
+
+    On Windows the npm shim is ``codex.CMD`` — CreateProcess only searches
+    PATH for ``.exe``, so a bare ``['codex', ...]`` argv raises
+    FileNotFoundError. The full path (which CreateProcess runs via cmd.exe
+    for batch files) works. Returns 'codex' as a last resort so POSIX
+    systems and shell=True callers keep working.
+    """
+    global _codex_exe_cache
+    if _codex_exe_cache is None:
+        import shutil as _shutil
+        _codex_exe_cache = _shutil.which('codex') or 'codex'
+    return _codex_exe_cache
+
+
 class ModelRegistry:
     """Central registry for all supported AI models with capabilities,
     pricing, aliases, and fallback logic.
@@ -77,56 +96,79 @@ class ModelRegistry:
     # id → {display, provider, family, aliases, context, max_output,
     #        thinking, effort, fast, cost_input, cost_output, tier}
     MODELS = {
-        # ── Claude 4.7 family (current — released early 2026) ──
-        'claude-opus-4-7': {
-            'display': 'Claude Opus 4.7',
+        # ── Claude 5 family (flagship — released mid 2026) ──
+        'claude-fable-5': {
+            'display': 'Claude Fable 5',
+            'provider': 'claude',
+            'family': 'fable',
+            'aliases': ['fable', 'fable-5', 'fable5', 'most-capable'],
+            'context': 1_000_000,   # 1M context is the default on Fable 5
+            'context_1m': True,
+            'max_output': 128_000,
+            'thinking': 'adaptive',  # always on — cannot be disabled
+            'effort': True,
+            'fast_mode': False,
+            'cost_input': 10.0,   # $ per 1M tokens
+            'cost_output': 50.0,
+            'tier': 'premium',
+            'recommended_for': ['complex_edits', 'agent'],
+        },
+        # ── Claude 4.x current generation (mid 2026) ──
+        'claude-opus-4-8': {
+            'display': 'Claude Opus 4.8',
             'provider': 'claude',
             'family': 'opus',
-            'aliases': ['opus', 'opus-4-7', 'opus4.7', 'best', 'latest'],
+            'aliases': ['opus', 'opus-4-8', 'opus4.8', 'best', 'latest'],
             'context': 200_000,
             'context_1m': True,
             'max_output': 128_000,
             'thinking': 'adaptive',
             'effort': True,
             'fast_mode': True,
-            'cost_input': 5.0,    # $ per 1M tokens
+            'cost_input': 5.0,
             'cost_output': 25.0,
             'tier': 'premium',
             'recommended_for': ['complex_edits', 'agent', 'review'],
         },
-        'claude-sonnet-4-7': {
-            'display': 'Claude Sonnet 4.7',
+        'claude-sonnet-5': {
+            'display': 'Claude Sonnet 5',
             'provider': 'claude',
             'family': 'sonnet',
-            'aliases': ['sonnet', 'sonnet-4-7', 'sonnet4.7'],
+            # Bare 'sonnet' now resolves here (was Sonnet 4.6) — matches
+            # Anthropic's own alias resolution. Explicit 'sonnet-4-6'
+            # still resolves to the 4.6 entry below.
+            'aliases': ['sonnet', 'sonnet-5', 'sonnet5', 'balanced'],
             'context': 200_000,
             'context_1m': True,
-            'max_output': 64_000,
-            'thinking': 'adaptive',
-            'effort': True,
-            'fast_mode': True,
-            'cost_input': 3.0,
+            'max_output': 128_000,
+            'thinking': 'adaptive',  # on by default when omitted
+            'effort': True,          # supports low..xhigh + max
+            'fast_mode': False,
+            'cost_input': 3.0,   # $3/$15 list ($2/$10 intro through 2026-08-31)
             'cost_output': 15.0,
             'tier': 'standard',
             'recommended_for': ['edits', 'balanced', 'agent'],
         },
-        'claude-haiku-4-7': {
-            'display': 'Claude Haiku 4.7',
+        # ── Previous generations (kept for stability) ──
+        # NOTE: 'claude-sonnet-4-7' / 'claude-haiku-4-7' never existed —
+        # they were registry bugs (see MIGRATIONS). Sonnet's current is
+        # 5, Opus's is 4.8, Haiku's is 4.5.
+        'claude-opus-4-7': {
+            'display': 'Claude Opus 4.7 (previous)',
             'provider': 'claude',
-            'family': 'haiku',
-            'aliases': ['haiku', 'haiku-4-7', 'haiku4.7', 'fast', 'cheap'],
+            'family': 'opus',
+            'aliases': ['opus-4-7', 'opus4.7'],
             'context': 200_000,
-            'context_1m': False,
-            'max_output': 64_000,
-            'thinking': 'budget',
-            'effort': False,
-            'fast_mode': False,
-            'cost_input': 1.0,
-            'cost_output': 5.0,
-            'tier': 'economy',
-            'recommended_for': ['autocomplete', 'quick_fix', 'review'],
+            'context_1m': True,
+            'max_output': 128_000,
+            'thinking': 'adaptive',
+            'effort': True,
+            'fast_mode': True,
+            'cost_input': 5.0,
+            'cost_output': 25.0,
+            'tier': 'premium',
+            'recommended_for': ['complex_edits'],
         },
-        # ── Claude 4.6 family (previous gen — kept for stability) ──
         'claude-opus-4-6': {
             'display': 'Claude Opus 4.6 (previous)',
             'provider': 'claude',
@@ -160,10 +202,10 @@ class ModelRegistry:
             'recommended_for': ['edits'],
         },
         'claude-haiku-4-5-20251001': {
-            'display': 'Claude Haiku 4.5 (previous)',
+            'display': 'Claude Haiku 4.5',
             'provider': 'claude',
             'family': 'haiku',
-            'aliases': ['haiku-4-5', 'haiku4.5'],
+            'aliases': ['haiku', 'haiku-4-5', 'haiku4.5', 'fast', 'cheap'],
             'context': 200_000,
             'context_1m': False,
             'max_output': 64_000,
@@ -173,7 +215,7 @@ class ModelRegistry:
             'cost_input': 1.0,
             'cost_output': 5.0,
             'tier': 'economy',
-            'recommended_for': ['quick_fix'],
+            'recommended_for': ['autocomplete', 'quick_fix', 'review'],
         },
         'claude-sonnet-4-5': {
             'display': 'Claude Sonnet 4.5',
@@ -208,82 +250,138 @@ class ModelRegistry:
             'recommended_for': ['complex_edits'],
         },
         # ── Codex (via Codex CLI) ──
-        'gpt-5.4': {
-            'display': 'GPT-5.4',
+        # Lineup verified against `codex debug models` (CLI 0.144.5,
+        # 2026-07-18): the GPT-5.6 family (Sol/Terra/Luna) replaced
+        # GPT-5.4/-mini (now hidden upstream with official upgrade
+        # mappings — see MIGRATIONS); gpt-5.3-codex is gone entirely.
+        # Costs are 0 — Codex bills through the ChatGPT subscription.
+        'gpt-5.6-sol': {
+            'display': 'GPT-5.6 Sol',
             'provider': 'codex',
             'family': 'gpt5',
-            'aliases': ['gpt5.4'],
+            'aliases': ['codex', 'gpt5.6', 'sol'],
             'context': 200_000,
             'context_1m': False,
             'max_output': 32_000,
-            'thinking': 'auto',
-            'effort': False,
-            'fast_mode': False,
+            'thinking': 'medium',
+            'effort': True,
+            'fast_mode': True,
             'cost_input': 0, 'cost_output': 0,
             'tier': 'standard',
-            'recommended_for': ['edits'],
+            'recommended_for': ['complex_edits', 'agent'],
+            'description': 'Latest frontier agentic coding model.',
         },
-        'gpt-5.3-codex': {
-            'display': 'GPT-5.3 Codex',
+        'gpt-5.6-terra': {
+            'display': 'GPT-5.6 Terra',
             'provider': 'codex',
             'family': 'gpt5',
-            'aliases': ['codex', 'gpt5.3'],
+            'aliases': ['terra'],
             'context': 200_000,
             'context_1m': False,
             'max_output': 32_000,
-            'thinking': 'auto',
-            'effort': False,
+            'thinking': 'medium',
+            'effort': True,
+            'fast_mode': True,
+            'cost_input': 0, 'cost_output': 0,
+            'tier': 'standard',
+            'recommended_for': ['edits', 'balanced'],
+            'description': 'Balanced agentic coding model for everyday work.',
+        },
+        'gpt-5.6-luna': {
+            'display': 'GPT-5.6 Luna',
+            'provider': 'codex',
+            'family': 'gpt5',
+            'aliases': ['luna'],
+            'context': 200_000,
+            'context_1m': False,
+            'max_output': 32_000,
+            'thinking': 'medium',
+            'effort': True,
             'fast_mode': False,
+            'cost_input': 0, 'cost_output': 0,
+            'tier': 'economy',
+            'recommended_for': ['quick_fix', 'fast'],
+            'description': 'Fast and affordable agentic coding model.',
+        },
+        'gpt-5.5': {
+            'display': 'GPT-5.5',
+            'provider': 'codex',
+            'family': 'gpt5',
+            'aliases': ['gpt5.5'],
+            'context': 200_000,
+            'context_1m': False,
+            'max_output': 32_000,
+            'thinking': 'xhigh',
+            'effort': True,
+            'fast_mode': True,
             'cost_input': 0, 'cost_output': 0,
             'tier': 'standard',
             'recommended_for': ['edits', 'agent'],
+            'description': 'Frontier model for complex coding, research, and real-world work.',
         },
     }
 
     # ── Fallback chains (model → fallback when rate-limited/error) ──
     FALLBACK = {
-        'claude-opus-4-7':    'claude-sonnet-4-7',
-        'claude-sonnet-4-7':  'claude-haiku-4-7',
-        'claude-haiku-4-7':   'claude-haiku-4-5-20251001',
+        'claude-fable-5':     'claude-opus-4-8',
+        'claude-opus-4-8':    'claude-opus-4-7',
+        'claude-opus-4-7':    'claude-sonnet-5',
+        'claude-sonnet-5':    'claude-sonnet-4-6',
+        'claude-sonnet-4-6':  'claude-haiku-4-5-20251001',
         # Previous gen chain (kept so users on old defaults still fail-over)
         'claude-opus-4-6':    'claude-sonnet-4-6',
         'claude-opus-4-5':    'claude-sonnet-4-5',
-        'claude-sonnet-4-6':  'claude-haiku-4-5-20251001',
         'claude-sonnet-4-5':  'claude-haiku-4-5-20251001',
-        'gpt-5.4':            'gpt-5.3-codex',
+        'gpt-5.6-sol':        'gpt-5.6-terra',
+        'gpt-5.6-terra':      'gpt-5.6-luna',
+        'gpt-5.5':            'gpt-5.6-terra',
     }
 
     # ── Smart defaults per task type ──
-    # Updated 2026-05-06: 4.7 is now the current Claude generation, so we
-    # default everything to it. Sonnet 4.7 has adaptive thinking + 1M
-    # context, so it's the right balance of capability and cost for the
-    # main edit & agent paths.
+    # Updated 2026-07-18: current lineup is Fable 5 / Opus 4.8 /
+    # Sonnet 5 / Haiku 4.5. Sonnet 5 is near-Opus quality on coding and
+    # agentic work at the same $3/$15 Sonnet price (adaptive thinking,
+    # xhigh effort, 128K output), so it takes over the main edit & agent
+    # paths from Sonnet 4.6. Opus 4.8 for complex generation; Fable 5 is
+    # opt-in only (premium pricing). Users who explicitly saved
+    # 'claude-sonnet-4-6' keep it — resolve() honours exact IDs.
     TASK_DEFAULTS = {
-        'edit': 'claude-sonnet-4-7',       # Balanced for code edits
-        'agent': 'claude-sonnet-4-7',      # Agent loop (many turns)
-        'autocomplete': 'claude-haiku-4-7',  # Fast completions
-        'review': 'claude-haiku-4-7',        # Screenshot review
-        'complex': 'claude-opus-4-7',      # Complex generation
+        'edit': 'claude-sonnet-5',         # Balanced for code edits
+        'agent': 'claude-sonnet-5',        # Agent loop (many turns)
+        'autocomplete': 'claude-haiku-4-5-20251001',  # Fast completions
+        'review': 'claude-haiku-4-5-20251001',        # Screenshot review
+        'complex': 'claude-opus-4-8',      # Complex generation
     }
 
     # ── Legacy model migrations ──
-    # Walk old, no-longer-listed IDs forward to the closest current 4.7
-    # sibling. Note: 4.6 / 4.5 / 4.5-dated IDs are still in MODELS above
-    # (previous-gen kept for stability), so they're NOT migrated — if a
-    # user explicitly picked them, we respect that. Only IDs that have
+    # Walk old or invalid IDs forward to the closest current sibling.
+    # Note: 4.7 / 4.6 / 4.5 Opus and 4.5 Sonnet IDs are still in MODELS
+    # above (previous-gen kept for stability), so they're NOT migrated —
+    # if a user explicitly picked them, we respect that. Only IDs with
     # no entry in MODELS land here.
     MIGRATIONS = {
-        # 4.5 dated IDs → 4.7 (the bare 'claude-sonnet-4-5' is still in MODELS)
-        'claude-sonnet-4-5-20250514': 'claude-sonnet-4-7',
-        'claude-sonnet-4-5-20250929': 'claude-sonnet-4-7',
-        'claude-opus-4-5-20251101':   'claude-opus-4-7',
-        # Older Claude generations (3.x and 4.0/4.1) — bring all the way forward
-        'claude-opus-4-1-20250805':   'claude-opus-4-7',
-        'claude-opus-4-20250514':     'claude-opus-4-7',
-        'claude-sonnet-4-20250514':   'claude-sonnet-4-7',
-        'claude-3-7-sonnet-20250219': 'claude-sonnet-4-7',
-        'claude-3-5-sonnet-20241022': 'claude-sonnet-4-7',
-        'claude-3-5-haiku-20241022':  'claude-haiku-4-7',
+        # 'sonnet-4-7' / 'haiku-4-7' never existed (registry bug in
+        # v1.1.3 defaults) — walk them to the real current siblings.
+        'claude-sonnet-4-7': 'claude-sonnet-5',
+        'claude-haiku-4-7':  'claude-haiku-4-5-20251001',
+        # 4.5 dated IDs → current (the bare aliases are still in MODELS)
+        'claude-sonnet-4-5-20250514': 'claude-sonnet-5',
+        'claude-sonnet-4-5-20250929': 'claude-sonnet-5',
+        'claude-opus-4-5-20251101':   'claude-opus-4-8',
+        # Older Claude generations (3.x and 4.0/4.1) — bring all the way
+        # forward, per Anthropic's migration guide (legacy Sonnets →
+        # Sonnet 5, legacy Opus → Opus 4.8, legacy Haiku → Haiku 4.5)
+        'claude-opus-4-1-20250805':   'claude-opus-4-8',
+        'claude-opus-4-20250514':     'claude-opus-4-8',
+        'claude-sonnet-4-20250514':   'claude-sonnet-5',
+        'claude-3-7-sonnet-20250219': 'claude-sonnet-5',
+        'claude-3-5-sonnet-20241022': 'claude-sonnet-5',
+        'claude-3-5-haiku-20241022':  'claude-haiku-4-5-20251001',
+        # Codex: official upgrade mappings published in the CLI catalog
+        # (gpt-5.4/-mini are "no longer available"; 5.3-codex removed)
+        'gpt-5.4':       'gpt-5.6-terra',
+        'gpt-5.4-mini':  'gpt-5.6-luna',
+        'gpt-5.3-codex': 'gpt-5.6-sol',
     }
 
     @classmethod
@@ -295,7 +393,7 @@ class ModelRegistry:
         Returns (model_id, was_migrated).
         """
         if not model_input or not model_input.strip():
-            default = cls.TASK_DEFAULTS.get(task, 'claude-sonnet-4-7')
+            default = cls.TASK_DEFAULTS.get(task, 'claude-sonnet-5')
             return default, False
 
         raw = model_input.strip()
@@ -310,10 +408,25 @@ class ModelRegistry:
             if lower in [a.lower() for a in info.get('aliases', [])]:
                 return model_id, False
 
+        # The installed Codex catalog is authoritative. A model can remain
+        # selectable during an announced migration window, so do not rewrite
+        # it merely because an older static registry marked it for upgrade.
+        if raw in cls._codex_visible_ids:
+            return raw, False
+
         # Legacy migration
         if raw in cls.MIGRATIONS:
             new_id = cls.MIGRATIONS[raw]
-            print(f"[MODEL] Migrated {raw} → {new_id}")
+            # ASCII arrow — cp1252 consoles (CLI use) can't print '→'
+            print(f"[MODEL] Migrated {raw} -> {new_id}")
+            return new_id, True
+
+        # Dynamic migration published by the Codex CLI catalog itself
+        # (removed models carry an official 'upgrade' mapping) — future
+        # removals walk forward without an app update.
+        if raw in cls._codex_dynamic_migrations:
+            new_id = cls._codex_dynamic_migrations[raw]
+            print(f"[MODEL] Migrated {raw} -> {new_id} (codex catalog upgrade)")
             return new_id, True
 
         # Unknown model — pass through (user may have a custom model)
@@ -333,13 +446,22 @@ class ModelRegistry:
     def get_provider(cls, model_id):
         """Get provider ('claude' or 'codex') for a model."""
         info = cls.MODELS.get(model_id)
-        return info['provider'] if info else 'claude'
+        if info:
+            return info['provider']
+        return 'codex' if model_id in cls._codex_visible_ids else 'claude'
 
     @classmethod
     def get_context_window(cls, model_id):
         """Get context window size in tokens."""
         info = cls.MODELS.get(model_id)
         return info['context'] if info else 200_000
+
+    @classmethod
+    def context_window_for(cls, model_input, task='edit'):
+        """Resolve any model string (alias / legacy ID / empty) and return
+        its context window. Falls back to 200k for unknown models."""
+        mid, _ = cls.resolve(model_input or '', task)
+        return cls.get_context_window(mid)
 
     @classmethod
     def estimate_cost(cls, model_id, input_tokens, output_tokens,
@@ -359,26 +481,211 @@ class ModelRegistry:
         return round(cost, 6)
 
     # ── Auto-discovery of models the user has actually used ─────────
-    # Cache so we don't rescan on every dropdown open. Cleared on app
-    # launch (process restart) so a brand-new model the user invokes
-    # via CLI will appear next time the app starts.
+    # Cache so we don't rescan on every dropdown open. Expires after
+    # _DISCOVERY_TTL_S so a brand-new model the user invokes via CLI
+    # appears without restarting the app.
+    _DISCOVERY_TTL_S = 300
     _discovered_cache = None
+    _discovered_cache_at = 0.0
     _discovered_codex_cache = None
+    _discovered_codex_cache_at = 0.0
+
+    # Dynamic model migrations published by the Codex CLI catalog itself:
+    # hidden/removed models carry an official {'upgrade': {'model': ...}}
+    # mapping. Filled in by _codex_catalog_live(); consulted by resolve().
+    _codex_dynamic_migrations = {}
+    _codex_visible_ids = set()
+    _codex_refreshing = False
+    _codex_catalog_meta = {
+        'source': 'none',
+        'source_label': 'No Codex catalog found',
+        'updated_at': 0.0,
+        'client_version': '',
+        'error': '',
+    }
+    _CODEX_SNAPSHOT = os.path.join(os.path.expanduser('~'), '.manim_studio',
+                                   'codex_models_cache.json')
 
     @classmethod
     def discover_local_codex_models(cls):
-        """Return the authoritative OpenAI Codex model list as cached by
-        the Codex CLI itself (``~/.codex/models_cache.json``). Way more
-        reliable than scanning session files because OpenAI publishes a
-        canonical list which the CLI refreshes on its own schedule.
+        """Return the OpenAI Codex model catalog (never blocks after the
+        first successful fetch).
 
-        Returns a list of dicts with rich metadata: ``slug``,
-        ``display_name``, ``description``, ``default_reasoning_level``,
-        ``visibility``."""
+        Primary source: ``codex debug models`` — the installed CLI
+        renders its own catalog, so new OpenAI models appear as soon as
+        the CLI knows them, with zero app changes.
+
+        Freshness strategy (stale-while-revalidate):
+        - fresh in-memory cache (< _DISCOVERY_TTL_S) → return it;
+        - stale in-memory cache → return it immediately and refresh in a
+          background thread (the ~2-4s CLI call never blocks the UI);
+        - cold start → serve our persisted snapshot instantly (and
+          refresh in the background); only the very first run ever does
+          a blocking live fetch, falling back to the CLI's own
+          ``models_cache.json`` if the CLI can't be executed."""
+        now = time.time()
+        cache = cls._discovered_codex_cache
+        if cache is not None and now - cls._discovered_codex_cache_at < cls._DISCOVERY_TTL_S:
+            return cache
+
+        # Codex refreshes this file itself. Reading it is cheap and, unlike
+        # invoking the CLI, works when a packaged GUI has a restricted PATH.
+        disk_models = cls._codex_catalog_disk()
+        if disk_models:
+            cls._discovered_codex_cache = disk_models
+            cls._discovered_codex_cache_at = now
+            cls._codex_snapshot_save(disk_models)
+            return disk_models
+
+        if cache is not None:
+            cls._codex_refresh_async()
+            return cache
+
+        snap = cls._codex_snapshot_load()
+        if snap is not None:
+            cls._discovered_codex_cache = snap
+            cls._discovered_codex_cache_at = 0.0  # stale — refresh below
+            cls._codex_refresh_async()
+            return snap
+
+        # First run ever on this machine and no Codex disk catalog: try the
+        # CLI once. This is the only blocking path.
+        models = cls._codex_catalog_live()
+        cls._discovered_codex_cache = models or []
+        cls._discovered_codex_cache_at = time.time()
+        if models:
+            cls._codex_snapshot_save(models)
+        return cls._discovered_codex_cache
+
+    @classmethod
+    def _codex_refresh_async(cls):
+        """Refresh the codex catalog in a daemon thread (at most one at
+        a time). The stale list keeps serving until the refresh lands."""
+        if cls._codex_refreshing:
+            return
+        cls._codex_refreshing = True
+
+        def _run():
+            try:
+                models = cls._codex_catalog_live()
+                if not models:
+                    models = cls._codex_catalog_disk()
+                if models is not None:
+                    cls._discovered_codex_cache = models
+                    cls._codex_snapshot_save(models)
+                # On failure keep serving the stale list; either way wait
+                # a full TTL before trying again.
+                cls._discovered_codex_cache_at = time.time()
+            finally:
+                cls._codex_refreshing = False
+
+        threading.Thread(target=_run, daemon=True,
+                         name='codex-model-refresh').start()
+
+    @classmethod
+    def _codex_snapshot_save(cls, models):
+        """Persist the last good catalog (plus upgrade mappings) so app
+        restarts serve models instantly without waiting on the CLI."""
+        try:
+            os.makedirs(os.path.dirname(cls._CODEX_SNAPSHOT), exist_ok=True)
+            with open(cls._CODEX_SNAPSHOT, 'w', encoding='utf-8') as f:
+                json.dump({'saved_at': time.time(),
+                           'client_version': cls._codex_catalog_meta.get(
+                               'client_version', ''),
+                           'migrations': cls._codex_dynamic_migrations,
+                           'models': models}, f)
+        except Exception as e:
+            print(f'[MODEL DISCOVERY] codex: snapshot save failed: {e}')
+
+    @classmethod
+    def _codex_snapshot_load(cls):
+        try:
+            with open(cls._CODEX_SNAPSHOT, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            models = data.get('models')
+            if not isinstance(models, list) or not models:
+                return None
+            cls._codex_dynamic_migrations.update(data.get('migrations') or {})
+            age_h = (time.time() - data.get('saved_at', 0)) / 3600
+            cls._codex_visible_ids = {
+                m.get('slug') for m in models
+                if isinstance(m, dict) and m.get('slug')
+            }
+            cls._codex_catalog_meta = {
+                'source': 'snapshot',
+                'source_label': 'Manim Studio snapshot',
+                'updated_at': float(data.get('saved_at', 0) or 0),
+                'client_version': data.get('client_version', ''),
+                'error': '',
+            }
+            print(f'[MODEL DISCOVERY] codex: loaded snapshot '
+                  f'({len(models)} models, {age_h:.1f}h old)')
+            return models
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            print(f'[MODEL DISCOVERY] codex: snapshot load failed: {e}')
+            return None
+
+    @classmethod
+    def _codex_catalog_live(cls):
+        """Run ``codex debug models`` and parse the catalog. Returns None
+        when the CLI is missing or the invocation fails (caller falls
+        back to snapshot/disk cache). Also harvests the catalog's
+        official upgrade mappings into _codex_dynamic_migrations."""
         import json as _json
-        if cls._discovered_codex_cache is not None:
-            return cls._discovered_codex_cache
+        exe = _codex_exe()
+        if not exe or exe == 'codex':
+            cls._codex_catalog_meta['error'] = 'Codex CLI is not on PATH'
+            return None
+        try:
+            kwargs = {}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(
+                [exe, 'debug', 'models'],
+                capture_output=True, text=True, encoding='utf-8',
+                errors='replace', timeout=30, **kwargs)
+            if result.returncode != 0:
+                print(f'[MODEL DISCOVERY] codex: debug models exited '
+                      f'{result.returncode}; using disk cache')
+                cls._codex_catalog_meta['error'] = (
+                    f'Codex model command exited with code {result.returncode}')
+                return None
+            data = _json.loads(result.stdout)
+        except Exception as e:
+            print(f'[MODEL DISCOVERY] codex: live catalog failed ({e}); '
+                  f'using disk cache')
+            cls._codex_catalog_meta['error'] = str(e)
+            return None
 
+        visible = []
+        for m in data.get('models') or []:
+            if not (isinstance(m, dict) and m.get('slug')):
+                continue
+            upgrade = (m.get('upgrade') or {}).get('model')
+            if upgrade:
+                cls._codex_dynamic_migrations[m['slug']] = upgrade
+            if m.get('visibility', 'list') not in ('list', 'visible'):
+                continue
+            m.pop('base_instructions', None)  # bulky prompt text — unused
+            visible.append(m)
+        cls._codex_visible_ids = {m['slug'] for m in visible}
+        cls._codex_catalog_meta = {
+            'source': 'cli',
+            'source_label': 'Codex CLI',
+            'updated_at': time.time(),
+            'client_version': data.get('client_version', ''),
+            'error': '',
+        }
+        print(f'[MODEL DISCOVERY] codex: {len(visible)} models from live '
+              f'CLI catalog: {[m["slug"] for m in visible]}')
+        return visible
+
+    @classmethod
+    def _codex_catalog_disk(cls):
+        """Fallback: the CLI's own on-disk cache (may be stale)."""
+        import json as _json
         candidates = [
             os.path.join(os.path.expanduser('~'), '.codex', 'models_cache.json'),
             os.path.join(os.path.expanduser('~'), '.config', 'codex', 'models_cache.json'),
@@ -398,14 +705,52 @@ class ModelRegistry:
                        and m.get('visibility', 'list') in ('list', 'visible')
                        and m.get('slug')]
             if visible:
+                cls._codex_visible_ids = {m['slug'] for m in visible}
+                fetched_at = data.get('fetched_at', '')
+                updated_at = os.path.getmtime(path)
+                if fetched_at:
+                    try:
+                        from datetime import datetime as _datetime
+                        updated_at = _datetime.fromisoformat(
+                            fetched_at.replace('Z', '+00:00')).timestamp()
+                    except (TypeError, ValueError):
+                        pass
+                cls._codex_catalog_meta = {
+                    'source': 'codex-cache',
+                    'source_label': 'Codex local catalog',
+                    'updated_at': updated_at,
+                    'client_version': str(data.get('client_version', '') or ''),
+                    'error': '',
+                }
                 slugs = [m['slug'] for m in visible]
                 print(f'[MODEL DISCOVERY] codex: {len(visible)} models from '
                       f'{path} (fetched_at={data.get("fetched_at", "?")}): {slugs}')
-            cls._discovered_codex_cache = visible
-            return cls._discovered_codex_cache
+            return visible
         print('[MODEL DISCOVERY] codex: no models_cache.json found')
-        cls._discovered_codex_cache = []
-        return cls._discovered_codex_cache
+        return []
+
+    @classmethod
+    def codex_catalog_status(cls):
+        """Small, UI-safe summary of how Codex models were detected."""
+        meta = dict(cls._codex_catalog_meta)
+        meta.update({
+            'available': bool(cls._discovered_codex_cache),
+            'count': len(cls._discovered_codex_cache or []),
+            'refreshing': bool(cls._codex_refreshing),
+        })
+        return meta
+
+    @classmethod
+    def refresh_codex_catalog(cls):
+        """Refresh now for the model picker's explicit refresh action."""
+        models = cls._codex_catalog_live()
+        if not models:
+            models = cls._codex_catalog_disk()
+        if models:
+            cls._discovered_codex_cache = models
+            cls._discovered_codex_cache_at = time.time()
+            cls._codex_snapshot_save(models)
+        return cls._discovered_codex_cache or []
 
     @classmethod
     def discover_local_claude_models(cls):
@@ -420,8 +765,10 @@ class ModelRegistry:
         non-empty values from recent files."""
         import json as _json
         import glob as _glob
-        if cls._discovered_cache is not None:
+        if (cls._discovered_cache is not None
+                and time.time() - cls._discovered_cache_at < cls._DISCOVERY_TTL_S):
             return cls._discovered_cache
+        cls._discovered_cache_at = time.time()
 
         import re as _re
         roots = [
@@ -514,44 +861,95 @@ class ModelRegistry:
                     'recommended_for': [],
                 })
 
-        # Merge discovered models for the Codex provider. Source: the
-        # Codex CLI's own ``~/.codex/models_cache.json`` — the
-        # authoritative list OpenAI publishes for the CLI. Way more
-        # reliable than scanning session files.
+        # Merge the live Codex catalog (authoritative — from the CLI
+        # itself, see discover_local_codex_models). Hardcoded entries are
+        # enriched with catalog metadata; catalog models we don't know
+        # yet become FIRST-CLASS entries (no "(discovered)" suffix, no
+        # bottom bucket) sorted by the catalog's own priority — so when
+        # OpenAI ships a new model it slots in correctly automatically.
         if provider == 'codex':
-            existing_ids = {m['id'] for m in models}
-            for info in cls.MODELS.values():
-                for a in info.get('aliases', []):
-                    existing_ids.add(a)
-            for entry in cls.discover_local_codex_models():
-                slug = entry.get('slug')
-                if not slug or slug in existing_ids:
-                    continue
-                display = entry.get('display_name') or slug
-                desc = entry.get('description', '')
-                # Prefer fast_mode if a `fast` speed tier is advertised.
-                speed_tiers = entry.get('additional_speed_tiers', []) or []
+            catalog = cls.discover_local_codex_models()
+            registry_by_id = {m['id']: m for m in models}
+
+            # When detection succeeds, show exactly what this Codex install
+            # advertises. Static entries are only a fallback for machines
+            # where neither the CLI nor its cache is available.
+            if catalog:
+                detected = []
+                for entry in catalog:
+                    slug = entry.get('slug')
+                    if not slug:
+                        continue
+                    base = dict(registry_by_id.get(slug, {}))
+                    speed_tiers = entry.get('additional_speed_tiers', []) or []
+                    base.update({
+                        'id': slug,
+                        'display': entry.get('display_name') or
+                                   base.get('display') or slug,
+                        'provider': 'codex',
+                        'family': base.get(
+                            'family',
+                            'gpt5' if 'gpt-5' in slug else
+                            'codex' if 'codex' in slug else 'gpt'),
+                        'aliases': base.get('aliases', []),
+                        'context': entry.get('context_window') or
+                                   base.get('context', 200_000),
+                        'context_1m': base.get('context_1m', False),
+                        'max_output': base.get('max_output', 32_000),
+                        'thinking': entry.get('default_reasoning_level') or
+                                    base.get('thinking', 'auto'),
+                        'effort': bool(entry.get('supported_reasoning_levels')),
+                        'fast_mode': 'fast' in speed_tiers or
+                                     base.get('fast_mode', False),
+                        'cost_input': base.get('cost_input', 0),
+                        'cost_output': base.get('cost_output', 0),
+                        'tier': base.get('tier', 'standard'),
+                        'priority': entry.get('priority', 40),
+                        'recommended_for': base.get('recommended_for', []),
+                        'description': entry.get('description') or
+                                       base.get('description', ''),
+                        'source': 'detected',
+                        'upgrade_to': ((entry.get('upgrade') or {}).get('model')
+                                       or ''),
+                    })
+                    detected.append(base)
+                models = detected
+            else:
+                for m in models:
+                    m['priority'] = 100
+                    m['source'] = 'fallback'
+
+            # Preserve support for explicitly configured local open-weight
+            # models without presenting them as auto-detected Codex models.
+            for slug, name in (
+                    ('gpt-oss:120b', 'GPT-OSS 120B (Local)'),
+                    ('gpt-oss:20b', 'GPT-OSS 20B (Local)')):
                 models.append({
                     'id': slug,
-                    'display': f'{display} (discovered)',
+                    'display': name,
                     'provider': 'codex',
-                    'family': 'gpt5' if 'gpt-5' in slug else
-                              'codex' if 'codex' in slug else 'gpt',
+                    'family': 'gpt-oss',
                     'aliases': [],
-                    'context': 200_000,
+                    'context': 128_000,
                     'context_1m': False,
                     'max_output': 32_000,
-                    'thinking': entry.get('default_reasoning_level', 'auto'),
-                    'effort': bool(entry.get('supported_reasoning_levels')),
-                    'fast_mode': 'fast' in speed_tiers,
+                    'thinking': 'auto',
+                    'effort': True,
+                    'fast_mode': False,
                     'cost_input': 0,
                     'cost_output': 0,
                     'tier': 'discovered',
+                    'priority': 500,
                     'recommended_for': [],
-                    'description': desc,
+                    'description': 'Requires a configured local model runtime.',
+                    'source': 'local',
+                    'upgrade_to': '',
                 })
 
-        models.sort(key=lambda m: tier_order.get(m.get('tier', 'standard'), 9))
+        # Tier first, then catalog priority (lower = better); entries
+        # without a priority keep their insertion order (stable sort).
+        models.sort(key=lambda m: (tier_order.get(m.get('tier', 'standard'), 9),
+                                   m.get('priority', 500)))
         return models
 
     @classmethod
@@ -588,11 +986,17 @@ def _load_prompt_section(filename, section):
     content = _load_prompt(filename)
     if not content:
         return ''
-    marker = f'## {section}'
-    start = content.find(marker)
-    if start == -1:
+    # Match the header on its own line ('## Section' with optional
+    # trailing whitespace) so a substring inside prose can't false-match.
+    m = re.search(r'^##\s+' + re.escape(section) + r'\s*$',
+                  content, re.MULTILINE)
+    if not m:
+        # Fallback: legacy loose match (header with trailing text)
+        m = re.search(r'^##\s+' + re.escape(section), content, re.MULTILINE)
+    if not m:
+        print(f"[AI EDIT] Prompt section '## {section}' not found in {filename}")
         return ''
-    start += len(marker)
+    start = m.end()
     # Skip to next line after the header
     nl = content.find('\n', start)
     if nl == -1:
@@ -650,6 +1054,21 @@ def init_ai_edit(preview_dir, get_clean_env_func, assets_dir=None,
     # Initialize persistent storage systems
     RenderMemory.init()
     ChatHistory.init()
+    # Kill any lingering AI CLI subprocesses on app exit so closing the
+    # app mid-edit / mid-autocomplete doesn't leave ghost processes.
+    import atexit
+    atexit.register(_kill_ai_subprocesses)
+
+
+def _kill_ai_subprocesses():
+    for attr in ('_ai_proc', '_ai_claude_proc', '_ai_complete_proc'):
+        proc = getattr(AIEditMixin, attr, None)
+        try:
+            if proc and proc.poll() is None:
+                proc.kill()
+                print(f"[AI EDIT] Killed lingering subprocess ({attr}) on exit")
+        except Exception:
+            pass
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -969,10 +1388,17 @@ def _init_workspace_git(workspace_dir):
         print(f"[AI EDIT] git init error: {e}")
 
 
+_DOWNSCALE_EXTS = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
+
+
 def _downscale_image(img_path, max_width=960):
     """Downscale an image to max_width to reduce token cost.
     A 1920x1080 image = ~2764 tokens, 960x540 = ~691 tokens (4x savings).
-    Modifies the file in-place. Requires Pillow; silently skips if unavailable."""
+    Modifies the file in-place, preserving the file's format (PNG stays
+    PNG so transparency survives; everything else is saved as JPEG).
+    Requires Pillow; silently skips if unavailable."""
+    if not img_path.lower().endswith(_DOWNSCALE_EXTS):
+        return  # PDFs, SVGs, GIFs etc. — leave untouched
     try:
         from PIL import Image
         with Image.open(img_path) as img:
@@ -981,7 +1407,12 @@ def _downscale_image(img_path, max_width=960):
             ratio = max_width / img.width
             new_size = (max_width, int(img.height * ratio))
             img = img.resize(new_size, Image.LANCZOS)
-            img.save(img_path, 'JPEG', quality=80)
+            if img_path.lower().endswith('.png'):
+                img.save(img_path, 'PNG', optimize=True)
+            else:
+                if img.mode not in ('RGB', 'L'):
+                    img = img.convert('RGB')
+                img.save(img_path, 'JPEG', quality=80)
     except ImportError:
         pass  # Pillow not installed — skip downscaling
     except Exception as e:
@@ -1355,6 +1786,7 @@ class AIEditMixin:
                 if os.path.isfile(ip):
                     dest = os.path.join(img_ws_dir, os.path.basename(ip))
                     shutil.copy2(ip, dest)
+                    _downscale_image(dest)  # ~4x fewer image tokens
                     copied_images.append(dest)
                     # Auto-extract text from PDFs so AI can read them reliably
                     if dest.lower().endswith('.pdf'):
@@ -1420,7 +1852,8 @@ class AIEditMixin:
 
             # ── Auto-compact: if context is near limit, start fresh session ──
             est_tokens = AIEditMixin._ai_session_estimated_ctx
-            if (est_tokens > CONTEXT_WINDOW_TOKENS * CONTEXT_CRITICAL_RATIO
+            ctx_limit = ModelRegistry.context_window_for(use_model)
+            if (est_tokens > ctx_limit * CONTEXT_CRITICAL_RATIO
                     and AIEditMixin._ai_chat_session_id):
                 old_sid = (AIEditMixin._ai_chat_session_id or '')[:8]
                 AIEditMixin._ai_chat_session_id = str(uuid.uuid4())
@@ -1475,7 +1908,10 @@ class AIEditMixin:
                         if os.path.isfile(ip):
                             dest = os.path.join(img_ws_dir, os.path.basename(ip))
                             shutil.copy2(ip, dest)
+                            _downscale_image(dest)  # ~4x fewer image tokens
                             copied_images.append(dest)
+                            if dest.lower().endswith('.pdf'):
+                                _extract_pdf_text(dest)
                     image_paths = copied_images
             else:
                 # Workspace missing or first message — create fresh
@@ -1616,6 +2052,8 @@ class AIEditMixin:
                             raw_result = event.get('result', '')
                             if isinstance(raw_result, dict):
                                 raw_result = raw_result.get('text', '') or json.dumps(raw_result)
+                                if len(raw_result) > 5000:
+                                    raw_result = raw_result[:5000] + ' …[truncated]'
                             AIEditMixin._ai_claude_result_text = str(raw_result)
                             cost = event.get('total_cost_usd')
                             dur = event.get('duration_ms')
@@ -1655,8 +2093,10 @@ class AIEditMixin:
                             if inp_tok or out_tok:
                                 cost_parts.append(f"{inp_tok}→{out_tok} tok")
                             if cache_read:
-                                pct = (cache_read / max(inp_tok, 1)) * 100
-                                cost_parts.append(f"cache:{pct:.0f}%")
+                                total_in = inp_tok + cache_read + cache_create
+                                pct = (cache_read / max(total_in, 1)) * 100
+                                cost_parts.append(
+                                    f"cache:{pct:.0f}% ({cache_read:,} tok saved)")
                             if cost_parts:
                                 summary = '  '.join(cost_parts)
                                 AIEditMixin._ai_claude_raw_chunks.append(
@@ -1664,19 +2104,21 @@ class AIEditMixin:
                                 AIEditMixin._ai_claude_events.append({
                                     '_kind': 'text', '_text': summary})
 
-                            # ── Context window warning ──
+                            # ── Context window warning (model-aware) ──
                             est_tokens = AIEditMixin._ai_session_estimated_ctx
-                            if est_tokens > CONTEXT_WINDOW_TOKENS * CONTEXT_CRITICAL_RATIO:
+                            ctx_limit = ModelRegistry.context_window_for(
+                                AIEditMixin._ai_current_model)
+                            if est_tokens > ctx_limit * CONTEXT_CRITICAL_RATIO:
                                 warn = (f"⚠ Session near context limit "
-                                        f"(~{est_tokens//1000}k/{CONTEXT_WINDOW_TOKENS//1000}k). "
+                                        f"(~{est_tokens//1000}k/{ctx_limit//1000}k). "
                                         f"Start a New Chat to avoid errors.")
                                 AIEditMixin._ai_claude_raw_chunks.append(
                                     f"\x1b[31m{warn}\x1b[0m\r\n")
                                 AIEditMixin._ai_claude_events.append({
                                     '_kind': 'text', '_text': warn})
-                            elif est_tokens > CONTEXT_WINDOW_TOKENS * CONTEXT_WARN_RATIO:
+                            elif est_tokens > ctx_limit * CONTEXT_WARN_RATIO:
                                 warn = (f"Context growing large "
-                                        f"(~{est_tokens//1000}k/{CONTEXT_WINDOW_TOKENS//1000}k). "
+                                        f"(~{est_tokens//1000}k/{ctx_limit//1000}k). "
                                         f"Consider starting a New Chat soon.")
                                 AIEditMixin._ai_claude_raw_chunks.append(
                                     f"\x1b[33m{warn}\x1b[0m\r\n")
@@ -2040,7 +2482,8 @@ class AIEditMixin:
                 'total_cost': round(st['total_cost_usd'], 4),
                 'est_context_pct': min(100, round(
                     (AIEditMixin._ai_session_estimated_ctx
-                     / CONTEXT_WINDOW_TOKENS) * 100)),
+                     / ModelRegistry.context_window_for(
+                         AIEditMixin._ai_current_model)) * 100)),
             }
 
         # Include early code for streaming preview
@@ -2270,7 +2713,8 @@ class AIEditMixin:
                 f.write(instruction)
 
             # ── Build command as list (no shell=True — prevents injection) ──
-            cmd_parts = ['codex', 'exec', '-', '--full-auto',
+            # _codex_exe(): bare 'codex' argv fails on Windows (.CMD shim)
+            cmd_parts = [_codex_exe(), 'exec', '-', '--full-auto',
                          '--skip-git-repo-check', '--json']
             if use_model:
                 cmd_parts.extend(['-m', use_model])
@@ -2545,31 +2989,34 @@ class AIEditMixin:
         AIEditMixin._ai_prompt_file = None
         return {'status': 'cancelled'}
 
-    def get_codex_models(self):
-        """Return available models for Codex CLI."""
+    def get_codex_models(self, refresh=False):
+        """Return available models for Codex CLI.
+
+        Registry-driven: hardcoded current lineup + live discovery from
+        ``codex debug models``. The old hand-maintained ``extra`` list of
+        retired GPT-5.0–5.3 IDs is gone — those models were removed
+        upstream, so offering them just produced CLI errors and buried
+        the current lineup. Local gpt-oss entries are kept for users
+        running open-weight models (they never appear in the catalog).
+        """
+        if refresh:
+            ModelRegistry.refresh_codex_catalog()
         models = ModelRegistry.list_for_provider('codex')
-        # Include models from registry + extra Codex models not in registry
-        extra = [
-            {'id': 'gpt-5.3-codex-spark', 'display_name': 'GPT-5.3 Codex Spark'},
-            {'id': 'gpt-5.2-codex', 'display_name': 'GPT-5.2 Codex'},
-            {'id': 'gpt-5.2', 'display_name': 'GPT-5.2'},
-            {'id': 'gpt-5.1-codex-max', 'display_name': 'GPT-5.1 Codex Max'},
-            {'id': 'gpt-5.1-codex-mini', 'display_name': 'GPT-5.1 Codex Mini'},
-            {'id': 'gpt-5.1', 'display_name': 'GPT-5.1'},
-            {'id': 'gpt-5-codex', 'display_name': 'GPT-5 Codex'},
-            {'id': 'gpt-5-codex-mini', 'display_name': 'GPT-5 Codex Mini'},
-            {'id': 'gpt-5-mini', 'display_name': 'GPT-5 Mini'},
-            {'id': 'gpt-5-nano', 'display_name': 'GPT-5 Nano'},
-            {'id': 'gpt-oss:120b', 'display_name': 'GPT-OSS 120B (Local)'},
-            {'id': 'gpt-oss:20b', 'display_name': 'GPT-OSS 20B (Local)'},
-        ]
         result = [
             {'id': m['id'], 'display_name': m['display'],
-             'tier': m.get('tier', 'standard')}
+             'tier': m.get('tier', 'standard'),
+             'recommended_for': m.get('recommended_for', []),
+             'description': m.get('description', ''),
+             'source': m.get('source', 'fallback'),
+             'thinking': m.get('thinking', ''),
+             'fast_mode': bool(m.get('fast_mode', False)),
+             'upgrade_to': m.get('upgrade_to', '')}
             for m in models
         ]
-        result.extend(extra)
-        return {'models': result}
+        return {
+            'models': result,
+            'detection': ModelRegistry.codex_catalog_status(),
+        }
 
     def resolve_model(self, model_input, task='edit'):
         """Resolve a model alias/legacy ID to canonical ID.
@@ -2580,7 +3027,8 @@ class AIEditMixin:
             'model_id': model_id,
             'migrated': migrated,
             'display': info['display'] if info else model_id,
-            'provider': info['provider'] if info else 'claude',
+            'provider': (info['provider'] if info else
+                         ModelRegistry.get_provider(model_id)),
             'tier': info.get('tier', 'standard') if info else 'standard',
             'cost': (f"${info['cost_input']}/{info['cost_output']} per Mtok"
                      if info else 'unknown'),
@@ -2962,9 +3410,11 @@ class AIEditMixin:
                                 cost_parts.append(f"{dur/1000:.1f}s")
                             if inp_tok or out_tok:
                                 cost_parts.append(f"{inp_tok}→{out_tok} tok")
-                            if cache_read and inp_tok:
+                            if cache_read:
+                                total_in = inp_tok + cache_read
                                 cost_parts.append(
-                                    f"cache:{cache_read/max(inp_tok,1)*100:.0f}%")
+                                    f"cache:{cache_read/max(total_in,1)*100:.0f}% "
+                                    f"({cache_read:,} tok saved)")
                             if cost_parts:
                                 AIEditMixin._ai_agent_stream_events.append({
                                     '_kind': 'text',
@@ -3126,7 +3576,7 @@ class AIEditMixin:
                     with open(md_path, 'w', encoding='utf-8') as f:
                         f.write(md_content)
 
-            cmd = ['codex', 'exec', '-', '--full-auto',
+            cmd = [_codex_exe(), 'exec', '-', '--full-auto',
                    '--skip-git-repo-check', '--json']
             if AIEditMixin._ai_agent_model:
                 cmd.extend(['-m', AIEditMixin._ai_agent_model])
@@ -3282,7 +3732,7 @@ class AIEditMixin:
 
             if AIEditMixin._ai_agent_provider == 'codex':
                 # ── Codex review: -i flag passes images natively ──
-                cmd_list = ['codex', 'exec', '-', '--full-auto',
+                cmd_list = [_codex_exe(), 'exec', '-', '--full-auto',
                             '--skip-git-repo-check', '--color', 'never']
                 if AIEditMixin._ai_agent_model:
                     cmd_list.extend(['-m', AIEditMixin._ai_agent_model])
@@ -3451,7 +3901,9 @@ class AIEditMixin:
                 # we start a fresh session with a new --session-id, carrying
                 # over only the current code and goal.
                 est_tokens = AIEditMixin._ai_session_estimated_ctx
-                if est_tokens > CONTEXT_WINDOW_TOKENS * CONTEXT_CRITICAL_RATIO:
+                ctx_limit = ModelRegistry.context_window_for(
+                    AIEditMixin._ai_current_model, task='agent')
+                if est_tokens > ctx_limit * CONTEXT_CRITICAL_RATIO:
                     old_sid = (AIEditMixin._ai_agent_session_id or '')[:8]
                     AIEditMixin._ai_agent_session_id = str(uuid.uuid4())
                     AIEditMixin._ai_agent_first_edit = True
@@ -3698,7 +4150,8 @@ class AIEditMixin:
                 'total_cost': round(st['total_cost_usd'], 4),
                 'est_context_pct': min(100, round(
                     (AIEditMixin._ai_session_estimated_ctx
-                     / CONTEXT_WINDOW_TOKENS) * 100)),
+                     / ModelRegistry.context_window_for(
+                         AIEditMixin._ai_current_model, task='agent')) * 100)),
             }
 
         return {

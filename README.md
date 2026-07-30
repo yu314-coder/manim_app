@@ -4,10 +4,12 @@
 
 A powerful, feature-rich desktop application for creating stunning mathematical animations using [Manim Community Edition](https://www.manim.community/). Built with Python, PyWebView, and modern web technologies.
 
-![Version](https://img.shields.io/badge/version-1.1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.4.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8+-green)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-orange)
+
+> **Latest release — v1.1.4.0:** AI Assist now provides direct Codex/Claude model selection, current model auto-discovery, corrected provider-test sizing, faster streamed output, and more reliable CLI/MCP and one-file packaging.
 
 ---
 
@@ -26,19 +28,24 @@ A powerful, feature-rich desktop application for creating stunning mathematical 
 - Line numbers, code folding, and multiple cursors
 - Customizable font size and themes
 
-### 🤖 **AI Edit Panel (Codex + Claude Code)**
-- Send your code with a natural language prompt for intelligent edits
-- **Claude Code (Beta)** — structured stream-json integration, no API key needed
-- **OpenAI Codex CLI** — full JSONL streaming with `codex exec --json`
+### 🤖 **AI Assist (OpenAI Codex + Claude Code)**
+- Describe the animation or code change you want in natural language; AI Assist reads and edits the active Manim scene directly
+- **No API key required** — uses your locally authenticated OpenAI Codex CLI or Claude Code CLI session
+- **Direct provider and model selection** — after testing a provider, AI Assist opens its model picker immediately with no forced “upgrade” screen
+- **Current model auto-discovery** — reads the installed Codex catalog/local model cache and Claude session metadata so newly available models appear without an app update
+- **OpenAI Codex models** — supports the current GPT-5.6 Sol, Terra, and Luna lineup, reasoning-effort choices, and safe migration from retired model IDs
+- **Claude models** — supports current Opus, Sonnet, Haiku, and discovered models while preserving explicitly selected previous-generation IDs
+- **Docked or standalone UI** — use AI Assist inside the workspace or in its own window; provider-test and picker states keep consistent dimensions
+- **Structured streaming** — Codex JSONL and Claude stream-json events render live with tool actions, progress, and clear error states
 - **AI Agent Mode** — autonomous generate → render → screenshot → review → fix loop
   - Works with both Claude and Codex providers
   - Visual QA review examines every frame for issues
   - Auto-iterates until the animation looks correct
-- **Continuous Chat** — multi-turn conversations with session memory (`--session-id` / `--resume`)
+- **Continuous Chat** — multi-turn conversations with provider session reuse and persistent chat history
+- **Agent Memory** — per-project `style.md` preferences are injected into future AI turns, with one-click suggestions when AI Assist detects a correction
 - **Token-Optimized** — AI reads files from disk instead of prompt embedding, session caching saves 70-80% on subsequent turns, screenshots downscaled to reduce image tokens
 - **Image upload** — attach screenshots or reference images for the AI to understand your intent
 - **Web Search** toggle — let the AI reference live web results while editing
-- **Model selector** — pick from Claude Opus/Sonnet/Haiku, GPT-5.3 Codex, and more
 - Side-by-side diff review — Accept or Reject changes with one click
 - **Inline autocomplete** — ghost-text code completions powered by Claude Haiku
 - Fix code errors directly from the diagnostics panel
@@ -306,7 +313,7 @@ Press **F6** or **F5** — TTS audio is generated and merged with the video auto
 | Keyboard Shortcuts | `Ctrl + /` |
 | Zen Mode | `F11` |
 | Toggle Bookmark | `Ctrl + Shift + K` |
-| AI Edit Panel | `Ctrl + Shift + E` |
+| AI Assist | `Ctrl + Shift + E` |
 | Go to Definition | `F12` |
 | Find All References | `Shift + F12` |
 | Screenshot Preview | `Ctrl + Shift + S` |
@@ -410,7 +417,7 @@ Access via Settings (⚙️ icon):
 manim_app/                    # Source / EXE directory
 ├── app.py                    # Main app (GUI + CLI dispatcher)
 ├── cli.py                    # CLI & MCP server (headless render)
-├── ai_edit.py                # AI Edit module (Claude + Codex)
+├── ai_edit.py                # AI Assist backend (Claude + Codex)
 ├── narration_addon.py        # Kokoro TTS narration
 ├── build_nuitka.py           # Nuitka build script
 ├── prompts/                  # AI prompt templates (.md)
@@ -609,7 +616,32 @@ If you find this project useful, please consider giving it a star on GitHub!
 
 ## 📝 Changelog
 
-### v1.1.3.0 (Latest)
+### v1.1.4.0 (Latest)
+
+**Released:** July 30, 2026
+
+**AI Assist and model selection:**
+- ✨ **Direct Codex model picker** — the AI Assist provider test now opens the model selector immediately instead of showing an intermediate “Upgrade → GPT-5.6 Terra” state.
+- ✨ **Current Codex lineup** — added GPT-5.6 Sol, Terra, and Luna metadata, refreshed fallbacks/migrations for retired Codex IDs, and kept visible models from the installed Codex catalog selectable.
+- ✨ **Stronger Codex discovery on Windows** — resolves the real `codex.cmd` launcher, reads the local Codex model cache/catalog, and falls back safely when catalog discovery is unavailable.
+- ✨ **Updated Claude registry** — refreshed current model aliases, task defaults, fallback chains, and migrations while preserving explicitly selected previous-generation IDs.
+- 🐛 **AI Assist sizing fixed** — provider-test, loading, success, and model-selection states now fit the same panel/window dimensions without clipping or mismatched empty space.
+- 🐛 **Model labels cleaned up** — removed stale upgrade messaging and corrected selected-model rendering in both the docked panel and standalone AI Assist window.
+
+**Runtime and rendering:**
+- ⚡ **Lower UI/render overhead** — batched streamed render output, replaced hot polling paths with event-driven notifications, capped terminal buffers, and reduced repeated environment/GPU/dependency work.
+- ⚡ **Faster responsive layout** — reduced resize/DPI churn and unnecessary editor/terminal relayout work.
+- 🐛 **More reliable multi-scene and narration flows** — improved scene parsing, render coordination, narration processing, and failure cleanup.
+- 🧹 **Legacy frontend cleanup** — removed unused Flask/legacy renderer scripts and retired duplicate web assets no longer loaded by the desktop UI.
+
+**CLI, MCP, and packaging:**
+- ✨ **Shared scene parser** — GUI, CLI, and MCP now use the same AST-based scene discovery implementation.
+- ✨ **Configurable render timeout** — CLI and MCP render calls accept a timeout value and return clearer timeout errors.
+- 🐛 **MCP argument validation and diagnostics** — missing required tool arguments return structured errors, with backend tracebacks kept off the JSON-RPC stdout channel.
+- 📦 **Nuitka one-file reliability** — fixed newer pywebview platform-module inclusion, added compact cached extraction, refreshed build flags, and bumped executable/UI metadata to `1.1.4.0`.
+- 🧹 **Generated build artifacts ignored** — Nuitka caches and crash reports no longer appear as source changes.
+
+### v1.1.3.0
 
 **New features:**
 - ✨ **F-09 Agent Memory** — per-project `style.md` auto-injected as a system preamble on every AI edit/agent turn. Editable via the 🧠 brain icon in the AI Edit panel header. Heuristic detects user corrections (e.g. "no, use BLUE instead of RED") and proposes memory updates with one-click accept/dismiss. Prefix `#ignore-style` on a single message to skip the preamble for that turn.
