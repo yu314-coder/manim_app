@@ -1,7 +1,7 @@
 # ManimStudio — iOS / iPadOS
 
 > **Branch:** `ios` &nbsp;·&nbsp; **App:** [`euleryu.ManimStudio`](https://apps.apple.com/app/id6764472686) (App Store ID `6764472686`) &nbsp;·&nbsp;
-> **Min iOS:** 17.0 &nbsp;·&nbsp; **Architectures:** `arm64-iphoneos` &nbsp;·&nbsp; **Python:** 3.14
+> **Version:** 1.4 &nbsp;·&nbsp; **Min iOS:** 17.0 &nbsp;·&nbsp; **Architectures:** `arm64-iphoneos` &nbsp;·&nbsp; **Python:** 3.14
 >
 > The `main` branch contains the original Windows / Electron desktop app and is **unrelated** — this branch is a from-scratch native port that does not merge back.
 
@@ -33,11 +33,11 @@ on-device without an internet connection.
 - **Monaco** in a WKWebView with full Python autocomplete, find/replace,
   comment toggle, indent/outdent, multi-cursor, snippets — every standard
   shortcut works.
-- **Symbol completion** is built from live introspection of the bundled
-  Python packages. `LibrarySymbolBuilder` runs once per build, caches the
-  resulting JSON to `Caches/manim_studio_symindex_v<build>.json`, and feeds
-  it into Monaco. First launch of a new build pays the ~10 s cost; every
-  subsequent launch reads the cache in milliseconds.
+- **Symbol completion** ships pre-built. `scripts/gen-library-symbols.py`
+  introspects the bundled packages at *build* time and writes
+  `Resources/LibrarySymbols.json`, which Monaco loads directly — no Python
+  runs to populate it, so there is no first-launch penalty.
+  `LibrarySymbolBuilder` remains only as the on-device fallback.
 - **Render error gutter** — when a render fails, `parseTracebackMarkers`
   regexes `File "<string>", line N` out of the captured stderr and pushes
   red markers into Monaco at the offending lines.
@@ -47,6 +47,28 @@ on-device without an internet connection.
 - **Drag-drop image as `ImageMobject`** — toolbar button copies an image
   into `Documents/Assets/`, inserts a working `ImageMobject(...).scale(2)`
   snippet at the cursor.
+
+### Creating &amp; presenting
+
+- **Gallery** is the cold-launch tab — six ready-made Manim scenes you can
+  load onto the workbench, so the app reads as an animation studio rather
+  than an editor with a terminal attached.
+- **Apple Pencil → Manim** (`PencilKitView.swift`) — sketch on iPad and get
+  editable Manim source. A PencilKit drawing is resampled, simplified with
+  Ramer–Douglas–Peucker, then classified: least-squares (Kåsa) circle fit,
+  edge-based rectangle/square fit, regular-polygon fit, straight line, or a
+  smooth `VMobject` through the points. Emits `Circle`, `Square`,
+  `Rectangle`, `RegularPolygon`, `Polygon`, `Line` or
+  `set_points_smoothly(...)` in ManimStudio's coordinate frame. Entirely
+  on-device — no network, no model.
+- **Presentation mode** (`PresentationMode.swift`) — full-screen looping
+  playback of the latest render with tap-to-reveal transport, the status bar
+  and home indicator hidden. Reaching a TV is plain **AirPlay / HDMI
+  mirroring**: `ExternalDisplayManager` is deliberately **inert** and never
+  claims the external scene, because an app that attaches its own window to
+  that scene *replaces* the mirror with its own UI.
+- **Command palette** (⇧⌘P) — one list over the existing menu
+  notifications: render, preview, stop, file ops, sketch, present, tabs.
 
 ### Terminal
 
@@ -76,17 +98,46 @@ on-device without an internet connection.
   - Use Cairo via the `pycairo` compat layer (the `manimpango` C extension
     is partially excluded under ITMS-90338 — Apple flags some of its
     symbols as private API).
-  - Substitute a CJK-aware `Text()` factory that pre-registers
-    `KaTeX_Main-Regular.ttf` (latin) + `NotoSansJP-Regular.otf` (CJK)
-    so non-ASCII characters render without `Could not find font` errors.
+  - Register real font files with Pango before any `Text()` runs.
+    `NotoSans-Regular.ttf` is the default family, with
+    `NotoSansMath-Regular.ttf` and `KaTeX_Main-Regular.ttf` registered as
+    fallbacks — neither Noto face is sufficient alone (Sans carries the
+    sub/superscript digits, Math the mathematical alphanumerics). CJK faces
+    join the fontconfig `<prefer>` chain when bundled.
   - Patch `Scene.play` for per-animation cleanup (frees Mobjects between
     animations to keep iPad memory ceiling under 3 GB).
   - Accept `ImageMobject` inside `VGroup` (manim's strict isinstance check
     breaks otherwise).
 - **Background-aware** — `BackgroundTaskGuard` claims a
-  `UIApplication.beginBackgroundTask` token AND activates an `.ambient`
-  `mixWithOthers` `AVAudioSession` so the render keeps running through
-  screen lock or app-switching.
+  `UIApplication.beginBackgroundTask` token so a render survives a brief
+  app-switch. It holds the **idle timer** for the duration too, because
+  auto-lock was ending long renders outright.
+  It does **not** touch `AVAudioSession`: an earlier build activated an
+  `.ambient` / `mixWithOthers` session to qualify for the `audio`
+  background mode, and **App Review 2.5.4 rejected build 74** for declaring
+  that mode without a real audio feature. Both the Info.plist key and the
+  activation were removed; the standard `beginBackgroundTask` grace window
+  is the correct API for finishing-up work.
+- **Output size &amp; format** — 480p → 8K presets plus **Custom** width ×
+  height with 9:16 / 1:1 / 4:5 / 16:9 one-tap presets. The wrapper rounds to
+  even dimensions for H.264 and re-derives an aspect-correct frame, so
+  vertical and square renders are not stretched.
+- **Transparent (alpha) export** — the `mov` format flips manim's
+  `config.transparent`, which switches the writer to `.mov` + `qtrle` with a
+  real alpha channel. The concat path uses `qtrle`/`argb` for those runs;
+  re-encoding them to `h264`/`yuv420p` would silently discard the alpha and
+  hand back a black background.
+- **Resolution-aware concat codec** — VideoToolbox's H.264 encoder will not
+  open above ~4K, and it fails *lazily* at the first frame, long after
+  `add_stream()` returned OK, so a `try` around `add_stream` never sees it.
+  Past the ceiling the concat uses `hevc_videotoolbox`, and opens the
+  encoder eagerly so an unusable codec can still be swapped instead of
+  producing an empty file.
+- **Pre-render memory guard** (`RenderMemoryGuard.swift`) — peak footprint is
+  estimated as a baseline plus **34 live full-resolution frames** (the
+  encoder hand-off queue in `scene_file_writer.py` is capped at 32 *frames*,
+  not bytes) and checked against 55% of physical RAM. Over budget, the app
+  offers the highest quality that fits.
 - **Render-complete sheet** auto-presents on success: Save to Files /
   Save to Photos / Share. Original lands in `Documents/ToolOutputs/<run>/`
   regardless. Partial movie files are auto-deleted after concat.
@@ -104,16 +155,30 @@ on-device without an internet connection.
   polls mtime every 0.8 s and auto-scrolls. Reads only the last 256 KB so
   multi-MB logs never freeze SwiftUI.
 - Auto-rotates to `manim_studio.log.1` when the file passes 5 MB.
+- **System tab** reads the device, not a table of constants: live memory and
+  storage meters, thermal state, Low Power Mode, hardware model identifier,
+  the embedded CPython version *derived from the bundle* (`lib-dynload`
+  holds `_ssl.cpython-314-…`, so "314" → 3.14), site-package count, sizes of
+  everything under `ToolOutputs`, and a one-tap **Copy report** for bug
+  reports. The expensive directory walk runs off the main actor.
+- **Developer menu** — hidden behind **seven taps on Settings → About →
+  Version**, the same gesture Android uses. Carries the build number (which
+  appears nowhere else in the UI), a raw dump of every `manim_*` preference,
+  and per-bucket storage tools: caches, temporary files, Python bytecode,
+  the log file, and rendered outputs. "Free up space" clears the safe
+  buckets and never touches renders.
 
 ### Layout
 
 - **iPad** (regular size class): three-pane layout — editor + preview side
   by side on top, terminal below, ControlsSidebar floating right with
   Quick Preview / Final Render quality pickers.
-- **iPhone** (compact size class): segmented pane picker (Editor / Preview
-  / Terminal — one fills the screen at a time) + a sheet-presented
-  ControlsSidebar. Header collapses to a compact row with an overflow
-  Menu for secondary actions.
+- **iPhone** (compact size class): a native **bottom tab bar** for
+  navigation (thumb-reachable, instead of a third stacked top row) and a
+  segmented pane picker for Editor / Preview / Terminal. The Workspace opens
+  on the **editor**, not the preview. The compact header carries a live
+  **RAM sparkline** between the scene picker and Run, and an overflow Menu
+  for secondary actions.
 - **Magic Keyboard menu bar** (iPad with hardware keyboard): full menu
   hierarchy — File / Code / Render / View / Help — with all 30+
   shortcuts. Implemented via SwiftUI `.commands { ... }` posting
@@ -123,7 +188,11 @@ on-device without an internet connection.
 
 ## Build prerequisites
 
-1. **Xcode 26+** on macOS (deployment target 17.0, Swift 6 toolchain).
+1. **Xcode 26+** on macOS. Deployment target **17.0**; Swift language
+   mode **5** with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and
+   `SWIFT_APPROACHABLE_CONCURRENCY` on — unannotated types are main-actor
+   isolated, so anything touching the filesystem off-main is explicitly
+   `nonisolated`.
 2. **Apple Developer team** (`LYK4LV2859` is hard-coded in `project.pbxproj`
    — change for your own team).
 3. **`_vendor/python-ios-lib/`** and **`_vendor/beeware/Python.xcframework/`**
@@ -175,7 +244,20 @@ ManimStudio/                         ← Xcode project root
     ├── LibrarySymbolBuilder.swift   · caches Monaco completion index
     ├── AssetsView.swift             · Documents/Assets file browser
     ├── HistoryView.swift            · Documents/ToolOutputs scanner
-    ├── SystemView.swift             · device + library facts
+    ├── SystemView.swift             · live device diagnostics + copy report
+    ├── DeveloperMenu.swift          · hidden dev menu (7-tap) + storage tools
+    ├── GalleryView.swift            · cold-launch scene gallery
+    ├── PencilKitView.swift          · Apple Pencil sketch → Manim source
+    ├── PresentationMode.swift       · full-screen looping playback
+    ├── ExternalDisplayManager.swift · inert by design; keeps mirroring
+    ├── CommandPalette.swift         · ⇧⌘P palette over menu notifications
+    ├── RenderMemoryGuard.swift      · pre-render peak-footprint estimate
+    ├── RAMMonitorView.swift         · iPad RAM HUD + iPhone sparkline
+    ├── SceneDetector.swift          · finds Scene subclasses in source
+    ├── Theme.swift                  · accent + glass-card design tokens
+    ├── AppTab.swift                 · top-level tab enum
+    ├── TabBarView.swift             · iPad pill strip / iPhone bottom bar
+    ├── Haptics.swift                · selection / impact / notify wrappers
     ├── ControlsSidebar.swift        · quality / fps / format pickers
     ├── BackgroundTaskGuard.swift    · UIBackgroundTask + AVAudioSession glue
     ├── CrashLogger.swift            · signal handlers + persistent log file
@@ -186,6 +268,7 @@ ManimStudio/                         ← Xcode project root
     ├── PrivacyInfo.xcprivacy        · required-reason API manifest
     └── Info.plist                   · capabilities + usage descriptions
 scripts/
+├── gen-library-symbols.py           · bakes Resources/LibrarySymbols.json
 ├── install-python-stdlib.sh         · main build phase (stdlib + framework wrapping)
 └── normalize-fwork-postembed.sh     · post-Embed-Frameworks .fwork normalizer
 _appstore_screens/                   · 6× iPad screenshots, 2752×2064 / 2064×2752
@@ -285,31 +368,83 @@ a small delay so they don't fight Python boot for CPU on the first
 
 User taps **Render** or **Preview** (header) → `ContentView.triggerRender(quick:)`:
 
-1. `BackgroundTaskGuard.shared.begin()` — extends app lifetime + activates
-   an `.ambient` `mixWithOthers` AVAudioSession so the render survives
-   screen lock and app switching.
-2. **Preview** always uses `low_quality / 15 fps`. **Render** reads the
+1. **Memory pre-flight** (`RenderMemoryGuard`) — estimates peak footprint
+   for the chosen resolution and, if it will not fit, offers a quality that
+   does rather than letting jetsam kill the render at 90%. Advisory:
+   "Render anyway" is always available.
+2. `BackgroundTaskGuard.shared.begin()` — extends app lifetime and holds the
+   idle timer so auto-lock cannot end the render mid-encode.
+3. **Preview** always uses `low_quality / 15 fps`. **Render** reads the
    user's Final settings from `@AppStorage("manim_final_*")` keys.
-3. `PythonRuntime.execute(code:targetScene:onOutput:)` runs the wrapper
+4. `PythonRuntime.execute(code:targetScene:onOutput:)` runs the wrapper
    script in `<offlinai-python-tool>`. The wrapper exec's user code,
    discovers Scene subclasses, calls each one in source order, and writes
    the final MP4 path to a Python global the Swift side reads back.
-4. Stdout/stderr stream through the PTY → SwiftTerm + log file. The
+5. Stdout/stderr stream through the PTY → SwiftTerm + log file. The
    `[manim-debug]` line filter strips internal pipeline traces from the
    visible terminal but keeps the log file unfiltered.
-5. **On success:**
+6. **On success:**
    - `cleanupPartials()` removes the `partial_movie_files/` subtree
      (~500 MB on a 30-animation 1080p run).
    - `RenderCompleteSheet` auto-presents: Save to Files / Save to Photos /
      Share via UIActivityViewController.
    - File appears in `HistoryView`'s scan of `Documents/ToolOutputs/`.
-6. **On failure:**
+7. **On failure:**
    - `parseTracebackMarkers` regexes `File "<string>", line N` out of
      stderr.
    - `editorSetMarkers` notification posts; `EditorPane` forwards to
      `MonacoController.setMarkers([…])` which calls
      `monaco.editor.setModelMarkers` via the JS bridge.
    - Red markers appear on the offending source lines.
+
+---
+
+## Known limitations
+
+### 8K does not currently render
+
+The quality picker offers 8K and the config path is correct — index 5 sets
+`pixel_width = 7680, pixel_height = 4320` and nothing clamps it. The render
+still fails, in the **encoder**:
+
+```
+[manim-debug]   stream added OK (h264_videotoolbox)
+[manim-debug] ! encode CRASH on batch #1: ExternalError:
+    avcodec_open2("h264_videotoolbox", …)
+```
+
+VideoToolbox's H.264 encoder will not open at 7680×4320. Two details make it
+present confusingly:
+
+- `avcodec_open2` is **lazy**. `add_stream()` succeeds because the codec
+  *exists*; the encoder only opens on the first frame. In
+  `scene_file_writer.py` the `stream.width/height` assignments sit *after*
+  the `try/except` that falls back to `mpeg4`, so the fallback never fires.
+- Every partial file therefore encodes zero frames, `partial_movie_file_list.txt`
+  is never written, and the run ends in a `FileNotFoundError` that looks like
+  a missing-file bug rather than an encoder one.
+
+This is **not** a memory problem — the render dies in seconds with the memory
+system holding fine. The fix belongs in
+[python-ios-lib](https://github.com/yu314-coder/python-ios-lib)'s per-segment
+encoder: select `hevc_videotoolbox` (already in the bundled ffmpeg, and able
+to do 8K on Apple silicon) above the H.264 ceiling, and open the codec
+eagerly so the existing fallback can act. This app's **concat** stage already
+does exactly that; the per-segment writer does not.
+
+A second, latent issue sits behind it: that writer's encoder queue is
+`Queue(maxsize=32)` — a bound on *frames*, not bytes. Its own comment budgets
+≈256 MB, which holds at 1080p (32 × 7.9 MB) but is ≈4 GB at 8K (126 MB a
+frame). It has never bitten because the encoder fails first.
+
+### Not verified on device
+
+Apple Pencil sketch, Presentation mode and transparent export are
+compile-verified and inspected but have not been exercised on hardware. The
+app **cannot run in the Simulator** — `preloadScipySupportFrameworks` dlopens
+device-only frameworks and SIGSEGVs at launch — so the Simulator can build
+this project but never run it. TestFlight on a real device is the only
+runtime test path.
 
 ---
 
@@ -327,7 +462,7 @@ User taps **Render** or **Preview** (header) → `ContentView.triggerRender(quic
 | App Accessibility | Dark Interface · Differentiate Without Color Alone |
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
-| Build | Build 73 (matches `CURRENT_PROJECT_VERSION`) |
+| Shipping version | **1.4** (build 8) |
 
 ---
 
