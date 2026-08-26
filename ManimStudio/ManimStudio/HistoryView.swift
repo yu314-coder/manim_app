@@ -129,6 +129,11 @@ struct HistoryView: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bgSecondary))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderSubtle, lineWidth: 1))
+        // Drag a finished render straight out to Keynote / Notes / Files /
+        // Mail — a file-backed item provider so the receiving app gets the
+        // actual video/image, not just a URL string.
+        .onDrag { NSItemProvider(contentsOf: e.url) ?? NSItemProvider() }
+        .hoverEffect(.lift)   // trackpad: shows the row is grabbable
     }
 
     @ViewBuilder

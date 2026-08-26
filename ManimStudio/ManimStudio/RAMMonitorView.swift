@@ -229,11 +229,25 @@ struct CompactRAMGraph: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            sparkline.frame(width: 34, height: 16)
-            Text(String(format: "%.0f", usedMB))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            // Memory-chip icon + "RAM" label so the graph reads clearly as
+            // memory, not just an anonymous sparkline.
+            Image(systemName: "memorychip")
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(tint)
-                .monospacedDigit()
+            Text("RAM")
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .tracking(0.5)
+                .foregroundStyle(Theme.textDim)
+            sparkline.frame(width: 30, height: 16)
+            HStack(spacing: 1) {
+                Text(String(format: "%.0f", usedMB))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(tint)
+                    .monospacedDigit()
+                Text("MB")
+                    .font(.system(size: 7.5, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.textDim)
+            }
         }
         .padding(.horizontal, 7).padding(.vertical, 4)
         .background(

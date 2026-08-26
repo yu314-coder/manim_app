@@ -856,6 +856,19 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             try setGlobalString(String(manimQuality), key: "__codebench_manim_quality", globals: globals)
             try setGlobalString(String(manimFPS),    key: "__codebench_manim_fps",     globals: globals)
 
+            // Custom resolution: when the Final quality is "Custom" the app
+            // passes explicit width/height; the wrapper overrides the preset
+            // and derives an aspect-correct frame. 0 = use the preset.
+            // Preview ignores custom (it uses the Quick-Preview quality).
+            var customW = 0, customH = 0
+            if !isPreview,
+               (UserDefaults.standard.string(forKey: "manim_final_quality") ?? "").lowercased() == "custom" {
+                customW = UserDefaults.standard.integer(forKey: "manim_custom_width")
+                customH = UserDefaults.standard.integer(forKey: "manim_custom_height")
+            }
+            try setGlobalString(String(customW), key: "__codebench_manim_width",  globals: globals)
+            try setGlobalString(String(customH), key: "__codebench_manim_height", globals: globals)
+
             // Output format (mp4 / mov / gif / png) chosen in
             // ControlsSidebar → UserDefaults["manim_format"]. A Preview
             // run always uses mp4 for fast iteration regardless of the
@@ -863,9 +876,11 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             // wrapper reads __codebench_manim_format and sets
             // manim.config.format + steers output resolution accordingly.
             let chosenFormat = (UserDefaults.standard.string(forKey: "manim_format") ?? "mp4").lowercased()
-            // mp4 / gif / html. A stale "mov"/"png" from an older build
-            // falls back to mp4. Preview always uses mp4 for speed.
-            let allowedFormats: Set<String> = ["mp4", "gif", "html"]
+            // mp4 / mov / gif / html. "mov" is the transparent-background
+            // (alpha) export: the wrapper flips manim's config.transparent,
+            // which switches the writer to .mov + qtrle. A stale "png" from
+            // an older build falls back to mp4. Preview always uses mp4.
+            let allowedFormats: Set<String> = ["mp4", "mov", "gif", "html"]
             let manimFormat = isPreview ? "mp4"
                 : (allowedFormats.contains(chosenFormat) ? chosenFormat : "mp4")
             try setGlobalString(manimFormat, key: "__codebench_manim_format", globals: globals)
@@ -1911,6 +1926,10 @@ try:
                 if os.path.isdir(_cand_dir) and (
                     os.path.exists(os.path.join(_cand_dir, "NotoSansJP-Regular.otf"))
                     or os.path.exists(os.path.join(_cand_dir, "KaTeX_Main-Regular.ttf"))
+                    # The KaTeX faces are .woff2 (unusable by Pango); these
+                    # Noto .ttf files are what actually make the dir useful.
+                    or os.path.exists(os.path.join(_cand_dir, "NotoSans-Regular.ttf"))
+                    or os.path.exists(os.path.join(_cand_dir, "NotoSansMath-Regular.ttf"))
                 ):
                     _font_dir = _cand_dir
                     break
@@ -1927,7 +1946,9 @@ try:
                 if os.path.exists(os.path.join(_font_dir, _fname)):
                     _cjk_labels_pre.append(_lbl)
             _fc_file_pre = os.path.join(__codebench_tool_dir, "fonts.conf")
-            _prefer_pre = "<family>KaTeX_Main</family>" + "".join(
+            _prefer_pre = ("<family>Noto Sans</family>"
+                           "<family>Noto Sans Math</family>"
+                           "<family>KaTeX_Main</family>") + "".join(
                 f"<family>{_lbl}</family>" for _lbl in _cjk_labels_pre
             )
             _fc_lines_pre = [
@@ -2012,6 +2033,25 @@ try:
                 _cfg.frame_rate = 60
             else:
                 _cfg.quality = 'high_quality'
+            # Custom resolution: the app passes explicit width/height when the
+            # user picks "Custom" (else 0). Override the preset's pixel dims.
+            try:
+                _cw = int(globals().get('__codebench_manim_width', 0) or 0)
+                _ch = int(globals().get('__codebench_manim_height', 0) or 0)
+            except (TypeError, ValueError):
+                _cw = _ch = 0
+            if _cw >= 16 and _ch >= 16:
+                _cfg.pixel_width = min(_cw - (_cw % 2), 7680)    # H.264 needs even dims
+                _cfg.pixel_height = min(_ch - (_ch % 2), 7680)
+            # Always re-derive an aspect-correct frame (frame_height fixed at
+            # 8.0) so portrait/square renders aren't stretched AND a prior
+            # custom frame doesn't leak into the next preset render. For 16:9
+            # presets this reproduces manim's default 14.222 × 8.
+            try:
+                _cfg.frame_height = 8.0
+                _cfg.frame_width = 8.0 * float(_cfg.pixel_width) / float(_cfg.pixel_height)
+            except Exception:
+                pass
             try:
                 _f = int(fps)
                 if 1 <= _f <= 240:
@@ -2057,8 +2097,18 @@ try:
                     _cand_dir = os.path.join(_bundle_root, _rel) if _rel else _bundle_root
                     if not os.path.isdir(_cand_dir):
                         continue
-                    _ttf = os.path.join(_cand_dir, "KaTeX_Main-Regular.ttf")
-                    if not os.path.exists(_ttf):
+                    # Accept any loadable .ttf — KaTeX ships .woff2 only,
+                    # so keying solely on KaTeX_Main-Regular.ttf skipped the
+                    # real font dir entirely.
+                    _ttf = None
+                    for _sentinel in ("KaTeX_Main-Regular.ttf",
+                                      "NotoSans-Regular.ttf",
+                                      "NotoSansMath-Regular.ttf"):
+                        _c = os.path.join(_cand_dir, _sentinel)
+                        if os.path.exists(_c):
+                            _ttf = _c
+                            break
+                    if _ttf is None:
                         continue
                     _font_dir = _cand_dir
                     _font_path = _ttf
@@ -2085,7 +2135,9 @@ try:
                 # SC → JP → KR ordering gives the cheapest match for
                 # unified-Han codepoints (most common script first).
                 _fc_file = os.path.join(__codebench_tool_dir, "fonts.conf")
-                _prefer = "<family>KaTeX_Main</family>"
+                _prefer = ("<family>Noto Sans</family>"
+                           "<family>Noto Sans Math</family>"
+                           "<family>KaTeX_Main</family>")
                 for _lbl, _ in _cjk_fonts:
                     _prefer += f"<family>{_lbl}</family>"
                 _lines = [
@@ -2221,7 +2273,17 @@ try:
                 #   html — the mp4 is base64-embedded into a standalone
                 #          .html file below
                 _fmt = (globals().get('__codebench_manim_format', 'mp4') or 'mp4').lower()
-                _m.config.format = "mp4"
+                # mov = transparent export. manim's `transparent` setter
+                # switches movie_file_extension to .mov, png_mode to RGBA and
+                # background_opacity to 0, so the writer emits qtrle with a
+                # real alpha channel (the bundled ffmpeg has the qtrle codec).
+                # Everything downstream reads file_writer.movie_file_path, so
+                # the .mov flows through the existing paths unchanged.
+                if _fmt == 'mov':
+                    _m.config.format = "mov"
+                    _m.config.transparent = True
+                else:
+                    _m.config.format = "mp4"
                 _m.config.write_to_movie = True
                 _m.config.save_last_frame = False
                 _m.config.preview = False
@@ -2249,6 +2311,8 @@ try:
                             _bundle_root = (_p.split(".app/", 1)[0] + ".app") if ".app/" in _p else _p
                             break
                     _font_path = None
+                    _font_family = None
+                    _extra_font_paths = []
                     _cjk_font_path = None
                     if _bundle_root:
                         # The bundled folder is "KaTeX/fonts" (capital K),
@@ -2256,14 +2320,33 @@ try:
                         # below remain only as defensive fallbacks for older
                         # bundle layouts. List capital-K paths first so the
                         # actual bundled file is picked on the first hit.
-                        for _rel in ("KaTeX/fonts/KaTeX_Main-Regular.ttf",
-                                     "Frameworks/KaTeX/fonts/KaTeX_Main-Regular.ttf",
-                                     "Frameworks/katex/fonts/KaTeX_Main-Regular.ttf",
-                                     "katex/fonts/KaTeX_Main-Regular.ttf"):
-                            _cand = _os_f.path.join(_bundle_root, _rel)
-                            if _os_f.path.exists(_cand):
-                                _font_path = _cand
-                                break
+                        # KaTeX's own faces ship as .woff2, which Pango
+                        # CANNOT load, and they're keyed to LaTeX command
+                        # slots rather than Unicode codepoints — so a bare
+                        # Text("R") double-struck or a subscript digit drew
+                        # nothing and this probe found no .ttf at all
+                        # ("WARN: no bundled font found"). Prefer the Noto
+                        # Unicode faces: NotoSans carries the sub/superscript
+                        # digits, NotoSansMath the math alphanumerics —
+                        # neither is sufficient alone, so register both and
+                        # keep KaTeX_Main as a legacy fallback.
+                        _font_rel_dirs = ("KaTeX/fonts", "Frameworks/KaTeX/fonts",
+                                          "Frameworks/katex/fonts", "katex/fonts", "")
+                        for _fname, _fam in (
+                                ("NotoSans-Regular.ttf", "Noto Sans"),
+                                ("NotoSansMath-Regular.ttf", "Noto Sans Math"),
+                                ("KaTeX_Main-Regular.ttf", "KaTeX_Main")):
+                            for _rel in _font_rel_dirs:
+                                _cand = (_os_f.path.join(_bundle_root, _rel, _fname)
+                                         if _rel else
+                                         _os_f.path.join(_bundle_root, _fname))
+                                if _os_f.path.exists(_cand):
+                                    if _font_path is None:
+                                        _font_path = _cand
+                                        _font_family = _fam
+                                    else:
+                                        _extra_font_paths.append(_cand)
+                                    break
                         # Also locate the bundled NotoSansJP for the CJK
                         # fallback chain. manimpango's register_font supports
                         # multiple fonts, so registering NotoSansJP here lets
@@ -2283,7 +2366,17 @@ try:
                         _mp.register_font(_font_path)
                         print(f"[manim] registered font {_font_path}", flush=True)
                         # Make sure Text uses it by default
-                        _m.config.font = "KaTeX_Main"
+                        _m.config.font = _font_family or "KaTeX_Main"
+                        # Register the remaining faces so Pango's fallback
+                        # chain can reach codepoints the primary lacks.
+                        for _xf in _extra_font_paths:
+                            try:
+                                _mp.register_font(_xf)
+                                print(f"[manim] registered fallback font {_xf}",
+                                      flush=True)
+                            except Exception as _xfe:
+                                print(f"[manim] fallback font register failed: "
+                                      f"{type(_xfe).__name__}: {_xfe}", flush=True)
                         # Register CJK font too if available — Pango's
                         # fontconfig fallback chain will pull from any
                         # registered font for codepoints the primary
@@ -2451,7 +2544,7 @@ try:
                         latest_t = 0
                         for root, dirs, files in os.walk(_m.config.media_dir):
                             for f in files:
-                                if f.endswith(('.mp4', '.gif', '.png')):
+                                if f.endswith(('.mp4', '.mov', '.gif', '.png')):
                                     fpath = os.path.join(root, f)
                                     mt = os.path.getmtime(fpath)
                                     if mt > latest_t:
@@ -3431,11 +3524,37 @@ try:
                                           if _os_gpu.environ.get(
                                               "OFFLINAI_MANIM_GPU", "1") != "0"
                                           else "mpeg4")
+                            # A transparent render must NOT be re-encoded to
+                            # h264/yuv420p — that silently throws the alpha
+                            # channel away and the user gets a black
+                            # background. qtrle/argb is lossless and keeps it.
+                            _tp_concat = (globals().get(
+                                '__codebench_manim_format', 'mp4') or 'mp4'
+                            ).lower() == 'mov'
+                            # VideoToolbox's H.264 encoder will not open above
+                            # ~4K: at 7680x4320 avcodec_open2() fails outright.
+                            # It fails LAZILY, at the first encode — long after
+                            # add_stream() returned OK — so wrapping add_stream
+                            # never catches it and the concat silently produces
+                            # an empty file. HEVC hardware encode does handle 8K
+                            # and hevc_videotoolbox is in our ffmpeg build, so
+                            # step up to it past the H.264 ceiling.
+                            _H264_MAX_W, _H264_MAX_H = 4096, 2304
+                            if (_gpu_codec == "h264_videotoolbox"
+                                    and (_max_w > _H264_MAX_W
+                                         or _max_h > _H264_MAX_H)):
+                                print(f"[concat] {_max_w}x{_max_h} is past the "
+                                      f"H.264 encoder ceiling — using "
+                                      f"hevc_videotoolbox", flush=True)
+                                _gpu_codec = "hevc_videotoolbox"
+                            if _tp_concat:
+                                _gpu_codec = "qtrle"
                             _concat_stream = _out_ct.add_stream(
                                 _gpu_codec, rate=int(_max_rate))
                             _concat_stream.width = _max_w
                             _concat_stream.height = _max_h
-                            _concat_stream.pix_fmt = "yuv420p"
+                            _concat_pix = "argb" if _tp_concat else "yuv420p"
+                            _concat_stream.pix_fmt = _concat_pix
                             # Quality-preserving bitrate: match the
                             # highest source bitrate, with a floor of
                             # 3 Mbps for 480p / 6 Mbps for 720p+ /
@@ -3449,6 +3568,36 @@ try:
                                 _floor = 3_000_000
                             _concat_stream.bit_rate = max(
                                 int(_max_bitrate), _floor)
+
+                            # avcodec_open2 is lazy. Without this an encoder
+                            # that can't take this resolution fails at the first
+                            # frame, far from here, and we ship an empty file.
+                            # Open it now; on failure rebuild on a fresh
+                            # container with software mpeg4. Best-effort — if
+                            # this PyAV doesn't expose codec_context.open() we
+                            # behave exactly as before.
+                            try:
+                                _concat_stream.codec_context.open()
+                            except AttributeError:
+                                pass
+                            except Exception as _ce:
+                                print(f"[concat] {_gpu_codec} failed to open at "
+                                      f"{_max_w}x{_max_h}: "
+                                      f"{type(_ce).__name__}: {_ce} — "
+                                      f"falling back to mpeg4", flush=True)
+                                try:
+                                    _out_ct.close()
+                                except Exception:
+                                    pass
+                                _out_ct = _av.open(_combined_path, mode="w")
+                                _gpu_codec = "mpeg4"
+                                _concat_stream = _out_ct.add_stream(
+                                    _gpu_codec, rate=int(_max_rate))
+                                _concat_stream.width = _max_w
+                                _concat_stream.height = _max_h
+                                _concat_stream.pix_fmt = _concat_pix
+                                _concat_stream.bit_rate = max(
+                                    int(_max_bitrate), _floor)
 
                             def _drain(stream, sink):
                                 # Pull every queued packet from the

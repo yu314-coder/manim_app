@@ -22,6 +22,14 @@ final class BackgroundTaskGuard {
     static let shared = BackgroundTaskGuard()
 
     private var token: UIBackgroundTaskIdentifier = .invalid
+    /// True while we hold the screen awake, so end() only clears the flag
+    /// it actually set (never stomps a hold taken by something else).
+    private var heldIdleTimer = false
+
+    /// Default-on preference, surfaced in Settings → Rendering.
+    private var keepAwakeEnabled: Bool {
+        UserDefaults.standard.object(forKey: "manim_keep_awake") as? Bool ?? true
+    }
 
     /// Call when an interruptible long task starts. Idempotent —
     /// nested begins are coalesced into the existing token.
@@ -33,6 +41,14 @@ final class BackgroundTaskGuard {
             // app as misbehaving and shorten future grace periods.
             self?.end()
         }
+        // Auto-lock ends a render as surely as a crash: the screen sleeps,
+        // iOS suspends us, and a 10-minute 4K render dies at 90%. Hold the
+        // idle timer for the duration. Paired with end() below, which every
+        // render exit path (success, failure, user stop) already calls.
+        if keepAwakeEnabled {
+            UIApplication.shared.isIdleTimerDisabled = true
+            heldIdleTimer = true
+        }
     }
 
     /// Call when the task finishes (success, failure, or user stop).
@@ -40,6 +56,10 @@ final class BackgroundTaskGuard {
         if token != .invalid {
             UIApplication.shared.endBackgroundTask(token)
             token = .invalid
+        }
+        if heldIdleTimer {
+            UIApplication.shared.isIdleTimerDisabled = false
+            heldIdleTimer = false
         }
     }
 }

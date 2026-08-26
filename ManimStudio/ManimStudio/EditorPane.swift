@@ -176,6 +176,14 @@ struct EditorPane: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .editorClearMarkers))
             { _ in monaco.setMarkers([]) }
+        // Apple Pencil sketch → Manim code, generated in the Sketch sheet
+        // (HeaderView) and inserted at the editor cursor here, reusing the
+        // same monaco.insertCode path as the image picker.
+        .onReceive(NotificationCenter.default.publisher(for: .editorInsertCode)) { note in
+            if let code = note.userInfo?["code"] as? String {
+                monaco.insertCode(code)
+            }
+        }
     }
 
     @ViewBuilder

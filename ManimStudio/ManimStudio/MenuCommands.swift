@@ -29,13 +29,20 @@ extension Notification.Name {
     static let menuRenderStop      = Notification.Name("menu.render.stop")
     static let menuRenderGPU       = Notification.Name("menu.render.gpu")
     static let menuRenderClearOutputs = Notification.Name("menu.render.clearOutputs")
+    static let menuRenderPresent      = Notification.Name("menu.render.present")
 
     static let menuViewTab          = Notification.Name("menu.view.tab") // userInfo: AppTab.rawValue
     static let menuViewToggleSidebar = Notification.Name("menu.view.toggleSidebar")
+    static let menuOpenCommandPalette = Notification.Name("menu.view.commandPalette")
+    /// Opens the Apple Pencil sketch sheet (observed in HeaderView).
+    static let menuOpenSketch = Notification.Name("menu.tool.sketch")
 
     /// Editor diagnostic markers (render error gutter).
     static let editorSetMarkers   = Notification.Name("editor.setMarkers")
     static let editorClearMarkers = Notification.Name("editor.clearMarkers")
+    /// Posted by the Sketch sheet with userInfo["code"]: String — observed
+    /// in EditorPane, forwarded to monaco.insertCode() (cursor insert).
+    static let editorInsertCode   = Notification.Name("editor.insertCode")
 
     static let menuHelpShortcuts    = Notification.Name("menu.help.shortcuts")
     static let menuHelpOpenHelp     = Notification.Name("menu.help.open")
@@ -91,6 +98,8 @@ struct ManimStudioCommands: Commands {
                 .keyboardShortcut("r", modifiers: [.command, .shift])
             Button("Stop")              { post(.menuRenderStop) }
                 .keyboardShortcut(".", modifiers: [.command])
+            Button("Present…")          { post(.menuRenderPresent) }
+                .keyboardShortcut("p", modifiers: [.command, .option])
             Divider()
             Button("Toggle GPU Encode") { post(.menuRenderGPU) }
                 .keyboardShortcut("g", modifiers: [.command, .option])
@@ -105,6 +114,9 @@ struct ManimStudioCommands: Commands {
         // the same key elsewhere (or twice) makes UIKit log duplicate
         // UIKeyCommand identifiers and is undefined behavior.
         CommandMenu("View") {
+            Button("Command Palette…") { post(.menuOpenCommandPalette) }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+            Divider()
             Button("Gallery")   { post(.menuViewTab, ["tab": "gallery"]) }
                 .keyboardShortcut("1", modifiers: [.command])
             Button("Workspace") { post(.menuViewTab, ["tab": "workspace"]) }

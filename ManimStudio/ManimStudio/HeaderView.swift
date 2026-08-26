@@ -11,6 +11,11 @@ struct HeaderView: View {
     var onNew:     () -> Void
     var onOpen:    () -> Void
     var onSave:    () -> Void
+    /// Latest finished render — drives the iPad-only Present button. nil
+    /// hides it (nothing to present yet). Threaded down from ContentView.
+    var renderedVideoURL: URL?
+    /// Opens the full-screen presentation cover (handled in ContentView).
+    var onPresent: () -> Void
 
     // Persisted across launches and read by PythonRuntime before each
     // render. The GPU toggle now drives BOTH:
@@ -36,6 +41,11 @@ struct HeaderView: View {
     @State private var showSettings = false
     @State private var showHelp     = false
     @State private var showColors   = false
+    @State private var showSketch   = false
+
+    /// Live external-display status so the Present button reads "Present on
+    /// TV" and the cover lays out for an external screen.
+    @ObservedObject private var externalDisplay = ExternalDisplayManager.shared
 
     /// iPhone gets a stripped-down single-line header — three-block
     /// layout with title + scene picker + render/preview/stop only.
@@ -64,6 +74,8 @@ struct HeaderView: View {
                           gpuOn: $gpuOn)
         }
         .sheet(isPresented: $showHelp) { HelpSheet() }
+        .sheet(isPresented: $showSketch) { SketchSheetView() }
+        .onReceive(NotificationCenter.default.publisher(for: .menuOpenSketch))       { _ in showSketch = true }
         .onReceive(NotificationCenter.default.publisher(for: .menuHelpOpenHelp))     { _ in showHelp = true }
         .onReceive(NotificationCenter.default.publisher(for: .menuHelpShortcuts))    { _ in showHelp = true }
         .onReceive(NotificationCenter.default.publisher(for: .menuHelpOpenSettings)) { _ in showSettings = true }
@@ -121,15 +133,19 @@ struct HeaderView: View {
             }
             .buttonStyle(.plain)
             .help("Render (⌘R)")
-            Button(action: onPreview) {
-                Image(systemName: "eye")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.textPrimary)
-                    .frame(width: 34, height: 34)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bgTertiary))
+            // Preview hides while rendering (you can't preview mid-render) —
+            // which also frees header width for the now-labelled RAM pill.
+            if !isRendering {
+                Button(action: onPreview) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textPrimary)
+                        .frame(width: 34, height: 34)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bgTertiary))
+                }
+                .buttonStyle(.plain)
+                .help("Preview (⇧⌘R)")
             }
-            .buttonStyle(.plain)
-            .help("Preview (⇧⌘R)")
             if isRendering {
                 Button(action: onStop) {
                     Image(systemName: "stop.fill")
@@ -180,6 +196,7 @@ struct HeaderView: View {
                 headerBtn("doc.badge.plus", "New",  action: onNew)
                 headerBtn("folder",         "Open", action: onOpen)
                 headerBtn("square.and.arrow.down", "Save", action: onSave)
+                headerBtn("scribble.variable", "Sketch with Apple Pencil") { showSketch = true }
                 Divider().frame(height: 18).background(Theme.borderSubtle)
 
                 scenePicker
@@ -187,6 +204,16 @@ struct HeaderView: View {
                            action: onRender)
                 secondaryBtn(label: "Preview", icon: "eye", shortcut: "F6",
                              action: onPreview)
+                // Present — distraction-free looping playback of the latest
+                // render (external-display routing). iPad-only
+                // (regularBody); hidden until a render exists.
+                if renderedVideoURL != nil {
+                    secondaryBtn(
+                        label: externalDisplay.isConnected ? "Present on TV" : "Present",
+                        icon: externalDisplay.isConnected ? "tv.fill" : "play.rectangle.on.rectangle",
+                        shortcut: "⌥⌘P",
+                        action: onPresent)
+                }
                 if isRendering {
                     dangerBtn(label: "Stop", icon: "stop.fill", action: onStop)
                 }
@@ -313,6 +340,7 @@ struct HeaderView: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderSubtle, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)   // trackpad pointer feedback on iPad
         .help(tooltip)
     }
 
@@ -375,6 +403,8 @@ struct HeaderView: View {
 
 private struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    /// Drives the hidden developer-menu unlock (seven taps on Version).
+    @ObservedObject private var dev = DevMode.shared
     @Binding var accentHex: String
     @Binding var terminalFontSize: Double
     @Binding var gpuOn: Bool
@@ -384,6 +414,10 @@ private struct SettingsSheet: View {
     @AppStorage("manim_final_fps")     private var finalFPS = 30
     @AppStorage("manim_format")        private var format = "mp4"
     @AppStorage("manim_terminal_font_family") private var terminalFontFamily = "Menlo"
+    @AppStorage("manim_custom_width")  private var customWidth = 1080
+    @AppStorage("manim_custom_height") private var customHeight = 1920
+    /// Read by BackgroundTaskGuard when a render starts.
+    @AppStorage("manim_keep_awake")    private var keepAwake = true
 
     /// Quick accent presets (default indigo first). Uppercase hex so the
     /// selected-ring comparison against accentHex.uppercased() matches.
@@ -459,15 +493,35 @@ private struct SettingsSheet: View {
 
                 // — Render —————————————————————————————————————
                 Section("Render") {
+                    Toggle(isOn: $keepAwake) {
+                        Label("Keep screen awake while rendering",
+                              systemImage: "sun.max")
+                    }
                     Toggle(isOn: $gpuOn) {
                         Label("GPU acceleration (Metal + VideoToolbox)",
                               systemImage: "bolt.fill")
                     }
                     Picker(selection: $finalQuality) {
-                        ForEach(["480p", "720p", "1080p", "1440p", "4K", "8K"],
+                        ForEach(["480p", "720p", "1080p", "1440p", "4K", "8K", "Custom"],
                                 id: \.self) { Text($0).tag($0) }
                     } label: {
                         Label("Final quality", systemImage: "film")
+                    }
+                    if finalQuality == "Custom" {
+                        HStack {
+                            Label("Width", systemImage: "arrow.left.and.right")
+                            Spacer()
+                            TextField("W", value: $customWidth, format: .number)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing).frame(width: 90)
+                        }
+                        HStack {
+                            Label("Height", systemImage: "arrow.up.and.down")
+                            Spacer()
+                            TextField("H", value: $customHeight, format: .number)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing).frame(width: 90)
+                        }
                     }
                     Picker(selection: $finalFPS) {
                         ForEach([24, 30, 60, 120], id: \.self) { Text("\($0) fps").tag($0) }
@@ -523,9 +577,18 @@ private struct SettingsSheet: View {
                 }
 
                 // — About ———————————————————————————————————————
-                Section("About") {
-                    LabeledContent("Version",      value: bundleVersion())
-                    LabeledContent("Build",        value: bundleBuild())
+                // The Version row is the hidden developer-mode trigger:
+                // seven taps, the same gesture Android uses for Developer
+                // options. The build number is deliberately NOT shown here —
+                // it lives inside the developer menu.
+                Section {
+                    Button {
+                        dev.registerTap()
+                    } label: {
+                        LabeledContent("Version", value: bundleVersion())
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                     LabeledContent("Manim",        value: "0.20.1")
                     LabeledContent("Python",       value: "3.14")
                     LabeledContent("Device",       value: deviceModel())
@@ -536,6 +599,27 @@ private struct SettingsSheet: View {
                     Link(destination: URL(string: "https://github.com/yu314-coder/python-ios-lib/")!) {
                         Label("python-ios-lib repo",
                               systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
+                } header: {
+                    Text("About")
+                } footer: {
+                    // Android-style countdown ("3 steps away…") lives here so
+                    // it never shifts the layout.
+                    if let toast = dev.toast {
+                        Text(toast).foregroundStyle(Color(hex: accentHex) ?? .indigo)
+                    }
+                }
+
+                // — Developer (hidden until unlocked) ———————————
+                if dev.isUnlocked {
+                    Section {
+                        NavigationLink {
+                            DeveloperMenuView()
+                        } label: {
+                            Label("Developer menu", systemImage: "hammer")
+                        }
+                    } footer: {
+                        Text("Build number, detailed diagnostics, cache and storage tools.")
                     }
                 }
 
@@ -622,9 +706,6 @@ private struct SettingsSheet: View {
 
     private func bundleVersion() -> String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
-    }
-    private func bundleBuild() -> String {
-        (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?"
     }
     private func deviceModel() -> String {
         var info = utsname()

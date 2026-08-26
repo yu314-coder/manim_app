@@ -16,6 +16,11 @@ struct ControlsSidebar: View {
     @AppStorage("manim_final_quality")   private var finalQuality = "1080p"
     @AppStorage("manim_final_fps")       private var finalFPS = 30
     @AppStorage("manim_format")          private var format = "mp4"
+    // Custom output resolution — used when Final quality == "Custom". Read
+    // by PythonRuntime and applied to manim.config.pixel_width/height (the
+    // wrapper rounds to even dims and derives an aspect-correct frame).
+    @AppStorage("manim_custom_width")  private var customWidth = 1080
+    @AppStorage("manim_custom_height") private var customHeight = 1920
 
     // Quality labels map to manim's 0-5 preset index in
     // PythonRuntime.qualityIndex (the single source of truth):
@@ -23,12 +28,14 @@ struct ControlsSidebar: View {
     // 4K/8K render at true resolution but are very memory-heavy on iPad —
     // watch the RAM HUD; they can hit the jetsam ceiling.
     private let previewQualities = ["480p", "720p", "1080p"]
-    private let finalQualities   = ["8K", "4K", "1440p", "1080p", "720p", "480p"]
+    private let finalQualities   = ["8K", "4K", "1440p", "1080p", "720p", "480p", "Custom"]
     // mp4  — H.264 video (default)
+    // mov  — transparent background (alpha) — qtrle in a QuickTime
+    //        container, for compositing over other footage/slides
     // gif  — animated GIF assembled from frames
     // html — single self-contained .html file with the video embedded
     //        as a base64 data URI (no external file dependency)
-    private let formats = ["mp4","gif","html"]
+    private let formats = ["mp4","mov","gif","html"]
 
     var body: some View {
         VStack(spacing: 12) {
@@ -52,8 +59,10 @@ struct ControlsSidebar: View {
 
             section(title: "Final Render", icon: "film.fill", tint: Theme.accentPrimary) {
                 pickerRow("Quality", selection: $finalQuality, options: finalQualities)
+                if finalQuality == "Custom" { customResolution }
                 stepperRow("FPS", value: $finalFPS, range: 1...120, presets: [24,30,60,120])
                 pickerRow("Format", selection: $format, options: formats)
+                if format == "mov" { transparentNote }
             }
 
             Spacer()
@@ -68,6 +77,71 @@ struct ControlsSidebar: View {
         // there's nothing to mirror here — and the gear Settings sheet, which
         // writes the same keys, stays authoritative even when this drawer is
         // closed.
+    }
+
+    /// Shown when the alpha format is picked — "mov" on its own doesn't
+    /// tell you the background disappears.
+    private var transparentNote: some View {
+        HStack(alignment: .top, spacing: 5) {
+            Image(systemName: "checkerboard.rectangle")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.accentPrimary)
+            Text("Transparent background — no backdrop is drawn. Larger files (lossless). Preview always renders mp4.")
+                .font(.system(size: 9.5))
+                .foregroundStyle(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
+    }
+
+    // MARK: custom resolution
+
+    /// Width × height fields + quick aspect presets (shown when Final
+    /// quality == "Custom"). The wrapper rounds to even dims for H.264.
+    private var customResolution: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                numberField($customWidth)
+                Text("×").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.textDim)
+                numberField($customHeight)
+                Text("px").font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.textDim)
+            }
+            HStack(spacing: 6) {
+                aspectChip("9:16", 1080, 1920)
+                aspectChip("1:1", 1080, 1080)
+                aspectChip("4:5", 1080, 1350)
+                aspectChip("16:9", 1920, 1080)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func numberField(_ value: Binding<Int>) -> some View {
+        TextField("", value: value, format: .number)
+            .keyboardType(.numberPad)
+            .multilineTextAlignment(.center)
+            .font(.system(size: 13, weight: .medium, design: .monospaced))
+            .foregroundStyle(Theme.textPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bgTertiary))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderSubtle, lineWidth: 1))
+    }
+
+    private func aspectChip(_ label: String, _ w: Int, _ h: Int) -> some View {
+        let active = customWidth == w && customHeight == h
+        return Button {
+            customWidth = w; customHeight = h
+        } label: {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(active ? .white : Theme.textSecondary)
+                .padding(.horizontal, 9).padding(.vertical, 5)
+                .background(Capsule().fill(active
+                    ? AnyShapeStyle(Theme.signatureGradient)
+                    : AnyShapeStyle(Theme.bgTertiary)))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

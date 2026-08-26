@@ -80,6 +80,11 @@ struct ManimStudioApp: App {
             PTYBridge.shared.setupIfNeeded()
             PythonRuntime.shared.ensureRuntimeReady()
         }
+
+        // Start observing external-display scene connections before any
+        // external scene can connect (an already-attached display is adopted
+        // in the manager's init). Drives Presentation mode's TV routing.
+        _ = ExternalDisplayManager.shared
     }
 
     var body: some Scene {

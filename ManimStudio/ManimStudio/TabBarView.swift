@@ -50,6 +50,7 @@ struct TabBarView: View {
                                 radius: 6, y: 1)
                     }
                     .buttonStyle(.plain)
+                    .hoverEffect(.highlight)   // trackpad pointer feedback on iPad
                 }
             }
             .padding(.horizontal, compact ? 10 : 14)

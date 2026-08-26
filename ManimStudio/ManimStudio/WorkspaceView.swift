@@ -7,9 +7,12 @@ struct WorkspaceView: View {
     @Binding var sourceCode: String
     @Binding var isRendering: Bool
     @Binding var renderedVideoURL: URL?
-    @State private var sidebarOpen = true
-    @State private var hSplit: CGFloat = 0.5   // editor↔preview
-    @State private var vSplit: CGFloat = 0.7   // top↔terminal
+    // Persisted via @AppStorage so the iPad layout you set (terminal split,
+    // sidebar open/closed) sticks across launches. (@AppStorage has no
+    // CGFloat overload, so the splits are stored as Double and bridged.)
+    @AppStorage("manim_ws_sidebar_open") private var sidebarOpen = true
+    @AppStorage("manim_ws_hsplit") private var hSplit: Double = 0.5   // editor↔preview
+    @AppStorage("manim_ws_vsplit") private var vSplit: Double = 0.7   // top↔terminal
     @State private var compactPane: CompactPane = .editor   // open on the code editor
     @State private var compactSheet: CompactSheet? = nil
 
@@ -57,11 +60,11 @@ struct WorkspaceView: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         EditorPane(source: $sourceCode)
-                            .frame(width: max(220, geo.size.width * hSplit - (sidebarOpen ? 280 : 0) * 0.5))
+                            .frame(width: max(220, geo.size.width * CGFloat(hSplit) - (sidebarOpen ? 280 : 0) * 0.5))
                         Divider().background(Theme.borderSubtle)
                         PreviewPane(videoURL: $renderedVideoURL)
                     }
-                    .frame(height: max(180, geo.size.height * vSplit))
+                    .frame(height: max(180, geo.size.height * CGFloat(vSplit)))
 
                     Rectangle()
                         .fill(Theme.borderSubtle)
@@ -70,7 +73,7 @@ struct WorkspaceView: View {
                         .gesture(
                             DragGesture()
                                 .onChanged { v in
-                                    let new = vSplit + v.translation.height / geo.size.height
+                                    let new = vSplit + Double(v.translation.height / geo.size.height)
                                     vSplit = min(max(new, 0.25), 0.85)
                                 }
                         )

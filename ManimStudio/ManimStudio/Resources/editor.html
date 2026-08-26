@@ -390,9 +390,25 @@
                 },
                 insertCode(code) {
                     const selection = editor.getSelection();
+                    const model = editor.getModel();
+                    // Re-indent a multi-line insert to the cursor line's
+                    // leading whitespace. executeEdits splices verbatim and
+                    // does NOT auto-reindent, so without this only line 1
+                    // inherits the cursor indent and a snippet pasted inside
+                    // a `def construct(self):` body raises IndentationError.
+                    let text = code;
+                    if (model && code.indexOf('\n') !== -1) {
+                        const lineText = model.getLineContent(selection.startLineNumber);
+                        const indent = (lineText.match(/^[\t ]*/) || [''])[0];
+                        if (indent) {
+                            text = code.split('\n')
+                                .map((ln, i) => (i === 0 || ln.length === 0) ? ln : indent + ln)
+                                .join('\n');
+                        }
+                    }
                     editor.executeEdits('swift-apply', [{
                         range: selection,
-                        text: code,
+                        text: text,
                         forceMoveMarkers: true,
                     }]);
                 },
