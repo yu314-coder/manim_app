@@ -1,7 +1,7 @@
 # ManimStudio — iOS / iPadOS
 
 > **Branch:** `ios` &nbsp;·&nbsp; **App:** [`euleryu.ManimStudio`](https://apps.apple.com/app/id6764472686) (App Store ID `6764472686`) &nbsp;·&nbsp;
-> **Version:** 1.4 &nbsp;·&nbsp; **Min iOS:** 17.0 &nbsp;·&nbsp; **Architectures:** `arm64-iphoneos` &nbsp;·&nbsp; **Python:** 3.14
+> **Version:** 1.5 &nbsp;·&nbsp; **Min iOS:** 17.0 &nbsp;·&nbsp; **Architectures:** `arm64-iphoneos` &nbsp;·&nbsp; **Python:** 3.14
 >
 > The `main` branch contains the original Windows / Electron desktop app and is **unrelated** — this branch is a from-scratch native port that does not merge back.
 
@@ -252,6 +252,7 @@ ManimStudio/                         ← Xcode project root
     ├── ExternalDisplayManager.swift · inert by design; keeps mirroring
     ├── CommandPalette.swift         · ⇧⌘P palette over menu notifications
     ├── RenderMemoryGuard.swift      · pre-render peak-footprint estimate
+    ├── VideoEncoderProbe.swift      · native VideoToolbox capability probe
     ├── RAMMonitorView.swift         · iPad RAM HUD + iPhone sparkline
     ├── SceneDetector.swift          · finds Scene subclasses in source
     ├── Theme.swift                  · accent + glass-card design tokens
@@ -399,43 +400,67 @@ User taps **Render** or **Preview** (header) → `ContentView.triggerRender(quic
 
 ---
 
+## High-resolution rendering (4K / 8K)
+
+8K renders. Getting there needed three separate things, and the first one
+masqueraded as the other two for a long time.
+
+### The encoder ceiling is a property of the chip
+
+`h264_videotoolbox` is not a software codec with a slow path — ffmpeg's
+wrapper only ever binds Apple's *hardware* H.264 encoder. Above the size that
+encoder supports, `avcodec_open2` fails outright. Measured directly with
+VideoToolbox:
+
+| Device | H.264 hardware | HEVC hardware |
+|---|---|---|
+| M4 Mac mini / M3 iPad Air | up to **4096×2304** | up to **8192×4320** |
+| iPhone 17 Pro Max | reported working at 8K | 8K |
+
+Because the ceiling moves between devices it is **asked for at run time**, not
+written down. [`manim/utils/ios_encoder.py`](https://github.com/yu314-coder/python-ios-lib)
+creates a throwaway compression session and reads
+`UsingHardwareAcceleratedVideoEncoder`, which the session refuses to report
+when no hardware encoder took the job. Anything H.264 cannot take goes to
+`hevc_videotoolbox`; if neither has a hardware path, the caller's `mpeg4`
+fallback finishes the job slowly.
+
+This failure was hard to read because **`avcodec_open2` is lazy**: it runs at
+the first *encode*, long after `add_stream()` returned OK, so the fallback
+guarding `add_stream` never saw it. Every partial file encoded zero frames and
+the run ended in a `FileNotFoundError` for `partial_movie_file_list.txt` —
+which looks like a missing-file bug, not an encoder one.
+
+### HEVC in an mp4 must be tagged `hvc1`
+
+ffmpeg defaults to `hev1`, which is legal and which AVFoundation reports as
+neither playable nor decodable: the render finishes, reports success, and
+leaves a file **the device that made it cannot open**. Both encode paths tag
+it, and so does the app's concat — including its stream-copy branch, since
+`add_stream_from_template` carries the codec but *not* the tag.
+
+### The frame queue is bounded by bytes, not frames
+
+The encoder hand-off queue was capped at 32 *frames*, chosen when a frame was
+1080p and 8 MB (~256 MB). The same 32 frames at 8K is 132 MB each — 4.25 GB of
+RGBA buffers, well past what any iPad gives one app. The cap that existed to
+prevent a jetsam kill was causing one. The byte budget is what is fixed now,
+so the depth follows the resolution: **1080p queues 32, 4K queues 8, 8K
+queues 2** — never fewer, or the renderer and encoder stop overlapping.
+
+### Choosing the encoder
+
+**Controls → Final Render → Encoder** offers `auto` / `h264` / `hevc`. Auto
+follows the probe. A forced choice is still checked against the hardware and
+falls back rather than handing back an encoder that cannot open — returning
+one that fails is the bug the probe exists to prevent. The note under the
+picker calls VideoToolbox natively (`VideoEncoderProbe.swift`) for the
+resolution currently selected, so it reports what *this* device can do without
+starting Python.
+
+---
+
 ## Known limitations
-
-### 8K does not currently render
-
-The quality picker offers 8K and the config path is correct — index 5 sets
-`pixel_width = 7680, pixel_height = 4320` and nothing clamps it. The render
-still fails, in the **encoder**:
-
-```
-[manim-debug]   stream added OK (h264_videotoolbox)
-[manim-debug] ! encode CRASH on batch #1: ExternalError:
-    avcodec_open2("h264_videotoolbox", …)
-```
-
-VideoToolbox's H.264 encoder will not open at 7680×4320. Two details make it
-present confusingly:
-
-- `avcodec_open2` is **lazy**. `add_stream()` succeeds because the codec
-  *exists*; the encoder only opens on the first frame. In
-  `scene_file_writer.py` the `stream.width/height` assignments sit *after*
-  the `try/except` that falls back to `mpeg4`, so the fallback never fires.
-- Every partial file therefore encodes zero frames, `partial_movie_file_list.txt`
-  is never written, and the run ends in a `FileNotFoundError` that looks like
-  a missing-file bug rather than an encoder one.
-
-This is **not** a memory problem — the render dies in seconds with the memory
-system holding fine. The fix belongs in
-[python-ios-lib](https://github.com/yu314-coder/python-ios-lib)'s per-segment
-encoder: select `hevc_videotoolbox` (already in the bundled ffmpeg, and able
-to do 8K on Apple silicon) above the H.264 ceiling, and open the codec
-eagerly so the existing fallback can act. This app's **concat** stage already
-does exactly that; the per-segment writer does not.
-
-A second, latent issue sits behind it: that writer's encoder queue is
-`Queue(maxsize=32)` — a bound on *frames*, not bytes. Its own comment budgets
-≈256 MB, which holds at 1080p (32 × 7.9 MB) but is ≈4 GB at 8K (126 MB a
-frame). It has never bitten because the encoder fails first.
 
 ### Not verified on device
 
@@ -462,7 +487,7 @@ runtime test path.
 | App Accessibility | Dark Interface · Differentiate Without Color Alone |
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
-| Shipping version | **1.4** (build 8) |
+| Shipping version | **1.5** (build 1) |
 
 ---
 

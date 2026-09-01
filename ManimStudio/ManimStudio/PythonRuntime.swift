@@ -885,6 +885,14 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
                 : (allowedFormats.contains(chosenFormat) ? chosenFormat : "mp4")
             try setGlobalString(manimFormat, key: "__codebench_manim_format", globals: globals)
 
+            // Encoder preference (Controls → Encoder): auto | h264 | hevc.
+            // "auto" leaves python-ios-lib's probe alone; the other two
+            // override it, but still fall back when the device cannot encode
+            // the requested codec at this size.
+            let codecPref = (UserDefaults.standard.string(forKey: "manim_video_codec") ?? "auto").lowercased()
+            try setGlobalString(["auto","h264","hevc"].contains(codecPref) ? codecPref : "auto",
+                                key: "__codebench_video_codec", globals: globals)
+
             // Class-picker selection (set by execute(targetScene:)). "" /
             // "*" = render all detected Scene subclasses (legacy); a
             // bare class name = render only that one. We BAKE the value
@@ -2284,6 +2292,36 @@ try:
                     _m.config.transparent = True
                 else:
                     _m.config.format = "mp4"
+
+                # Encoder preference. python-ios-lib probes VideoToolbox and
+                # picks H.264 when the media engine can take the frame size,
+                # else HEVC — the ceiling belongs to the chip (~4K on an M4 or
+                # M3 iPad Air, 8K on an iPhone 17 Pro Max), so it is measured
+                # rather than assumed. "auto" leaves that alone; a forced
+                # choice wraps it, and still declines to hand back an encoder
+                # that cannot open at this size — returning one that fails is
+                # exactly the bug the probe exists to prevent.
+                try:
+                    _pref = (globals().get('__codebench_video_codec', 'auto') or 'auto').lower()
+                    if _pref in ('h264', 'hevc'):
+                        from manim.utils import ios_encoder as _ioe
+                        _orig_pick = _ioe.videotoolbox_codec
+
+                        def _forced_pick(_w, _h, _p=_pref, _o=_orig_pick, _e=_ioe):
+                            if _p == 'hevc' and _e.hardware_hevc_available(_w, _h):
+                                return "hevc_videotoolbox", "hvc1"
+                            if _p == 'h264' and _e.hardware_h264_available(_w, _h):
+                                return "h264_videotoolbox", None
+                            _c, _t = _o(_w, _h)
+                            print(f"[manim] encoder: {_p} unavailable at {_w}x{_h} "
+                                  f"on this device - using {_c}", flush=True)
+                            return _c, _t
+
+                        _ioe.videotoolbox_codec = _forced_pick
+                        print(f"[manim] encoder preference: {_pref}", flush=True)
+                except Exception as _pe:
+                    print(f"[manim] encoder preference ignored: "
+                          f"{type(_pe).__name__}: {_pe}", flush=True)
                 _m.config.write_to_movie = True
                 _m.config.save_last_frame = False
                 _m.config.preview = False
@@ -3380,6 +3418,20 @@ try:
                             _in0_s = _in0.streams.video[0]
                             _out_stream = _out_ct.add_stream_from_template(
                                 _in0_s)
+                            # A template carries the codec but not its mp4 tag:
+                            # HEVC partials written as `hvc1` come back out of a
+                            # stream copy as `hev1`, which AVFoundation reports
+                            # as neither playable nor decodable. The name here is
+                            # the encoder ffmpeg would use for the copy, which
+                            # for HEVC reads as `libx265` — match the family.
+                            _rc = (getattr(_out_stream.codec_context, "name", "")
+                                   or "").lower()
+                            if "hevc" in _rc or "265" in _rc:
+                                try:
+                                    _out_stream.codec_tag = "hvc1"
+                                except Exception as _rte:
+                                    print(f"[concat] remux hvc1 tag rejected: "
+                                          f"{type(_rte).__name__}: {_rte}", flush=True)
                             _in0.close()
 
                             _muxed = 0
@@ -3531,30 +3583,50 @@ try:
                             _tp_concat = (globals().get(
                                 '__codebench_manim_format', 'mp4') or 'mp4'
                             ).lower() == 'mov'
-                            # VideoToolbox's H.264 encoder will not open above
-                            # ~4K: at 7680x4320 avcodec_open2() fails outright.
-                            # It fails LAZILY, at the first encode — long after
+                            # VideoToolbox's H.264 encoder stops well short of
+                            # 8K (4096x2304 on an M4), and avcodec_open2 fails
+                            # LAZILY at the first encode — long after
                             # add_stream() returned OK — so wrapping add_stream
-                            # never catches it and the concat silently produces
-                            # an empty file. HEVC hardware encode does handle 8K
-                            # and hevc_videotoolbox is in our ffmpeg build, so
-                            # step up to it past the H.264 ceiling.
-                            _H264_MAX_W, _H264_MAX_H = 4096, 2304
-                            if (_gpu_codec == "h264_videotoolbox"
-                                    and (_max_w > _H264_MAX_W
-                                         or _max_h > _H264_MAX_H)):
-                                print(f"[concat] {_max_w}x{_max_h} is past the "
-                                      f"H.264 encoder ceiling — using "
-                                      f"hevc_videotoolbox", flush=True)
-                                _gpu_codec = "hevc_videotoolbox"
+                            # never catches it. Where the ceiling sits belongs
+                            # to the media engine, not the OS, so ask the device
+                            # rather than hardcoding it: python-ios-lib's
+                            # ios_encoder probes H.264 then HEVC and hands back
+                            # the encoder plus the mp4 tag it needs.
+                            _concat_tag = None
+                            if _gpu_codec == "h264_videotoolbox":
+                                try:
+                                    from manim.utils.ios_encoder import (
+                                        videotoolbox_codec as _vt_pick)
+                                    _gpu_codec, _concat_tag = _vt_pick(_max_w, _max_h)
+                                    print(f"[concat] {_max_w}x{_max_h} -> "
+                                          f"{_gpu_codec}"
+                                          f"{' (' + _concat_tag + ')' if _concat_tag else ''}",
+                                          flush=True)
+                                except Exception as _vte:
+                                    # Older python-ios-lib without the probe:
+                                    # keep H.264 and let the fallback below act.
+                                    print(f"[concat] encoder probe unavailable "
+                                          f"({type(_vte).__name__}) — keeping "
+                                          f"{_gpu_codec}", flush=True)
                             if _tp_concat:
-                                _gpu_codec = "qtrle"
+                                _gpu_codec = "qtrle"; _concat_tag = None
                             _concat_stream = _out_ct.add_stream(
                                 _gpu_codec, rate=int(_max_rate))
                             _concat_stream.width = _max_w
                             _concat_stream.height = _max_h
                             _concat_pix = "argb" if _tp_concat else "yuv420p"
                             _concat_stream.pix_fmt = _concat_pix
+                            # ffmpeg defaults HEVC-in-mp4 to `hev1`, which is
+                            # legal and which AVFoundation refuses to play — the
+                            # render would finish and hand back a file the
+                            # device that made it cannot open.
+                            if _concat_tag and _gpu_codec.startswith("hevc"):
+                                try:
+                                    _concat_stream.codec_tag = _concat_tag
+                                except Exception as _tge:
+                                    print(f"[concat] codec_tag {_concat_tag} "
+                                          f"rejected: {type(_tge).__name__}: {_tge}",
+                                          flush=True)
                             # Quality-preserving bitrate: match the
                             # highest source bitrate, with a floor of
                             # 3 Mbps for 480p / 6 Mbps for 720p+ /

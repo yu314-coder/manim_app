@@ -21,6 +21,9 @@ struct ControlsSidebar: View {
     // wrapper rounds to even dims and derives an aspect-correct frame).
     @AppStorage("manim_custom_width")  private var customWidth = 1080
     @AppStorage("manim_custom_height") private var customHeight = 1920
+    /// auto | h264 | hevc — read by PythonRuntime, which overrides
+    /// python-ios-lib's encoder probe to match.
+    @AppStorage("manim_video_codec")   private var videoCodec = "auto"
 
     // Quality labels map to manim's 0-5 preset index in
     // PythonRuntime.qualityIndex (the single source of truth):
@@ -63,6 +66,9 @@ struct ControlsSidebar: View {
                 stepperRow("FPS", value: $finalFPS, range: 1...120, presets: [24,30,60,120])
                 pickerRow("Format", selection: $format, options: formats)
                 if format == "mov" { transparentNote }
+                pickerRow("Encoder", selection: $videoCodec,
+                          options: ["auto", "h264", "hevc"])
+                encoderNote
             }
 
             Spacer()
@@ -77,6 +83,39 @@ struct ControlsSidebar: View {
         // there's nothing to mirror here — and the gear Settings sheet, which
         // writes the same keys, stays authoritative even when this drawer is
         // closed.
+    }
+
+    /// Live answer from VideoToolbox for the resolution actually selected —
+    /// the H.264 ceiling belongs to the media engine, so it differs per
+    /// device (≈4K on an M4 / M3 iPad Air, 8K on an iPhone 17 Pro Max).
+    private var encoderNote: some View {
+        let size = RenderMemoryGuard.pixelSize(forQuality: finalQuality)
+        let h264 = VideoEncoderProbe.h264Available(width: size.w, height: size.h)
+        let hevc = VideoEncoderProbe.hevcAvailable(width: size.w, height: size.h)
+        let picked = videoCodec
+        let warn = (picked == "h264" && !h264) || (picked == "hevc" && !hevc)
+        let text: String = {
+            switch picked {
+            case "h264":
+                return h264 ? "H.264 encodes \(size.w)×\(size.h) in hardware here."
+                            : "This device cannot encode \(size.w)×\(size.h) in H.264 — HEVC will be used instead."
+            case "hevc":
+                return hevc ? "HEVC encodes \(size.w)×\(size.h) in hardware here."
+                            : "This device cannot encode \(size.w)×\(size.h) in HEVC — H.264 will be used instead."
+            default:
+                return "\(size.w)×\(size.h) → \(VideoEncoderProbe.autoChoice(width: size.w, height: size.h))"
+            }
+        }()
+        return HStack(alignment: .top, spacing: 5) {
+            Image(systemName: warn ? "exclamationmark.triangle" : "checkmark.seal")
+                .font(.system(size: 10))
+                .foregroundStyle(warn ? Theme.amber : Theme.accentPrimary)
+            Text(text)
+                .font(.system(size: 9.5))
+                .foregroundStyle(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
     }
 
     /// Shown when the alpha format is picked — "mov" on its own doesn't
