@@ -89,7 +89,7 @@ struct ControlsSidebar: View {
     /// the H.264 ceiling belongs to the media engine, so it differs per
     /// device (≈4K on an M4 / M3 iPad Air, 8K on an iPhone 17 Pro Max).
     private var encoderNote: some View {
-        let size = RenderMemoryGuard.pixelSize(forQuality: finalQuality)
+        let size = RenderResolution.pixelSize(forQuality: finalQuality)
         let h264 = VideoEncoderProbe.h264Available(width: size.w, height: size.h)
         let hevc = VideoEncoderProbe.hevcAvailable(width: size.w, height: size.h)
         let picked = videoCodec

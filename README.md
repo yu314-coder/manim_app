@@ -133,11 +133,6 @@ on-device without an internet connection.
   Past the ceiling the concat uses `hevc_videotoolbox`, and opens the
   encoder eagerly so an unusable codec can still be swapped instead of
   producing an empty file.
-- **Pre-render memory guard** (`RenderMemoryGuard.swift`) — peak footprint is
-  estimated as a baseline plus **34 live full-resolution frames** (the
-  encoder hand-off queue in `scene_file_writer.py` is capped at 32 *frames*,
-  not bytes) and checked against 55% of physical RAM. Over budget, the app
-  offers the highest quality that fits.
 - **Render-complete sheet** auto-presents on success: Save to Files /
   Save to Photos / Share. Original lands in `Documents/ToolOutputs/<run>/`
   regardless. Partial movie files are auto-deleted after concat.
@@ -251,7 +246,7 @@ ManimStudio/                         ← Xcode project root
     ├── PresentationMode.swift       · full-screen looping playback
     ├── ExternalDisplayManager.swift · inert by design; keeps mirroring
     ├── CommandPalette.swift         · ⇧⌘P palette over menu notifications
-    ├── RenderMemoryGuard.swift      · pre-render peak-footprint estimate
+    ├── RenderResolution.swift       · quality ladder + pixel dimensions
     ├── VideoEncoderProbe.swift      · native VideoToolbox capability probe
     ├── RAMMonitorView.swift         · iPad RAM HUD + iPhone sparkline
     ├── SceneDetector.swift          · finds Scene subclasses in source
@@ -369,28 +364,24 @@ a small delay so they don't fight Python boot for CPU on the first
 
 User taps **Render** or **Preview** (header) → `ContentView.triggerRender(quick:)`:
 
-1. **Memory pre-flight** (`RenderMemoryGuard`) — estimates peak footprint
-   for the chosen resolution and, if it will not fit, offers a quality that
-   does rather than letting jetsam kill the render at 90%. Advisory:
-   "Render anyway" is always available.
-2. `BackgroundTaskGuard.shared.begin()` — extends app lifetime and holds the
+1. `BackgroundTaskGuard.shared.begin()` — extends app lifetime and holds the
    idle timer so auto-lock cannot end the render mid-encode.
-3. **Preview** always uses `low_quality / 15 fps`. **Render** reads the
+2. **Preview** always uses `low_quality / 15 fps`. **Render** reads the
    user's Final settings from `@AppStorage("manim_final_*")` keys.
-4. `PythonRuntime.execute(code:targetScene:onOutput:)` runs the wrapper
+3. `PythonRuntime.execute(code:targetScene:onOutput:)` runs the wrapper
    script in `<offlinai-python-tool>`. The wrapper exec's user code,
    discovers Scene subclasses, calls each one in source order, and writes
    the final MP4 path to a Python global the Swift side reads back.
-5. Stdout/stderr stream through the PTY → SwiftTerm + log file. The
+4. Stdout/stderr stream through the PTY → SwiftTerm + log file. The
    `[manim-debug]` line filter strips internal pipeline traces from the
    visible terminal but keeps the log file unfiltered.
-6. **On success:**
+5. **On success:**
    - `cleanupPartials()` removes the `partial_movie_files/` subtree
      (~500 MB on a 30-animation 1080p run).
    - `RenderCompleteSheet` auto-presents: Save to Files / Save to Photos /
      Share via UIActivityViewController.
    - File appears in `HistoryView`'s scan of `Documents/ToolOutputs/`.
-7. **On failure:**
+6. **On failure:**
    - `parseTracebackMarkers` regexes `File "<string>", line N` out of
      stderr.
    - `editorSetMarkers` notification posts; `EditorPane` forwards to
@@ -447,6 +438,16 @@ RGBA buffers, well past what any iPad gives one app. The cap that existed to
 prevent a jetsam kill was causing one. The byte budget is what is fixed now,
 so the depth follows the resolution: **1080p queues 32, 4K queues 8, 8K
 queues 2** — never fewer, or the renderer and encoder stop overlapping.
+
+### No pre-flight memory gate
+
+An earlier build estimated peak footprint before a render and offered a lower
+quality when it looked too large. That estimate modelled the encoder queue as
+32 full-resolution frames — correct when written, wrong once the queue became
+byte-bounded, and it over-predicted by roughly 4x. **8K at 120 fps measures
+under 2 GB on an iPad Air M3.** A pre-flight that refuses work the device can
+actually do is worse than none, so it was removed; the memory watchdog in the
+render path is the real safety net.
 
 ### Choosing the encoder
 

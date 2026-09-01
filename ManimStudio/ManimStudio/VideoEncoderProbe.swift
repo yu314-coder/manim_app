@@ -107,8 +107,8 @@ enum VideoEncoderProbe {
 
     /// Highest ladder entry this codec still encodes in hardware, for display.
     static func ceiling(codec: CMVideoCodecType) -> String {
-        for q in RenderMemoryGuard.ladder {           // 8K → 480p
-            let s = RenderMemoryGuard.pixelSize(forQuality: q)
+        for q in RenderResolution.ladder {           // 8K → 480p
+            let s = RenderResolution.pixelSize(forQuality: q)
             if hardwareAvailable(codec: codec, width: s.w, height: s.h) {
                 return "\(q) (\(s.w)×\(s.h))"
             }

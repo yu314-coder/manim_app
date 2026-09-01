@@ -20,8 +20,6 @@ struct ContentView: View {
             self.wait(1)
     """
     @State private var isRendering = false
-    /// Non-nil while the pre-render memory warning is on screen.
-    @State private var memoryWarning: RenderMemoryGuard.Warning?
     @State private var renderedVideoURL: URL? = nil
     /// Timer that walks Documents/ToolOutputs/ during a render and
     /// promotes the newest produced .mp4/.gif/.png to
@@ -177,35 +175,6 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showPresent) {
             PresentationCoverView(url: renderedVideoURL) { showPresent = false }
         }
-        // Pre-render memory guard. Advisory, never a hard block — "Render
-        // anyway" is always available because the estimate is a heuristic.
-        .confirmationDialog(
-            memoryWarning.map { "\($0.width)×\($0.height) may run out of memory" } ?? "",
-            isPresented: Binding(get: { memoryWarning != nil },
-                                 set: { if !$0 { memoryWarning = nil } }),
-            titleVisibility: .visible,
-            presenting: memoryWarning
-        ) { warn in
-            if let safer = warn.saferQuality {
-                Button("Render at \(safer) instead") {
-                    UserDefaults.standard.set(
-                        safer,
-                        forKey: warn.quick ? "manim_preview_quality" : "manim_final_quality")
-                    memoryWarning = nil
-                    beginRender(quick: warn.quick)
-                }
-            }
-            Button("Render anyway", role: .destructive) {
-                memoryWarning = nil
-                beginRender(quick: warn.quick)
-            }
-            Button("Cancel", role: .cancel) { memoryWarning = nil }
-        } message: { warn in
-            Text("\(warn.quality) needs about \(RenderMemoryGuard.bytes(warn.needBytes)), "
-                 + "but only \(RenderMemoryGuard.bytes(warn.availableBytes)) is free before "
-                 + "iOS starts killing the app."
-                 + (warn.saferQuality.map { "\nRendering at \($0) changes the quality setting." } ?? ""))
-        }
         .onReceive(NotificationCenter.default.publisher(for: .menuRenderPresent)) { _ in
             if renderedVideoURL != nil { showPresent = true }
         }
@@ -286,18 +255,8 @@ struct ContentView: View {
         }
     }
 
-    /// Entry point for every render/preview. Runs the memory guard first —
-    /// a 4K render that jetsams at 90% costs far more than one dialog.
     private func triggerRender(quick: Bool) {
         guard !isRendering else { return }
-        let key = quick ? "manim_preview_quality" : "manim_final_quality"
-        let quality = UserDefaults.standard.string(forKey: key)
-            ?? (quick ? "480p" : "1080p")
-        if let warning = RenderMemoryGuard.check(quality: quality, quick: quick) {
-            Haptics.notify(.warning)
-            memoryWarning = warning
-            return                      // resumes from the dialog's buttons
-        }
         beginRender(quick: quick)
     }
 
