@@ -24,6 +24,10 @@ struct ControlsSidebar: View {
     /// auto | h264 | hevc — read by PythonRuntime, which overrides
     /// python-ios-lib's encoder probe to match.
     @AppStorage("manim_video_codec")   private var videoCodec = "auto"
+    /// Frames allowed to wait between the renderer and the encoder.
+    /// "auto" keeps python-ios-lib's byte-bounded depth (~256 MB held at any
+    /// resolution: 32 at 1080p, 8 at 4K, 2 at 8K).
+    @AppStorage("manim_queue_depth")   private var queueDepth = "auto"
 
     // Quality labels map to manim's 0-5 preset index in
     // PythonRuntime.qualityIndex (the single source of truth):
@@ -66,9 +70,21 @@ struct ControlsSidebar: View {
                 stepperRow("FPS", value: $finalFPS, range: 1...120, presets: [24,30,60,120])
                 pickerRow("Format", selection: $format, options: formats)
                 if format == "mov" { transparentNote }
+            }
+
+            // Encoding applies to Quick Preview AND Final Render — both go
+            // through the same writer, so these are deliberately outside the
+            // two sections above rather than duplicated in each.
+            section(title: "Encoding", icon: "cpu", tint: Theme.green) {
+                Text("Applies to preview and render")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(Theme.textDim)
                 pickerRow("Encoder", selection: $videoCodec,
                           options: ["auto", "h264", "hevc"])
                 encoderNote
+                pickerRow("Queue depth", selection: $queueDepth,
+                          options: ["auto", "2", "4", "8", "16", "32"])
+                queueNote
             }
 
             Spacer()
@@ -110,6 +126,35 @@ struct ControlsSidebar: View {
             Image(systemName: warn ? "exclamationmark.triangle" : "checkmark.seal")
                 .font(.system(size: 10))
                 .foregroundStyle(warn ? Theme.amber : Theme.accentPrimary)
+            Text(text)
+                .font(.system(size: 9.5))
+                .foregroundStyle(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// How much memory the chosen depth holds at the selected resolution.
+    /// A fixed depth does not scale with frame size — 32 frames is ~256 MB at
+    /// 1080p but ~4.2 GB at 8K, which is the bug "auto" exists to avoid — so
+    /// the cost is spelled out rather than left to be discovered.
+    private var queueNote: some View {
+        let size = RenderResolution.pixelSize(forQuality: finalQuality)
+        let frameMB = Double(size.w * size.h * 4) / 1_048_576
+        let auto = queueDepth == "auto"
+        let depth = auto ? max(2, min(32, Int(268_435_456.0 / (frameMB * 1_048_576)))) 
+                         : (Int(queueDepth) ?? 8)
+        let heldMB = frameMB * Double(depth)
+        let heavy = !auto && heldMB > 600
+        let text = auto
+            ? String(format: "Auto: %d frames × %.0f MB ≈ %.0f MB held at %d×%d.",
+                     depth, frameMB, heldMB, size.w, size.h)
+            : String(format: "%d frames × %.0f MB ≈ %.0f MB held at %d×%d. Deeper overlaps rendering and encoding; shallower holds less.",
+                     depth, frameMB, heldMB, size.w, size.h)
+        return HStack(alignment: .top, spacing: 5) {
+            Image(systemName: heavy ? "exclamationmark.triangle" : "tray.2")
+                .font(.system(size: 10))
+                .foregroundStyle(heavy ? Theme.amber : Theme.accentPrimary)
             Text(text)
                 .font(.system(size: 9.5))
                 .foregroundStyle(Theme.textDim)
