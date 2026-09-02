@@ -1,6 +1,7 @@
 // ControlsSidebar.swift — Quick Preview / Final Render controls.
 // Mirrors .workspace-controls-sidebar in manim_app.
 import SwiftUI
+import Manim
 
 struct ControlsSidebar: View {
     @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
@@ -28,6 +29,10 @@ struct ControlsSidebar: View {
     /// "auto" keeps python-ios-lib's byte-bounded depth (~256 MB held at any
     /// resolution: 32 at 1080p, 8 at 4K, 2 at 8K).
     @AppStorage("manim_queue_depth")   private var queueDepth = "auto"
+    /// Memory the frame queue may hold, in MB, when depth is "auto".
+    /// The library turns this into a per-resolution depth, so it stays
+    /// correct at every size — which a fixed frame count does not.
+    @AppStorage("manim_queue_budget_mb") private var queueBudgetMB = 256
 
     // Quality labels map to manim's 0-5 preset index in
     // PythonRuntime.qualityIndex (the single source of truth):
@@ -80,10 +85,14 @@ struct ControlsSidebar: View {
                     .font(.system(size: 9.5))
                     .foregroundStyle(Theme.textDim)
                 pickerRow("Encoder", selection: $videoCodec,
-                          options: ["auto", "h264", "hevc"])
+                          options: ["auto", "h264", "hevc", "mpeg4"])
                 encoderNote
                 pickerRow("Queue depth", selection: $queueDepth,
                           options: ["auto", "2", "4", "8", "16", "32"])
+                if queueDepth == "auto" {
+                    stepperRow("Queue budget (MB)", value: $queueBudgetMB,
+                               range: 32...2048, presets: [128, 256, 512, 1024])
+                }
                 queueNote
             }
 
@@ -134,23 +143,23 @@ struct ControlsSidebar: View {
         .padding(.vertical, 2)
     }
 
-    /// How much memory the chosen depth holds at the selected resolution.
-    /// A fixed depth does not scale with frame size — 32 frames is ~256 MB at
-    /// 1080p but ~4.2 GB at 8K, which is the bug "auto" exists to avoid — so
-    /// the cost is spelled out rather than left to be discovered.
+    /// What the chosen depth works out to at the selected resolution.
+    /// The numbers come from the library's own `frameQueueDepth(forWidth:)`
+    /// / `frameQueueBytes(forWidth:)` rather than being recomputed here, so
+    /// the sidebar cannot drift from what the render actually does.
     private var queueNote: some View {
         let size = RenderResolution.pixelSize(forQuality: finalQuality)
+        var cfg = ManimLib.RenderConfiguration()
+        cfg.frameQueueDepth = queueDepth == "auto" ? nil : Int(queueDepth)
+        cfg.frameQueueBudgetMB = queueBudgetMB
+        let depth = cfg.frameQueueDepth(forWidth: size.w, height: size.h)
+        let heldMB = Double(cfg.frameQueueBytes(forWidth: size.w, height: size.h)) / 1_048_576
         let frameMB = Double(size.w * size.h * 4) / 1_048_576
-        let auto = queueDepth == "auto"
-        let depth = auto ? max(2, min(32, Int(268_435_456.0 / (frameMB * 1_048_576)))) 
-                         : (Int(queueDepth) ?? 8)
-        let heldMB = frameMB * Double(depth)
-        let heavy = !auto && heldMB > 600
-        let text = auto
-            ? String(format: "Auto: %d frames × %.0f MB ≈ %.0f MB held at %d×%d.",
-                     depth, frameMB, heldMB, size.w, size.h)
-            : String(format: "%d frames × %.0f MB ≈ %.0f MB held at %d×%d. Deeper overlaps rendering and encoding; shallower holds less.",
-                     depth, frameMB, heldMB, size.w, size.h)
+        let heavy = queueDepth != "auto" && heldMB > 600
+        let text = String(
+            format: "%@%d frames × %.0f MB ≈ %.0f MB held at %d×%d.%@",
+            queueDepth == "auto" ? "Auto: " : "", depth, frameMB, heldMB, size.w, size.h,
+            queueDepth == "auto" ? "" : " Fixed depth ignores the budget.")
         return HStack(alignment: .top, spacing: 5) {
             Image(systemName: heavy ? "exclamationmark.triangle" : "tray.2")
                 .font(.system(size: 10))

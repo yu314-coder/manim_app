@@ -105,6 +105,34 @@ else
     fi
   done
   unset _missing_pkg PKG_SRC PKG_DST
+  # ── Single-file top-level modules ───────────────────────────────
+  # The loop above only mirrors package *directories*, so a bare .py
+  # module at the top of site-packages is silently skipped.
+  #
+  #   codebench_inline  the shell imports this at launch to start its
+  #                     rich-output backend. Missing, it printed
+  #                     "[shell] codebench_inline init failed: No module
+  #                     named 'codebench_inline'" on every cold start.
+  #                     It writes captured matplotlib / plotly / PIL
+  #                     artifacts into $TMPDIR/latex_signals/, which this
+  #                     app already watches, so bundling it both silences
+  #                     the error and makes inline figure output work.
+  for _mod in \
+      codebench_inline \
+      ; do
+    MOD_SRC="$PIL_SP/$_mod.py"
+    MOD_DST="$APP_SP/$_mod.py"
+    if [ -f "$MOD_SRC" ]; then
+      if [ ! -f "$MOD_DST" ] || [ "$MOD_SRC" -nt "$MOD_DST" ]; then
+        cp -f "$MOD_SRC" "$MOD_DST"
+        echo "note: copied $_mod.py ($(du -h "$MOD_DST" | cut -f1))"
+      fi
+    else
+      echo "warning: $_mod.py not present in $PIL_SP — skipping."
+    fi
+  done
+  unset _mod MOD_SRC MOD_DST
+
   # dist-info directories — pip / importlib.metadata look for these to
   # answer `requests.__version__`, `pip show requests`, etc.
   for di in \

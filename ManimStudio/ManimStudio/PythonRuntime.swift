@@ -1,4 +1,5 @@
 import Foundation
+import Manim   // ManimLib.renderConfiguration — the render tunables API
 
 private typealias PyObjectPointer = OpaquePointer
 private typealias PyGILStateState = Int32
@@ -885,20 +886,27 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
                 : (allowedFormats.contains(chosenFormat) ? chosenFormat : "mp4")
             try setGlobalString(manimFormat, key: "__codebench_manim_format", globals: globals)
 
-            // Encoder preference (Controls → Encoder): auto | h264 | hevc.
-            // "auto" leaves python-ios-lib's probe alone; the other two
-            // override it, but still fall back when the device cannot encode
-            // the requested codec at this size.
-            let codecPref = (UserDefaults.standard.string(forKey: "manim_video_codec") ?? "auto").lowercased()
-            try setGlobalString(["auto","h264","hevc"].contains(codecPref) ? codecPref : "auto",
-                                key: "__codebench_video_codec", globals: globals)
-
-            // Frame-queue depth (Controls → Encoding). "auto" leaves
-            // python-ios-lib's byte-bounded depth alone. Applies to previews
-            // too — both go through the same writer.
-            let qDepth = (UserDefaults.standard.string(forKey: "manim_queue_depth") ?? "auto").lowercased()
-            try setGlobalString(["auto","2","4","8","16","32"].contains(qDepth) ? qDepth : "auto",
-                                key: "__codebench_queue_depth", globals: globals)
+            // Encoding controls (Controls → Encoding), applied through
+            // python-ios-lib's supported API rather than by monkey-patching
+            // its internals from the wrapper. Covers previews too — both go
+            // through the same writer.
+            //
+            //   Encoder     auto -> nil, which asks the hardware what it can
+            //               encode at this size (H.264 to ~4K, HEVC above).
+            //   Queue depth auto -> nil, which derives the depth from the
+            //               256 MB budget: 32 at 1080p, 8 at 4K, 2 at 8K.
+            var renderCfg = ManimLib.RenderConfiguration()
+            switch (UserDefaults.standard.string(forKey: "manim_video_codec") ?? "auto").lowercased() {
+            case "h264":  renderCfg.videoCodec = .h264
+            case "hevc":  renderCfg.videoCodec = .hevc
+            case "mpeg4": renderCfg.videoCodec = .mpeg4
+            default:      renderCfg.videoCodec = nil
+            }
+            let qd = (UserDefaults.standard.string(forKey: "manim_queue_depth") ?? "auto").lowercased()
+            renderCfg.frameQueueDepth = qd == "auto" ? nil : Int(qd)
+            let budget = UserDefaults.standard.integer(forKey: "manim_queue_budget_mb")
+            if budget > 0 { renderCfg.frameQueueBudgetMB = budget }
+            ManimLib.renderConfiguration = renderCfg
 
             // Class-picker selection (set by execute(targetScene:)). "" /
             // "*" = render all detected Scene subclasses (legacy); a
@@ -2300,62 +2308,7 @@ try:
                 else:
                     _m.config.format = "mp4"
 
-                # Encoder preference. python-ios-lib probes VideoToolbox and
-                # picks H.264 when the media engine can take the frame size,
-                # else HEVC — the ceiling belongs to the chip (~4K on an M4 or
-                # M3 iPad Air, 8K on an iPhone 17 Pro Max), so it is measured
-                # rather than assumed. "auto" leaves that alone; a forced
-                # choice wraps it, and still declines to hand back an encoder
-                # that cannot open at this size — returning one that fails is
-                # exactly the bug the probe exists to prevent.
-                try:
-                    _pref = (globals().get('__codebench_video_codec', 'auto') or 'auto').lower()
-                    if _pref in ('h264', 'hevc'):
-                        from manim.utils import ios_encoder as _ioe
-                        _orig_pick = _ioe.videotoolbox_codec
 
-                        def _forced_pick(_w, _h, _p=_pref, _o=_orig_pick, _e=_ioe):
-                            if _p == 'hevc' and _e.hardware_hevc_available(_w, _h):
-                                return "hevc_videotoolbox", "hvc1"
-                            if _p == 'h264' and _e.hardware_h264_available(_w, _h):
-                                return "h264_videotoolbox", None
-                            _c, _t = _o(_w, _h)
-                            print(f"[manim] encoder: {_p} unavailable at {_w}x{_h} "
-                                  f"on this device - using {_c}", flush=True)
-                            return _c, _t
-
-                        _ioe.videotoolbox_codec = _forced_pick
-                        print(f"[manim] encoder preference: {_pref}", flush=True)
-                except Exception as _pe:
-                    print(f"[manim] encoder preference ignored: "
-                          f"{type(_pe).__name__}: {_pe}", flush=True)
-
-                # Frame-queue depth. The library derives it from a fixed
-                # ~256 MB budget, so the count follows the resolution (32 at
-                # 1080p, 8 at 4K, 2 at 8K) — that budget is a local, so the
-                # override goes in through the one name the writer builds its
-                # queue from. A depth of 0 means "leave the library's number
-                # alone", which is how switching back to auto takes effect.
-                try:
-                    import manim.scene.scene_file_writer as _sfwmod
-                    from queue import Queue as _StdQueue
-                    _qd = (globals().get('__codebench_queue_depth', 'auto') or 'auto').lower()
-                    _sfwmod._cb_queue_depth = (
-                        0 if _qd == 'auto' else max(1, min(64, int(_qd))))
-                    if not getattr(_sfwmod, '_cb_queue_patched', False):
-                        class _CBQueue(_StdQueue):
-                            def __init__(self, maxsize=0):
-                                _forced = getattr(_sfwmod, '_cb_queue_depth', 0)
-                                super().__init__(
-                                    maxsize=_forced if _forced > 0 else maxsize)
-                        _sfwmod.Queue = _CBQueue
-                        _sfwmod._cb_queue_patched = True
-                    if _sfwmod._cb_queue_depth:
-                        print(f"[manim] frame queue depth forced to "
-                              f"{_sfwmod._cb_queue_depth}", flush=True)
-                except Exception as _qe:
-                    print(f"[manim] queue depth ignored: "
-                          f"{type(_qe).__name__}: {_qe}", flush=True)
                 _m.config.write_to_movie = True
                 _m.config.save_last_frame = False
                 _m.config.preview = False
