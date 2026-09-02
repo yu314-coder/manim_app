@@ -2308,6 +2308,34 @@ try:
                 else:
                     _m.config.format = "mp4"
 
+                # Re-seed the render tunables from the environment.
+                #
+                # ManimLib.renderConfiguration writes them into the
+                # environment, which is the right shape for an app that sets
+                # them once at startup. This app changes them between renders,
+                # and RenderSettings seeds itself from os.environ exactly once
+                # -- in its __init__, at import -- while manim stays imported
+                # for the life of the process. So without this, only the first
+                # render after launch ever saw a change: the sidebar would say
+                # 32 and the render would still queue 2.
+                #
+                # Re-running __init__ mutates the singleton in place using the
+                # library's own parsing, rather than duplicating the field
+                # names and clamps here. In place matters: the writer does
+                # `from ... import settings` fresh on each call, but anything
+                # holding an earlier reference would miss a rebind.
+                try:
+                    from manim.utils import ios_encoder as _ioe
+                    _ioe.settings.__init__()
+                    _s = _ioe.settings
+                    print(f"[manim] render settings: "
+                          f"codec={_s.video_codec or 'auto'} "
+                          f"queue_frames={_s.frame_queue_frames if _s.frame_queue_frames is not None else 'auto'} "
+                          f"budget={_s.frame_queue_budget_mb}MB", flush=True)
+                except Exception as _se:
+                    print(f"[manim] render settings unavailable: "
+                          f"{type(_se).__name__}: {_se}", flush=True)
+
 
                 _m.config.write_to_movie = True
                 _m.config.save_last_frame = False
