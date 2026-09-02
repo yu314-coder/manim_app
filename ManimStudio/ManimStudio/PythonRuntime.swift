@@ -1,5 +1,4 @@
 import Foundation
-import Manim   // ManimLib.renderConfiguration — the render tunables API
 
 private typealias PyObjectPointer = OpaquePointer
 private typealias PyGILStateState = Int32
@@ -895,18 +894,25 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             //               encode at this size (H.264 to ~4K, HEVC above).
             //   Queue depth auto -> nil, which derives the depth from the
             //               256 MB budget: 32 at 1080p, 8 at 4K, 2 at 8K.
-            var renderCfg = ManimLib.RenderConfiguration()
-            switch (UserDefaults.standard.string(forKey: "manim_video_codec") ?? "auto").lowercased() {
-            case "h264":  renderCfg.videoCodec = .h264
-            case "hevc":  renderCfg.videoCodec = .hevc
-            case "mpeg4": renderCfg.videoCodec = .mpeg4
-            default:      renderCfg.videoCodec = nil
-            }
+            // Passed as Python globals rather than through the library's
+            // Swift render-configuration API. That API applies by calling
+            // setenv(), which is right for an app that sets it once before
+            // starting the interpreter — but os.environ is a snapshot Python
+            // takes when it imports `os`, so a setenv() afterwards is
+            // invisible to it. These change between renders on a long-running
+            // interpreter, so the environment can never carry them. The
+            // wrapper assigns manim.utils.ios_encoder.settings directly from
+            // these globals, which is the API the library documents for
+            // script authors and is read at render time.
+            let codecPref = (UserDefaults.standard.string(forKey: "manim_video_codec") ?? "auto").lowercased()
+            try setGlobalString(["auto","h264","hevc","mpeg4"].contains(codecPref) ? codecPref : "auto",
+                                key: "__codebench_video_codec", globals: globals)
             let qd = (UserDefaults.standard.string(forKey: "manim_queue_depth") ?? "auto").lowercased()
-            renderCfg.frameQueueDepth = qd == "auto" ? nil : Int(qd)
-            let budget = UserDefaults.standard.integer(forKey: "manim_queue_budget_mb")
-            if budget > 0 { renderCfg.frameQueueBudgetMB = budget }
-            ManimLib.renderConfiguration = renderCfg
+            try setGlobalString(["auto","2","4","8","16","32"].contains(qd) ? qd : "auto",
+                                key: "__codebench_queue_depth", globals: globals)
+            let qBudget = UserDefaults.standard.integer(forKey: "manim_queue_budget_mb")
+            try setGlobalString(String(qBudget > 0 ? qBudget : 256),
+                                key: "__codebench_queue_budget", globals: globals)
 
             // Class-picker selection (set by execute(targetScene:)). "" /
             // "*" = render all detected Scene subclasses (legacy); a
@@ -2308,30 +2314,33 @@ try:
                 else:
                     _m.config.format = "mp4"
 
-                # Re-seed the render tunables from the environment.
+                # Apply the Encoding controls through the library's own
+                # settings object.
                 #
-                # ManimLib.renderConfiguration writes them into the
-                # environment, which is the right shape for an app that sets
-                # them once at startup. This app changes them between renders,
-                # and RenderSettings seeds itself from os.environ exactly once
-                # -- in its __init__, at import -- while manim stays imported
-                # for the life of the process. So without this, only the first
-                # render after launch ever saw a change: the sidebar would say
-                # 32 and the render would still queue 2.
-                #
-                # Re-running __init__ mutates the singleton in place using the
-                # library's own parsing, rather than duplicating the field
-                # names and clamps here. In place matters: the writer does
-                # `from ... import settings` fresh on each call, but anything
-                # holding an earlier reference would miss a rebind.
+                # Not via the environment: os.environ is a snapshot Python
+                # takes when it imports `os`, so a setenv() from Swift after
+                # the interpreter is up never reaches it — which is why the
+                # sidebar could say 32 while the render queued 2. Globals go
+                # through the interpreter itself, so they always arrive.
                 try:
-                    from manim.utils import ios_encoder as _ioe
-                    _ioe.settings.__init__()
-                    _s = _ioe.settings
+                    from manim.utils.ios_encoder import settings as _ios_settings
+                    _c = (globals().get('__codebench_video_codec', 'auto') or 'auto').lower()
+                    _ios_settings.video_codec = {
+                        'h264':  'h264_videotoolbox',
+                        'hevc':  'hevc_videotoolbox',
+                        'mpeg4': 'mpeg4',
+                    }.get(_c)          # None for auto -> probe the hardware
+                    _qd = (globals().get('__codebench_queue_depth', 'auto') or 'auto').lower()
+                    _ios_settings.frame_queue_frames = None if _qd == 'auto' else int(_qd)
+                    _qb = int(globals().get('__codebench_queue_budget', 256) or 256)
+                    if _qb > 0:
+                        _ios_settings.frame_queue_budget_mb = _qb
+                    _shown = (_ios_settings.frame_queue_frames
+                              if _ios_settings.frame_queue_frames is not None else 'auto')
                     print(f"[manim] render settings: "
-                          f"codec={_s.video_codec or 'auto'} "
-                          f"queue_frames={_s.frame_queue_frames if _s.frame_queue_frames is not None else 'auto'} "
-                          f"budget={_s.frame_queue_budget_mb}MB", flush=True)
+                          f"codec={_ios_settings.video_codec or 'auto'} "
+                          f"queue_frames={_shown} "
+                          f"budget={_ios_settings.frame_queue_budget_mb}MB", flush=True)
                 except Exception as _se:
                     print(f"[manim] render settings unavailable: "
                           f"{type(_se).__name__}: {_se}", flush=True)
