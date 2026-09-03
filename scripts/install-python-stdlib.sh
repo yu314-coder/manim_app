@@ -170,25 +170,6 @@ else
   done
   unset _mod MOD_SRC MOD_DST
 
-  # Make everything we just copied writable.
-  #
-  # SwiftPM checkouts are read-only (-r--r--r--) and `rsync -a` preserves
-  # that, so the copies arrive read-only too. fix-macho-type.py opens each
-  # framework binary "r+b" to flip MH_BUNDLE → MH_DYLIB, so a read-only copy
-  # fails with EACCES — it reported
-  #
-  #     error: [Errno 13] Permission denied: '...contourpy._contourpy'
-  #
-  # and carried on, and the un-flipped MH_BUNDLE binary reached the validator:
-  #
-  #     ITMS-90124 ... has type 'BUNDLE' that is not valid.
-  #                    Only 'EXECUTE' is permitted.
-  #
-  # Packages whose extensions are already MH_DYLIB never noticed; only the
-  # ones actually needing the flip did, which is why this surfaced the moment
-  # kiwisolver and contourpy were added.
-  chmod -R u+w "$APP_SP" 2>/dev/null || true
-
   # dist-info directories — pip / importlib.metadata look for these to
   # answer `requests.__version__`, `pip show requests`, etc.
   for di in \
@@ -237,6 +218,23 @@ else
   else
     echo "note: cairo_metal shim not in $PIL_SP — GPU rasterization will fall back to software cairo"
   fi
+
+  # Make everything copied above writable — LAST, after every copy.
+  #
+  # SwiftPM checkouts are read-only, and both rsync -a and cp carry the source
+  # mode across, so the copies arrive -r--r--r--. fix-macho-type.py opens each
+  # framework binary "r+b" to flip MH_BUNDLE → MH_DYLIB and add LC_ID_DYLIB, so
+  # a read-only copy fails with EACCES; it logs the error per file and carries
+  # on, and the un-flipped binary reaches the validator:
+  #
+  #     ITMS-90124  ... has type 'BUNDLE' ... Only 'EXECUTE' is permitted.
+  #     ITMS-90171  ... binary file is not permitted.
+  #
+  # This sits at the end of the block on purpose. An earlier attempt put it
+  # just after the package loop, which covered kiwisolver and contourpy but not
+  # the CairoMetal shim copied further down — so the same rejection came back
+  # naming cairo_metal instead. Anything copied above is covered here.
+  chmod -R u+w "$APP_SP" 2>/dev/null || true
 fi
 
 if [ ! -d "$BEEWARE" ]; then
