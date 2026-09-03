@@ -2282,6 +2282,10 @@ try:
                             _collected_frames.append(img)
                     except Exception:
                         pass
+                # First frame of the run: hand the writer to the watchdog so
+                # it can release the queue if Stop arrives while we are
+                # blocked in queue.put below.
+                _install_cancel_watchdog(self_fw)
                 # Always run the original so the real mp4 still gets written.
                 try:
                     _orig_write_frame(self_fw, frame_or_renderer, num_frames)
@@ -2289,6 +2293,60 @@ try:
                     pass
 
             SceneFileWriter.write_frame = _capture_write_frame
+
+            # Stop has to survive a renderer blocked in queue.put().
+            #
+            # write_frame() checks the cancel sentinel and raises, which is
+            # enough while it returns promptly. It no longer does: the frame
+            # queue is bounded (2 slots at 8K), so a renderer that outpaces
+            # the encoder parks inside queue.put and the check cannot run
+            # again until the encoder drains — which at 8K is tens of
+            # seconds, and is exactly when someone reaches for Stop.
+            #
+            # This watchdog polls the sentinel off the render thread and
+            # drains the queue, which releases the blocked put immediately.
+            # The renderer then returns into write_frame, sees the sentinel
+            # still there, and raises. Dropping queued frames is safe: the
+            # render is being abandoned.
+            _cancel_fw = [None]
+            _cancel_watch_started = [False]
+
+            def _install_cancel_watchdog(fw):
+                _cancel_fw[0] = fw
+                if _cancel_watch_started[0]:
+                    return
+                _cancel_watch_started[0] = True
+                import threading as _cw_thr, time as _cw_time
+
+                def _watch():
+                    _cp = os.path.join(globals().get('__codebench_tool_dir', ''),
+                                       '_cancel_render.txt')
+                    while True:
+                        _cw_time.sleep(0.2)
+                        if not _cp or not os.path.exists(_cp):
+                            continue
+                        _fw = _cancel_fw[0]
+                        if _fw is None:
+                            continue
+                        try:
+                            _q = getattr(_fw, 'queue', None)
+                            if _q is not None:
+                                _drained = 0
+                                while True:
+                                    try:
+                                        _q.get_nowait()
+                                        _drained += 1
+                                    except Exception:
+                                        break
+                                print(f"[stop] released the frame queue "
+                                      f"({_drained} frame(s) dropped)", flush=True)
+                        except Exception as _we:
+                            print(f"[stop] queue release failed: "
+                                  f"{type(_we).__name__}: {_we}", flush=True)
+                        return
+
+                _t = _cw_thr.Thread(target=_watch, daemon=True)
+                _t.start()
 
             def _offlinai_manim_render(self, *args, **kwargs):
                 global __codebench_plot_path

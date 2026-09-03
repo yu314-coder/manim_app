@@ -20,6 +20,11 @@ struct ContentView: View {
             self.wait(1)
     """
     @State private var isRendering = false
+    /// True from the moment Stop is tapped until the render actually ends.
+    /// Stop is cooperative — the wrapper aborts at the next frame boundary,
+    /// which at 8K can be tens of seconds away — so without this the button
+    /// looked inert and the render looked unstoppable.
+    @State private var isStopping = false
     @State private var renderedVideoURL: URL? = nil
     /// Timer that walks Documents/ToolOutputs/ during a render and
     /// promotes the newest produced .mp4/.gif/.png to
@@ -68,6 +73,7 @@ struct ContentView: View {
                 onRender:  { triggerRender(quick: false) },
                 onPreview: { triggerRender(quick: true) },
                 onStop:    { stopRender() },
+                isStopping: isStopping,
                 onNew:     { confirmNew = true },
                 onOpen:    { showOpener = true },
                 onSave:    {
@@ -408,6 +414,7 @@ struct ContentView: View {
             Haptics.notify(.error)
         }
         isRendering = false
+        isStopping = false
         BackgroundTaskGuard.shared.end()
     }
 
@@ -488,8 +495,15 @@ struct ContentView: View {
     }
 
     private func stopRender() {
-        guard isRendering else { return }
+        guard isRendering, !isStopping else { return }
         Haptics.impact(.rigid)
+        // Show it immediately. The abort itself lands at the next frame
+        // boundary; the UI must not wait for that to acknowledge the tap.
+        isStopping = true
+        let banner = "\n\u{1b}[1;33m[stop]\u{1b}[0m requested — aborting at the next frame boundary\r\n"
+        banner.withCString { cs in
+            _ = Darwin.write(PTYBridge.shared.stdoutPipeWriteFD, cs, strlen(cs))
+        }
         // Three escalating stop signals:
         //  1. Cooperative cancel sentinel — the render wrapper checks it
         //     once per frame and raises KeyboardInterrupt. This is the

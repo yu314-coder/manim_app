@@ -8,6 +8,9 @@ struct HeaderView: View {
     var onRender:  () -> Void
     var onPreview: () -> Void
     var onStop:    () -> Void
+    /// Stop tapped, abort not yet landed — the button says so and stops
+    /// accepting taps rather than looking broken.
+    var isStopping: Bool = false
     var onNew:     () -> Void
     var onOpen:    () -> Void
     var onSave:    () -> Void
@@ -148,14 +151,16 @@ struct HeaderView: View {
             }
             if isRendering {
                 Button(action: onStop) {
-                    Image(systemName: "stop.fill")
+                    Image(systemName: isStopping ? "hourglass" : "stop.fill")
                         .font(.system(size: 13))
                         .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.error))
+                        .background(RoundedRectangle(cornerRadius: 8)
+                            .fill(isStopping ? Theme.amber : Theme.error))
                 }
                 .buttonStyle(.plain)
-                .help("Stop")
+                .disabled(isStopping)
+                .help(isStopping ? "Stopping — aborting at the next frame" : "Stop")
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -215,7 +220,10 @@ struct HeaderView: View {
                         action: onPresent)
                 }
                 if isRendering {
-                    dangerBtn(label: "Stop", icon: "stop.fill", action: onStop)
+                    dangerBtn(label: isStopping ? "Stopping…" : "Stop",
+                              icon: isStopping ? "hourglass" : "stop.fill",
+                              action: onStop)
+                        .disabled(isStopping)
                 }
 
                 Divider().frame(height: 18).background(Theme.borderSubtle)
