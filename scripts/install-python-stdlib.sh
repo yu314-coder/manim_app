@@ -81,14 +81,11 @@ else
   # depend on. Rsync-mirror only if missing or older than source — most
   # builds will be no-ops after the first run.
   #
-  #   pyparsing,          matplotlib import-time dependencies. Without
-  #   kiwisolver,         them `import matplotlib` raises ModuleNotFoundError
-  #   contourpy           and codebench_inline reports "matplotlib not
-  #                       available: No module named 'pyparsing'" at shell
-  #                       launch, so inline figure capture silently covers
-  #                       plotly but not matplotlib. kiwisolver and contourpy
-  #                       each carry one .so, which the wrap-loose-dylibs
-  #                       phase below turns into a framework like the rest.
+  #   (pyparsing, kiwisolver and contourpy were copied here until
+  #   python-ios-lib dfd6a5d8 made them targets of the Matplotlib product.
+  #   They now arrive as SwiftPM resource bundles, which is better: their
+  #   .so stay inside a .bundle instead of being wrapped as frameworks,
+  #   where an MH_BUNDLE executable is what Apple rejects.)
   #
   #   fontTools           manimpango 0.6.1 shim hard-imports
   #                       (fontTools.ttLib, fontTools.pens.svgPathPen);
@@ -126,7 +123,6 @@ else
       jsonschema referencing rpds jsonschema_specifications \
       attr attrs \
       regex filelock fsspec pycparser \
-      pyparsing kiwisolver contourpy \
       ; do
     PKG_SRC="$PIL_SP/$_missing_pkg"
     PKG_DST="$APP_SP/$_missing_pkg"
