@@ -170,6 +170,25 @@ else
   done
   unset _mod MOD_SRC MOD_DST
 
+  # Make everything we just copied writable.
+  #
+  # SwiftPM checkouts are read-only (-r--r--r--) and `rsync -a` preserves
+  # that, so the copies arrive read-only too. fix-macho-type.py opens each
+  # framework binary "r+b" to flip MH_BUNDLE → MH_DYLIB, so a read-only copy
+  # fails with EACCES — it reported
+  #
+  #     error: [Errno 13] Permission denied: '...contourpy._contourpy'
+  #
+  # and carried on, and the un-flipped MH_BUNDLE binary reached the validator:
+  #
+  #     ITMS-90124 ... has type 'BUNDLE' that is not valid.
+  #                    Only 'EXECUTE' is permitted.
+  #
+  # Packages whose extensions are already MH_DYLIB never noticed; only the
+  # ones actually needing the flip did, which is why this surfaced the moment
+  # kiwisolver and contourpy were added.
+  chmod -R u+w "$APP_SP" 2>/dev/null || true
+
   # dist-info directories — pip / importlib.metadata look for these to
   # answer `requests.__version__`, `pip show requests`, etc.
   for di in \
