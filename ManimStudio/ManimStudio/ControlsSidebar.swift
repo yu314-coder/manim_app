@@ -155,11 +155,19 @@ struct ControlsSidebar: View {
         let depth = cfg.frameQueueDepth(forWidth: size.w, height: size.h)
         let heldMB = Double(cfg.frameQueueBytes(forWidth: size.w, height: size.h)) / 1_048_576
         let frameMB = Double(size.w * size.h * 4) / 1_048_576
+        // "capacity", not "usage". This is what the queue could hold if it
+        // filled — and at high resolutions it does not, because cairo is
+        // slower than the encoder, so frames never pile up. Measured on an
+        // M3 iPad Air: capacity 32 at 8K (4.2 GB) sat at an occupancy of 2
+        // with the app using ~1.5 GB. Calling it "held" read as though the
+        // memory was already gone.
         let heavy = queueDepth != "auto" && heldMB > 600
         let text = String(
-            format: "%@%d frames × %.0f MB ≈ %.0f MB held at %d×%d.%@",
+            format: "%@%d frames × %.0f MB — up to %.0f MB at %d×%d if the queue fills.%@",
             queueDepth == "auto" ? "Auto: " : "", depth, frameMB, heldMB, size.w, size.h,
-            queueDepth == "auto" ? "" : " Fixed depth ignores the budget.")
+            queueDepth == "auto"
+                ? ""
+                : " Fixed depth ignores the budget. It usually holds far less: the queue only fills when rendering outruns encoding.")
         return HStack(alignment: .top, spacing: 5) {
             Image(systemName: heavy ? "exclamationmark.triangle" : "tray.2")
                 .font(.system(size: 10))
