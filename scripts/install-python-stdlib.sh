@@ -37,7 +37,28 @@ echo "install-python-stdlib: APP=$APP"
 # truth for every pure-Python package that python-ios-lib's
 # Package.swift forgot to expose to the `Manim` SwiftPM library.
 PIL_SP=""
+# Find SwiftPM's checkout by walking up, not by a fixed number of "..".
+#
+# `${BUILD_ROOT}/../../SourcePackages` holds for a normal build, where
+# BUILD_ROOT is <DerivedData>/Build/Products. It does NOT hold for an archive,
+# where BUILD_ROOT is
+# <DerivedData>/Build/Intermediates.noindex/ArchiveIntermediates/<Scheme>/BuildProductsPath
+# — so the path missed, the loop fell through to the _vendor clone, and
+# archives quietly built their curated packages from whatever revision that
+# tree happened to be pinned at. It was three months behind, which is how
+# kiwisolver and contourpy came to be "not present" in a release build while
+# being present in every debug one.
+_SPM_SP=""
+_dir="${BUILD_ROOT}"
+for _ in 1 2 3 4 5 6 7 8; do
+  if [ -d "${_dir}/SourcePackages/checkouts/python-ios-lib/app_packages/site-packages" ]; then
+    _SPM_SP="${_dir}/SourcePackages/checkouts/python-ios-lib/app_packages/site-packages"
+    break
+  fi
+  _dir="${_dir}/.."
+done
 for cand in \
+  "${_SPM_SP}" \
   "${BUILD_ROOT}/../../SourcePackages/checkouts/python-ios-lib/app_packages/site-packages" \
   "${SRCROOT}/../_vendor/python-ios-lib/app_packages/site-packages" \
   ; do
@@ -47,6 +68,12 @@ if [ -z "$PIL_SP" ]; then
   echo "warning: python-ios-lib site-packages not found — Text(), requests, sympy, etc. will all fail."
 else
   echo "install-python-stdlib: PIL_SP=$PIL_SP"
+  case "$PIL_SP" in
+    *_vendor*) echo "warning: using the _vendor clone, not SwiftPM's checkout — "\
+                    "its revision is whatever that tree is at, which may be "\
+                    "older than Package.resolved. Curated packages below come "\
+                    "from there." ;;
+  esac
   APP_SP="$APP/app_packages/site-packages"
   mkdir -p "$APP_SP"
   # Each entry below is a top-level package directory under PIL_SP that
