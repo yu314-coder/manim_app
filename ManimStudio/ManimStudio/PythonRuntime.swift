@@ -2070,8 +2070,23 @@ try:
             except (TypeError, ValueError):
                 _cw = _ch = 0
             if _cw >= 16 and _ch >= 16:
-                _cfg.pixel_width = min(_cw - (_cw % 2), 7680)    # H.264 needs even dims
-                _cfg.pixel_height = min(_ch - (_ch % 2), 7680)
+                # Even dimensions only -- yuv420p subsamples chroma 2x2, so an
+                # odd width or height has no valid encoding. That is a codec
+                # requirement, not a policy, so it stays.
+                #
+                # There is deliberately no upper bound. It used to clamp both
+                # axes to 7680, which silently rendered something other than
+                # what was asked for -- a request for 19200x10800 came back as
+                # 7680x7680, wrong on both axes and wrong in aspect, with
+                # nothing said about it. Whether a size is renderable belongs
+                # to the device, and it already answers: the encoder probe
+                # picks H.264, then HEVC, then falls to software mpeg4, and the
+                # frame queue is bounded by bytes so a 19200x10800 frame (829
+                # MB) simply queues fewer. Past the hardware ceiling this gets
+                # slow and may fail outright -- but it fails saying so, which
+                # beats quietly rendering a different resolution.
+                _cfg.pixel_width = _cw - (_cw % 2)
+                _cfg.pixel_height = _ch - (_ch % 2)
             # Always re-derive an aspect-correct frame (frame_height fixed at
             # 8.0) so portrait/square renders aren't stretched AND a prior
             # custom frame doesn't leak into the next preset render. For 16:9
