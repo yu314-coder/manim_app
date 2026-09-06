@@ -279,6 +279,120 @@ final class StorageScanner: ObservableObject {
 
 // MARK: - The menu
 
+// MARK: - Network stack probe
+
+/// Answers "can this build actually reach the internet, and with what?"
+/// in one tap. The pieces are easy to verify statically and still fail
+/// together at runtime: `_ssl` has OpenSSL linked in statically, certifi
+/// ships the CA bundle, and ManimStudioApp points SSL_CERT_FILE at it
+/// before Python boots — this exercises all three at once by making a real
+/// request rather than trusting that the files are in place.
+final class NetworkStackProbe: ObservableObject {
+    struct Snapshot: Equatable, Sendable {
+        var openSSL: String
+        var requests: String
+        var certifiPath: String
+        var certifiOK: Bool
+        var caEnv: String
+        var status: Int          // 0 == the request never completed
+        var latencyMS: Int
+        var error: String?
+    }
+
+    @Published private(set) var isRunning = false
+    @Published private(set) var result: Snapshot?
+    @Published private(set) var failure: String?
+
+    /// Contacts example.com — a neutral endpoint that sends nothing about
+    /// the user or their work. Only ever runs when the button is tapped.
+    nonisolated private static let script = """
+    import json, os
+    _r = {}
+    try:
+        import ssl
+        _r["openssl"] = ssl.OPENSSL_VERSION
+    except Exception as e:
+        _r["openssl"] = "unavailable: %s: %s" % (type(e).__name__, e)
+    try:
+        import requests
+        _r["requests"] = requests.__version__
+    except Exception as e:
+        _r["requests"] = "import failed: %s: %s" % (type(e).__name__, e)
+    try:
+        import certifi
+        _p = certifi.where()
+        _r["certifi"] = _p
+        _r["certifi_ok"] = os.path.exists(_p)
+    except Exception as e:
+        _r["certifi"] = "unavailable: %s: %s" % (type(e).__name__, e)
+        _r["certifi_ok"] = False
+    _r["ca_env"] = os.environ.get("REQUESTS_CA_BUNDLE", "(unset)")
+    try:
+        import time, requests
+        _t = time.time()
+        _resp = requests.get("https://example.com", timeout=20)
+        _r["status"] = _resp.status_code
+        _r["ms"] = int((time.time() - _t) * 1000)
+    except Exception as e:
+        _r["status"] = 0
+        _r["ms"] = 0
+        _r["error"] = "%s: %s" % (type(e).__name__, e)
+    print("__MS_NETPROBE__=" + json.dumps(_r))
+    """
+
+    func run() {
+        guard !isRunning else { return }
+        isRunning = true
+        failure = nil
+        // Plain GCD rather than Task.detached: this call blocks for as
+        // long as the HTTPS request takes (up to the 20 s timeout), and
+        // parking a cooperative-pool thread that long is what makes
+        // MainActor messaging stall — the same reason ContentView runs
+        // renders on a GCD queue instead.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let out = PythonRuntime.shared.execute(code: Self.script).output
+            let parsed = Self.parse(out)
+            DispatchQueue.main.async {
+                self.isRunning = false
+                switch parsed {
+                case .success(let r): self.result = r
+                case .failure(let msg): self.failure = msg
+                }
+            }
+        }
+    }
+
+    /// Matches PackageInspector's shape: a plain enum, since String is
+    /// not an Error and the failure here is a message for the screen.
+    enum Outcome: Sendable { case success(Snapshot); case failure(String) }
+
+    nonisolated private static func parse(_ output: String) -> Outcome {
+        guard let r = output.range(of: "__MS_NETPROBE__=") else {
+            let t = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .failure(t.isEmpty ? "Probe produced no output." : String(t.suffix(400)))
+        }
+        // Only the marker's own line: the execution wrapper prints around
+        // this (scene detection, timings), so everything-after-the-marker
+        // would drag trailing output into the JSON.
+        let afterMarker = output[r.upperBound...]
+        let json = afterMarker.prefix(while: { !$0.isNewline })
+            .trimmingCharacters(in: .whitespaces)
+        guard let data = json.data(using: .utf8),
+              let d = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return .failure("Probe response could not be parsed.") }
+
+        return .success(Snapshot(
+            openSSL:     d["openssl"] as? String ?? "—",
+            requests:    d["requests"] as? String ?? "—",
+            certifiPath: d["certifi"] as? String ?? "—",
+            certifiOK:   d["certifi_ok"] as? Bool ?? false,
+            caEnv:       d["ca_env"] as? String ?? "(unset)",
+            status:      d["status"] as? Int ?? 0,
+            latencyMS:   d["ms"] as? Int ?? 0,
+            error:       d["error"] as? String))
+    }
+}
+
 struct DeveloperMenuView: View {
     @ObservedObject private var dev = DevMode.shared
     /// Pops this screen before developer mode is switched off — see
@@ -287,6 +401,7 @@ struct DeveloperMenuView: View {
     @StateObject private var info = SystemInfoModel()
     @StateObject private var ram = RAMSampler()
     @StateObject private var storage = StorageScanner()
+    @StateObject private var net = NetworkStackProbe()
 
     @State private var confirmBucket: StorageBucket?
     @State private var confirmFreeSpace = false
@@ -297,6 +412,7 @@ struct DeveloperMenuView: View {
             deviceSection
             memorySection
             pythonSection
+            networkSection
             storageSection
             preferencesSection
             lockSection
@@ -372,6 +488,61 @@ struct DeveloperMenuView: View {
             LabeledContent("Version", value: info.pythonVersion)
             LabeledContent("Stdlib", value: info.stdlibPresent ? "embedded · OK" : "MISSING")
             LabeledContent("Site-packages", value: "\(info.sitePackageDirs)")
+        }
+    }
+
+    private var networkSection: some View {
+        Section {
+            if let r = net.result {
+                LabeledContent("OpenSSL", value: r.openSSL)
+                LabeledContent("requests", value: r.requests)
+                LabeledContent("CA bundle", value: r.certifiOK ? "present" : "MISSING")
+                LabeledContent("HTTPS check") {
+                    Text(r.status > 0 ? "\(r.status) · \(r.latencyMS) ms" : "failed")
+                        .foregroundStyle(r.status == 200 ? Theme.green
+                                         : (r.status > 0 ? Theme.amber : Theme.red))
+                }
+                if let e = r.error {
+                    Text(e)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.red)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("certifi.where()")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text(r.certifiPath)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.textDim)
+                        .lineLimit(3).truncationMode(.middle)
+                    Text("REQUESTS_CA_BUNDLE")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.top, 2)
+                    Text(r.caEnv)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(r.caEnv == "(unset)" ? Theme.amber : Theme.textDim)
+                        .lineLimit(3).truncationMode(.middle)
+                }
+            }
+            if let f = net.failure {
+                Text(f)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.red)
+            }
+            Button {
+                net.run()
+            } label: {
+                Label(net.isRunning ? "Checking…" : "Check network stack",
+                      systemImage: net.isRunning ? "hourglass" : "network")
+            }
+            .disabled(net.isRunning)
+        } header: {
+            Text("Network")
+        } footer: {
+            Text("Imports ssl, certifi and requests inside the embedded "
+                 + "Python, then fetches https://example.com to prove TLS "
+                 + "works end to end. Nothing about you or your work is sent.")
         }
     }
 
