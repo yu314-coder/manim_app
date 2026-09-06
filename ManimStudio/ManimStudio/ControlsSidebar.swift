@@ -34,13 +34,16 @@ struct ControlsSidebar: View {
     /// correct at every size — which a fixed frame count does not.
     @AppStorage("manim_queue_budget_mb") private var queueBudgetMB = 256
 
-    // Quality labels map to manim's 0-5 preset index in
+    // Quality labels map to manim's 0-8 preset index in
     // PythonRuntime.qualityIndex (the single source of truth):
-    //   480p→0  720p→1  1080p→2  1440p→3  4K→4  8K→5.
-    // 4K/8K render at true resolution but are very memory-heavy on iPad —
-    // watch the RAM HUD; they can hit the jetsam ceiling.
+    //   480p→0  720p→1  1080p→2  1440p→3  4K→4
+    //   8K→5  12K→6  14K→7  16K→8.
+    // 4K and up render at true resolution but are very memory-heavy on
+    // iPad — watch the RAM HUD; they can hit the jetsam ceiling. Nothing
+    // above 8K encodes in hardware, so 12K/14K/16K fall to software
+    // mpeg4; the encoder note below says so before the render starts.
     private let previewQualities = ["480p", "720p", "1080p"]
-    private let finalQualities   = ["8K", "4K", "1440p", "1080p", "720p", "480p", "Custom"]
+    private let finalQualities   = ["16K", "14K", "12K", "8K", "4K", "1440p", "1080p", "720p", "480p", "Custom"]
     // mp4  — H.264 video (default)
     // mov  — transparent background (alpha) — qtrle in a QuickTime
     //        container, for compositing over other footage/slides

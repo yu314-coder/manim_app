@@ -510,7 +510,7 @@ private struct SettingsSheet: View {
                               systemImage: "bolt.fill")
                     }
                     Picker(selection: $finalQuality) {
-                        ForEach(["480p", "720p", "1080p", "1440p", "4K", "8K", "Custom"],
+                        ForEach(["480p", "720p", "1080p", "1440p", "4K", "8K", "12K", "14K", "16K", "Custom"],
                                 id: \.self) { Text($0).tag($0) }
                     } label: {
                         Label("Final quality", systemImage: "film")

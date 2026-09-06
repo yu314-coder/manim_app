@@ -17,7 +17,7 @@ import Foundation
 enum RenderResolution {
 
     /// Quality ladder, high → low (matches ControlsSidebar's picker).
-    static let ladder = ["8K", "4K", "1440p", "1080p", "720p", "480p"]
+    static let ladder = ["16K", "14K", "12K", "8K", "4K", "1440p", "1080p", "720p", "480p"]
 
     /// manim's preset pixel dimensions.
     static func pixelSize(forQuality label: String) -> (w: Int, h: Int) {
@@ -28,6 +28,13 @@ enum RenderResolution {
         case "1440p": return (2560, 1440)
         case "4K":    return (3840, 2160)
         case "8K":    return (7680, 4320)
+        // 16:9 multiples of the 4K base (3840x2160): 3x, 3.5x, 4x. Even on
+        // both axes, so nothing is rounded away. Past 8K no Apple media
+        // engine encodes in hardware, so these fall to software mpeg4 —
+        // the encoder note says so before the render starts.
+        case "12K":   return (11520, 6480)
+        case "14K":   return (13440, 7560)
+        case "16K":   return (15360, 8640)
         case "Custom":
             let d = UserDefaults.standard
             let w = d.integer(forKey: "manim_custom_width")

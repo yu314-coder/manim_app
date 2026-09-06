@@ -267,7 +267,7 @@ final class PythonRuntime {
         try? Data("stop".utf8).write(to: sentinel)
     }
 
-    /// Map a quality label ("480p"…"8K") to manim's 0-5 preset index.
+    /// Map a quality label ("480p"…"16K") to manim's 0-8 preset index.
     /// Single source of truth for the conversion: both settings surfaces
     /// (the ControlsSidebar drawer and the gear Settings sheet) store the
     /// human label, and the renderer converts it here so neither UI has to
@@ -280,6 +280,9 @@ final class PythonRuntime {
         case "1440p": return 3
         case "4k":    return 4
         case "8k":    return 5
+        case "12k":   return 6
+        case "14k":   return 7
+        case "16k":   return 8
         default:      return 2
         }
     }
@@ -818,9 +821,9 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             // before each call. When it is "low_quality" we read the
             // Quick-Preview keys (manim_preview_quality / _fps); otherwise
             // the Final-render keys (manim_final_quality / _fps). Both hold
-            // the human quality label ("480p"…"8K") written by either
+            // the human quality label ("480p"…"16K") written by either
             // ControlsSidebar or the gear Settings sheet via @AppStorage;
-            // qualityIndex() converts it to manim's 0-5 preset index here.
+            // qualityIndex() converts it to manim's 0-8 preset index here.
             // Reading the keys per-call (rather than a precomputed index)
             // means a Preview honours the Quick-Preview pickers while a
             // Render honours the Final pickers — no settings surface has
@@ -845,7 +848,7 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
                 // Final render. Read the quality/fps LABELS written by BOTH the
                 // ControlsSidebar drawer AND the gear Settings sheet (they share
                 // manim_final_quality / manim_final_fps via @AppStorage), and
-                // convert the label to manim's 0-5 preset index HERE. Doing the
+                // convert the label to manim's 0-8 preset index HERE. Doing the
                 // conversion at render time means the setting takes effect no
                 // matter which settings surface is currently on screen.
                 let fq = UserDefaults.standard.string(forKey: "manim_final_quality") ?? "1080p"
@@ -2042,10 +2045,11 @@ try:
 
         # Apply a resolution index → real Manim resolution. Defined at
         # module level so the render monkey-patch below can reuse it.
-        #   0=480p 1=720p 2=1080p 3=1440p 4=4K(2160p) 5=8K(4320p)
+        #   0=480p 1=720p 2=1080p 3=1440p 4=4K(2160p)
+        #   5=8K(4320p) 6=12K(6480p) 7=14K(7560p) 8=16K(8640p)
         # 0-4 use Manim's built-in presets (which set pixel_width,
-        # pixel_height AND frame_rate together). 8K has no preset, so we
-        # set the pixel dimensions explicitly. After the resolution is
+        # pixel_height AND frame_rate together). Manim has no preset above
+        # 4K, so 5-8 set the pixel dimensions explicitly. After the resolution is
         # chosen we override frame_rate with the user's FPS pick so the
         # FPS control is real too (it was previously ignored). 4K/8K are
         # genuinely rendered at full resolution — they are very memory
@@ -2054,11 +2058,17 @@ try:
         def _cb_apply_quality(_cfg, q, fps):
             _preset = {0: 'low_quality', 1: 'medium_quality', 2: 'high_quality',
                        3: 'production_quality', 4: 'fourk_quality'}
+            # 8K and up: 16:9 multiples of the 4K base, matching
+            # RenderResolution.pixelSize on the Swift side.
+            _explicit = {5: (7680, 4320), 6: (11520, 6480),
+                         7: (13440, 7560), 8: (15360, 8640)}
             if q in _preset:
                 _cfg.quality = _preset[q]
-            elif q == 5:
-                _cfg.pixel_width = 7680
-                _cfg.pixel_height = 4320
+            elif q in _explicit:
+                # manim has no preset above 4K, so these set pixels directly.
+                # frame_rate is set here only as a default; the fps selector
+                # below overrides it, as it does for the presets.
+                _cfg.pixel_width, _cfg.pixel_height = _explicit[q]
                 _cfg.frame_rate = 60
             else:
                 _cfg.quality = 'high_quality'
