@@ -82,7 +82,9 @@ struct ContentView: View {
                 },
                 renderedVideoURL: renderedVideoURL,
                 onPresent: {
-                    guard renderedVideoURL != nil else { return }
+                    // No guard on renderedVideoURL: the cover can also play
+                    // earlier renders off disk, so it is worth opening even
+                    // before anything has been rendered this session.
                     Haptics.impact(.medium)
                     showPresent = true
                 }
@@ -181,8 +183,13 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showPresent) {
             PresentationCoverView(url: renderedVideoURL) { showPresent = false }
         }
+        // Scan once at launch so the Present button is offered when earlier
+        // renders exist, and again after each render so the new clip joins
+        // the library strip.
+        .task { RenderLibraryStore.shared.refresh() }
+        .onChange(of: renderedVideoURL) { _, _ in RenderLibraryStore.shared.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .menuRenderPresent)) { _ in
-            if renderedVideoURL != nil { showPresent = true }
+            showPresent = true
         }
 
         return chrome

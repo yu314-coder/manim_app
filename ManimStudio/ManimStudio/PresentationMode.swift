@@ -119,13 +119,30 @@ struct PresentationAVPlayer: UIViewControllerRepresentable {
 // MARK: - iPad presentation cover
 
 struct PresentationCoverView: View {
+    /// The freshest render from this session, if any. The cover opens on it,
+    /// but the user can switch to any earlier clip from the library strip.
     let url: URL?
     var onDismiss: () -> Void
 
     @StateObject private var model = PresentationPlayerModel()
     @ObservedObject private var external = ExternalDisplayManager.shared
+    @ObservedObject private var library  = RenderLibraryStore.shared
+    @ObservedObject private var thumbs   = RenderThumbnailCache.shared
+
     @State private var controlsVisible = true
+    @State private var libraryVisible  = false
+    /// Set once the user picks a clip from the strip. While it stays nil the
+    /// cover tracks `url`, so a render finishing mid-presentation takes over
+    /// the screen the way it always has; once the user has deliberately
+    /// chosen an older clip, it pins there and a new render only joins the
+    /// strip.
+    @State private var selected: URL?
     @State private var hideTask: DispatchWorkItem?
+
+    /// What is on screen: an explicit pick, else this session's render, else
+    /// the newest thing on disk (which is what makes Present useful on a
+    /// cold launch, before anything has been rendered this session).
+    private var current: URL? { selected ?? url ?? library.videos.first?.url }
 
     var body: some View {
         ZStack {
@@ -133,10 +150,10 @@ struct PresentationCoverView: View {
 
             if external.isConnected {
                 controlSurface          // external screen has the video
-            } else if url != nil {
+            } else if current != nil {
                 PresentationAVPlayer(player: model.player, showsControls: false)
                     .ignoresSafeArea()
-                    .onTapGesture { flashControls() }
+                    .onTapGesture { tapBackdrop() }
             } else {
                 emptyState
             }
@@ -146,12 +163,21 @@ struct PresentationCoverView: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)   // hide home indicator while presenting
         .onAppear {
-            if let url { model.load(url) }
+            library.refresh()
+            if let c = current { model.load(c) }
             if external.isConnected { ExternalDisplayManager.shared.attachPlayer(model.player) }
             scheduleAutoHide()
         }
-        .onChange(of: url) { _, newURL in
-            if let newURL { model.load(newURL) }
+        // Drives playback off whatever `current` resolves to, so this covers
+        // all three paths: the initial clip, a pick from the strip, and the
+        // library scan landing after the cover is already up.
+        .onChange(of: current) { _, c in
+            if let c { model.load(c) }
+        }
+        // A render finished while presenting — make sure it shows up in the
+        // strip even if the user is pinned to an older clip.
+        .onChange(of: url) { _, _ in
+            library.refresh()
         }
         // External display attaches/detaches mid-session → hand the shared
         // player to / reclaim it from the external window.
@@ -170,7 +196,7 @@ struct PresentationCoverView: View {
                 .font(.system(size: 48)).foregroundStyle(Theme.accentPrimary)
             Text("Presenting on external display")
                 .font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
-            Text(url?.lastPathComponent ?? "—")
+            Text(current?.lastPathComponent ?? "—")
                 .font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
             HStack(spacing: 28) {
                 bigControl(model.isPlaying ? "pause.fill" : "play.fill") { model.togglePlay() }
@@ -185,34 +211,200 @@ struct PresentationCoverView: View {
             Image(systemName: "film").font(.system(size: 56)).foregroundStyle(.white.opacity(0.4))
             Text("Nothing to present").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
             Text("Render an animation first").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+            Button { library.refresh() } label: {
+                Label("Look again", systemImage: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .background(Capsule().fill(Color.white.opacity(0.14)))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
         }
     }
 
     private var overlayChrome: some View {
-        VStack {
+        VStack(spacing: 0) {
             HStack(spacing: 12) {
+                if let c = current {
+                    Text(c.lastPathComponent)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(1).truncationMode(.middle)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Capsule().fill(.black.opacity(0.45)))
+                }
                 Spacer()
+                if !library.videos.isEmpty {
+                    Button { toggleLibrary() } label: {
+                        Label("\(library.videos.count)",
+                              systemImage: "rectangle.stack.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(libraryVisible ? Theme.accentPrimary : .white)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(Capsule().fill(.black.opacity(0.55)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Render library, \(library.videos.count) clips")
+                }
                 Button(action: onDismiss) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 30))
                         .foregroundStyle(.white, .black.opacity(0.55))
                 }
+                .buttonStyle(.plain)
             }
             .padding(16)
             .opacity(controlsVisible ? 1 : 0)
 
             Spacer()
 
-            if !external.isConnected && url != nil {
+            if !external.isConnected && current != nil {
                 HStack(spacing: 28) {
                     bigControl(model.isPlaying ? "pause.fill" : "play.fill") { model.togglePlay() }
                     bigControl("gobackward") { model.restart() }
                 }
-                .padding(.bottom, 40)
+                .padding(.bottom, libraryVisible ? 16 : 40)
                 .opacity(controlsVisible ? 1 : 0)
+            }
+
+            if libraryVisible {
+                filmstrip
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.easeInOut(duration: 0.25), value: controlsVisible)
+        .animation(.easeInOut(duration: 0.25), value: libraryVisible)
+    }
+
+    // MARK: Library strip
+
+    private var filmstrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("RENDER LIBRARY")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.5)
+                    .foregroundStyle(.white.opacity(0.55))
+                Spacer()
+                Button { library.refresh() } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Rescan renders")
+                Button { toggleLibrary() } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Hide library")
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 10) {
+                    ForEach(library.videos) { item in
+                        thumbCell(item)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(height: 108)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 20)
+        .background(
+            LinearGradient(colors: [.black.opacity(0.0), .black.opacity(0.85), .black.opacity(0.92)],
+                           startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    private func thumbCell(_ item: RenderItem) -> some View {
+        let isCurrent = item.url == current
+        return Button { pick(item.url) } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.07))
+                    if let img = thumbs.image(for: item.url) {
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        Image(systemName: "film")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                    if isCurrent {
+                        // Playing marker, so the current clip is obvious
+                        // even when two renders share a thumbnail.
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.black)
+                                    .padding(3)
+                                    .background(Circle().fill(Theme.accentPrimary))
+                                Spacer()
+                            }
+                        }
+                        .padding(5)
+                    }
+                }
+                .frame(width: 132, height: 74)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isCurrent ? Theme.accentPrimary : Color.white.opacity(0.16),
+                                lineWidth: isCurrent ? 2 : 1)
+                )
+
+                Text(item.name)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(isCurrent ? .white : .white.opacity(0.7))
+                    .lineLimit(1).truncationMode(.middle)
+                Text(item.subtitle)
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.42))
+                    .lineLimit(1)
+            }
+            .frame(width: 132, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        // Lazy: only cells that scroll into view decode a frame.
+        .task { thumbs.request(for: item.url) }
+        .accessibilityLabel("\(item.name), \(item.subtitle)")
+    }
+
+    // MARK: Interaction
+
+    private func pick(_ u: URL) {
+        guard u != current else { return }
+        Haptics.impact(.light)
+        selected = u
+    }
+
+    private func toggleLibrary() {
+        Haptics.selection()
+        libraryVisible.toggle()
+        if libraryVisible {
+            // Keep the chrome up while browsing — the close button and the
+            // strip share the same fade.
+            hideTask?.cancel()
+            controlsVisible = true
+        } else {
+            scheduleAutoHide()
+        }
+    }
+
+    /// A tap on the video dismisses the library if it is open, otherwise it
+    /// toggles the transport chrome.
+    private func tapBackdrop() {
+        if libraryVisible { toggleLibrary() } else { flashControls() }
     }
 
     @ViewBuilder
@@ -233,7 +425,11 @@ struct PresentationCoverView: View {
     }
     private func scheduleAutoHide() {
         hideTask?.cancel()
-        let task = DispatchWorkItem { withAnimation { controlsVisible = false } }
+        let task = DispatchWorkItem {
+            // Never fade the chrome out from under an open library.
+            guard !libraryVisible else { return }
+            withAnimation { controlsVisible = false }
+        }
         hideTask = task
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5, execute: task)
     }

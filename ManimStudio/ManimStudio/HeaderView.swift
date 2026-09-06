@@ -14,8 +14,9 @@ struct HeaderView: View {
     var onNew:     () -> Void
     var onOpen:    () -> Void
     var onSave:    () -> Void
-    /// Latest finished render — drives the iPad-only Present button. nil
-    /// hides it (nothing to present yet). Threaded down from ContentView.
+    /// Latest finished render, threaded down from ContentView. It seeds
+    /// what Present opens on; it no longer decides whether Present exists
+    /// (RenderLibraryStore does, so earlier renders stay reachable).
     var renderedVideoURL: URL?
     /// Opens the full-screen presentation cover (handled in ContentView).
     var onPresent: () -> Void
@@ -49,6 +50,10 @@ struct HeaderView: View {
     /// Live external-display status so the Present button reads "Present on
     /// TV" and the cover lays out for an external screen.
     @ObservedObject private var externalDisplay = ExternalDisplayManager.shared
+    /// Past renders on disk. Present is worth offering whenever there is
+    /// something to play, which includes a cold launch where nothing has
+    /// been rendered yet this session.
+    @ObservedObject private var library = RenderLibraryStore.shared
 
     /// iPhone gets a stripped-down single-line header — three-block
     /// layout with title + scene picker + render/preview/stop only.
@@ -209,10 +214,11 @@ struct HeaderView: View {
                            action: onRender)
                 secondaryBtn(label: "Preview", icon: "eye", shortcut: "F6",
                              action: onPreview)
-                // Present — distraction-free looping playback of the latest
-                // render (external-display routing). iPad-only
-                // (regularBody); hidden until a render exists.
-                if renderedVideoURL != nil {
+                // Present — distraction-free looping playback with a
+                // library strip for earlier renders (external-display
+                // routing). iPad-only (regularBody); hidden only when there
+                // is genuinely nothing on disk to play.
+                if renderedVideoURL != nil || !library.videos.isEmpty {
                     secondaryBtn(
                         label: externalDisplay.isConnected ? "Present on TV" : "Present",
                         icon: externalDisplay.isConnected ? "tv.fill" : "play.rectangle.on.rectangle",
