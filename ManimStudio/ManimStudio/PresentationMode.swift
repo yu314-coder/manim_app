@@ -128,6 +128,7 @@ struct PresentationCoverView: View {
     @ObservedObject private var external = ExternalDisplayManager.shared
     @ObservedObject private var library  = RenderLibraryStore.shared
     @ObservedObject private var thumbs   = RenderThumbnailCache.shared
+    @ObservedObject private var media    = RenderMediaInfoCache.shared
 
     @State private var controlsVisible = true
     @State private var libraryVisible  = false
@@ -164,7 +165,10 @@ struct PresentationCoverView: View {
         .persistentSystemOverlays(.hidden)   // hide home indicator while presenting
         .onAppear {
             library.refresh()
-            if let c = current { model.load(c) }
+            if let c = current {
+                model.load(c)
+                media.request(for: c)
+            }
             if external.isConnected { ExternalDisplayManager.shared.attachPlayer(model.player) }
             scheduleAutoHide()
         }
@@ -172,7 +176,10 @@ struct PresentationCoverView: View {
         // all three paths: the initial clip, a pick from the strip, and the
         // library scan landing after the cover is already up.
         .onChange(of: current) { _, c in
-            if let c { model.load(c) }
+            if let c {
+                model.load(c)
+                media.request(for: c)
+            }
         }
         // A render finished while presenting — make sure it shows up in the
         // strip even if the user is pinned to an older clip.
@@ -198,6 +205,11 @@ struct PresentationCoverView: View {
                 .font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
             Text(current?.lastPathComponent ?? "—")
                 .font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
+            if let c = current, let m = media.info(for: c) {
+                Text(m.summary)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.accentPrimary.opacity(0.9))
+            }
             HStack(spacing: 28) {
                 bigControl(model.isPlaying ? "pause.fill" : "play.fill") { model.togglePlay() }
                 bigControl("gobackward") { model.restart() }
@@ -227,12 +239,26 @@ struct PresentationCoverView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 if let c = current {
-                    Text(c.lastPathComponent)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .lineLimit(1).truncationMode(.middle)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(Capsule().fill(.black.opacity(0.45)))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(c.lastPathComponent)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.8))
+                            .lineLimit(1).truncationMode(.middle)
+                        // Resolution / codec / fps / bitrate, read back off
+                        // the file itself rather than from the settings that
+                        // were used — those aren't stored with the mp4, and
+                        // the two can differ (a hardware-encode fallback, an
+                        // odd custom size rounded to even).
+                        if let m = media.info(for: c) {
+                            Text(m.summary)
+                                .font(.system(size: 9.5, design: .monospaced))
+                                .foregroundStyle(Theme.accentPrimary.opacity(0.9))
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(.black.opacity(0.5)))
                 }
                 Spacer()
                 if !library.videos.isEmpty {
@@ -338,22 +364,35 @@ struct PresentationCoverView: View {
                             .font(.system(size: 18))
                             .foregroundStyle(.white.opacity(0.3))
                     }
-                    if isCurrent {
-                        // Playing marker, so the current clip is obvious
-                        // even when two renders share a thumbnail.
-                        VStack {
+                    VStack {
+                        // Quality rung in the top-right, so the strip is
+                        // scannable by resolution without opening anything.
+                        HStack {
                             Spacer()
-                            HStack {
+                            if let m = media.info(for: item.url) {
+                                Text(m.badge)
+                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 4).padding(.vertical, 2)
+                                    .background(Capsule().fill(.black.opacity(0.65)))
+                            }
+                        }
+                        Spacer()
+                        HStack {
+                            if isCurrent {
+                                // Playing marker, so the current clip is
+                                // obvious even when two renders share a
+                                // thumbnail.
                                 Image(systemName: "play.fill")
                                     .font(.system(size: 8, weight: .bold))
                                     .foregroundStyle(.black)
                                     .padding(3)
                                     .background(Circle().fill(Theme.accentPrimary))
-                                Spacer()
                             }
+                            Spacer()
                         }
-                        .padding(5)
                     }
+                    .padding(5)
                 }
                 .frame(width: 132, height: 74)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -367,7 +406,8 @@ struct PresentationCoverView: View {
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .foregroundStyle(isCurrent ? .white : .white.opacity(0.7))
                     .lineLimit(1).truncationMode(.middle)
-                Text(item.subtitle)
+                Text(media.info(for: item.url).map { "\($0.resolutionText) · \($0.codec)" }
+                     ?? item.subtitle)
                     .font(.system(size: 8, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.42))
                     .lineLimit(1)
@@ -375,8 +415,12 @@ struct PresentationCoverView: View {
             .frame(width: 132, alignment: .leading)
         }
         .buttonStyle(.plain)
-        // Lazy: only cells that scroll into view decode a frame.
-        .task { thumbs.request(for: item.url) }
+        // Lazy: only cells that scroll into view decode a frame. Media
+        // details are cheap by comparison (container parse, no decode).
+        .task {
+            thumbs.request(for: item.url)
+            media.request(for: item.url)
+        }
         .accessibilityLabel("\(item.name), \(item.subtitle)")
     }
 

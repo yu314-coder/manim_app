@@ -194,3 +194,124 @@ final class RenderThumbnailCache: ObservableObject {
         }
     }
 }
+
+// MARK: - Media details
+
+/// What a finished render actually is, read back off the file. The render
+/// settings that produced it aren't stored anywhere alongside the mp4, so
+/// the container is the only evidence of what you got — which matters most
+/// exactly when it disagrees with what you asked for (a 16K request that
+/// fell back to software mpeg4, say, or a custom size rounded to even).
+struct RenderMediaInfo: Equatable {
+    var width: Int
+    var height: Int
+    var fps: Double
+    var duration: Double        // seconds
+    var codec: String
+    var dataRateMbps: Double
+
+    /// Ladder name ("4K", "16K") when the pixels match a rung exactly,
+    /// else nil — a custom resolution has no name.
+    var qualityLabel: String? { RenderResolution.qualityLabel(width: width, height: height) }
+
+    var resolutionText: String { "\(width)×\(height)" }
+
+    var durationText: String {
+        let t = Int(duration.rounded())
+        return String(format: "%d:%02d", t / 60, t % 60)
+    }
+
+    /// "4K · 3840×2160 · H.264 · 60 fps · 0:24 · 12.4 Mb/s"
+    var summary: String {
+        var parts: [String] = []
+        if let q = qualityLabel { parts.append(q) } else { parts.append("Custom") }
+        parts.append(resolutionText)
+        parts.append(codec)
+        if fps > 0 { parts.append("\(Int(fps.rounded())) fps") }
+        if duration > 0 { parts.append(durationText) }
+        if dataRateMbps > 0 { parts.append(String(format: "%.1f Mb/s", dataRateMbps)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Short badge for a filmstrip thumbnail: the rung name, or the pixel
+    /// height for anything off-ladder.
+    var badge: String { qualityLabel ?? "\(height)p" }
+}
+
+/// Reads and caches track metadata. Cheap next to thumbnailing — this only
+/// parses the container, it never decodes a frame — so it is not serialized.
+final class RenderMediaInfoCache: ObservableObject {
+    static let shared = RenderMediaInfoCache()
+
+    @Published private var infos: [URL: RenderMediaInfo] = [:]
+    private var inFlight: Set<URL> = []
+    private var failed: Set<URL> = []
+
+    private init() {}
+
+    func info(for url: URL) -> RenderMediaInfo? { infos[url] }
+
+    func request(for url: URL) {
+        guard infos[url] == nil, !inFlight.contains(url), !failed.contains(url) else { return }
+        inFlight.insert(url)
+        Task {
+            let got = await Self.load(url)
+            self.inFlight.remove(url)
+            if let got { self.infos[url] = got } else { self.failed.insert(url) }
+        }
+    }
+
+    private static func load(_ url: URL) async -> RenderMediaInfo? {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let size = try? await track.load(.naturalSize)
+        else { return nil }
+
+        // naturalSize ignores rotation; applying the transform gives the
+        // dimensions as presented, which is what the pixel-size lookup and
+        // the on-screen readout should both use.
+        let transform = (try? await track.load(.preferredTransform)) ?? .identity
+        let shown = size.applying(transform)
+        let w = Int(abs(shown.width).rounded())
+        let h = Int(abs(shown.height).rounded())
+
+        let fps = Double((try? await track.load(.nominalFrameRate)) ?? 0)
+        let rate = Double((try? await track.load(.estimatedDataRate)) ?? 0)
+        let dur = (try? await asset.load(.duration))?.seconds ?? 0
+
+        var codec = "—"
+        if let fds = try? await track.load(.formatDescriptions), let fd = fds.first {
+            codec = Self.codecName(CMFormatDescriptionGetMediaSubType(fd))
+        }
+
+        return RenderMediaInfo(
+            width: w, height: h,
+            fps: fps,
+            duration: dur.isFinite ? dur : 0,
+            codec: codec,
+            dataRateMbps: rate > 0 ? rate / 1_000_000 : 0)
+    }
+
+    /// FourCC → the name the app's own encoder picker uses, so what the
+    /// file says lines up with what you selected.
+    private static func codecName(_ code: FourCharCode) -> String {
+        switch code {
+        case kCMVideoCodecType_H264:               return "H.264"
+        case kCMVideoCodecType_HEVC:               return "HEVC"
+        case kCMVideoCodecType_MPEG4Video:         return "mpeg4"
+        case kCMVideoCodecType_Animation:          return "qtrle (alpha)"
+        case kCMVideoCodecType_AppleProRes4444:    return "ProRes 4444"
+        case kCMVideoCodecType_AppleProRes422:     return "ProRes 422"
+        case kCMVideoCodecType_JPEG:               return "JPEG"
+        default:
+            // Print unknown types as their FourCC rather than "unknown" —
+            // e.g. hev1 vs hvc1 is exactly the kind of tagging detail that
+            // has bitten this app before.
+            let b = [UInt8((code >> 24) & 0xff), UInt8((code >> 16) & 0xff),
+                     UInt8((code >> 8) & 0xff), UInt8(code & 0xff)]
+            let s = String(bytes: b, encoding: .ascii)?
+                .trimmingCharacters(in: .whitespaces) ?? "?"
+            return s.isEmpty ? "—" : s
+        }
+    }
+}

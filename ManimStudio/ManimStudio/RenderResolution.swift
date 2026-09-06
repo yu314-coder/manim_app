@@ -43,4 +43,15 @@ enum RenderResolution {
         default:      return (1920, 1080)
         }
     }
+
+    /// Reverse of `pixelSize`: the ladder name for an exact pixel size, or
+    /// nil when it matches no rung (i.e. a custom resolution). Used to label
+    /// a finished file — the render settings that produced it are not stored
+    /// alongside the mp4, so the pixels are the only evidence left.
+    static func qualityLabel(width: Int, height: Int) -> String? {
+        for q in ladder where pixelSize(forQuality: q) == (w: width, h: height) {
+            return q
+        }
+        return nil
+    }
 }
