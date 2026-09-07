@@ -106,6 +106,15 @@ else
   #   filelock            huggingface_hub lock files.
   #   fsspec              huggingface_hub file-abstraction layer.
   #   pycparser           cffi ABI parsing.
+  #   joblib              scikit-learn imports it unconditionally from
+  #                       sklearn/utils/parallel.py. sklearn itself arrives
+  #                       as SwiftPM resource bundles, so without this the
+  #                       app ships 100+ working sklearn frameworks that
+  #                       cannot be imported at all — `import sklearn`
+  #                       raises ModuleNotFoundError. joblib is pure
+  #                       Python and vendors its own cloudpickle/loky.
+  #                       (threadpoolctl, its other hard dep, is a single
+  #                       .py and so is copied by the module loop below.)
   # CRITICAL: do NOT use the variable name `DST` in this loop — the
   # outer script sets `DST="$APP/python-stdlib"` at the top and relies
   # on it later (line ~134, "Copy stdlib + per-arch lib-dynload").
@@ -123,6 +132,7 @@ else
       jsonschema referencing rpds jsonschema_specifications \
       attr attrs \
       regex filelock fsspec pycparser \
+      joblib \
       ; do
     PKG_SRC="$PIL_SP/$_missing_pkg"
     PKG_DST="$APP_SP/$_missing_pkg"
@@ -150,8 +160,13 @@ else
   #                     artifacts into $TMPDIR/latex_signals/, which this
   #                     app already watches, so bundling it both silences
   #                     the error and makes inline figure output work.
+  #   threadpoolctl     scikit-learn's other unconditional import (see
+  #                     the joblib note above). Ships as a bare
+  #                     threadpoolctl.py, not a package, so only this
+  #                     loop picks it up.
   for _mod in \
       codebench_inline \
+      threadpoolctl \
       ; do
     MOD_SRC="$PIL_SP/$_mod.py"
     MOD_DST="$APP_SP/$_mod.py"
@@ -177,6 +192,8 @@ else
       mpmath-1.4.1.dist-info \
       pyyaml-6.0.3.dist-info \
       jsonschema-4.26.0.dist-info \
+      joblib-1.5.3.dist-info \
+      threadpoolctl-3.6.0.dist-info \
       ; do
     if [ -d "$PIL_SP/$di" ] && [ ! -d "$APP_SP/$di" ]; then
       rsync -a "$PIL_SP/$di/" "$APP_SP/$di/"
