@@ -417,6 +417,11 @@ struct ContentView: View {
             FileManager.default.fileExists(atPath: $0) ? $0 : nil }) != nil
         if producedOutput {
             if label == "render" { Haptics.notify(.success) }
+        } else if isStopping {
+            // Stopped on purpose. It produced no output by definition, so
+            // the error buzz below would fire — making a button the user
+            // just pressed feel like something went wrong.
+            Haptics.impact(.rigid)
         } else {
             Haptics.notify(.error)
         }

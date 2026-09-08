@@ -2335,39 +2335,87 @@ try:
             # render is being abandoned.
             _cancel_fw = [None]
             _cancel_watch_started = [False]
+            _cancel_render_tid = [None]
+            # Bumped once per scene.render(). A watchdog exits when it sees
+            # a generation other than its own, so each render has exactly
+            # one live watcher and a stopped render's thread never lingers
+            # to fire on the next one.
+            _cancel_gen = [0]
 
-            def _install_cancel_watchdog(fw):
-                _cancel_fw[0] = fw
+            def _install_cancel_watchdog(fw=None):
+                # Called twice per scene: from Scene.render *before*
+                # construct() runs, and again from the first write_frame
+                # once a file writer exists. Only the first starts a thread.
+                if fw is not None:
+                    _cancel_fw[0] = fw
                 if _cancel_watch_started[0]:
                     return
                 _cancel_watch_started[0] = True
-                import threading as _cw_thr, time as _cw_time
+                import threading as _cw_thr, time as _cw_time, ctypes as _cw_ct
+                # Whoever called us IS the render thread — both call sites
+                # run on it.
+                _cancel_render_tid[0] = _cw_thr.get_ident()
+                _my_gen = _cancel_gen[0]
 
                 def _watch():
                     _cp = os.path.join(globals().get('__codebench_tool_dir', ''),
                                        '_cancel_render.txt')
                     while True:
                         _cw_time.sleep(0.2)
+                        if _cancel_gen[0] != _my_gen:
+                            return          # superseded by a newer render
                         if not _cp or not os.path.exists(_cp):
                             continue
+                        # 1. Release a renderer parked in the bounded frame
+                        #    queue. While blocked in queue.put it cannot
+                        #    reach any check at all, so this comes first.
                         _fw = _cancel_fw[0]
-                        if _fw is None:
-                            continue
-                        try:
-                            _q = getattr(_fw, 'queue', None)
-                            if _q is not None:
-                                _drained = 0
-                                while True:
-                                    try:
-                                        _q.get_nowait()
-                                        _drained += 1
-                                    except Exception:
-                                        break
-                                print(f"[stop] released the frame queue "
-                                      f"({_drained} frame(s) dropped)", flush=True)
-                        except Exception as _we:
-                            print(f"[stop] queue release failed: "
-                                  f"{type(_we).__name__}: {_we}", flush=True)
+                        if _fw is not None:
+                            try:
+                                _q = getattr(_fw, 'queue', None)
+                                if _q is not None:
+                                    _drained = 0
+                                    while True:
+                                        try:
+                                            _q.get_nowait()
+                                            _drained += 1
+                                        except Exception:
+                                            break
+                                    print(f"[stop] released the frame queue "
+                                          f"({_drained} frame(s) dropped)", flush=True)
+                            except Exception as _we:
+                                print(f"[stop] queue release failed: "
+                                      f"{type(_we).__name__}: {_we}", flush=True)
+                        # 2. Raise KeyboardInterrupt IN the render thread.
+                        #    write_frame's own check only fires at a frame
+                        #    boundary, which is no help during a long
+                        #    preamble (a download, a TSNE fit), between
+                        #    animations, or in the final concat — all of
+                        #    which are exactly when people reach for Stop.
+                        #    This lands the moment that thread next runs
+                        #    bytecode, so only a single long C call (one
+                        #    cairo fill, one BLAS op) still has to finish.
+                        _tid = _cancel_render_tid[0]
+                        if _tid is not None:
+                            try:
+                                _f = _cw_ct.pythonapi.PyThreadState_SetAsyncExc
+                                _f.argtypes = [_cw_ct.c_ulong, _cw_ct.py_object]
+                                _f.restype = _cw_ct.c_int
+                                _n = _f(_cw_ct.c_ulong(_tid),
+                                        _cw_ct.py_object(KeyboardInterrupt))
+                                if _n > 1:
+                                    # Hit more than one thread state — must
+                                    # be undone or the interpreter is left
+                                    # in an inconsistent state.
+                                    _f(_cw_ct.c_ulong(_tid), _cw_ct.py_object())
+                                    print("[stop] async interrupt over-applied, "
+                                          "reverted", flush=True)
+                                else:
+                                    print(f"[stop] interrupt delivered to the "
+                                          f"render thread ({_n})", flush=True)
+                            except Exception as _ae:
+                                print(f"[stop] async interrupt failed: "
+                                      f"{type(_ae).__name__}: {_ae}", flush=True)
                         return
 
                 _t = _cw_thr.Thread(target=_watch, daemon=True)
@@ -2562,7 +2610,27 @@ try:
                         os.remove(_cp_start)
                 except OSError:
                     pass
+                # Arm Stop for THIS scene before construct() runs. Until
+                # this was here the watchdog only started from the first
+                # write_frame, so anything before the first frame — a
+                # dataset download, an sklearn fit, any slow setup — left
+                # Stop with nothing listening and the button did nothing.
+                # New generation so a previous scene's watcher retires.
+                try:
+                    _cancel_gen[0] += 1
+                    _cancel_watch_started[0] = False
+                    _cancel_fw[0] = None
+                    _install_cancel_watchdog()
+                except Exception as _cwe:
+                    print(f"[stop] watchdog not armed: "
+                          f"{type(_cwe).__name__}: {_cwe}", flush=True)
                 _orig_render(self, *args, **kwargs)
+                # Retire this scene's watchdog now that the render is done,
+                # so a Stop arriving in the gap before the next scene can't
+                # inject a KeyboardInterrupt into post-render cleanup. (On
+                # the exception path the next render's generation bump
+                # retires it instead.)
+                _cancel_gen[0] += 1
                 print(f"[manim-debug] frames_written={len(_collected_frames)} skip={getattr(self.renderer, 'skip_animations', '?')} sections_skip={getattr(self.renderer.file_writer.sections[-1], 'skip_animations', '?') if hasattr(self.renderer, 'file_writer') and self.renderer.file_writer.sections else '?'}")
                 try:
                     fw = self.renderer.file_writer
