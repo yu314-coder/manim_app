@@ -512,6 +512,23 @@ final class PythonRuntime {
                             offlinai_shell.BUILTINS.pop(_name, None)
                     except Exception:
                         pass
+                    # Same reasoning for `ai`. The bundled shell's `ai`
+                    # REPL is CodeBench's local-LLM assistant: offlinai_ai
+                    # downloads a GGUF with /pull, then hands it to a
+                    # Swift-side LlamaRunner over signal files to run it.
+                    # ManimStudio has no LlamaRunner and ships no
+                    # llama.cpp, so the command could only ever fail:
+                    # "offlinai_ai module unavailable" today, and, were
+                    # the module bundled, a multi-GB download followed by
+                    # a load that waits two minutes for a runner that does
+                    # not exist. Hiding it drops the "AI" group from
+                    # `help`; PTYBridge's AI mode (slash palette, .gguf
+                    # completion) never switches on, because only
+                    # offlinai_ai emits the marker that enables it.
+                    try:
+                        offlinai_shell.BUILTINS.pop("ai", None)
+                    except Exception:
+                        pass
 
                     # Replace `top` / `htop` with implementations that
                     # don't need psutil. The bundled python-ios-lib
