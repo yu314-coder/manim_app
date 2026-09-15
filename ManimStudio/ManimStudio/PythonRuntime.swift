@@ -1264,7 +1264,14 @@ os.environ.setdefault("MPLCONFIGDIR", \(pythonQuoted(toolDir)))
         guard FileManager.default.fileExists(atPath: path) else { return }
         if dlopen(path, RTLD_NOW | RTLD_GLOBAL) == nil,
            let cstr = dlerror() {
-            NSLog("[python] %s preload failed: %s", fwName, cstr)
+            // Interpolate instead of passing format arguments. `%s` reads a
+            // C-string pointer, and a Swift String handed to it as a CVarArg
+            // is not one — NSLog dereferenced it and the app died with
+            // SIGSEGV inside __CFStringAppendFormatCore. This branch only
+            // runs when a stub fails to load, which is why devices never hit
+            // it: in the Simulator the prebuilt libfortran_io_stubs is a
+            // device binary, so every Simulator launch crashed here.
+            NSLog("%@", "[python] \(fwName) preload failed: \(String(cString: cstr))")
         }
     }
 
