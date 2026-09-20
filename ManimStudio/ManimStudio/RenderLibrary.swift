@@ -7,8 +7,8 @@
 //
 // Thumbnailing is deliberately SERIAL. AVAssetImageGenerator decodes at
 // the asset's native resolution regardless of `maximumSize` — that cap
-// only bounds the image it hands back. With 16K on the quality ladder a
-// single decoded frame is ~506 MB, so generating a screenful of
+// only bounds the image it hands back. With 14K on the quality ladder a
+// single decoded frame is ~388 MB, so generating a screenful of
 // thumbnails concurrently would be several gigabytes in flight and a
 // certain jetsam. Funnelling every request through one actor means at
 // most one full-size frame exists at a time.
@@ -200,7 +200,7 @@ final class RenderThumbnailCache: ObservableObject {
 /// What a finished render actually is, read back off the file. The render
 /// settings that produced it aren't stored anywhere alongside the mp4, so
 /// the container is the only evidence of what you got — which matters most
-/// exactly when it disagrees with what you asked for (a 16K request that
+/// exactly when it disagrees with what you asked for (a 14K request that
 /// fell back to software mpeg4, say, or a custom size rounded to even).
 struct RenderMediaInfo: Equatable {
     var width: Int
@@ -210,7 +210,7 @@ struct RenderMediaInfo: Equatable {
     var codec: String
     var dataRateMbps: Double
 
-    /// Ladder name ("4K", "16K") when the pixels match a rung exactly,
+    /// Ladder name ("4K", "14K") when the pixels match a rung exactly,
     /// else nil — a custom resolution has no name.
     var qualityLabel: String? { RenderResolution.qualityLabel(width: width, height: height) }
 

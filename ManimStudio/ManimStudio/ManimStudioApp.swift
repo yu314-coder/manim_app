@@ -12,6 +12,10 @@ struct ManimStudioApp: App {
         // be installed first so signal handlers cover the rest of init.
         CrashLogger.shared.install()
 
+        // The 16K rung was removed; move any device still holding it
+        // down to 14K before a picker or a render reads the setting.
+        RenderResolution.migrateRetiredSelection()
+
         // LaTeX backend: force every MathTex through busytex/xelatex for
         // crisp PNG-in-SVG output. Upstream python-ios-lib fe7cfa4c
         // ("undo manim's `}}` autosplit") + 4d081711 ("route \frac through
