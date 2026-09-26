@@ -21,7 +21,7 @@ on-device without an internet connection.
 | 🐚 **Embedded shell** | `offlinai_shell` from [BenchCode / CodeBench](https://github.com/yu314-coder/CodeBench) (rebranded `ManimStudio shell` at install time) — full POSIX-style builtins (`ls`, `cd`, `cat`, `top`, `find`, `grep`, …) bundled inside python-ios-lib |
 | 🔤 **Editor** | [microsoft/monaco-editor](https://github.com/microsoft/monaco-editor) in WKWebView |
 | 🖥 **Terminal** | [migueldeicaza/SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) bridged to Python via PTY |
-| 🎬 **Manim** | [3b1b/manim](https://github.com/ManimCommunity/manim) (Community edition, patched for iOS Cairo + h264_videotoolbox) |
+| 🎬 **Manim** | [3b1b/manim](https://github.com/ManimCommunity/manim) (Community edition, patched for iOS Cairo + VideoToolbox encode) |
 | 🧮 **LaTeX** | [busytex](https://github.com/jamesgao/busytex) WASM build for Tex / MathTex rendering |
 
 ---
@@ -62,11 +62,17 @@ on-device without an internet connection.
   `set_points_smoothly(...)` in ManimStudio's coordinate frame. Entirely
   on-device — no network, no model.
 - **Presentation mode** (`PresentationMode.swift`) — full-screen looping
-  playback of the latest render with tap-to-reveal transport, the status bar
-  and home indicator hidden. Reaching a TV is plain **AirPlay / HDMI
-  mirroring**: `ExternalDisplayManager` is deliberately **inert** and never
-  claims the external scene, because an app that attaches its own window to
-  that scene *replaces* the mirror with its own UI.
+  playback with tap-to-reveal transport, the status bar and home indicator
+  hidden. It opens on the latest render, and a **library strip** lists every
+  earlier render in `Documents/ToolOutputs/`, so Present works on a cold
+  launch too. Each clip is labelled from the file itself — resolution, codec,
+  frame rate, duration and data rate, plus a quality badge — because the
+  render settings are not stored with the mp4, and the two can disagree.
+  Thumbnails decode one at a time (a 14K frame is ~388 MB) into a cache
+  capped at 40 (`RenderLibrary.swift`). Reaching a TV is plain **AirPlay /
+  HDMI mirroring**: `ExternalDisplayManager` is deliberately **inert** and
+  never claims the external scene, because an app that attaches its own
+  window to that scene *replaces* the mirror with its own UI.
 - **Command palette** (⇧⌘P) — one list over the existing menu
   notifications: render, preview, stop, file ops, sketch, present, tabs.
 
@@ -79,7 +85,9 @@ on-device without an internet connection.
   ~150 builtins — `ls`, `cd`, `cat`, `top`, `find`, `grep`, `clear`,
   `python`, `tree`, etc. `pip` is intentionally hidden: iOS sandboxes
   have no writable site-packages, and most wheels need a toolchain iOS
-  forbids.
+  forbids. So is `ai`: in CodeBench it drives a local LLM through a native
+  llama.cpp runner, and ManimStudio ships neither that runner nor the
+  `offlinai_ai` package, so the command could only fail.
 - **Custom `top`** built on `sysctlbyname` (kern.boottime, hw.memsize,
   hw.ncpu, hw.machine) + `resource.getrusage` so process / system stats
   work without psutil's private-API native module.
@@ -92,8 +100,25 @@ on-device without an internet connection.
 
 ### Render pipeline
 
-- **VideoToolbox H.264** hardware encoder by default (~5× faster than
-  software libx264 on iPad Pro M4). Toggleable from the Settings sheet.
+- **Hardware encode by default** — VideoToolbox H.264, or HEVC where H.264
+  cannot take the size (see
+  [High-resolution rendering](#high-resolution-rendering-4k-and-up)). The
+  software fallback is `mpeg4`: the bundled ffmpeg has **no libx264, libx265
+  or OpenH264**. The Settings sheet's "GPU acceleration" toggle can turn
+  hardware encoding off.
+- **Encoding controls** (Controls → Encoding, applied to both Preview and
+  Render) — Encoder `auto` / `h264` / `hevc` / `mpeg4`, frame-queue depth
+  `auto` or 2–32, and the queue's memory budget in MB while depth is `auto`.
+  They reach the render as interpreter globals, not environment variables:
+  `os.environ` is a snapshot Python takes when it imports `os`, so a
+  `setenv` from Swift after boot never arrives.
+- **Stop stops.** The tap shows "Stopping…" at once. A watchdog armed when
+  each scene starts rendering — before `construct()` runs — releases a
+  renderer blocked on the frame queue and raises `KeyboardInterrupt` in the
+  render thread, which reaches Python anywhere: a dataset download or model
+  fit before the first frame, a loop between animations, the final concat.
+  The one thing it cannot interrupt is a single long C call (one cairo
+  fill, one BLAS op), which has to return first.
 - Manim is patched at runtime to:
   - Use Cairo via the `pycairo` compat layer (the `manimpango` C extension
     is partially excluded under ITMS-90338 — Apple flags some of its
@@ -118,10 +143,13 @@ on-device without an internet connection.
   that mode without a real audio feature. Both the Info.plist key and the
   activation were removed; the standard `beginBackgroundTask` grace window
   is the correct API for finishing-up work.
-- **Output size &amp; format** — 480p → 8K presets plus **Custom** width ×
-  height with 9:16 / 1:1 / 4:5 / 16:9 one-tap presets. The wrapper rounds to
-  even dimensions for H.264 and re-derives an aspect-correct frame, so
-  vertical and square renders are not stretched.
+- **Output size &amp; format** — presets from 480p to **14K** plus **Custom**
+  width × height with 9:16 / 1:1 / 4:5 / 16:9 one-tap presets. Custom has no
+  upper bound — a cap that quietly substitutes another size is worse than an
+  encoder that refuses — but dimensions are rounded to even, because
+  `yuv420p` subsamples chroma 2×2 and an odd width has no valid encoding.
+  The wrapper re-derives an aspect-correct frame, so vertical and square
+  renders are not stretched.
 - **Transparent (alpha) export** — the `mov` format flips manim's
   `config.transparent`, which switches the writer to `.mov` + `qtrle` with a
   real alpha channel. The concat path uses `qtrle`/`argb` for those runs;
@@ -161,7 +189,12 @@ on-device without an internet connection.
   appears nowhere else in the UI), a raw dump of every `manim_*` preference,
   and per-bucket storage tools: caches, temporary files, Python bytecode,
   the log file, and rendered outputs. "Free up space" clears the safe
-  buckets and never touches renders.
+  buckets and never touches renders. **Check network stack** imports `ssl`,
+  `certifi` and `requests` inside the embedded Python and fetches
+  `https://example.com`, reporting the OpenSSL version (statically linked
+  into `_ssl`), whether certifi's CA bundle is present, the
+  `REQUESTS_CA_BUNDLE` the app set before Python booted, and a live status
+  code. Each piece is easy to verify alone; they fail together.
 
 ### Layout
 
@@ -183,8 +216,9 @@ on-device without an internet connection.
 
 ## Build prerequisites
 
-1. **Xcode 26+** on macOS. Deployment target **17.0**; Swift language
-   mode **5** with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and
+1. **Xcode 26+** on macOS (1.5 (20) was built with Xcode 27). Deployment
+   target **17.0**; Swift language mode **5** with
+   `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and
    `SWIFT_APPROACHABLE_CONCURRENCY` on — unannotated types are main-actor
    isolated, so anything touching the filesystem off-main is explicitly
    `nonisolated`.
@@ -206,6 +240,13 @@ on-device without an internet connection.
 5. SwiftPM resolves [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)
    and [Manim SPM stubs from python-ios-lib](https://github.com/yu314-coder/python-ios-lib)
    automatically on first build.
+6. **Metal Toolchain.** Xcode 27 treats it as a separate download, and
+   SwiftTerm 1.13 ships a `Shaders.metal` that fails without it ("missing
+   Metal Toolchain"). Install it with
+   `xcodebuild -downloadComponent MetalToolchain`, or skip that one file by
+   adding `'EXCLUDED_SOURCE_FILE_NAMES=$(inherited) Shaders.metal'` to the
+   `xcodebuild` command. Skipping it is safe here: SwiftTerm's Metal
+   renderer is off by default and ManimStudio never turns it on.
 
 ```sh
 xcodebuild -project ManimStudio/ManimStudio.xcodeproj \
@@ -240,13 +281,14 @@ ManimStudio/                         ← Xcode project root
     ├── AssetsView.swift             · Documents/Assets file browser
     ├── HistoryView.swift            · Documents/ToolOutputs scanner
     ├── SystemView.swift             · live device diagnostics + copy report
-    ├── DeveloperMenu.swift          · hidden dev menu (7-tap) + storage tools
+    ├── DeveloperMenu.swift          · hidden dev menu (7-tap), storage, network
     ├── GalleryView.swift            · cold-launch scene gallery
     ├── PencilKitView.swift          · Apple Pencil sketch → Manim source
-    ├── PresentationMode.swift       · full-screen looping playback
+    ├── PresentationMode.swift       · full-screen playback + library strip
+    ├── RenderLibrary.swift          · past renders, thumbnails, media info
     ├── ExternalDisplayManager.swift · inert by design; keeps mirroring
     ├── CommandPalette.swift         · ⇧⌘P palette over menu notifications
-    ├── RenderResolution.swift       · quality ladder + pixel dimensions
+    ├── RenderResolution.swift       · quality ladder, pixel sizes, migrations
     ├── VideoEncoderProbe.swift      · native VideoToolbox capability probe
     ├── RAMMonitorView.swift         · iPad RAM HUD + iPhone sparkline
     ├── SceneDetector.swift          · finds Scene subclasses in source
@@ -255,7 +297,7 @@ ManimStudio/                         ← Xcode project root
     ├── TabBarView.swift             · iPad pill strip / iPhone bottom bar
     ├── Haptics.swift                · selection / impact / notify wrappers
     ├── ControlsSidebar.swift        · quality / fps / format pickers
-    ├── BackgroundTaskGuard.swift    · UIBackgroundTask + AVAudioSession glue
+    ├── BackgroundTaskGuard.swift    · background task + idle-timer hold
     ├── CrashLogger.swift            · signal handlers + persistent log file
     ├── LogViewerView.swift          · in-app tailing log viewer
     ├── MenuCommands.swift           · iPad menu bar (.commands) wiring
@@ -264,9 +306,14 @@ ManimStudio/                         ← Xcode project root
     ├── PrivacyInfo.xcprivacy        · required-reason API manifest
     └── Info.plist                   · capabilities + usage descriptions
 scripts/
+├── fix-macho-type.py                · MH_BUNDLE → MH_DYLIB on framework binaries
+├── gen-bundled-packages.py          · regenerates BundledPackages.swift
 ├── gen-library-symbols.py           · bakes Resources/LibrarySymbols.json
+├── inject-swift-support-archive.sh  · scheme post-action: dSYMs + SwiftSupport
+├── inject-swift-support.sh          · same fix for an exported IPA (by hand)
 ├── install-python-stdlib.sh         · main build phase (stdlib + framework wrapping)
-└── normalize-fwork-postembed.sh     · post-Embed-Frameworks .fwork normalizer
+├── normalize-fwork-postembed.sh     · post-Embed-Frameworks .fwork normalizer
+└── patch-cython-lapack.py           · rebinds cython_lapack to a stub dylib (by hand)
 _appstore_screens/                   · 6× iPad screenshots, 2752×2064 / 2064×2752
 _appstore_screens_iphone/            · 4× iPhone screenshots, 1284×2778
 ```
@@ -289,6 +336,11 @@ only runs for archive builds.
    - Consolidates SwiftPM `python-ios-lib_*.bundle/` directories into
      `app_packages/site-packages/` so wrap-loose-dylibs.sh and BeeWare's
      import hook see the layout they expect.
+   - Copies the pure-Python packages python-ios-lib's SwiftPM products do
+     not expose, from a hand-maintained list: fontTools, the `requests`
+     stack (urllib3, certifi, idna, charset_normalizer), PyYAML, jsonschema,
+     and `joblib` + `threadpoolctl`, which scikit-learn imports unguarded —
+     without those two, `import sklearn` fails outright.
    - **Builds `libscipy_blas_stubs.framework`** — a 10-line C stub
      providing `dcabs1_` and `lsame_`, two BLAS reference helpers iOS
      Accelerate doesn't export. Without them
@@ -298,6 +350,12 @@ only runs for archive builds.
      Flang Fortran I/O runtime stubs from
      [python-ios-lib/fortran/](https://github.com/yu314-coder/python-ios-lib/tree/main/fortran))
      so scipy arpack/propack can resolve `__FortranA*` symbols.
+   - **Archive builds only:** makes every copied package writable, then runs
+     [`fix-macho-type.py`](scripts/fix-macho-type.py) to flip framework
+     executables from `MH_BUNDLE` to `MH_DYLIB`. Apple rejects a bundle-typed
+     framework binary (ITMS-90124), and files copied out of SwiftPM's
+     read-only checkout kept their permissions, so without the `chmod` the
+     flip failed silently — which is what got 1.5 (8) and (9) rejected.
 5. **Wrap loose dylibs (App Store)** — *archive only*. Runs upstream's
    [`wrap-loose-dylibs.sh`](https://github.com/yu314-coder/python-ios-lib/blob/main/scripts/appstore/wrap-loose-dylibs.sh)
    from python-ios-lib to convert every loose `.so` and `.dylib` into a
@@ -324,6 +382,9 @@ only runs for archive builds.
 ```
 CrashLogger.install()                ← signal handlers, log file open
                 ↓
+migrateRetiredSelection()            ← RenderResolution: a stored 16K
+                                       choice becomes 14K
+                ↓
 PTYBridge.shared.setupIfNeeded()     ← pipe(2), dup2 onto stdin/out/err
                 ↓
 preloadScipySupportFrameworks()      ← dlopen libscipy_blas_stubs +
@@ -347,7 +408,7 @@ faulthandler.enable(file=manim_studio.log, all_threads=True)
                 ↓
 HOME = Documents/, chdir Documents/Workspace/
                 ↓
-sed-rebrand monkeypatch + pip removal + custom top builtin
+sed-rebrand monkeypatch + pip / ai removal + custom top builtin
                 ↓
 offlinai_shell.repl() on a daemon thread → PS1 prompt
 ```
@@ -366,8 +427,11 @@ User taps **Render** or **Preview** (header) → `ContentView.triggerRender(quic
 
 1. `BackgroundTaskGuard.shared.begin()` — extends app lifetime and holds the
    idle timer so auto-lock cannot end the render mid-encode.
-2. **Preview** always uses `low_quality / 15 fps`. **Render** reads the
-   user's Final settings from `@AppStorage("manim_final_*")` keys.
+2. **Preview** reads the Quick Preview pickers (`manim_preview_quality` /
+   `_fps`, default 480p at 15 fps); **Render** reads the Final ones
+   (`manim_final_*`, default 1080p at 30 fps). The labels are converted to a
+   preset index at render time, so the choice applies whichever settings
+   surface is on screen.
 3. `PythonRuntime.execute(code:targetScene:onOutput:)` runs the wrapper
    script in `<offlinai-python-tool>`. The wrapper exec's user code,
    discovers Scene subclasses, calls each one in source order, and writes
@@ -391,7 +455,7 @@ User taps **Render** or **Preview** (header) → `ContentView.triggerRender(quic
 
 ---
 
-## High-resolution rendering (4K / 8K)
+## High-resolution rendering (4K and up)
 
 8K renders. Getting there needed three separate things, and the first one
 masqueraded as the other two for a long time.
@@ -438,6 +502,9 @@ RGBA buffers, well past what any iPad gives one app. The cap that existed to
 prevent a jetsam kill was causing one. The byte budget is what is fixed now,
 so the depth follows the resolution: **1080p queues 32, 4K queues 8, 8K
 queues 2** — never fewer, or the renderer and encoder stop overlapping.
+**Controls → Encoding → Queue depth** can force a depth from 2 to 32
+instead. The figure shown for a forced depth is the queue's *capacity* —
+what it could hold — not what it is holding; the RAM HUD shows that.
 
 ### No pre-flight memory gate
 
@@ -451,13 +518,30 @@ render path is the real safety net.
 
 ### Choosing the encoder
 
-**Controls → Final Render → Encoder** offers `auto` / `h264` / `hevc`. Auto
-follows the probe. A forced choice is still checked against the hardware and
+**Controls → Encoding → Encoder** offers `auto` / `h264` / `hevc` / `mpeg4`
+and applies to Preview as well as Render. Auto follows the probe. A forced choice is still checked against the hardware and
 falls back rather than handing back an encoder that cannot open — returning
 one that fails is the bug the probe exists to prevent. The note under the
 picker calls VideoToolbox natively (`VideoEncoderProbe.swift`) for the
 resolution currently selected, so it reports what *this* device can do without
 starting Python.
+
+### Above 8K: 12K and 14K
+
+12K (11520×6480) and 14K (13440×7560) are 3× and 3.5× the 4K frame, so they
+stay exactly 16:9 and even on both axes. manim has no preset above 4K, so
+everything from 8K up sets the pixel size directly, from a table in the
+render wrapper that mirrors `RenderResolution` on the Swift side.
+
+MP4 at those sizes has one hard constraint: the `mpeg4` software fallback
+stores frame dimensions in 13 bits and refuses anything past **8191 px** a
+side ("dimensions too large for MPEG-4" — 8191 encodes, 8192 does not). The
+transparent `.mov` path uses `qtrle`, which has no such limit.
+
+**16K** (15360×8640) was offered briefly and removed in 1.5 (20): it could
+not complete a render on device. A device that still had it selected is
+moved to 14K at launch, rather than left with an empty picker and a silent
+1080p fallback.
 
 ---
 
@@ -465,12 +549,27 @@ starting Python.
 
 ### Not verified on device
 
-Apple Pencil sketch, Presentation mode and transparent export are
-compile-verified and inspected but have not been exercised on hardware. The
-app **cannot run in the Simulator** — `preloadScipySupportFrameworks` dlopens
-device-only frameworks and SIGSEGVs at launch — so the Simulator can build
-this project but never run it. TestFlight on a real device is the only
-runtime test path.
+Apple Pencil sketch and transparent export are compile-verified and
+inspected but have not been exercised on hardware.
+
+### The Simulator runs the UI, not renders
+
+The app launches in the iOS Simulator. It used to crash there about four
+seconds in — an `NSLog("%s")` handed a Swift `String` on the stub-framework
+failure path, which only the Simulator takes — fixed in 1.5 (20). Screens
+and layout can be checked there, but nothing renders: python-ios-lib ships
+no simulator builds of numpy, scipy, cairo, Pillow, manimpango or PyAV, and
+the prebuilt Fortran stubs are device-only. Rendering needs a device. (A
+development build also launches on an Apple-silicon Mac as a
+Designed-for-iPad app; rendering there has not been verified.)
+
+### Terminal downloads
+
+The bundled shell's `curl` reads the whole response into memory when it
+isn't given `-o`, then converts all of it to text even though it prints only
+the first 4 KB — about 4.4× the download's size at peak. A large file
+fetched that way can get the app killed by iOS before anything is saved.
+`wget <url>` and `curl -L -o <file> <url>` stream to disk instead.
 
 ---
 
@@ -482,13 +581,15 @@ runtime test path.
 | Apple ID | `6764472686` |
 | Privacy Policy URL | https://yu314-coder.github.io/privacy.html#manim-studio-ios |
 | Privacy nutrition label | **Data Not Collected** |
-| Categories | Developer Tools (primary) / Education (secondary) |
+| Categories | Graphics & Design (primary) / Education (secondary) |
 | iPad screenshots | 6 × `2752×2064` / `2064×2752` (in [`_appstore_screens/`](_appstore_screens/)) |
 | iPhone screenshots | 4 × `1284×2778` (in [`_appstore_screens_iphone/`](_appstore_screens_iphone/)) |
 | App Accessibility | Dark Interface · Differentiate Without Color Alone |
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
-| Shipping version | **1.5** (build 1) |
+| On the App Store | **1.4** (build 8) |
+| Latest TestFlight | **1.5** (build 20) |
+| Build numbers | The project stays at build 1; each upload's build number is set in the archive |
 
 ---
 
