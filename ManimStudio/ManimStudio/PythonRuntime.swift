@@ -2131,9 +2131,13 @@ try:
             # task that stops reporting progress. Manim finds its animations
             # as construct() runs, so only the current one's length is known.
             # `run` ties the counts to one execution of this wrapper
-            # (__codebench_run_id); a new run starts them over.
+            # (__codebench_run_id); a new run starts them over. `tex` counts
+            # formulas typeset and `joined` frames re-encoded while combining:
+            # both take time without writing a frame, and the app treats any
+            # change here as the render still moving.
             _progress = {'run': None, 'scene': '', 'phase': 'setup', 'play': -1,
-                         'play_frames': 0, 'play_expected': 0, 'frames': 0}
+                         'play_frames': 0, 'play_expected': 0, 'frames': 0,
+                         'tex': 0, 'tex_pending': False, 'joined': 0}
             _progress_scene = [None]
             _progress_written = [0.0]
 
@@ -2141,7 +2145,8 @@ try:
                 _run = globals().get('__codebench_run_id', '')
                 if _progress['run'] != _run:
                     _progress.update(run=_run, scene='', phase='setup', play=-1,
-                                     play_frames=0, play_expected=0, frames=0)
+                                     play_frames=0, play_expected=0, frames=0,
+                                     tex=0, tex_pending=False, joined=0)
 
             def _progress_write(force=False):
                 import json as _pj, time as _pt
@@ -2194,6 +2199,11 @@ try:
             # encoding again when the scene is combined — see ManimStudio's
             # PythonSupport/manimstudio_encoder.py. Installed before the
             # failure note below, which then wraps its encode loop.
+            def _progress_joined(_n):
+                _progress_sync_run()
+                _progress['joined'] = int(_n)
+                _progress_write()
+
             def _ms_check_cancel():
                 _cp = os.path.join(globals().get('__codebench_tool_dir', ''),
                                    '_cancel_render.txt')
@@ -2211,10 +2221,39 @@ try:
                     SceneFileWriter,
                     hardware_codec=_ms_enc_settings.codec_for,
                     on_phase=lambda _phase: _progress_phase(_phase),
-                    check_cancel=_ms_check_cancel)
+                    check_cancel=_ms_check_cancel,
+                    on_progress=_progress_joined)
             except Exception as _mse:
                 print(f"[manim] encoder fallback unavailable: "
                       f"{type(_mse).__name__}: {_mse}", flush=True)
+
+            # Typesetting a formula writes no frames and can take seconds —
+            # busytex runs xelatex in a web view — so a formula-heavy
+            # construct() can go a long while without progress. Count each
+            # formula, and say one is being typeset. manim's
+            # tex_file_writing imports tex_to_svg from offlinai_latex at call
+            # time, so wrapping the module attribute reaches it.
+            try:
+                import offlinai_latex as _ms_latex
+                if not getattr(_ms_latex, '_ms_progress_wrapped', False):
+                    _ms_orig_tex_to_svg = _ms_latex.tex_to_svg
+
+                    def _tex_to_svg_with_progress(*a, **kw):
+                        _progress_sync_run()
+                        _progress['tex_pending'] = True
+                        _progress_write(force=True)
+                        try:
+                            return _ms_orig_tex_to_svg(*a, **kw)
+                        finally:
+                            _progress['tex'] = _progress.get('tex', 0) + 1
+                            _progress['tex_pending'] = False
+                            _progress_write(force=True)
+
+                    _ms_latex.tex_to_svg = _tex_to_svg_with_progress
+                    _ms_latex._ms_progress_wrapped = True
+            except Exception as _tpe:
+                print(f"[manim] formula progress unavailable: "
+                      f"{type(_tpe).__name__}: {_tpe}", flush=True)
 
             # A writer thread whose encode fails logs "! encode CRASH" and
             # exits (listen_and_write). The renderer doesn't notice: it keeps

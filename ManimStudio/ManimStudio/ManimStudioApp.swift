@@ -86,6 +86,9 @@ struct ManimStudioApp: App {
             //   mobile@iPad ~/Workspace %
             // prompt is usually already printed below the banner.
             PTYBridge.shared.setupIfNeeded()
+            // A render that was running when the app last stopped — closed by
+            // iOS in the background, most likely — says so in the terminal.
+            UnfinishedRender.reportIfAny()
             PythonRuntime.shared.ensureRuntimeReady()
         }
 

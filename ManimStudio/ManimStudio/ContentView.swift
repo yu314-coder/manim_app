@@ -299,18 +299,17 @@ struct ContentView: View {
         startRenderHeartbeat()
         let label = quick ? "preview" : "render"
         let target = selectedScene.isEmpty ? "all scenes" : selectedScene
-        // Keep the render going if the user switches apps or locks the
-        // screen mid-render: on iOS 26 a continued-processing task with
-        // the system's progress UI, before that a ~30 s grace window (see
-        // BackgroundTaskGuard). Cancelling from that UI acts like Stop.
-        // Released in logStream_done / stopRender.
+        // Keep the render going if the user switches apps mid-render: on
+        // iOS 26 a continued-processing task with the system's progress UI,
+        // before that a ~30 s grace window (see BackgroundTaskGuard). When
+        // iOS ends either, the render pauses rather than stops, and carries
+        // on when the user returns. Released in logStream_done / stopRender.
         // A Final render ends with the save sheet; if that happens while the
         // user is in another app, a notification brings them back to it.
         if !quick { RenderNotifier.requestPermissionIfNeeded() }
         BackgroundTaskGuard.shared.begin(
             label: label,
-            title: "\(quick ? "Previewing" : "Rendering") \(target)",
-            onExpire: { NotificationCenter.default.post(name: .menuRenderStop, object: nil) })
+            title: "\(quick ? "Previewing" : "Rendering") \(target)")
         // Render output flows into the live terminal automatically because
         // PythonRuntime redirects sys.stdout/stderr through PTYBridge's pipe.
         // We just write a header banner so the user sees where the run started.

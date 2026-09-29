@@ -107,7 +107,7 @@ class _Clip:
 
 
 def install(SceneFileWriter, *, hardware_codec=None, on_phase=None,
-            check_cancel=None):
+            check_cancel=None, on_progress=None):
     """Patch SceneFileWriter so a failed hardware encode splits the clip.
 
     hardware_codec(width, height) -> (encoder, mp4 tag or None): the encoder
@@ -116,6 +116,8 @@ def install(SceneFileWriter, *, hardware_codec=None, on_phase=None,
     on_phase(name): told "waiting" while a render waits for the hardware
         encoder, and "finishing" when it has it back.
     check_cancel(): raises to stop a render that is waiting.
+    on_progress(frames): told how many frames a re-encode has written so
+        far, every 30 — it writes no render frames, and can take minutes.
     """
     if getattr(SceneFileWriter, "_ms_encoder_installed", False):
         return
@@ -333,6 +335,8 @@ def install(SceneFileWriter, *, hardware_codec=None, on_phase=None,
                         raise _HardwareLost(error) from error
                     raise
                 count += 1
+                if on_progress is not None and count % 30 == 0:
+                    on_progress(count)
             try:
                 for packet in stream.encode():
                     container.mux(packet)
