@@ -45,6 +45,10 @@ final class TerminalPaneViewController: UIViewController {
         terminal.terminalDelegate = PTYBridge.shared
         PTYBridge.shared.terminalView = terminal
 
+        // Extra keys over the on-screen keyboard, in place of SwiftTerm's
+        // generic accessory (see KeyBar).
+        terminal.inputAccessoryView = KeyBar.terminal(for: terminal)
+
         // Apply the saved font prefs, and live-update when the Settings
         // sheet changes terminal font size / family.
         applyFontSize()

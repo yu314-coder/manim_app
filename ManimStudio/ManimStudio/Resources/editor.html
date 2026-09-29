@@ -362,6 +362,11 @@
                 setTimeout(() => skel.remove(), 300);
             }
 
+            // Notify Swift — focus, so the key bar over the on-screen
+            // keyboard shows only while typing here
+            editor.onDidFocusEditorText(() => postToSwift({ kind: 'focus', focused: true }));
+            editor.onDidBlurEditorText(() => postToSwift({ kind: 'focus', focused: false }));
+
             // Notify Swift — content changes (debounced)
             let changeTimer = null;
             editor.onDidChangeModelContent(() => {
@@ -429,6 +434,34 @@
                     }
                 },
                 focusEditor() { editor.focus(); },
+                /**
+                 * A key from the key bar over the on-screen keyboard
+                 * (KeyBar.swift). Text goes through Monaco's own typing
+                 * path, so auto-closing pairs and indentation apply as if
+                 * it had been typed. While the suggestion list is open,
+                 * up / down move through it and tab accepts.
+                 */
+                key(name, text) {
+                    editor.focus();
+                    if (name === 'text') {
+                        editor.trigger('keyboard', 'type', { text: String(text) });
+                        return;
+                    }
+                    const suggesting = !!document.querySelector('.suggest-widget.visible');
+                    const command = (suggesting && {
+                        up: 'selectPrevSuggestion',
+                        down: 'selectNextSuggestion',
+                        tab: 'acceptSelectedSuggestion',
+                    }[name]) || {
+                        tab: 'tab', outdent: 'outdent',
+                        undo: 'undo', redo: 'redo',
+                        left: 'cursorLeft', right: 'cursorRight',
+                        up: 'cursorUp', down: 'cursorDown',
+                        suggest: 'editor.action.triggerSuggest',
+                        comment: 'editor.action.commentLine',
+                    }[name];
+                    if (command) editor.trigger('keyboard', command, null);
+                },
                 triggerSuggest() {
                     editor.trigger('kbd', 'editor.action.triggerSuggest', {});
                 },

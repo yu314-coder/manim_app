@@ -41,6 +41,13 @@ final class MonacoEditorView: UIView {
     private var isReady = false
     private var pendingSetCode: (code: String, language: String)?
 
+    /// Coding keys over the on-screen keyboard (KeyBar), shown while
+    /// Monaco has focus.
+    private lazy var keyBarPresenter = FloatingKeyBarPresenter(
+        bar: KeyBar.editor(send: { [weak self] key, text in self?.sendKey(key, text: text) },
+                           hideKeyboard: { [weak self] in self?.webView.endEditing(true) }),
+        host: self)
+
     override init(frame: CGRect) {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -127,6 +134,18 @@ final class MonacoEditorView: UIView {
         tap.cancelsTouchesInView = false   // let Monaco still receive the click
         tap.delegate = self
         webView.addGestureRecognizer(tap)
+    }
+
+    override func willMove(toWindow newWindow: UIWindow?) {
+        super.willMove(toWindow: newWindow)
+        if newWindow == nil { keyBarPresenter.detach() }
+    }
+
+    /// A key from the key bar, handed to `window.__editor.key`.
+    private func sendKey(_ key: String, text: String) {
+        guard let data = try? JSONSerialization.data(withJSONObject: [key, text]),
+              let args = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.__editor && window.__editor.key(...\(args))")
     }
 
     @objc private func handleTapToFocus() {
@@ -405,6 +424,9 @@ extension MonacoEditorView: WKScriptMessageHandler {
                 currentText = text
                 onTextChanged?(text)
             }
+
+        case "focus":
+            keyBarPresenter.isActive = body["focused"] as? Bool ?? false
 
         case "resolveRequest":
             handleResolveRequest(body)
