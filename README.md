@@ -41,7 +41,7 @@ on-device without an internet connection.
 - **Render error gutter** — when a render fails, `parseTracebackMarkers`
   regexes `File "<string>", line N` out of the captured stderr and pushes
   red markers into Monaco at the offending lines.
-- **Pure-Swift formatter** (⌥⌘L) — whitespace cleanup, leading-tab → 4-space
+- **Pure-Swift formatter** (⌥⌘I) — whitespace cleanup, leading-tab → 4-space
   conversion, blank-line collapse, single-newline EOF. Round-trips on its
   own output.
 - **Drag-drop image as `ImageMobject`** — toolbar button copies an image
