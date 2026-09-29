@@ -33,6 +33,14 @@ on-device without an internet connection.
 - **Monaco** in a WKWebView with full Python autocomplete, find/replace,
   comment toggle, indent/outdent, multi-cursor, snippets — every standard
   shortcut works.
+- **Keys over the on-screen keyboard** (`KeyBar.swift`) — on an iPhone,
+  or an iPad without a hardware keyboard, a row above the keyboard holds
+  indent / outdent, the symbols Python needs (typed through Monaco, so
+  brackets close themselves), undo / redo, completion, comment toggling
+  and arrows that step through the suggestion list when it's open. A
+  WKWebView can't take an input accessory (its first responder is
+  WebKit's), so the bar floats in the window, placed from the keyboard
+  notifications.
 - **Symbol completion** ships pre-built. `scripts/gen-library-symbols.py`
   introspects the bundled packages at *build* time and writes
   `Resources/LibrarySymbols.json`, which Monaco loads directly — no Python
@@ -82,15 +90,29 @@ on-device without an internet connection.
 - The bundled **`offlinai_shell`** (originally written for
   [CodeBench / BenchCode](https://github.com/yu314-coder/CodeBench),
   rebranded to `ManimStudio shell` at install time via `sed`) provides
-  ~150 builtins — `ls`, `cd`, `cat`, `top`, `find`, `grep`, `clear`,
-  `python`, `tree`, etc. `pip` is intentionally hidden: iOS sandboxes
-  have no writable site-packages, and most wheels need a toolchain iOS
-  forbids. So is `ai`: in CodeBench it drives a local LLM through a native
-  llama.cpp runner, and ManimStudio ships neither that runner nor the
-  `offlinai_ai` package, so the command could only fail.
-- **Custom `top`** built on `sysctlbyname` (kern.boottime, hw.memsize,
-  hw.ncpu, hw.machine) + `resource.getrusage` so process / system stats
-  work without psutil's private-API native module.
+  over 100 builtins — `ls`, `cd`, `cat`, `grep`, `python`, `pdflatex`,
+  `curl`, `zip`, `tree`, … — and
+  [`PythonSupport/manimstudio_shell.py`](ManimStudio/PythonSupport/manimstudio_shell.py)
+  fits it to this app before the REPL starts:
+  - commands with no backend here — `pip` (no writable site-packages, no
+    toolchain for wheels), `ai` (CodeBench's local-LLM runner), the
+    C/C++/Fortran compilers, `swift`, `debug-gui` — are removed and answer
+    with a one-line reason;
+  - `exit` / `quit` no longer end the app; `top`, `htop` and `ps` read
+    `sysctl` and Mach task info instead of psutil's private-API module;
+  - `curl` streams instead of holding a download in memory, `git` is
+    clone-only (the rest needs dulwich), `debug` works with Python 3.14's
+    pdb, `md` / `nb` render without linkify, `test-libs` skips what isn't
+    shipped, and `$VAR` expands on shell command lines.
+- **`js` / `node`** run on JavaScriptCore (`JSEngine.swift`), which answers
+  the shell's `js_eval` signal files; **`tex` / `pdftex`** compile plain TeX
+  through busytex's `pdftex.fmt`. PDFs from `pdflatex` and HTML from `md` /
+  `nb` open in Quick Look.
+- **Extra keys** above the on-screen keyboard — esc, sticky ctrl, tab,
+  ^C ^D ^L ^U, auto-repeating arrows and shell symbols (`KeyBar.swift`, in
+  place of SwiftTerm's generic accessory).
+- [`scripts/terminal-selftest.py`](scripts/terminal-selftest.py) runs every
+  command once inside the app and writes a JSON report.
 - **Magic Keyboard support** — every shortcut you'd want (⌘C / ⌘V / Ctrl-C
   / arrow keys / Tab) is wired through `LineBuffer` to the PTY.
 - **Live render output** is teed to both the visible terminal AND
@@ -216,7 +238,7 @@ on-device without an internet connection.
 
 ## Build prerequisites
 
-1. **Xcode 26+** on macOS (1.5 (20) was built with Xcode 27). Deployment
+1. **Xcode 26+** on macOS (1.5 (21) was built with Xcode 27). Deployment
    target **17.0**; Swift language mode **5** with
    `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and
    `SWIFT_APPROACHABLE_CONCURRENCY` on — unannotated types are main-actor
@@ -236,7 +258,8 @@ on-device without an internet connection.
    ```
 4. **busytex web build** (~237 MB, optional — only needed for LaTeX
    rendering). Drop the unpacked bundle at
-   `ManimStudio/ManimStudio/Resources/Busytex/`.
+   `ManimStudio/ManimStudio/Resources/Busytex/`, keeping the tracked
+   `busytex_pipeline.js` (it adds the plain-TeX driver).
 5. SwiftPM resolves [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)
    and [Manim SPM stubs from python-ios-lib](https://github.com/yu314-coder/python-ios-lib)
    automatically on first build.
@@ -273,6 +296,7 @@ ManimStudio/                         ← Xcode project root
     ├── PreviewPane.swift            · AVPlayer for the rendered MP4
     ├── TerminalPane.swift           · SwiftUI host for SwiftTerm
     ├── TerminalPaneViewController.swift
+    ├── KeyBar.swift                 · extra keys over the on-screen keyboard
     ├── PTYBridge.swift              · PTY pipes, line filter, Magic Keyboard observer
     ├── PythonRuntime.swift          · Py_Initialize, GIL, redirect, render wrapper
     ├── PackagesView.swift           · importlib.metadata browser
@@ -303,8 +327,11 @@ ManimStudio/                         ← Xcode project root
     ├── MenuCommands.swift           · iPad menu bar (.commands) wiring
     ├── PythonFormatter.swift        · pure-Swift Python whitespace cleanup
     ├── BusytexEngine.swift          · LaTeX → SVG via busytex.wasm
+    ├── JSEngine.swift               · JavaScriptCore for the terminal's js / node
     ├── PrivacyInfo.xcprivacy        · required-reason API manifest
     └── Info.plist                   · capabilities + usage descriptions
+PythonSupport/
+└── manimstudio_shell.py             · fits the bundled shell to this app
 scripts/
 ├── fix-macho-type.py                · MH_BUNDLE → MH_DYLIB on framework binaries
 ├── gen-bundled-packages.py          · regenerates BundledPackages.swift
@@ -313,7 +340,8 @@ scripts/
 ├── inject-swift-support.sh          · same fix for an exported IPA (by hand)
 ├── install-python-stdlib.sh         · main build phase (stdlib + framework wrapping)
 ├── normalize-fwork-postembed.sh     · post-Embed-Frameworks .fwork normalizer
-└── patch-cython-lapack.py           · rebinds cython_lapack to a stub dylib (by hand)
+├── patch-cython-lapack.py           · rebinds cython_lapack to a stub dylib (by hand)
+└── terminal-selftest.py             · runs every terminal command in the app
 _appstore_screens/                   · 6× iPad screenshots, 2752×2064 / 2064×2752
 _appstore_screens_iphone/            · 4× iPhone screenshots, 1284×2778
 ```
@@ -408,7 +436,7 @@ faulthandler.enable(file=manim_studio.log, all_threads=True)
                 ↓
 HOME = Documents/, chdir Documents/Workspace/
                 ↓
-sed-rebrand monkeypatch + pip / ai removal + custom top builtin
+sed-rebrand monkeypatch + manimstudio_shell.install(offlinai_shell)
                 ↓
 offlinai_shell.repl() on a daemon thread → PS1 prompt
 ```
@@ -565,11 +593,12 @@ Designed-for-iPad app; rendering there has not been verified.)
 
 ### Terminal downloads
 
-The bundled shell's `curl` reads the whole response into memory when it
-isn't given `-o`, then converts all of it to text even though it prints only
-the first 4 KB — about 4.4× the download's size at peak. A large file
-fetched that way can get the app killed by iOS before anything is saved.
-`wget <url>` and `curl -L -o <file> <url>` stream to disk instead.
+Through 1.5 (20) the bundled shell's `curl` read the whole response into
+memory when it wasn't given `-o`, then converted all of it to text to print
+the first 4 KB — about 4.4× the download's size at peak, enough to get the
+app killed on a large file. From 1.5 (21) `manimstudio_shell` replaces that
+transport: without `-o` it reads only what it shows, and `wget` and
+`curl -L -o <file> <url>` stream to disk as before.
 
 ---
 
@@ -588,7 +617,7 @@ fetched that way can get the app killed by iOS before anything is saved.
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
 | On the App Store | **1.4** (build 8) |
-| Latest TestFlight | **1.5** (build 20) |
+| Latest TestFlight | **1.5** (build 21) |
 | Build numbers | The project stays at build 1; each upload's build number is set in the archive |
 
 ---
