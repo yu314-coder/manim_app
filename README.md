@@ -686,7 +686,7 @@ transport: without `-o` it reads only what it shows, and `wget` and
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
 | On the App Store | **1.4** (build 8) |
-| Latest TestFlight | **1.5** (build 23) |
+| Latest TestFlight | **1.5** (build 24) |
 | Build numbers | The project stays at build 1; each upload's build number is set in the archive |
 
 ---
