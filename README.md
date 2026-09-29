@@ -254,7 +254,7 @@ on-device without an internet connection.
 
 ## Build prerequisites
 
-1. **Xcode 26+** on macOS (1.5 (21) was built with Xcode 27). Deployment
+1. **Xcode 26+** on macOS (1.5 (22) was built with Xcode 27). Deployment
    target **17.0**; Swift language mode **5** with
    `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and
    `SWIFT_APPROACHABLE_CONCURRENCY` on — unannotated types are main-actor
@@ -633,7 +633,7 @@ transport: without `-o` it reads only what it shows, and `wget` and
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
 | On the App Store | **1.4** (build 8) |
-| Latest TestFlight | **1.5** (build 21) |
+| Latest TestFlight | **1.5** (build 22) |
 | Build numbers | The project stays at build 1; each upload's build number is set in the archive |
 
 ---
