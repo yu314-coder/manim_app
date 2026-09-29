@@ -144,12 +144,33 @@ on-device without an internet connection.
   as frames are written — scene, animation, frames against the animation's
   length, and a "finishing" phase while the final file is combined — because
   iOS ends a task whose progress stops moving. Frames are rasterized on the
-  CPU, so no background-GPU entitlement is involved; whether the hardware
-  video encoder keeps running in the background has to be confirmed on a
-  device. An encoder that fails now ends the render with its error instead
-  of leaving the renderer blocked on the frame queue. Earlier iOS, and the
-  Simulator (where `BGTaskScheduler` is unavailable), fall back to the ~30 s
-  `beginBackgroundTask` window.
+  CPU, so no background-GPU entitlement is involved. On iOS 27 the request
+  goes through `submitTaskRequest(_:completionHandler:)`, which reports the
+  failures `submit(_:)` could swallow, and a task that hasn't started ten
+  seconds after submission is reported in the terminal as not running.
+  Info.plist also lists the `processing` background mode. Earlier iOS, and
+  the Simulator (where `BGTaskScheduler` is unavailable), fall back to the
+  ~30 s `beginBackgroundTask` window; when it runs out mid-render the
+  terminal and a notification say the render paused.
+- **Encoder fallback** (`PythonSupport/manimstudio_encoder.py`, ManimStudio's
+  own module, bundled into `python-metadata/`). iOS invalidates a
+  VideoToolbox session whenever the app moves between foreground and
+  background (ffmpeg's `videotoolboxenc.c` says as much), and whether a
+  background app may open a new one isn't documented. A failed hardware
+  encode no longer ends the render: the animation's clip is closed with what
+  it holds, and the animation continues in a new clip — a fresh hardware
+  session, or software (`mpeg4` up to 8190 px, MPEG-2 up to 16382, JPEG
+  beyond) — with the frames the dead session swallowed sent again, so the
+  length holds. When the scene is combined, clips in more than one encoding
+  are re-encoded into one file first: hardware if it's available, `mpeg4`
+  if not, and above 8190 px it waits for the hardware encoder (the app back
+  in the foreground; the progress phase reads "waiting" and the Live
+  Activity asks the user to open the app, whose expiry then doesn't cancel
+  the render). A render whose encoder never fails is untouched.
+- **Notifications** (`RenderNotifier`) — permission is asked when a Final
+  render starts; a render that finishes, needs the app, or pauses while the
+  app is in the background posts one notification, the newest replacing the
+  last.
 - **Stop stops.** The tap shows "Stopping…" at once. A watchdog armed when
   each scene starts rendering — before `construct()` runs — releases a
   renderer blocked on the frame queue and raises `KeyboardInterrupt` in the
@@ -199,9 +220,14 @@ on-device without an internet connection.
   Past the ceiling the concat uses `hevc_videotoolbox`, and opens the
   encoder eagerly so an unusable codec can still be swapped instead of
   producing an empty file.
-- **Render-complete sheet** auto-presents on success: Save to Files /
-  Save to Photos / Share. Original lands in `Documents/ToolOutputs/<run>/`
-  regardless. Partial movie files are auto-deleted after concat.
+- **Render-complete sheet** auto-presents on success, including after a
+  render that finished in the background: Save to Files / Save to Photos /
+  Share. Save to Files is `UIDocumentPickerViewController(forExporting:)`,
+  which copies the file itself — `.fileExporter`'s `FileWrapper` read the
+  whole file into memory, which a multi-GB 12K render can't survive. Save to
+  Photos is offered for videos and images. Original lands in
+  `Documents/ToolOutputs/<run>/` regardless. Partial movie files are
+  auto-deleted after concat.
 
 ### Diagnostics
 
@@ -347,7 +373,8 @@ ManimStudio/                         ← Xcode project root
     ├── PrivacyInfo.xcprivacy        · required-reason API manifest
     └── Info.plist                   · capabilities + usage descriptions
 PythonSupport/
-└── manimstudio_shell.py             · fits the bundled shell to this app
+├── manimstudio_shell.py             · fits the bundled shell to this app
+└── manimstudio_encoder.py           · carries a render past a lost hardware encoder
 scripts/
 ├── fix-macho-type.py                · MH_BUNDLE → MH_DYLIB on framework binaries
 ├── gen-bundled-packages.py          · regenerates BundledPackages.swift
@@ -486,8 +513,10 @@ User taps **Render** or **Preview** (header) → `ContentView.triggerRender(quic
 5. **On success:**
    - `cleanupPartials()` removes the `partial_movie_files/` subtree
      (~500 MB on a 30-animation 1080p run).
-   - `RenderCompleteSheet` auto-presents: Save to Files / Save to Photos /
-     Share via UIActivityViewController.
+   - `RenderCompleteSheet` auto-presents: Save to Files (export picker,
+     any format and size) / Save to Photos / Share via
+     UIActivityViewController. If the app is in the background, a
+     notification says the render is ready.
    - File appears in `HistoryView`'s scan of `Documents/ToolOutputs/`.
 6. **On failure:**
    - `parseTracebackMarkers` regexes `File "<string>", line N` out of
