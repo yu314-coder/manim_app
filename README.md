@@ -139,19 +139,43 @@ on-device without an internet connection.
   `BGContinuedProcessingTask` (Info.plist permits
   `euleryu.ManimStudio.render.*`; each render registers its own suffix), so
   the process keeps running after the user leaves the app. The system shows
-  it as a Live Activity; its Cancel goes through the Stop path. Progress
-  comes from `ToolOutputs/_render_progress.json`, which the wrapper rewrites
-  as frames are written — scene, animation, frames against the animation's
-  length, and a "finishing" phase while the final file is combined — because
-  iOS ends a task whose progress stops moving. Frames are rasterized on the
-  CPU, so no background-GPU entitlement is involved. On iOS 27 the request
-  goes through `submitTaskRequest(_:completionHandler:)`, which reports the
-  failures `submit(_:)` could swallow, and a task that hasn't started ten
-  seconds after submission is reported in the terminal as not running.
-  Info.plist also lists the `processing` background mode. Earlier iOS, and
-  the Simulator (where `BGTaskScheduler` is unavailable), fall back to the
-  ~30 s `beginBackgroundTask` window; when it runs out mid-render the
-  terminal and a notification say the render paused.
+  it as a Live Activity. Requests use the `.queue` strategy: a render is
+  already running, so a task that starts late still helps.
+  - **iOS ending the task doesn't end the render.** Cancel in the Live
+    Activity, a task judged stalled and a device under pressure all arrive
+    as the same expiration handler with no reason, so none of them stops
+    the render: the app is suspended, the render pauses, and it carries on
+    when the user returns (Stop in the app ends it). Returning also re-arms
+    the grace window and, after an expiry, submits a fresh task, so the
+    user can leave again. (Through 1.5 (23) an expiry went through the Stop
+    path, which is how long renders "just stopped".)
+  - **Progress never looks stalled while the render lives.** It comes from
+    `ToolOutputs/_render_progress.json`, which the wrapper rewrites as
+    frames are written — scene, animation, frames against the animation's
+    length, formulas typeset (`tex`, via a wrapper around
+    `offlinai_latex.tex_to_svg`), frames re-encoded while joining
+    (`joined`), and the setup / finishing / waiting phases. The bar never
+    goes back when a new animation is found, and between frames it keeps
+    creeping, for up to 15 minutes without any change; past that a stuck
+    render is left for iOS to end, which pauses it.
+  - Frames are rasterized on the CPU, so no background-GPU entitlement is
+    involved. busytex's WKWebView kept compiling formulas with the app in
+    the background (checked in the Simulator: 3.4 s per formula), so LaTeX
+    doesn't stall there.
+  - On iOS 27 the request goes through
+    `submitTaskRequest(_:completionHandler:)`, which reports the failures
+    `submit(_:)` could swallow; a task still not started ten seconds after
+    submission is reported in the terminal. Info.plist also lists the
+    `processing` background mode.
+  - Earlier iOS, and the Simulator (where `BGTaskScheduler` is
+    unavailable), fall back to the ~30 s `beginBackgroundTask` window; when
+    it runs out mid-render the terminal and a notification say the render
+    paused.
+  - iOS closes background apps outright when memory runs short, which
+    leaves nothing to handle. `UnfinishedRender` keeps
+    `Application Support/render-in-progress.plist` while a render runs
+    (with whether the app is in the background), and the next launch
+    reports a render that never ended in the terminal.
 - **Encoder fallback** (`PythonSupport/manimstudio_encoder.py`, ManimStudio's
   own module, bundled into `python-metadata/`). iOS invalidates a
   VideoToolbox session whenever the app moves between foreground and
