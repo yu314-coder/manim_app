@@ -304,6 +304,9 @@ struct ContentView: View {
         // the system's progress UI, before that a ~30 s grace window (see
         // BackgroundTaskGuard). Cancelling from that UI acts like Stop.
         // Released in logStream_done / stopRender.
+        // A Final render ends with the save sheet; if that happens while the
+        // user is in another app, a notification brings them back to it.
+        if !quick { RenderNotifier.requestPermissionIfNeeded() }
         BackgroundTaskGuard.shared.begin(
             label: label,
             title: "\(quick ? "Previewing" : "Rendering") \(target)",
@@ -440,6 +443,10 @@ struct ContentView: View {
             Haptics.impact(.rigid)
         } else {
             Haptics.notify(.error)
+        }
+        if label == "render" && !isStopping {
+            RenderNotifier.renderEnded(fileName: imgPath.map { URL(fileURLWithPath: $0).lastPathComponent },
+                                       success: producedOutput)
         }
         isRendering = false
         isStopping = false
@@ -711,12 +718,13 @@ extension UTType {
 
 // MARK: - Render-complete export sheet
 //
-// Pops up after a Final render finishes. Gives the user every
-// reasonable destination in one place: pick a folder via the iOS
-// document picker, save to Photos, or share via the system activity
-// sheet (AirDrop, Mail, Messages, …). The original file stays put in
-// Documents/ToolOutputs/ regardless of what they choose — this is a
-// copy-out flow, not a move.
+// Pops up after a Final render finishes — also one that finished while the
+// app was in the background, where it waits for the user to come back
+// (RenderNotifier tells them). Every destination in one place: a folder via
+// the Files export picker (any format, any size), Photos for videos and
+// images, or the share sheet (AirDrop, Mail, Messages, …). The original file
+// stays put in Documents/ToolOutputs/ regardless of what they choose — this
+// is a copy-out flow, not a move.
 
 private struct RenderedItem: Identifiable {
     let url: URL
@@ -760,10 +768,12 @@ private struct RenderCompleteSheet: View {
                                  tint: .blue) {
                         showExporter = true
                     }
-                    actionButton("Save to Photos",
-                                 icon: "photo.on.rectangle.angled",
-                                 tint: .pink) {
-                        saveToPhotos()
+                    if photosCanTake {
+                        actionButton("Save to Photos",
+                                     icon: "photo.on.rectangle.angled",
+                                     tint: .pink) {
+                            saveToPhotos()
+                        }
                     }
                     actionButton("Share…",
                                  icon: "square.and.arrow.up",
@@ -796,21 +806,18 @@ private struct RenderCompleteSheet: View {
                     Button("Done") { dismiss(); onDismiss() }
                 }
             }
-            .fileExporter(isPresented: $showExporter,
-                          document: VideoFileDoc(url: videoURL),
-                          contentType: contentType,
-                          defaultFilename: videoURL.deletingPathExtension().lastPathComponent) { result in
-                switch result {
-                case .success:
-                    saveStatus = "✓ Saved to Files"
-                    autoDismiss()
-                case .failure(let err):
-                    // .userCancelled shouldn't surface as an error.
-                    if (err as NSError).code != NSUserCancelledError {
-                        saveStatus = "Save failed: \(err.localizedDescription)"
+            // Not .fileExporter: its FileDocument hands over a FileWrapper,
+            // which reads the whole file into memory — a multi-GB 12K render
+            // got the app killed at the moment of saving. The export picker
+            // copies the file itself, whatever its size or format.
+            .background(
+                DocumentExporter(isPresented: $showExporter, url: videoURL) { saved in
+                    if saved {
+                        saveStatus = "✓ Saved to Files"
+                        autoDismiss()
                     }
                 }
-            }
+            )
             .sheet(isPresented: $showShare,
                    onDismiss: { autoDismiss() }) {
                 ShareSheet(items: [videoURL])
@@ -821,16 +828,10 @@ private struct RenderCompleteSheet: View {
 
     // MARK: helpers
 
-    private var contentType: UTType {
-        switch videoURL.pathExtension.lowercased() {
-        case "mp4", "m4v": return .mpeg4Movie
-        case "mov":         return .quickTimeMovie
-        case "gif":         return .gif
-        case "png":         return .png
-        case "jpg", "jpeg": return .jpeg
-        case "html":        return .html
-        default:            return .data
-        }
+    /// Photos takes videos and images; an .html export only goes to Files.
+    private var photosCanTake: Bool {
+        ["mp4", "mov", "m4v", "gif", "png", "jpg", "jpeg"]
+            .contains(videoURL.pathExtension.lowercased())
     }
 
     private var fileSize: String {
@@ -900,7 +901,10 @@ private struct RenderCompleteSheet: View {
                         saveStatus = "✓ Saved to Photos"
                         autoDismiss()
                     } else {
-                        saveStatus = "Save failed: \(err?.localizedDescription ?? "unknown")"
+                        // Photos turns down what it can't play back — a very
+                        // large video may not decode on this device. Files
+                        // takes anything.
+                        saveStatus = "Photos couldn't take it (\(err?.localizedDescription ?? "unknown error")). Save it to Files instead."
                     }
                 }
             }
@@ -932,21 +936,52 @@ private struct RenderCompleteSheet: View {
     }
 }
 
-/// Minimal FileDocument wrapping the rendered video for fileExporter.
-/// We don't read the bytes through Data — the file might be hundreds
-/// of MB; SwiftUI reads from the FileWrapper(URL:) directly which
-/// streams off disk.
-private struct VideoFileDoc: FileDocument {
-    static var readableContentTypes: [UTType] {
-        [.mpeg4Movie, .quickTimeMovie, .gif, .png, .jpeg, .html, .data]
-    }
+/// "Save to Files" for any file: UIDocumentPickerViewController in export
+/// mode, which copies the file to the folder the user picks without the app
+/// reading it. Presented off a host view controller, like DocumentPicker.
+private struct DocumentExporter: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
     let url: URL
-    init(url: URL) { self.url = url }
-    init(configuration: ReadConfiguration) throws {
-        url = URL(fileURLWithPath: "/dev/null")
+    /// true when the file was saved, false when the user cancelled.
+    let onFinish: (Bool) -> Void
+
+    func makeCoordinator() -> Coord { Coord(self) }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        UIViewController()
     }
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        try FileWrapper(url: url, options: [.immediate])
+
+    func updateUIViewController(_ host: UIViewController, context: Context) {
+        let coord = context.coordinator
+        coord.parent = self
+        guard isPresented, !coord.presenting, host.presentedViewController == nil else { return }
+        coord.presenting = true
+        let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+        picker.delegate = coord
+        // Next runloop, so SwiftUI has finished its layout pass.
+        DispatchQueue.main.async {
+            host.present(picker, animated: true)
+        }
+    }
+
+    final class Coord: NSObject, UIDocumentPickerDelegate {
+        var parent: DocumentExporter
+        /// Set from scheduling the picker until it closes, so a second
+        /// update in between can't present another.
+        var presenting = false
+        init(_ p: DocumentExporter) { parent = p }
+        func documentPicker(_ controller: UIDocumentPickerViewController,
+                            didPickDocumentsAt urls: [URL]) {
+            finish(true)
+        }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            finish(false)
+        }
+        private func finish(_ saved: Bool) {
+            presenting = false
+            parent.isPresented = false
+            parent.onFinish(saved)
+        }
     }
 }
 

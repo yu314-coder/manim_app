@@ -397,14 +397,18 @@ if [ -f "$SHELL_SRC/offlinai_shell.py" ]; then
   sed -i '' 's/CodeBench shell/ManimStudio shell/g' "$META_DST/offlinai_shell.py"
   echo "note: bundled offlinai_shell.py into python-metadata/ (rebranded)"
 fi
-# ManimStudio's adjustments to that shell (hidden / replaced / patched
-# commands), loaded by PythonRuntime right before the REPL starts.
-SHELL_FIT_SRC="${SRCROOT}/PythonSupport/manimstudio_shell.py"
-if [ -f "$SHELL_FIT_SRC" ]; then
-  cp -f "$SHELL_FIT_SRC" "$META_DST/manimstudio_shell.py"
-else
-  echo "warning: $SHELL_FIT_SRC missing — the terminal will list commands that can't run here."
-fi
+# ManimStudio's own Python modules: manimstudio_shell.py adjusts that
+# shell (hidden / replaced / patched commands) right before the REPL
+# starts; manimstudio_encoder.py keeps a render going when iOS takes the
+# hardware video encoder away. Both are imported from python-metadata/.
+for MS_MOD in manimstudio_shell manimstudio_encoder; do
+  MS_SRC="${SRCROOT}/PythonSupport/${MS_MOD}.py"
+  if [ -f "$MS_SRC" ]; then
+    cp -f "$MS_SRC" "$META_DST/${MS_MOD}.py"
+  else
+    echo "warning: $MS_SRC missing"
+  fi
+done
 
 # ── 7. Copy Monaco editor bundle (14 MB). Has duplicate filenames in
 # subfolders (vs/basic-languages/*/monaco.contribution.js, etc.) so

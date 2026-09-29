@@ -21,6 +21,7 @@
 // key AND the AVAudioSession activation.
 import UIKit
 import BackgroundTasks
+import UserNotifications
 
 final class BackgroundTaskGuard {
     static let shared = BackgroundTaskGuard()
@@ -49,8 +50,14 @@ final class BackgroundTaskGuard {
             // Expiration handler: iOS is about to suspend us. End the token
             // gracefully — leaving it open would mark the app as misbehaving
             // and shorten future grace periods. A continued-processing task,
-            // if one is running, keeps the render going regardless.
-            self?.endGraceWindow()
+            // if one is running, keeps the render going regardless; without
+            // one the render pauses here, so say so.
+            guard let self else { return }
+            if !self.continuedTaskRunning {
+                Self.note("iOS paused the render in the background. It carries on when you return to ManimStudio.")
+                RenderNotifier.renderPaused()
+            }
+            self.endGraceWindow()
         }
         // Auto-lock ends a render as surely as a crash: the screen sleeps,
         // iOS suspends us, and a 10-minute 4K render dies at 90%. Hold the
@@ -90,6 +97,22 @@ final class BackgroundTaskGuard {
             token = .invalid
         }
     }
+
+    /// Whether iOS is running this render's continued-processing task.
+    private var continuedTaskRunning: Bool {
+        if #available(iOS 26.0, *), let task = continued as? RenderContinuedTask {
+            return task.isRunning
+        }
+        return false
+    }
+
+    /// Writes a line into the terminal, where the render's own output goes.
+    static func note(_ text: String) {
+        let line = "\r\n\u{1b}[2m[background]\u{1b}[0m \(text)\r\n"
+        line.withCString { cs in
+            _ = Darwin.write(PTYBridge.shared.stdoutPipeWriteFD, cs, strlen(cs))
+        }
+    }
 }
 
 /// One render carried by an iOS 26 continued-processing task.
@@ -118,15 +141,21 @@ final class RenderContinuedTask {
     private var outcome: Bool?
     private var poller: Timer?
     private var subtitle = "Starting…"
+    /// The render's last reported phase (see readProgress).
+    private var phase = ""
 
     init(title: String, onExpire: @escaping () -> Void) {
         self.title = title
         self.onExpire = onExpire
     }
 
+    /// Whether iOS has started the task and it is still carrying the render.
+    var isRunning: Bool { task != nil && outcome == nil }
+
     /// Registers the launch handler and submits the request. False when iOS
-    /// won't run the task now; the render then relies on the ordinary
-    /// grace window.
+    /// refuses it outright; on iOS 27 a refusal arrives later instead. Either
+    /// way the terminal says so, and the render relies on the ordinary grace
+    /// window.
     func submit() -> Bool {
         // The handler keeps a strong reference: it can run after the render
         // has ended, and must still complete the task.
@@ -136,7 +165,7 @@ final class RenderContinuedTask {
             MainActor.assumeIsolated { self.started(task) }
         }
         guard registered else {
-            NSLog("%@", "[render] background task identifier not permitted: \(identifier)")
+            notStarted("its identifier isn't permitted")
             return false
         }
         let request = BGContinuedProcessingTaskRequest(
@@ -144,13 +173,48 @@ final class RenderContinuedTask {
         // Start now or not at all: a render queued behind other work would
         // begin its background life long after the user has moved on.
         request.strategy = .fail
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            return true
-        } catch {
-            NSLog("%@", "[render] background task not started: \(error)")
-            return false
+        if #available(iOS 27.0, *) {
+            // submit(_:) couldn't report every way a submission fails, so on
+            // iOS 26 some requests were silently never run. iOS 27's
+            // replacement reports them all, and mustn't be called on the
+            // main thread.
+            DispatchQueue.global(qos: .userInitiated).async {
+                BGTaskScheduler.shared.submitTaskRequest(request) { error in
+                    guard let error else { return }
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { self.notStarted(error.localizedDescription) }
+                    }
+                }
+            }
+        } else {
+            do {
+                try BGTaskScheduler.shared.submit(request)
+            } catch {
+                notStarted(error.localizedDescription)
+                return false
+            }
         }
+        // A task that iOS accepted but never started looks exactly like one
+        // that is running, so check: with the .fail strategy it starts at once.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            MainActor.assumeIsolated {
+                if self.task == nil && self.outcome == nil {
+                    self.notStarted("it didn't start")
+                }
+            }
+        }
+        return true
+    }
+
+    /// iOS won't carry this render in the background. Only said once, and
+    /// only while the render is still going.
+    private var reportedNotStarted = false
+    private func notStarted(_ reason: String) {
+        NSLog("%@", "[render] background task not started: \(reason)")
+        guard outcome == nil, task == nil, !reportedNotStarted else { return }
+        reportedNotStarted = true
+        let why = reason.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        BackgroundTaskGuard.note("iOS won't keep this render going in the background (\(why)). If you leave ManimStudio, it pauses until you come back.")
     }
 
     /// Completes the task with the render's result. Safe to call more than once.
@@ -192,7 +256,15 @@ final class RenderContinuedTask {
     /// The user cancelled from the system UI, or iOS is ending the task.
     private func expired() {
         guard outcome == nil else { return }
-        onExpire()
+        if phase == "waiting" {
+            // The frames are done and only the final video is left, which
+            // needs the app on screen. Stopping would throw the render away;
+            // left alone, it pauses with the app and finishes on return.
+            BackgroundTaskGuard.note("iOS ended the render's background time. The video will be written when you return to ManimStudio.")
+        } else {
+            BackgroundTaskGuard.note("The render was cancelled from its Live Activity, or iOS ended its background time.")
+            onExpire()
+        }
         finish(success: false)
     }
 
@@ -203,8 +275,13 @@ final class RenderContinuedTask {
         else { return }
         let progress = task.progress
         let frames = Int64(info["frames"] as? Int ?? 0)
+        let newPhase = info["phase"] as? String ?? ""
+        if newPhase == "waiting" && phase != "waiting" {
+            RenderNotifier.needsApp(scene: info["scene"] as? String)
+        }
+        phase = newPhase
         let newSubtitle: String
-        switch info["phase"] as? String {
+        switch newPhase {
         case "render":
             let play = (info["play"] as? Int ?? 0) + 1
             let playFrames = Int64(info["play_frames"] as? Int ?? 0)
@@ -217,7 +294,7 @@ final class RenderContinuedTask {
             progress.completedUnitCount = frames
             let pct = playExpected > 0 ? Int(100 * min(playFrames, playExpected) / playExpected) : 0
             newSubtitle = "Animation \(play) · \(pct)%"
-        case "finishing":
+        case "finishing", "waiting":
             // Combining and writing the video has no frame count. Keep
             // moving toward the end — a task that stops moving is ended.
             let step = max((progress.totalUnitCount - progress.completedUnitCount) / 50, 1)
@@ -225,7 +302,12 @@ final class RenderContinuedTask {
             if progress.completedUnitCount >= progress.totalUnitCount {
                 progress.totalUnitCount = progress.completedUnitCount + 1
             }
-            newSubtitle = "Writing the video…"
+            // "waiting": every frame is rendered, but a video this size can
+            // only be written with the hardware encoder, which iOS gives an
+            // app on screen (manimstudio_encoder.py).
+            newSubtitle = newPhase == "waiting"
+                ? "Open ManimStudio to finish the video"
+                : "Writing the video…"
         default:
             newSubtitle = "Setting up…"
         }
@@ -240,3 +322,56 @@ final class RenderContinuedTask {
         }
     }
 }
+
+/// Tells the user when a Final render ends while ManimStudio isn't on
+/// screen. The save sheet is already waiting in the app, so the
+/// notification's job is only to bring them back to it.
+enum RenderNotifier {
+    /// Asks for permission once, when the user starts a render — the moment
+    /// the prompt makes sense, and while the app can still show it.
+    static func requestPermissionIfNeeded() {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            guard await center.notificationSettings().authorizationStatus == .notDetermined
+            else { return }
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        }
+    }
+
+    /// Posts "ready to save" or "didn't finish" if the app is in the
+    /// background. `fileName` is the rendered file's name, when there is one.
+    static func renderEnded(fileName: String?, success: Bool) {
+        if success {
+            post("Render finished",
+                 "\(fileName ?? "Your video") is ready — open ManimStudio to save it to Files or Photos.")
+        } else {
+            post("Render didn't finish", "Open ManimStudio to see what went wrong in the terminal.")
+        }
+    }
+
+    /// iOS suspended the app mid-render: no continued-processing task was
+    /// carrying it (before iOS 26, or when the system declined one).
+    static func renderPaused() {
+        post("Render paused",
+             "iOS paused ManimStudio in the background. Open it to carry on rendering.")
+    }
+
+    /// Every frame is rendered, but the video can only be written with the
+    /// hardware encoder, which iOS gives an app on screen.
+    static func needsApp(scene: String?) {
+        post("Almost done",
+             "Open ManimStudio to finish writing \(scene.map { "the \($0) video" } ?? "your video").")
+    }
+
+    /// One notification at a time: a newer state replaces the last one.
+    private static func post(_ title: String, _ body: String) {
+        guard UIApplication.shared.applicationState != .active else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "render-status", content: content, trigger: nil))
+    }
+}
+

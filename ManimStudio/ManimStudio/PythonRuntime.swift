@@ -2186,6 +2186,36 @@ try:
                 _progress['phase'] = 'render'
                 _progress_write()
 
+            # iOS invalidates the hardware encoder's session whenever the app
+            # moves between the foreground and the background, and may not
+            # give a background app a new one. A failed hardware encode now
+            # splits the animation's clip and carries on (a fresh hardware
+            # session, or the software encoder), and the clips are made one
+            # encoding again when the scene is combined — see ManimStudio's
+            # PythonSupport/manimstudio_encoder.py. Installed before the
+            # failure note below, which then wraps its encode loop.
+            def _ms_check_cancel():
+                _cp = os.path.join(globals().get('__codebench_tool_dir', ''),
+                                   '_cancel_render.txt')
+                if _cp and os.path.exists(_cp):
+                    try:
+                        os.remove(_cp)
+                    except OSError:
+                        pass
+                    raise KeyboardInterrupt("render stopped by user")
+
+            try:
+                import manimstudio_encoder as _ms_encoder
+                from manim.utils.ios_encoder import settings as _ms_enc_settings
+                _ms_encoder.install(
+                    SceneFileWriter,
+                    hardware_codec=_ms_enc_settings.codec_for,
+                    on_phase=lambda _phase: _progress_phase(_phase),
+                    check_cancel=_ms_check_cancel)
+            except Exception as _mse:
+                print(f"[manim] encoder fallback unavailable: "
+                      f"{type(_mse).__name__}: {_mse}", flush=True)
+
             # A writer thread whose encode fails logs "! encode CRASH" and
             # exits (listen_and_write). The renderer doesn't notice: it keeps
             # queueing frames until the bounded queue fills, then waits in
