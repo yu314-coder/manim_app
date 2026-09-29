@@ -15,8 +15,10 @@ xcuserdata/
 # Busytex web build (~237 MB; texlive-basic.data is 100 MB which hits
 # GitHub's per-file limit). Fetch separately from the busytex release
 # and drop the unpacked bundle at ManimStudio/ManimStudio/Resources/Busytex/
-# before building.
-ManimStudio/ManimStudio/Resources/Busytex/
+# before building. busytex_pipeline.js is tracked: ManimStudio adds a
+# plain-TeX driver to it, so keep this copy when dropping in a new bundle.
+ManimStudio/ManimStudio/Resources/Busytex/*
+!ManimStudio/ManimStudio/Resources/Busytex/busytex_pipeline.js
 
 # Last-archive logs from the SwiftSupport injector script.
 scripts/last-archive-postaction.log

@@ -164,9 +164,21 @@ else
   #                     the joblib note above). Ships as a bare
   #                     threadpoolctl.py, not a package, so only this
   #                     loop picks it up.
+  #   _offlinai_7z,     the terminal's 7z / extract / unar and binwalk /
+  #   _offlinai_binwalk simg2img commands import these. Both are pure
+  #                     Python over stdlib zlib / bz2 / lzma, so without
+  #                     them the commands were listed in `help` and
+  #                     failed with ModuleNotFoundError when run.
+  #   codebench_repl    the terminal's `repl` command, same situation — a
+  #                     single pure-Python module.
+  #   test_libs         the terminal's `test-libs`: "No module named
+  #                     'test_libs'" without it.
   for _mod in \
       codebench_inline \
       threadpoolctl \
+      _offlinai_7z _offlinai_binwalk \
+      codebench_repl \
+      test_libs \
       ; do
     MOD_SRC="$PIL_SP/$_mod.py"
     MOD_DST="$APP_SP/$_mod.py"
@@ -360,7 +372,15 @@ echo "note: copied $META_COUNT *.dist-info dirs to $META_DST"
 # `offlinai_shell.run_line(...)` call fails with ModuleNotFoundError.
 # Copy the .py and its dist-info into python-metadata/ which is on
 # PYTHONPATH (set by PythonRuntime.configurePythonPathsIfNeeded).
-SHELL_SRC="${SRCROOT}/../_vendor/python-ios-lib/app_packages/site-packages"
+#
+# Take it from the python-ios-lib revision the project pins (PIL_SP, found
+# above), not the _vendor clone: that clone is months old, so the terminal
+# shipped a shell 485 lines behind the rest of the bundled library — the
+# same staleness 5d2aeb4 fixed for the curated packages, missed here.
+SHELL_SRC="${PIL_SP:-${SRCROOT}/../_vendor/python-ios-lib/app_packages/site-packages}"
+if [ -z "$PIL_SP" ]; then
+  echo "warning: offlinai_shell.py taken from the _vendor clone — the pinned python-ios-lib checkout wasn't found, so the terminal may be stale."
+fi
 if [ -f "$SHELL_SRC/offlinai_shell.py" ]; then
   cp -f "$SHELL_SRC/offlinai_shell.py" "$META_DST/offlinai_shell.py"
   if [ -d "$SHELL_SRC/offlinai_shell-0.1.0.dist-info" ]; then
@@ -376,6 +396,14 @@ if [ -f "$SHELL_SRC/offlinai_shell.py" ]; then
   # banner) — sed catches both.
   sed -i '' 's/CodeBench shell/ManimStudio shell/g' "$META_DST/offlinai_shell.py"
   echo "note: bundled offlinai_shell.py into python-metadata/ (rebranded)"
+fi
+# ManimStudio's adjustments to that shell (hidden / replaced / patched
+# commands), loaded by PythonRuntime right before the REPL starts.
+SHELL_FIT_SRC="${SRCROOT}/PythonSupport/manimstudio_shell.py"
+if [ -f "$SHELL_FIT_SRC" ]; then
+  cp -f "$SHELL_FIT_SRC" "$META_DST/manimstudio_shell.py"
+else
+  echo "warning: $SHELL_FIT_SRC missing — the terminal will list commands that can't run here."
 fi
 
 # ── 7. Copy Monaco editor bundle (14 MB). Has duplicate filenames in

@@ -231,6 +231,7 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                 case "xetex_bibtex8_dvipdfmx": return "xelatex"
                 case "luatex_bibtex8": return "lualatex"
                 case "luahbtex_bibtex8": return "luahblatex"
+                case "pdftex_plain": return "pdftex"
                 default: return "pdflatex"
                 }
             }()

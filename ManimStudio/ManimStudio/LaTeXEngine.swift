@@ -475,6 +475,7 @@ import PDFKit
                 if present.contains("preview_request.txt") { self.checkForPreviewRequest() }
                 if present.contains("ai_editor_apply.json") { self.checkForEditorApplyRequest() }
                 if present.contains("open_in_editor.txt") { self.checkForOpenInEditorRequest() }
+                if present.contains("js_eval_request.txt") { JSEngine.shared.takeRequest(in: signalDir) }
             }
             // Preload the WASM engine so the first pdflatex call doesn't
             // pay the cold-start tax. busytex is the default path —
@@ -640,15 +641,16 @@ import PDFKit
             if env == "swiftlatex" || env == "web" { return "swiftlatex" }
             return "busytex"
         }()
-        // Only pdflatex is supported. xelatex was removed — the
+        // Only pdfTeX is supported. xelatex was removed — the
         // CJK/fontspec/fontconfig plumbing it needs (bundled Noto
         // CJK fonts, /etc/fonts setup, ctex hooks) was adding
         // 30+ MB of app size for a feature most users don't touch.
-        // Anything that's not explicitly pdflatex still routes to
-        // the pdftex driver — it's lenient and handles plain TeX /
-        // raw DVI requests acceptably.
-        let busytexDriver = "pdftex_bibtex8"
-        _ = invokedCommand  // silence unused-variable warning
+        // `tex` / `pdftex` compile plain TeX, so they get the
+        // pdftex_plain driver (pdftex.fmt); with the LaTeX format a
+        // plain file stops at "Missing \begin{document}". Everything
+        // else (pdflatex, latex) is LaTeX.
+        let busytexDriver = (invokedCommand == "tex" || invokedCommand == "pdftex")
+            ? "pdftex_plain" : "pdftex_bibtex8"
         let completion: (Int, String, Data?) -> Void = { [weak self] status, logText, pdfData in
             defer {
                 self?.compileDocInFlight = false

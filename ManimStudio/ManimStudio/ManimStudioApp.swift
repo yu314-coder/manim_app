@@ -74,6 +74,10 @@ struct ManimStudioApp: App {
         DispatchQueue.main.async {
             BusytexEngine.shared.preload()
             LaTeXEngine.shared.initialize()
+            LaTeXEngine.shared.onPreviewRequest = { target in
+                NotificationCenter.default.post(name: .terminalPreviewRequest, object: nil,
+                                                userInfo: ["target": target])
+            }
             // Set up the PTY pipes + write the banner immediately so
             // the terminal pane has visible content the instant it
             // mounts. Then start Python booting on its background

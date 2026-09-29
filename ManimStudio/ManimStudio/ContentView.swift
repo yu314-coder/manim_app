@@ -2,6 +2,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import Photos
+import QuickLook
 
 struct ContentView: View {
     // Cold launch lands on the Gallery (animation templates) so the
@@ -53,6 +54,8 @@ struct ContentView: View {
     @State private var showCommandPalette = false
     /// Drives the full-screen presentation cover (iPad "Present" button).
     @State private var showPresent = false
+    /// A document a terminal command produced, shown in Quick Look.
+    @State private var terminalPreviewURL: URL? = nil
 
     @Environment(\.horizontalSizeClass) private var hSizeClass
     private var compact: Bool { hSizeClass == .compact }
@@ -190,6 +193,16 @@ struct ContentView: View {
         .onChange(of: renderedVideoURL) { _, _ in RenderLibraryStore.shared.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .menuRenderPresent)) { _ in
             showPresent = true
+        }
+        // pdflatex / md / nb in the terminal hand over what they produced.
+        .quickLookPreview($terminalPreviewURL)
+        .onReceive(NotificationCenter.default.publisher(for: .terminalPreviewRequest)) { note in
+            guard let target = note.userInfo?["target"] as? String else { return }
+            if target.hasPrefix("http://") || target.hasPrefix("https://") {
+                if let url = URL(string: target) { UIApplication.shared.open(url) }
+            } else {
+                terminalPreviewURL = URL(fileURLWithPath: target)
+            }
         }
 
         return chrome

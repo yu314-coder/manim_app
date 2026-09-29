@@ -48,6 +48,11 @@ extension Notification.Name {
     static let menuHelpOpenHelp     = Notification.Name("menu.help.open")
     static let menuHelpOpenLog      = Notification.Name("menu.help.openLog")
     static let menuHelpOpenSettings = Notification.Name("menu.help.openSettings")
+
+    /// A terminal command made something to look at (pdflatex's PDF, md /
+    /// nb's HTML). userInfo["target"]: a file path or an http(s) URL.
+    /// Posted from LaTeXEngine's preview hook, observed in ContentView.
+    static let terminalPreviewRequest = Notification.Name("terminal.previewRequest")
 }
 
 struct ManimStudioCommands: Commands {
