@@ -134,6 +134,22 @@ on-device without an internet connection.
   They reach the render as interpreter globals, not environment variables:
   `os.environ` is a snapshot Python takes when it imports `os`, so a
   `setenv` from Swift after boot never arrives.
+- **Renders continue in the background** (`BackgroundTaskGuard.swift`). On
+  iOS / iPadOS 26 every Render and Preview submits a
+  `BGContinuedProcessingTask` (Info.plist permits
+  `euleryu.ManimStudio.render.*`; each render registers its own suffix), so
+  the process keeps running after the user leaves the app. The system shows
+  it as a Live Activity; its Cancel goes through the Stop path. Progress
+  comes from `ToolOutputs/_render_progress.json`, which the wrapper rewrites
+  as frames are written — scene, animation, frames against the animation's
+  length, and a "finishing" phase while the final file is combined — because
+  iOS ends a task whose progress stops moving. Frames are rasterized on the
+  CPU, so no background-GPU entitlement is involved; whether the hardware
+  video encoder keeps running in the background has to be confirmed on a
+  device. An encoder that fails now ends the render with its error instead
+  of leaving the renderer blocked on the frame queue. Earlier iOS, and the
+  Simulator (where `BGTaskScheduler` is unavailable), fall back to the ~30 s
+  `beginBackgroundTask` window.
 - **Stop stops.** The tap shows "Stopping…" at once. A watchdog armed when
   each scene starts rendering — before `construct()` runs — releases a
   renderer blocked on the frame queue and raises `KeyboardInterrupt` in the

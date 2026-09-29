@@ -297,14 +297,17 @@ struct ContentView: View {
         renderSurfacedURLs.removeAll()
         startRenderOutputPoller()
         startRenderHeartbeat()
-        // Keep the render going if the user switches apps or locks the
-        // screen mid-render. iOS gives backgrounded apps ~30 s by
-        // default; beginBackgroundTask extends that to a few minutes
-        // for active "finishing" work — long enough for typical manim
-        // renders. The token is released in logStream_done / stopRender.
-        BackgroundTaskGuard.shared.begin(label: quick ? "preview" : "render")
         let label = quick ? "preview" : "render"
         let target = selectedScene.isEmpty ? "all scenes" : selectedScene
+        // Keep the render going if the user switches apps or locks the
+        // screen mid-render: on iOS 26 a continued-processing task with
+        // the system's progress UI, before that a ~30 s grace window (see
+        // BackgroundTaskGuard). Cancelling from that UI acts like Stop.
+        // Released in logStream_done / stopRender.
+        BackgroundTaskGuard.shared.begin(
+            label: label,
+            title: "\(quick ? "Previewing" : "Rendering") \(target)",
+            onExpire: { NotificationCenter.default.post(name: .menuRenderStop, object: nil) })
         // Render output flows into the live terminal automatically because
         // PythonRuntime redirects sys.stdout/stderr through PTYBridge's pipe.
         // We just write a header banner so the user sees where the run started.
@@ -440,7 +443,7 @@ struct ContentView: View {
         }
         isRendering = false
         isStopping = false
-        BackgroundTaskGuard.shared.end()
+        BackgroundTaskGuard.shared.end(success: producedOutput)
     }
 
     /// Pull `File "<string>", line N` (and similar) out of a Python

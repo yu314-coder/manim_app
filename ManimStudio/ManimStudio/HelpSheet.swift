@@ -476,6 +476,8 @@ struct HelpHit: Identifiable {
 enum HelpContent {
 
     static let whatsNew: [HelpNewItem] = [
+        HelpNewItem(icon: "moon.zzz", title: "Renders keep going when you leave",
+             body: "On iOS and iPadOS 26, a render or preview keeps running after you switch apps or lock the screen. Its progress shows in a Live Activity, where Cancel works like Stop. Earlier versions give it about 30 seconds, then it pauses until you come back."),
         HelpNewItem(icon: "arrow.up.left.and.arrow.down.right", title: "8K, 12K and 14K",
              body: "8K renders even where the hardware H.264 encoder stops at 4K: the app asks the device which encoder can take the size and uses HEVC when H.264 can't. 12K and 14K join the quality list, and **Custom** sizes have no upper limit."),
         HelpNewItem(icon: "slider.horizontal.3", title: "Encoding controls",
@@ -521,6 +523,8 @@ enum HelpContent {
              body: "The terminal in Workspace is a shell with over 100 commands — type `help`. `js` runs JavaScript; `pdflatex` and `tex` compile LaTeX and plain TeX, and the PDF opens in a preview. To download a file use `wget <url>` or `curl -L -o <file> <url>`; plain `curl <url>` shows the start of the response."),
         HelpTopic(title: "Typing on the on-screen keyboard",
              body: "A row of extra keys sits above the keyboard. In the terminal: **esc**, **ctrl** (tap it, then a letter), tab to complete, ^C to interrupt, ^D, ^L to clear the screen, ^U to clear the line, arrows for history, and the shell's symbols. In the editor: indent and outdent, the brackets, colon and other symbols Python needs (brackets close themselves), undo, redo, completion, comment and arrows. Swipe the row sideways for more keys."),
+        HelpTopic(title: "Rendering in the background",
+             body: "On iOS and iPadOS 26 a render keeps going after you leave the app: a Live Activity shows the scene, the animation it's on and its progress, and **Cancel** there stops it like the Stop button. It runs slower in the background, and the system can still end it if the device is busy. Before iOS 26 the app gets about 30 seconds after you leave; the render then pauses until you return, so keep ManimStudio open for long renders."),
         HelpTopic(title: "Where outputs land",
              body: "`Documents/ToolOutputs/<run>/videos/<resolution>/<scene>.mp4` — in the Files app under **On My iPad → ManimStudio**. The History tab lists them too."),
         HelpTopic(title: "Workspace, Assets, History",

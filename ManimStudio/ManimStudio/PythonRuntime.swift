@@ -267,6 +267,13 @@ final class PythonRuntime {
         try? Data("stop".utf8).write(to: sentinel)
     }
 
+    /// Where the render wrapper keeps the running render's progress (JSON:
+    /// scene, animation index and frames, phase). Read by the background
+    /// task that shows it in the system's progress UI.
+    func renderProgressURL() -> URL? {
+        (try? ensureToolOutputDirectory())?.appendingPathComponent("_render_progress.json")
+    }
+
     /// Map a quality label ("480p"…"14K") to manim's 0-7 preset index.
     /// Single source of truth for the conversion: both settings surfaces
     /// (the ControlsSidebar drawer and the gear Settings sheet) store the
@@ -653,6 +660,9 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             // io.TextIOWrapper) that was swallowing tqdm's \\r-only chunks.
             try setGlobalString(String(PTYBridge.shared.stdoutPipeWriteFD),
                                 key: "__codebench_pty_fd", globals: globals)
+            // Starts the render-progress counts over (see _progress in the
+            // wrapper) — the interpreter and its globals outlive each run.
+            try setGlobalString(UUID().uuidString, key: "__codebench_run_id", globals: globals)
 
             // Pass manim quality settings.
             //
@@ -2115,6 +2125,93 @@ try:
             _MAX_COLLECT = 240
             _GIF_MAX_W = 480
 
+            # Progress for iOS's background-task indicator. While a render
+            # runs the app reads this file (BackgroundTaskGuard.swift) and
+            # shows it in the system's progress UI, and iOS ends a background
+            # task that stops reporting progress. Manim finds its animations
+            # as construct() runs, so only the current one's length is known.
+            # `run` ties the counts to one execution of this wrapper
+            # (__codebench_run_id); a new run starts them over.
+            _progress = {'run': None, 'scene': '', 'phase': 'setup', 'play': -1,
+                         'play_frames': 0, 'play_expected': 0, 'frames': 0}
+            _progress_scene = [None]
+            _progress_written = [0.0]
+
+            def _progress_sync_run():
+                _run = globals().get('__codebench_run_id', '')
+                if _progress['run'] != _run:
+                    _progress.update(run=_run, scene='', phase='setup', play=-1,
+                                     play_frames=0, play_expected=0, frames=0)
+
+            def _progress_write(force=False):
+                import json as _pj, time as _pt
+                _now = _pt.monotonic()
+                if not force and _now - _progress_written[0] < 0.25:
+                    return
+                _progress_written[0] = _now
+                _path = os.path.join(globals().get('__codebench_tool_dir', ''),
+                                     '_render_progress.json')
+                try:
+                    with open(_path + '.tmp', 'w') as _pf:
+                        _pj.dump(_progress, _pf)
+                    os.replace(_path + '.tmp', _path)
+                except Exception:
+                    pass
+
+            def _progress_phase(phase, scene=None):
+                _progress_sync_run()
+                _progress['phase'] = phase
+                if scene is not None:
+                    _progress.update(scene=scene, play=-1, play_frames=0,
+                                     play_expected=0)
+                _progress_write(force=True)
+
+            def _progress_frames(fw, n):
+                _progress_sync_run()
+                try:
+                    _play = int(fw.renderer.num_plays)
+                except Exception:
+                    _play = 0
+                if _play != _progress['play']:
+                    _progress.update(play=_play, play_frames=0, play_expected=0)
+                    try:
+                        _progress['play_expected'] = int(round(
+                            float(_progress_scene[0].duration)
+                            * float(manim.config.frame_rate)))
+                    except Exception:
+                        pass
+                _n = int(n or 1)
+                _progress['play_frames'] += _n
+                _progress['frames'] += _n
+                _progress['phase'] = 'render'
+                _progress_write()
+
+            # A writer thread whose encode fails logs "! encode CRASH" and
+            # exits (listen_and_write). The renderer doesn't notice: it keeps
+            # queueing frames until the bounded queue fills, then waits in
+            # queue.put for good. Note the failure so write_frame ends the
+            # render with it instead.
+            _orig_encode_frame = SceneFileWriter.encode_and_write_frame
+
+            def _encode_noting_failure(self_fw, frame, num_frames):
+                try:
+                    return _orig_encode_frame(self_fw, frame, num_frames)
+                except BaseException as _ee:
+                    self_fw._ms_encoder_error = f"{type(_ee).__name__}: {_ee}"
+                    raise
+
+            SceneFileWriter.encode_and_write_frame = _encode_noting_failure
+
+            # Combining the partial movies into the final file writes no
+            # frames; say so, so the progress keeps moving.
+            _orig_fw_finish = SceneFileWriter.finish
+
+            def _finish_with_progress(self_fw, *a, **kw):
+                _progress_phase('finishing')
+                return _orig_fw_finish(self_fw, *a, **kw)
+
+            SceneFileWriter.finish = _finish_with_progress
+
             def _capture_write_frame(self_fw, frame_or_renderer, num_frames=1):
                 # Cooperative Stop: the app writes _cancel_render.txt into
                 # the tool dir when the user taps the red Stop button. We
@@ -2130,6 +2227,10 @@ try:
                     except OSError:
                         pass
                     raise KeyboardInterrupt("render stopped by user")
+                _enc_err = getattr(self_fw, '_ms_encoder_error', None)
+                if _enc_err:
+                    raise RuntimeError(f"the video encoder stopped: {_enc_err}")
+                _progress_frames(self_fw, num_frames)
                 # Collect a downsized RGB copy for the GIF path only.
                 if _collect_enabled[0] and len(_collected_frames) < _MAX_COLLECT:
                     try:
@@ -2471,7 +2572,15 @@ try:
                 except Exception as _cwe:
                     print(f"[stop] watchdog not armed: "
                           f"{type(_cwe).__name__}: {_cwe}", flush=True)
-                _orig_render(self, *args, **kwargs)
+                _progress_scene[0] = self
+                _progress_phase('setup', scene=type(self).__name__)
+                try:
+                    _orig_render(self, *args, **kwargs)
+                finally:
+                    # Don't keep the scene alive past its render; the cleanup
+                    # after it counts on dropping every reference.
+                    _progress_scene[0] = None
+                _progress_phase('finishing')
                 # Retire this scene's watchdog now that the render is done,
                 # so a Stop arriving in the gap before the next scene can't
                 # inject a KeyboardInterrupt into post-render cleanup. (On
