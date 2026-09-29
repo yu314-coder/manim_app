@@ -174,7 +174,7 @@ struct HelpSheet: View {
                 }
             }
             Section {
-                Text("Keyboard shortcuts need a hardware keyboard. The editor ones are Monaco's, the code editor inside the app.")
+                Text("Keyboard shortcuts need a hardware keyboard; without one, the row of keys above the on-screen keyboard covers the essentials. The editor ones are Monaco's, the code editor inside the app.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -486,8 +486,10 @@ enum HelpContent {
              body: "Present opens a library of every earlier render, not just the latest, and labels each clip with its resolution, codec, frame rate, length and data rate — read from the file itself."),
         HelpNewItem(icon: "shippingbox", title: "More Python works",
              body: "`requests` makes HTTPS calls out of the box, and scikit-learn now imports — two packages it needs were missing before."),
-        HelpNewItem(icon: "terminal", title: "Terminal clean-up",
-             body: "The `ai` command is gone. It came from another app, and there is no AI engine behind it in ManimStudio."),
+        HelpNewItem(icon: "keyboard", title: "Keys for touch typing",
+             body: "A row of extra keys sits above the on-screen keyboard. In the terminal: esc, ctrl, tab, ^C, arrows and the shell's symbols. In the editor: indent and outdent, Python's brackets and symbols, undo, completion and arrows."),
+        HelpNewItem(icon: "terminal", title: "Terminal commands",
+             body: "Every command in `help` works or says why it can't. `js` and `node` run JavaScript, `tex` compiles plain TeX, `pdflatex`, `md` and `nb` open what they make, and `debug`, `ps` and `test-libs` work. `curl` no longer holds a download in memory. `ai`, `pip` and the C and Fortran compilers are gone — ManimStudio has nothing behind them."),
     ]
 
     static let guide: [HelpTopic] = [
@@ -516,7 +518,9 @@ enum HelpContent {
         HelpTopic(title: "LaTeX (Tex / MathTex)",
              body: "Manim's `Tex` and `MathTex` run through busytex. Single-formula math mode is reliable; full-document LaTeX is gated pending a newer pdftex build."),
         HelpTopic(title: "The terminal",
-             body: "The terminal in Workspace is a shell with about 150 commands — type `help`. To download a file use `wget <url>` or `curl -L -o <file> <url>`. Plain `curl <url>` shows only the first 4 KB but keeps the whole download in memory."),
+             body: "The terminal in Workspace is a shell with over 100 commands — type `help`. `js` runs JavaScript; `pdflatex` and `tex` compile LaTeX and plain TeX, and the PDF opens in a preview. To download a file use `wget <url>` or `curl -L -o <file> <url>`; plain `curl <url>` shows the start of the response."),
+        HelpTopic(title: "Typing on the on-screen keyboard",
+             body: "A row of extra keys sits above the keyboard. In the terminal: **esc**, **ctrl** (tap it, then a letter), tab to complete, ^C to interrupt, ^D, ^L to clear the screen, ^U to clear the line, arrows for history, and the shell's symbols. In the editor: indent and outdent, the brackets, colon and other symbols Python needs (brackets close themselves), undo, redo, completion, comment and arrows. Swipe the row sideways for more keys."),
         HelpTopic(title: "Where outputs land",
              body: "`Documents/ToolOutputs/<run>/videos/<resolution>/<scene>.mp4` — in the Files app under **On My iPad → ManimStudio**. The History tab lists them too."),
         HelpTopic(title: "Workspace, Assets, History",
@@ -684,8 +688,6 @@ enum HelpContent {
              body: "Look for a Python traceback in the terminal; the failing lines are also marked red in the editor. Common causes: a Scene that raises in `construct()`, a missing font file, low storage, or a size the chosen encoder can't take — the note under **Controls → Encoding → Encoder** says which encoder this device can use at your size."),
         HelpTopic(title: "The app closed during a render",
              body: "Usually memory. Lower the Final quality or frame rate, keep **Queue depth** on Auto, and watch the RAM meter. If it keeps happening, share the log file."),
-        HelpTopic(title: "The app closed during a terminal download",
-             body: "`curl <url>` without `-o` holds the whole download in memory — several times the file's size — and a big file can get the app closed. Use `wget <url>` or `curl -L -o <file> <url>`, which write straight to disk."),
         HelpTopic(title: "Stop takes a moment",
              body: "Stop waits for the step that's running to finish — usually a fraction of a second, longer for one very large frame. Everything after that stops at once."),
         HelpTopic(title: "Editor completion is empty",
