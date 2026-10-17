@@ -49,6 +49,20 @@ struct KeyBarKey {
     static func repeating(icon: String, name: String, _ action: @escaping () -> Void) -> KeyBarKey {
         KeyBarKey(title: "", icon: icon, accessibilityLabel: name, kind: .repeating, action: action)
     }
+
+    /// Paste for a keyboard that has no ⌘V: the on-screen keyboard has no
+    /// paste key, and neither the editor (Monaco in a web view) nor the
+    /// terminal gets a working paste from iOS's own paste buttons. Reads the
+    /// clipboard itself, so iOS may ask "Allow Paste?"; the user can allow
+    /// it for good in Settings. (UIPasteControl, which avoids the prompt,
+    /// stays disabled in this floating row.)
+    static func paste(_ handler: @escaping (String) -> Void) -> KeyBarKey {
+        .function("", icon: "doc.on.clipboard", name: "Paste") {
+            guard UIPasteboard.general.hasStrings,
+                  let text = UIPasteboard.general.string, !text.isEmpty else { return }
+            handler(text)
+        }
+    }
 }
 
 final class KeyBar: UIInputView, UIInputViewAudioFeedback {
@@ -277,6 +291,15 @@ extension KeyBar {
             .function("esc", name: "Escape", send([0x1b])),
             ctrl,
             .function("", icon: "arrow.right.to.line", name: "Tab, complete", send([0x09])),
+            // Same as SwiftTerm's own paste: wrapped in bracketed-paste
+            // markers when the program running asked for them.
+            .paste { text in
+                guard let tv else { return }
+                let bracketed = tv.getTerminal().bracketedPasteMode
+                if bracketed { tv.send(data: EscapeSequences.bracketedPasteStart[0...]) }
+                tv.send(txt: text)
+                if bracketed { tv.send(data: EscapeSequences.bracketedPasteEnd[0...]) }
+            },
         ]
         var scrolling: [KeyBarKey] = [
             .function("^C", name: "Control C, interrupt", send([0x03])),
@@ -313,9 +336,9 @@ extension KeyBar {
 
     // MARK: - Code editor
 
-    /// Keys for Python: indent / outdent, undo / redo, completion, comment
-    /// toggling, the symbols on the keyboard's other pages, and cursor
-    /// keys. `send` gets a key name for `window.__editor.key` in
+    /// Keys for Python: indent / outdent, paste, undo / redo, completion,
+    /// comment toggling, copy / cut / select all, the symbols on the
+    /// keyboard's other pages, and cursor keys. `send` gets a key name for `window.__editor.key` in
     /// editor.html, plus the text for "text".
     static func editor(send: @escaping (_ key: String, _ text: String) -> Void,
                        hideKeyboard: @escaping () -> Void) -> KeyBar {
@@ -323,6 +346,7 @@ extension KeyBar {
         let leading: [KeyBarKey] = [
             .function("", icon: "arrow.right.to.line", name: "Indent", key("tab")),
             .function("", icon: "arrow.left.to.line", name: "Outdent", key("outdent")),
+            .paste { text in send("paste", text) },
         ]
         // Symbols first: on a phone only the first few keys are in view.
         var scrolling: [KeyBarKey] = ["(", ")", ":", "=", "[", "]", "{", "}", "'", "\"", "_", ".", ",",
@@ -334,6 +358,9 @@ extension KeyBar {
             .function("", icon: "arrow.uturn.forward", name: "Redo", key("redo")),
             .function("", icon: "text.badge.plus", name: "Suggest completions", key("suggest")),
             .function("", icon: "number", name: "Toggle comment", key("comment")),
+            .function("", icon: "doc.on.doc", name: "Copy", key("copy")),
+            .function("", icon: "scissors", name: "Cut", key("cut")),
+            .function("", icon: "selection.pin.in.out", name: "Select all", key("selectAll")),
         ]
         let trailing: [KeyBarKey] = [
             .repeating(icon: "arrow.left", name: "Left", key("left")),

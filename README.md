@@ -41,6 +41,15 @@ on-device without an internet connection.
   WKWebView can't take an input accessory (its first responder is
   WebKit's), so the bar floats in the window, placed from the keyboard
   notifications.
+  **Paste** (editor and terminal) plus copy / cut / select all (editor):
+  without a hardware keyboard there was no way to paste, since Monaco
+  takes the touches that would raise iOS's edit menu and the keyboard's
+  own paste button doesn't reach its hidden text area (an App Store
+  review on 1.4 said so). The key reads `UIPasteboard` itself, so iOS may
+  ask "Allow Paste?". `UIPasteControl` would avoid that but stays disabled
+  in the floating bar. Testing in the Simulator: `simctl pbcopy` only
+  leaves a promise that Simulator.app fills, so with no Simulator.app the
+  clipboard reads as empty; copy inside the app instead.
 - **Symbol completion** ships pre-built. `scripts/gen-library-symbols.py`
   introspects the bundled packages at *build* time and writes
   `Resources/LibrarySymbols.json`, which Monaco loads directly — no Python

@@ -447,6 +447,20 @@
                         editor.trigger('keyboard', 'type', { text: String(text) });
                         return;
                     }
+                    // Clipboard keys for the on-screen keyboard, which has
+                    // no ⌘C / ⌘X / ⌘V and no edit menu over the editor.
+                    if (name === 'paste') { this.pasteFromClipboard(String(text)); return; }
+                    if (name === 'copy' || name === 'cut') {
+                        const sel = editor.getSelection();
+                        if (!sel || sel.isEmpty()) return;
+                        _postToSwift({ kind: 'clipboardCopy', text: editor.getModel().getValueInRange(sel) });
+                        if (name === 'cut') editor.executeEdits('cut', [{ range: sel, text: '', forceMoveMarkers: true }]);
+                        return;
+                    }
+                    if (name === 'selectAll') {
+                        editor.setSelection(editor.getModel().getFullModelRange());
+                        return;
+                    }
                     const suggesting = !!document.querySelector('.suggest-widget.visible');
                     const command = (suggesting && {
                         up: 'selectPrevSuggestion',
