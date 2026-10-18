@@ -92,6 +92,12 @@ struct EditorPane: View {
                 MonacoEditor(text: $source, fontSize: fontSize, controller: monaco)
             }
             .background(Theme.bgPrimary)
+            // SwiftUI doesn't always call MonacoEditor.updateUIView when
+            // only the binding's value changes (the representable itself
+            // is unchanged), so a Gallery load could leave the previous
+            // code on screen while the new code was what got rendered.
+            // Push it here.
+            .onChange(of: source) { _, newValue in monaco.showText(newValue) }
         }
         .background(Theme.bgPrimary)
         .background(

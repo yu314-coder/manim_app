@@ -34,6 +34,13 @@ final class MonacoController {
     }
     /// Re-focus the editor (returns keyboard).
     func refocus() { view?.refocus() }
+    /// Shows `text` unless the editor already has it (it's what was just
+    /// typed). For code that changes from outside — a Gallery load, a
+    /// file opened, New.
+    func showText(_ text: String) {
+        guard let view, view.currentText != text else { return }
+        view.setCode(text, language: "python")
+    }
 }
 
 struct MonacoEditor: UIViewRepresentable {
