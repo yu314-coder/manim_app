@@ -558,7 +558,9 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
     /// texmf. xelatex's native Unicode handling picks up CJK glyphs
     /// directly from the main font, which is enough for `\text{...}`
     /// containing Chinese/Japanese inside math.
-    private static func mathPreamble(expression: String, colorHex: String) -> String {
+    /// The whole document compiled for one formula (also the formula
+    /// cache's key, LaTeXEngine.MathCache).
+    static func mathPreamble(expression: String, colorHex: String) -> String {
         var expr = expression
         if expr.hasPrefix("$") && expr.hasSuffix("$") && expr.count >= 2 {
             expr = String(expr.dropFirst().dropLast())

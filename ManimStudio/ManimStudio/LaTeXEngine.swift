@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import PDFKit
+import CryptoKit
 
 /// LaTeX rendering engine for iOS using SwiftMath (native CoreText rendering).
 /// Produces pixel-perfect math typesetting entirely offline — no WKWebView needed.
@@ -766,11 +767,21 @@ import PDFKit
             return
         }
 
+        let color = colorHex.isEmpty ? "FFFFFF" : colorHex
+        // A formula already typeset (this render or an earlier one) comes
+        // back from the cache at once instead of a ~4 s xelatex run.
+        let cacheKey = MathCache.key(expression: expression, colorHex: color)
+        if let cached = MathCache.lookup(cacheKey),
+           (try? cached.write(to: URL(fileURLWithPath: svgPath), options: .atomic)) != nil {
+            writeMathDoneMarker(signalDir: signalDir, requestId: requestId,
+                                status: 0, message: "ok (cached)")
+            return
+        }
+
         compileMathInFlight = true
         compileMathStartedAt = Date()
         compileMathInFlightId = requestId
         compileMathInFlightSignalDir = signalDir
-        let color = colorHex.isEmpty ? "FFFFFF" : colorHex
 
         BusytexEngine.shared.compileMath(
             expression: expression, colorHex: color
@@ -814,6 +825,7 @@ import PDFKit
                     self.writeMathDoneMarker(signalDir: signalDir, requestId: requestId,
                                               status: 0,
                                               message: "ok (\(rendered.pngData.count) bytes)")
+                    MathCache.store(cacheKey, Data(svg.utf8))
                 } catch {
                     self.writeMathDoneMarker(signalDir: signalDir, requestId: requestId,
                                               status: -12,
@@ -989,3 +1001,63 @@ import PDFKit
         }
     }
 }
+
+// MARK: - Formula cache
+
+/// Typeset formulas (MathTex) on disk, so a formula that has been typeset
+/// before — a re-render, the same label in another scene — skips its
+/// ~4 s xelatex run. Keyed by the exact document compiled (preamble,
+/// expression, colour) plus how it was rasterised, so a change to any of
+/// those can't hand back a stale image. In Caches: iOS may clear it, and
+/// it's trimmed past 200 MB.
+enum MathCache {
+    private static let dir: URL = {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let url = base.appendingPathComponent("MathTex", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+    private static let limitBytes = 200 * 1024 * 1024
+    private static var trimmed = false
+
+    static func key(expression: String, colorHex: String) -> String {
+        let document = BusytexEngine.mathPreamble(expression: expression, colorHex: colorHex)
+        let digest = SHA256.hash(data: Data((document + "\npng@4x svg-v1").utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func lookup(_ key: String) -> Data? {
+        let url = dir.appendingPathComponent(key + ".svg")
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { return nil }
+        // Recently used entries survive trimming.
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+        return data
+    }
+
+    static func store(_ key: String, _ svg: Data) {
+        try? svg.write(to: dir.appendingPathComponent(key + ".svg"), options: .atomic)
+        if !trimmed {
+            trimmed = true
+            DispatchQueue.global(qos: .utility).async { trim() }
+        }
+    }
+
+    /// Drops the least recently used entries once the cache passes the limit.
+    private static func trim() {
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: keys) else { return }
+        var entries = files.compactMap { url -> (URL, Date, Int)? in
+            guard let v = try? url.resourceValues(forKeys: Set(keys)) else { return nil }
+            return (url, v.contentModificationDate ?? .distantPast, v.fileSize ?? 0)
+        }
+        var total = entries.reduce(0) { $0 + $1.2 }
+        guard total > limitBytes else { return }
+        entries.sort { $0.1 < $1.1 }
+        for (url, _, size) in entries where total > limitBytes * 3 / 4 {
+            try? FileManager.default.removeItem(at: url)
+            total -= size
+        }
+    }
+}
+

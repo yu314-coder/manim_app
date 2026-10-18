@@ -180,6 +180,13 @@ after launch, app + its WebKit processes:
   loaded while the code needs it, or for the rest of the session once
   anything has been typeset, and otherwise unloads 3 minutes after its last
   use (~1,191 → 561 MB measured). A memory warning lets it go at once.
+- **Formula cache.** Each MathTex costs a ~3.6 s xelatex run in busytex.
+  `LaTeXEngine.MathCache` keeps every typeset formula (the SVG manim reads)
+  in Caches, keyed by a SHA-256 of the exact document compiled plus how it
+  was rasterised, so a repeat — a re-render, the same label elsewhere —
+  comes back at once. Pythagorean (4 formulas) re-rendered from a fresh
+  launch: >24 s → ~4–8 s, all 71 frames identical to the uncached render.
+  Trimmed least-recently-used past 200 MB.
 - **The Gallery's oscilloscope** (`PhaseLine`) draws at 30 fps instead of
   the display's rate (120 Hz on ProMotion) and stops in the background or
   with Reduce Motion: its share of the main thread fell from ~19 % to ~4 %.
