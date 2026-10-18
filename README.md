@@ -187,6 +187,15 @@ after launch, app + its WebKit processes:
   comes back at once. Pythagorean (4 formulas) re-rendered from a fresh
   launch: >24 s → ~4–8 s, all 71 frames identical to the uncached render.
   Trimmed least-recently-used past 200 MB.
+- **Start-up: the shell is ready in ~1.5 s instead of ~9.5 s.**
+  codebench_inline (python-ios-lib) imported matplotlib, pyplot and plotly
+  when the shell started, to patch their show() for inline output, and the
+  run prelude in `PythonRuntime.swift` imported pyplot and plotly again for
+  every run. `manimstudio_shell._defer_inline_backends` and its
+  `after_import` hook now run those same set-ups right after the code
+  imports the module (a meta-path finder wrapping the loader), so plots
+  still show inline, the start-up line is unchanged, and renders that don't
+  plot never load either library (Pythagorean render 5.1 → 4.9 s).
 - **The Gallery's oscilloscope** (`PhaseLine`) draws at 30 fps instead of
   the display's rate (120 Hz on ProMotion) and stops in the background or
   with Reduce Motion: its share of the main thread fell from ~19 % to ~4 %.

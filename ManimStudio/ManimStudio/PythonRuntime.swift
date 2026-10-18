@@ -1661,15 +1661,25 @@ try:
     except Exception as _e:
         _log(f"numpy failed: {_e}")
 
-    # Import matplotlib (our plotly-backed package in site-packages/matplotlib/)
-    _log("Importing matplotlib...")
-    _plt = None
+    # matplotlib and plotly hooks (show() → chart file) go in when the
+    # script imports them, not up front: importing both for every run cost
+    # ~1 s, and manim scenes rarely use either. manimstudio_shell's
+    # after_import runs a hook right after its module loads (or at once if
+    # it already has); without it, fall back to importing up front.
     try:
-        import matplotlib
-        import matplotlib.pyplot as _plt
-        _log(f"matplotlib {matplotlib.__version__} OK")
-    except Exception as _e:
-        _log(f"matplotlib failed: {_e}")
+        from manimstudio_shell import after_import as _ms_after_import
+    except Exception:
+        _ms_after_import = None
+
+    def _ms_when_imported(_name, _hook):
+        if _ms_after_import is not None:
+            _ms_after_import(_name, _hook, key="run")
+            return
+        try:
+            import importlib as _il
+            _hook(_il.import_module(_name))
+        except Exception as _e:
+            _log(f"{_name} failed: {_e}")
 
     # CSS patch injected into every generated plotly HTML to make the chart
     # fill 100% of the WKWebView viewport — no fixed 420px heights, no cropped
@@ -1732,7 +1742,9 @@ try:
             _log(f"css splice failed: {_e}")
 
     # Hook matplotlib.pyplot.show to capture chart output
-    if _plt and hasattr(_plt, '_show_hook'):
+    def _ms_hook_matplotlib(_plt):
+        if not hasattr(_plt, '_show_hook'):
+            return
         def _offlinai_mpl_show(fig_obj=None):
             global __codebench_plot_path
             os.makedirs(__codebench_tool_dir, exist_ok=True)
@@ -1746,6 +1758,7 @@ try:
             else:
                 _log("show() called but no plotly figure available")
         _plt._show_hook = _offlinai_mpl_show
+    _ms_when_imported("matplotlib.pyplot", _ms_hook_matplotlib)
 
     # Hook plotly.graph_objects.Figure.show directly.
     #
@@ -1755,8 +1768,8 @@ try:
     # imports fine but accessing Figure raises AttributeError. That
     # used to bubble up and kill every script run (even ones that
     # don't touch plotly). Now we just skip the hook installation.
-    try:
-        import plotly.graph_objects as _pgo
+    def _ms_hook_plotly(_pgo):
+      try:
         _Figure = getattr(_pgo, "Figure", None)
         if _Figure is None:
             _log("plotly loaded but Figure missing (iOS-stubbed build); skipping hook")
@@ -1782,10 +1795,11 @@ try:
                 _log(f"plotly chart saved: {_path}")
                 print(f"[plot saved] {_path}")
             _Figure.show = _offlinai_plotly_show
-    except (ImportError, AttributeError) as _plotly_hook_err:
+      except (ImportError, AttributeError) as _plotly_hook_err:
         _log(f"plotly hook skipped: {type(_plotly_hook_err).__name__}: {_plotly_hook_err}")
-    except Exception as _plotly_hook_err:
+      except Exception as _plotly_hook_err:
         _log(f"plotly hook crashed ({type(_plotly_hook_err).__name__}): skipping")
+    _ms_when_imported("plotly.graph_objects", _ms_hook_plotly)
 
     # Set up fontconfig BEFORE importing manim, so manimpango's
     # __init__.py (triggered transitively by `import manim`) sees
@@ -3978,6 +3992,7 @@ try:
 
     # Auto-save any unsaved matplotlib figures
     try:
+        _plt = sys.modules.get('matplotlib.pyplot')  # only if the script used it
         if _plt and hasattr(_plt, 'get_fignums') and _plt.get_fignums() and not __codebench_plot_path:
             _plt.show()
     except Exception:

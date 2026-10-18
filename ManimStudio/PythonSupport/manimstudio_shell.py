@@ -41,7 +41,8 @@ def install(shell_module):
     for step in (_remove_unsupported, _replace_exit, _replace_top_and_ps,
                  _fix_documents_paths, _fix_missing_imports, _fix_debug, _fix_markdown,
                  _fix_http_fetch, _limit_git, _fit_test_libs, _fit_gpuz,
-                 _rebrand_cpuz, _wrap_run_line, _fix_prompt_user):
+                 _rebrand_cpuz, _wrap_run_line, _fix_prompt_user,
+                 _defer_inline_backends):
         try:
             step()
         except Exception as e:
@@ -754,3 +755,125 @@ def _fix_prompt_user():
         sh.user = getpass.getuser() or "mobile"
     except Exception:
         sh.user = "mobile"
+
+
+# ── Inline plots without the start-up cost ────────────────────────────
+
+class _AfterImport:
+    """Meta-path finder that runs callbacks right after a module has
+    finished executing (it finds the module the normal way, then wraps
+    its loader). callbacks: module name → {owner key: callback}; each
+    runs once."""
+
+    def __init__(self):
+        self.callbacks = {}
+
+    def find_spec(self, name, path=None, target=None):
+        pending = self.callbacks.pop(name, None)
+        if not pending:
+            return None
+
+        spec = None
+        for finder in sys.meta_path:
+            if finder is self or not hasattr(finder, "find_spec"):
+                continue
+            spec = finder.find_spec(name, path, target)
+            if spec is not None:
+                break
+        if spec is None or spec.loader is None or not hasattr(spec.loader, "exec_module"):
+            return spec
+        spec.loader = _ThenCall(spec.loader, name, list(pending.values()))
+        return spec
+
+
+class _ThenCall:
+    """Loader proxy: the real loader executes the module, then the
+    callbacks run. (Wrapping rather than patching: a loader object can be
+    shared between modules.)"""
+
+    def __init__(self, loader, name, callbacks):
+        self._loader, self._name, self._callbacks = loader, name, callbacks
+
+    def create_module(self, spec):
+        return self._loader.create_module(spec)
+
+    def exec_module(self, module):
+        self._loader.exec_module(module)
+        for callback in self._callbacks:
+            try:
+                callback(module)
+            except Exception as e:
+                sys.stderr.write(f"[manimstudio_shell] after import {self._name}: "
+                                 f"{type(e).__name__}: {e}\n")
+
+    def __getattr__(self, attr):
+        return getattr(self._loader, attr)
+
+
+def _defer_inline_backends():
+    """codebench_inline (python-ios-lib) shows plt.show(), fig.show() and
+    plotly figures inline, but sets that up by importing matplotlib,
+    pyplot and plotly when the shell starts: ~3.5 s of every launch, for
+    libraries most sessions never touch. Run its own set-up instead at
+    the moment the code imports them — the same patches, in the same
+    order, before the code can call show()."""
+    import importlib.util
+    import codebench_inline as cbi
+
+    hooks = {}  # module name → callback
+    install_mpl = getattr(cbi, "_install_matplotlib", None)
+    install_plotly = getattr(cbi, "_install_plotly", None)
+
+    if install_mpl and "matplotlib" not in sys.modules \
+            and importlib.util.find_spec("matplotlib") is not None:
+        def on_matplotlib(mpl):
+            # As the original does before pyplot loads: headless backend.
+            mpl.use("Agg", force=True)
+
+        def on_figure(figure_module):
+            # fig.show() with pyplot never imported: set up on first use
+            # (importing pyplot from inside figure's own import would see
+            # a half-loaded module).
+            plain_show = figure_module.Figure.show
+
+            def show(self, *args, **kwargs):
+                install_mpl()
+                if figure_module.Figure.show is show:
+                    return plain_show(self, *args, **kwargs)
+                return figure_module.Figure.show(self, *args, **kwargs)
+            figure_module.Figure.show = show
+
+        hooks["matplotlib"] = on_matplotlib
+        hooks["matplotlib.figure"] = on_figure
+        hooks["matplotlib.pyplot"] = lambda _plt: install_mpl()
+        cbi._install_matplotlib = lambda: True
+
+    if install_plotly and "plotly" not in sys.modules \
+            and importlib.util.find_spec("plotly") is not None:
+        hooks["plotly.io"] = lambda _pio: install_plotly()
+        cbi._install_plotly = lambda: True
+
+    for name, callback in hooks.items():
+        after_import(name, callback, key="inline")
+
+
+_after_import_finder = None
+
+
+def after_import(name, callback, key=None):
+    """Call `callback(module)` once `name` has been imported — at once if
+    it already has been. A pending callback with the same `key` is
+    replaced. Used by the run prelude (PythonRuntime.swift) so each script
+    installs its matplotlib / plotly show() hooks only if it imports
+    them."""
+    global _after_import_finder
+    module = sys.modules.get(name)
+    if module is not None and not getattr(getattr(module, "__spec__", None), "_initializing", False):
+        callback(module)
+        return
+    if _after_import_finder is None:
+        _after_import_finder = _AfterImport()
+        sys.meta_path.insert(0, _after_import_finder)
+    pending = _after_import_finder.callbacks.setdefault(name, {})
+    pending[key if key is not None else object()] = callback
+
