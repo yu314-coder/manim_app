@@ -38,7 +38,7 @@ struct HelpSheet: View {
     /// The release the What's New notes describe. Bump it together with the
     /// notes: the header's Help button shows a dot until the user has opened
     /// notes for this version, so it reappears only when there is news.
-    static let notesVersion = "1.5"
+    static let notesVersion = "1.5.1"
 
     @Environment(\.dismiss) private var dismiss
     /// Same key HeaderView reads to decide whether to show the dot.
@@ -131,29 +131,38 @@ struct HelpSheet: View {
                 Text("New in \(Self.notesVersion)")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
-                ForEach(HelpContent.whatsNew) { item in
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Theme.accentPrimary)
-                            .frame(width: 28)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary)
-                            md(item.body)
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bgSecondary))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderSubtle, lineWidth: 1))
-                }
+                newItems(HelpContent.whatsNew)
+                Text("Also new in \(HelpContent.previousVersion)")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.top, 12)
+                newItems(HelpContent.whatsNewPrevious)
             }
             .padding(16)
+        }
+    }
+
+    private func newItems(_ items: [HelpNewItem]) -> some View {
+        ForEach(items) { item in
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: item.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.accentPrimary)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    md(item.body)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bgSecondary))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderSubtle, lineWidth: 1))
         }
     }
 
@@ -475,7 +484,22 @@ struct HelpHit: Identifiable {
 
 enum HelpContent {
 
+    /// What's new in `HelpSheet.notesVersion`.
     static let whatsNew: [HelpNewItem] = [
+        HelpNewItem(icon: "doc.on.clipboard", title: "Paste from other apps",
+             body: "A **Paste** key sits above the on-screen keyboard in the editor and the terminal — without a hardware keyboard there was no way to paste. The editor's keys also copy, cut and select all. iOS may ask to allow pasting; Settings → Apps → ManimStudio → Paste from Other Apps → Allow stops it asking."),
+        HelpNewItem(icon: "iphone", title: "Easier typing on iPhone",
+             body: "The extra keys take two rows, so the symbols and arrows are all in reach, and the code gets more room above the keyboard. Return always starts a new line — tap a suggestion or the indent key to take it — and suggestions wait for a letter instead of covering the code after every space."),
+        HelpNewItem(icon: "control", title: "A ctrl key in the editor",
+             body: "Tap **ctrl** above the keyboard, then A, C, X, V, Z or Y to select all, copy, cut, paste, undo or redo; F finds and / comments a line."),
+        HelpNewItem(icon: "keyboard.badge.ellipsis", title: "Hardware keyboards",
+             body: "With a Magic Keyboard or any other, tapping the editor always takes your typing. Ctrl+A / C / X / V / Z / Y work like ⌘, ⌘C and ⌘X with nothing selected copy or cut the whole line, ⌘I shows completions (iPadOS keeps ⌃Space for switching keyboards), and a double space stays two spaces instead of turning into \". \"."),
+    ]
+
+    /// The release before, shown under the new notes for anyone who
+    /// skipped it.
+    static let previousVersion = "1.5"
+    static let whatsNewPrevious: [HelpNewItem] = [
         HelpNewItem(icon: "moon.zzz", title: "Renders keep going when you leave",
              body: "On iOS and iPadOS 26, a render or preview keeps running after you switch apps, with its progress in a Live Activity. When iOS ends that background time, or you tap Cancel there, the render pauses instead of stopping and carries on when you come back. If iOS takes the hardware video encoder away while you're gone, the render switches to the software encoder instead of stopping. Earlier versions give it about 30 seconds, then it pauses until you come back."),
         HelpNewItem(icon: "bell.badge", title: "Know what happened",
@@ -493,9 +517,7 @@ enum HelpContent {
         HelpNewItem(icon: "shippingbox", title: "More Python works",
              body: "`requests` makes HTTPS calls out of the box, and scikit-learn now imports — two packages it needs were missing before."),
         HelpNewItem(icon: "keyboard", title: "Keys for touch typing",
-             body: "Extra keys sit above the on-screen keyboard, with **Paste** in both. In the terminal: esc, ctrl, tab, ^C, arrows and the shell's symbols. In the editor: indent and outdent, Python's brackets and symbols, undo, completion, copy, cut, select all and arrows. The editor has a **ctrl** key too: tap it, then A, C, X, V, Z or Y to select all, copy, cut, paste, undo or redo — and Ctrl+A / C / V… on a hardware keyboard work like ⌘. On an iPhone they take two rows, so the symbols and arrows are all in reach, and the editor gets more room above the keyboard. Return now always starts a new line when typing on the screen — tap a suggestion or the indent key to take it."),
-        HelpNewItem(icon: "keyboard.badge.ellipsis", title: "Hardware keyboards",
-             body: "With a Magic Keyboard or any other, tapping the editor always takes your typing. Ctrl+A / C / X / V / Z / Y work like ⌘, ⌘C and ⌘X with nothing selected copy or cut the whole line, ⌘I shows completions (iPadOS keeps ⌃Space for switching keyboards), and a double space stays two spaces instead of turning into \". \"."),
+             body: "A row of extra keys sits above the on-screen keyboard. In the terminal: esc, ctrl, tab, ^C, arrows and the shell's symbols. In the editor: indent and outdent, Python's brackets and symbols, undo, completion and arrows."),
         HelpNewItem(icon: "terminal", title: "Terminal commands",
              body: "Every command in `help` works or says why it can't. `js` and `node` run JavaScript, `tex` compiles plain TeX, `pdflatex`, `md` and `nb` open what they make, and `debug`, `ps` and `test-libs` work. `curl` no longer holds a download in memory. `ai`, `pip` and the C and Fortran compilers are gone — ManimStudio has nothing behind them."),
     ]
@@ -718,7 +740,7 @@ enum HelpContent {
             parts.contains { $0.lowercased().contains(needle) }
         }
         var hits: [HelpHit] = []
-        for n in whatsNew where matches(n.title, n.body) {
+        for n in whatsNew + whatsNewPrevious where matches(n.title, n.body) {
             hits.append(HelpHit(tab: .whatsNew, title: n.title, detail: n.body, mono: false))
         }
         for t in guide where matches(t.title, t.body) {
