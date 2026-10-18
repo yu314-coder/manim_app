@@ -1,0 +1,275 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>OfflinAi BusyTeX</title>
+<style> body { margin: 0; background: #000; color: #ccc; font: 12px monospace; } </style>
+</head>
+<body>
+<div id="log"></div>
+<script>
+(function () {
+  // Bridge from Swift: expose compile(texSource, mainFileName) → returns
+  // {status, log, pdfBase64}. Called via webView.callAsyncJavaScript.
+  //
+  // Busytex (upstream TL 2023, pdftex 1.40.25) is architecturally
+  // different from SwiftLaTeX:
+  //   • pdftex/xetex/luatex/bibtex8/xdvipdfmx are linked into ONE WASM
+  //     (busytex.wasm ~30 MB) — dispatch is by argv[0].
+  //   • texmf tree is baked into Emscripten data packages (*.js/*.data
+  //     pairs, LZ4-compressed) that preload into MEMFS before compile.
+  //     No kpathsea XHRs to intercept — so no URLSchemeHandler required
+  //     for the TeX Live tree, just for reading these files from the
+  //     bundle.
+  //
+  // We serve all assets via `offlinai-bt://app/<file>` so the Worker
+  // (which cannot be created from a file:// origin on iOS) has a
+  // proper same-origin parent, and so data packages' Emscripten LZ4
+  // initializer can `fetch('*.data')` sibling URLs that resolve.
+
+  var logEl = document.getElementById("log");
+  function log(s) { logEl.textContent += s + "\n"; }
+  function sendLog(msg) {
+    log(msg);
+    try { window.webkit.messageHandlers.latexLog.postMessage(msg); } catch (_) {}
+  }
+
+  // Bundle locations — all under the offlinai-bt:// scheme that Swift
+  // serves from Resources/Busytex/.
+  var BASE = "offlinai-bt://app/";
+  var BUSYTEX_JS   = BASE + "busytex.js";
+  var BUSYTEX_WASM = BASE + "busytex.wasm";
+  var WORKER_URL   = BASE + "busytex_worker.js";
+  // Order matters for Emscripten LZ4 preload — general packages first,
+  // then overlays. Upstream busytex suggests preloading all for beamer.
+  //
+  // offlinai-texmf: OUR local overlay (built by file_packager.py from
+  // Frameworks/latex/texmf/). Fills in gaps upstream busytex leaves —
+  // most importantly pgf/tikz/pgfmath (upstream ships no
+  // ubuntu-texlive-pictures data package, so any beamer doc using
+  // TikZ fails with "pgfmath.sty not found" without this overlay).
+  // Mounted at /offlinai/texmf-dist/ — the pipeline's texmf_local
+  // parameter wires this into TEXMFDIST alongside /texlive/texmf-dist.
+  var DATA_PACKAGES = [
+    BASE + "texlive-basic.js",
+    BASE + "ubuntu-texlive-latex-base.js",
+    BASE + "ubuntu-texlive-latex-recommended.js",
+    BASE + "ubuntu-texlive-fonts-recommended.js",
+    BASE + "ubuntu-texlive-latex-extra.js",
+    BASE + "ubuntu-texlive-science.js",
+    BASE + "offlinai-texmf.js",
+  ];
+
+  var worker = null;
+  var ready = false;
+  var initPromise = null;
+  var pendingCompile = null;  // { resolve, reject } while a compile is in flight
+
+  function ensureWorker() {
+    if (ready) return Promise.resolve();
+    if (initPromise) return initPromise;
+    initPromise = new Promise(function (resolve, reject) {
+      sendLog("[busytex] spawning worker…");
+      try {
+        worker = new Worker(WORKER_URL);
+      } catch (e) {
+        sendLog("[busytex] Worker() threw: " + e);
+        reject(e);
+        return;
+      }
+      worker.onerror = function (ev) {
+        sendLog("[busytex] worker error: " + (ev.message || ev));
+      };
+      worker.onmessage = function (ev) {
+        var data = ev.data || {};
+        if (data.print !== undefined) {
+          // Pipeline stdout/stderr — stream every non-empty line.
+          // Clean up busytex's verbose prefix chain:
+          //   "/bin/busytex stdout: ..."  → "pdflatex: ..."
+          //   "/bin/busytex stderr: ..."  → "pdflatex!: ..."
+          //   "$ busytex pdflatex ..."     → "$ pdflatex ..."
+          // Keeps the actual applet (pdftex/xetex/bibtex8) visible
+          // but drops the triple-prefix noise.
+          var lines = String(data.print).split("\n");
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            if (!line || !line.trim()) continue;
+            line = line
+              .replace(/^\/bin\/busytex stdout: /, "")
+              .replace(/^\/bin\/busytex stderr: /, "! ")
+              .replace(/^\$ busytex /, "$ ");
+            sendLog(line.substring(0, 400));
+          }
+          return;
+        }
+        if (data.initialized !== undefined) {
+          ready = true;
+          var versions = data.initialized || {};
+          var names = Object.keys(versions);
+          sendLog("[busytex] ready — applets: " + names.join(", "));
+          resolve();
+          return;
+        }
+        if (data.exception !== undefined) {
+          sendLog("[busytex] exception: " + String(data.exception).substring(0, 500));
+          if (pendingCompile) {
+            var pc = pendingCompile; pendingCompile = null;
+            pc.resolve({ status: -1, log: String(data.exception), pdfBase64: "" });
+          } else {
+            reject(new Error(String(data.exception)));
+          }
+          return;
+        }
+        // Compile result — has {pdf, log, exit_code, logs}
+        if (data.pdf !== undefined || data.log !== undefined || data.exit_code !== undefined) {
+          if (!pendingCompile) {
+            sendLog("[busytex] unexpected compile result with no pending caller");
+            return;
+          }
+          var pdfBytes = data.pdf;
+          var pdfB64 = "";
+          if (pdfBytes && pdfBytes.length) {
+            // Chunked base64 encoding — a naive char-by-char String
+            // concat is O(n²) in V8 and spikes memory to ~n² bytes
+            // during encode. On a multi-MB PDF that either OOMs the
+            // WebContent worker or trips the iOS watchdog → the
+            // "Task NNN: signal SIGABRT" you see in Xcode (worker
+            // process dies after handing back the PDF). 32 KB
+            // chunks + Array.join keeps peak memory to ~2× PDF size.
+            try {
+              var CHUNK = 32 * 1024;
+              var pieces = [];
+              for (var off = 0; off < pdfBytes.length; off += CHUNK) {
+                var slice = pdfBytes.subarray(off, Math.min(off + CHUNK, pdfBytes.length));
+                // String.fromCharCode.apply with a typed-array slice
+                // stays under the argument-list size limit at 32K.
+                pieces.push(String.fromCharCode.apply(null, slice));
+              }
+              pdfB64 = btoa(pieces.join(""));
+              sendLog("[busytex] compile OK — pdf " + pdfBytes.length + " bytes");
+            } catch (e) {
+              sendLog("[busytex] pdf encode failed: " + String(e).substring(0, 200));
+              pdfB64 = "";
+            }
+          } else {
+            sendLog("[busytex] compile exit=" + data.exit_code + " (no pdf)");
+          }
+          var pc2 = pendingCompile; pendingCompile = null;
+          pc2.resolve({
+            status: data.exit_code === 0 ? 0 : data.exit_code,
+            log: data.log || "",
+            pdfBase64: pdfB64
+          });
+          // Drop the large message payload now that we've consumed it —
+          // pdfBytes shares the Transferred ArrayBuffer from the worker,
+          // so nilling the data reference lets the worker reuse that
+          // memory for the next compile. Also helps the GC collect
+          // the ~2× PDF-size temporary allocations above.
+          data.pdf = null;
+          pdfBytes = null;
+          pdfB64 = null;
+          return;
+        }
+      };
+      // Kick off init — the worker's onmessage handler branches on
+      // (busytex_wasm && busytex_js && preload_data_packages_js) to
+      // construct the pipeline, then posts {initialized: applet_versions}.
+      worker.postMessage({
+        busytex_js: BUSYTEX_JS,
+        busytex_wasm: BUSYTEX_WASM,
+        preload_data_packages_js: DATA_PACKAGES,
+        data_packages_js: DATA_PACKAGES,
+        // Adds /offlinai/texmf-dist to TEXMFDIST so the overlay
+        // (offlinai-texmf.js/.data) is searched alongside the
+        // upstream packages. Without this, pdftex wouldn't look
+        // at our extra pgf/tikz/beamer files.
+        texmf_local: ["/offlinai"],
+        preload: true,
+        verbose: "info",
+        driver: "pdftex_bibtex8",
+      });
+    });
+    return initPromise;
+  }
+
+  // Decode a base64 string into a Uint8Array for Emscripten MEMFS.
+  // Swift sends binary graphics (real images + placeholders) as
+  // base64; pipeline.compile writes bytes directly into MEMFS.
+  function b64ToBytes(b64) {
+    var bin = atob(b64);
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  window.__busytex = {
+    async compile(texSource, mainFileName, extraFiles, driver) {
+      sendLog("[busytex] compile() called, ready=" + ready
+              + ", driver=" + (driver || "pdftex_bibtex8"));
+      try {
+        await ensureWorker();
+      } catch (e) {
+        return { status: -1, log: "busytex init failed: " + e, pdfBase64: "" };
+      }
+      var name = mainFileName || "main.tex";
+      var drv = driver || "pdftex_bibtex8";
+      // Assemble the files[] the pipeline writes into MEMFS at
+      // <project_dir>/<path>. Swift sends extraFiles as JSON-safe
+      // records: { path, kind: "text"|"b64", data }. Text entries
+      // go through as strings (pipeline handles .tex/.bib directly);
+      // b64 entries decode to Uint8Array for pipeline → FS.writeFile.
+      var files = [{ path: name, contents: texSource }];
+      if (Array.isArray(extraFiles)) {
+        for (var i = 0; i < extraFiles.length; i++) {
+          var f = extraFiles[i];
+          if (!f || !f.path) continue;
+          if (f.kind === "b64") {
+            files.push({ path: f.path, contents: b64ToBytes(f.data || "") });
+          } else {
+            files.push({ path: f.path, contents: String(f.data || "") });
+          }
+        }
+        sendLog("[busytex] extraFiles: " + extraFiles.length
+                + " (real siblings + placeholders)");
+      }
+      sendLog("[busytex] starting compile — main=" + name);
+      // The math.tex path uses xetex_bibtex8_dvipdfmx, where verbose=info
+      // appends `--kpathsea-debug 32 -v` to xdvipdfmx. The bundled
+      // xdvipdfmx doesn't recognise the two-dash long form, so `32`
+      // becomes a positional → "Multiple dvi filenames?". Use silent
+      // for any xetex driver so xdvipdfmx gets only `-o math.pdf math.xdv`.
+      var verboseLevel = (drv && drv.indexOf("xetex") === 0) ? "silent" : "info";
+      return new Promise(function (resolve, reject) {
+        if (pendingCompile) {
+          resolve({ status: -1, log: "another compile already in flight", pdfBase64: "" });
+          return;
+        }
+        pendingCompile = { resolve: resolve, reject: reject };
+        worker.postMessage({
+          files: files,
+          main_tex_path: name,
+          bibtex: null,            // auto-detect from source
+          // Adds /offlinai/texmf-dist to TEXMFDIST so the overlay
+          // (offlinai-texmf.js/.data) is searched alongside the
+          // upstream packages. Without this, pdftex wouldn't look
+          // at our extra pgf/tikz/beamer files.
+          texmf_local: ["/offlinai"],
+          verbose: verboseLevel,
+          driver: drv,
+          data_packages_js: DATA_PACKAGES,
+        });
+      });
+    },
+    isReady: function () { return ready; },
+    // Loads the TeX data ahead of a compile. Not done when the page loads:
+    // the data packages take ~800 MB of memory once unpacked, which most
+    // sessions never need. Swift calls this when the code looks like it
+    // will use LaTeX; compile() loads it anyway if it hasn't been.
+    warm: function () {
+      ensureWorker().catch(function (e) { sendLog("[busytex] warm-up failed: " + e); });
+    },
+  };
+})();
+</script>
+</body>
+</html>

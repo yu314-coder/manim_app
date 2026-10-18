@@ -160,6 +160,27 @@ on-device without an internet connection.
   internal pipeline traces from the visible terminal but keeps the
   log file unfiltered for diagnosis.
 
+### Memory and idle CPU (for 1.6)
+
+Measured on the Mac (Designed for iPad, Release build), Gallery idle 80 s
+after launch, app + its WebKit processes:
+
+| | Before | After |
+|---|---|---|
+| Memory at idle | 1,161 MB | 366 MB |
+| CPU at idle | 21 % | 15 % |
+
+- **LaTeX loads on demand.** busytex used to load at launch and unpack
+  every TeX data package into its web view's process (~800 MB, ~1 GB after
+  a compile). Now `BusytexEngine.warmUp` starts it when a render begins and
+  the code looks like it needs LaTeX (`mayUseLaTeX`: Tex, Title, axis
+  numbers…), any compile loads it otherwise, and it unloads 3 minutes
+  after the last compile or on a memory warning (~1,577 → 558 MB measured).
+- **The Gallery's oscilloscope** (`PhaseLine`) draws at 30 fps instead of
+  the display's rate (120 Hz on ProMotion) and stops in the background or
+  with Reduce Motion: its share of the main thread fell from ~19 % to ~4 %.
+  The rest of idle CPU there is the six looping card previews.
+
 ### Render pipeline
 
 - **Hardware encode by default** — VideoToolbox H.264, or HEVC where H.264
@@ -365,7 +386,8 @@ on-device without an internet connection.
 4. **busytex web build** (~237 MB, optional — only needed for LaTeX
    rendering). Drop the unpacked bundle at
    `ManimStudio/ManimStudio/Resources/Busytex/`, keeping the tracked
-   `busytex_pipeline.js` (it adds the plain-TeX driver).
+   `busytex_pipeline.js` (it adds the plain-TeX driver) and `busytex.html`
+   (ManimStudio's host page).
 5. SwiftPM resolves [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)
    and [Manim SPM stubs from python-ios-lib](https://github.com/yu314-coder/python-ios-lib)
    automatically on first build.

@@ -65,6 +65,41 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
 
     private func removeGuard(_ g: CompletionGuard) {
         inflightGuards.removeAll { $0 === g }
+        if inflightGuards.isEmpty { scheduleIdleRelease() }
+    }
+
+    // MARK: - Unloading when idle
+
+    /// Loaded, the engine holds ~1 GB (its TeX data unpacked in the web
+    /// view's process). Let it go a few minutes after the last compile —
+    /// long enough to cover a render's run of MathTex compiles and the
+    /// next render or two — and at once on a memory warning. The next
+    /// compile loads it again.
+    private static let idleReleaseDelay: TimeInterval = 180
+    private var idleRelease: DispatchWorkItem?
+    private var memoryWarningObserver: NSObjectProtocol?
+
+    private func scheduleIdleRelease() {
+        idleRelease?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.releaseIfIdle(reason: "idle") }
+        idleRelease = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.idleReleaseDelay, execute: work)
+    }
+
+    private func cancelIdleRelease() {
+        idleRelease?.cancel()
+        idleRelease = nil
+    }
+
+    private func releaseIfIdle(reason: String) {
+        guard webView != nil, inflightGuards.isEmpty, pendingLoadCallbacks.isEmpty else { return }
+        appendToEngineLog("unloading the engine (\(reason))")
+        cancelIdleRelease()
+        webView?.navigationDelegate = nil
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "latexLog")
+        webView?.stopLoading()
+        webView = nil
+        isLoaded = false
     }
 
     /// Fail every in-flight compile with the given code/message and
@@ -175,6 +210,14 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
 
     @MainActor
     func preload() {
+        cancelIdleRelease()
+        if memoryWarningObserver == nil {
+            memoryWarningObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.releaseIfIdle(reason: "memory warning") }
+            }
+        }
         guard webView == nil else { return }
 
         let config = WKWebViewConfiguration()
@@ -341,6 +384,30 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                 }
             }
         }
+    }
+
+    /// Starts loading the TeX engine and its data before a compile asks for
+    /// it, so the first MathTex of a render doesn't wait for it. Nothing is
+    /// loaded at launch: unpacked, the data takes ~800 MB, and most
+    /// sessions never use LaTeX.
+    @MainActor
+    func warmUp() {
+        preload()
+        whenReady { [weak self] in
+            self?.webView?.evaluateJavaScript("window.__busytex && window.__busytex.warm && window.__busytex.warm()")
+            // Warmed but never used (the hint was wrong): don't keep it.
+            if self?.inflightGuards.isEmpty == true { self?.scheduleIdleRelease() }
+        }
+    }
+
+    /// Whether `code` is likely to need LaTeX: Tex / MathTex directly, or the
+    /// manim objects that typeset numbers and labels with it. A miss only
+    /// costs the first compile a few seconds of loading.
+    static func mayUseLaTeX(_ code: String) -> Bool {
+        let hints = ["Tex", "Title(", "DecimalNumber", "Integer(", "Variable(", "Matrix(",
+                     "include_numbers", "add_coordinates", "get_axis_labels", "get_x_axis_label",
+                     "get_y_axis_label", "BraceLabel", "brace_label", "BulletedList", "Table("]
+        return hints.contains { code.contains($0) }
     }
 
     @MainActor

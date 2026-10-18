@@ -155,8 +155,16 @@ struct PhaseLine: View {
     var showTicks: Bool = true
     var glow: Bool = true
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
-        TimelineView(.animation) { timeline in
+        // 30 fps is plenty for a slow trace; .animation alone redraws at the
+        // display's rate, 120 Hz on ProMotion, which kept the main thread
+        // ~20% busy on an idle Gallery. Still while the app is in the
+        // background or Reduce Motion is on.
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0,
+                                paused: reduceMotion || scenePhase != .active)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate * speed + seed
             Canvas { ctx, size in
                 draw(ctx: ctx, size: size, t: t)

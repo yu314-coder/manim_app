@@ -295,6 +295,9 @@ struct ContentView: View {
         NotificationCenter.default.post(name: .editorClearMarkers, object: nil)
         isRendering = true
         renderStartedAt = Date()
+        // Load LaTeX while Python imports manim, so the first MathTex
+        // doesn't wait for it.
+        if BusytexEngine.mayUseLaTeX(sourceCode) { BusytexEngine.shared.warmUp() }
         renderSurfacedURLs.removeAll()
         startRenderOutputPoller()
         startRenderHeartbeat()

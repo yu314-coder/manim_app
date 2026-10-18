@@ -477,18 +477,14 @@ import PDFKit
                 if present.contains("open_in_editor.txt") { self.checkForOpenInEditorRequest() }
                 if present.contains("js_eval_request.txt") { JSEngine.shared.takeRequest(in: signalDir) }
             }
-            // Preload the WASM engine so the first pdflatex call doesn't
-            // pay the cold-start tax. busytex is the default path —
-            // larger footprint (~230 MB of data packages to stream
-            // into MEMFS) but it's the only engine that actually
-            // compiles real beamer/tikz docs. SwiftLaTeX stays
+            // busytex, the default engine, loads on demand
+            // (BusytexEngine.warmUp): its data packages take ~800 MB once
+            // unpacked, which was paid at every launch. SwiftLaTeX stays
             // reachable via `export OFFLINAI_ENGINE=swiftlatex` as a
             // fallback for anyone who explicitly wants pdftex 1.40.21.
             let engine = ProcessInfo.processInfo.environment["OFFLINAI_ENGINE"]?.lowercased()
             if engine == "swiftlatex" || engine == "web" {
                 WebLaTeXEngine.shared.preload()
-            } else {
-                BusytexEngine.shared.preload()
             }
         }
     }

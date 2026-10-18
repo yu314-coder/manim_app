@@ -72,7 +72,8 @@ struct ManimStudioApp: App {
         }
 
         DispatchQueue.main.async {
-            BusytexEngine.shared.preload()
+            // The LaTeX engine (busytex) loads on demand — see
+            // BusytexEngine.warmUp — not here.
             LaTeXEngine.shared.initialize()
             LaTeXEngine.shared.onPreviewRequest = { target in
                 NotificationCenter.default.post(name: .terminalPreviewRequest, object: nil,
