@@ -62,6 +62,19 @@ on-device without an internet connection.
   V paste, Z undo, Y redo, F find, / comment; caught on keydown /
   beforeinput in `editor.html`). From a hardware keyboard Ctrl+A / C / X
   / V / Z / Y work the same as ⌘.
+- **Hardware keyboards** — tested key by key with real HID key events in
+  the Simulator. Monaco takes focus in its own touch handling and WebKit
+  didn't always make its content view first responder, so after a tap
+  the caret showed but a Magic Keyboard's keys went nowhere; the `focus`
+  message now hands WebKit the focus when that happens, and the key
+  bar's hide key blurs the text area instead of only ending editing.
+  Ctrl+A / C / X / V / Z / Y are run in `editor.html` before Monaco sees
+  them, because the control character the key also carries is typed by
+  WebKit regardless (Ctrl+C's 0x03 is Enter on Apple platforms and
+  replaced the selection with a line break). ⌘C / ⌘X with nothing
+  selected take the whole line. Completion is ⌘I or ⌥Esc: iPadOS keeps
+  ⌃Space for switching keyboards. iOS's "." shortcut (double space →
+  ". ") arrives as an `insertReplacementText` and is dropped.
 - **Touch typing mode** — while the on-screen keyboard is up (the bar's
   presenter tells hardware from software keyboards by height),
   `setTouchTyping` in `editor.html` makes Return always start a new line

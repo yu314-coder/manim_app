@@ -48,7 +48,7 @@ final class MonacoEditorView: UIView {
     /// Monaco has focus.
     private lazy var keyBar = KeyBar.editor(
         send: { [weak self] key, text in self?.sendKey(key, text: text) },
-        hideKeyboard: { [weak self] in self?.webView.endEditing(true) })
+        hideKeyboard: { [weak self] in self?.hideKeyboard() })
     private lazy var keyBarPresenter = FloatingKeyBarPresenter(bar: keyBar, host: self)
 
     override init(frame: CGRect) {
@@ -169,11 +169,32 @@ final class MonacoEditorView: UIView {
         webView.evaluateJavaScript("window.__editor && window.__editor.key(...\(args))")
     }
 
+    /// Blurs Monaco's text area rather than only ending editing natively:
+    /// that dropped WebKit's input session but left the text area focused
+    /// in the page, so the next tap raised no new focus and a hardware
+    /// keyboard's keys went nowhere until the on-screen one was brought
+    /// back.
+    private func hideKeyboard() {
+        webView.evaluateJavaScript("document.activeElement && document.activeElement.blur()") { [weak self] _, _ in
+            self?.webView.endEditing(true)
+        }
+    }
+
+    /// WebKit's view that takes keyboard input.
+    private var webContentView: UIView? {
+        webView.scrollView.subviews.first { String(describing: type(of: $0)).hasPrefix("WKContent") }
+    }
+
     @objc private func handleTapToFocus() {
+        // Typing reaches the page only while WebKit's content view is first
+        // responder. If it isn't (the keyboard was put away some other way
+        // while the text area kept the page's focus), blur and refocus the
+        // text area so WebKit starts a new input session.
+        let typing = webContentView?.isFirstResponder ?? false
         webView.becomeFirstResponder()
-        webView.evaluateJavaScript(
-            "window.__editor && window.__editor.focusEditor && window.__editor.focusEditor()"
-        )
+        webView.evaluateJavaScript(typing
+            ? "window.__editor && window.__editor.focusEditor && window.__editor.focusEditor()"
+            : "window.__editor && window.__editor.refocusEditor && window.__editor.refocusEditor()")
     }
 
     private func loadEditor() {
@@ -449,6 +470,16 @@ extension MonacoEditorView: WKScriptMessageHandler {
 
         case "focus":
             keyBarPresenter.isActive = body["focused"] as? Bool ?? false
+            // Monaco takes focus in its own touch handling, and WebKit
+            // doesn't always make its content view first responder for it:
+            // the caret showed but a hardware keyboard's keys went nowhere
+            // (and no on-screen keyboard came up). Hand WebKit the focus
+            // and refocus the text area so it starts an input session.
+            if body["focused"] as? Bool == true, webContentView?.isFirstResponder == false {
+                webView.becomeFirstResponder()
+                webView.evaluateJavaScript(
+                    "window.__editor && window.__editor.refocusEditor && window.__editor.refocusEditor()")
+            }
 
         case "ctrlReleased":
             keyBar.modifierArmed = false

@@ -325,11 +325,23 @@
                     window.webkit.messageHandlers.editor.postMessage(msg);
                 } catch (_) { /* ignore — Swift handler missing */ }
             }
+            // Copy / cut the selection; with nothing selected, the whole
+            // line (newline included), as VS Code does.
             function copySelection(cut) {
+                const model = editor.getModel();
                 const sel = editor.getSelection();
-                if (!sel || sel.isEmpty()) return;
-                _postToSwift({ kind: 'clipboardCopy', text: editor.getModel().getValueInRange(sel) });
-                if (cut) editor.executeEdits('cut', [{ range: sel, text: '', forceMoveMarkers: true }]);
+                if (!model || !sel) return;
+                let range = sel;
+                if (sel.isEmpty()) {
+                    const line = sel.startLineNumber;
+                    range = line < model.getLineCount()
+                        ? new monaco.Range(line, 1, line + 1, 1)
+                        : new monaco.Range(line, 1, line, model.getLineMaxColumn(line));
+                }
+                const text = model.getValueInRange(range);
+                if (!text) return;
+                _postToSwift({ kind: 'clipboardCopy', text: sel.isEmpty() && !text.endsWith('\n') ? text + '\n' : text });
+                if (cut) editor.executeEdits('cut', [{ range, text: '', forceMoveMarkers: true }]);
             }
             function selectAll() {
                 const model = editor.getModel();
@@ -356,6 +368,12 @@
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode[code], shortcuts[code]);
                 editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode[code], shortcuts[code]);
             }
+            // Completion on ⌘I and ⌥Esc too: iPadOS keeps ⌃Space for
+            // switching keyboards (or the emoji keyboard), so the editor
+            // never sees it.
+            const suggest = () => editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, suggest);
+            editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Escape, suggest);
 
             // The key bar's ctrl key (KeyBar.swift) for the on-screen
             // keyboard, which has none: once armed, the next letter typed
@@ -384,13 +402,41 @@
             // The on-screen keyboard sends a keydown and then the text;
             // stop both, whichever WebKit delivers with the letter.
             editorNode.addEventListener('keydown', (e) => {
-                if (!ctrlArmed || e.key.length !== 1) return;
+                if (e.key.length !== 1) return;
+                // A hardware keyboard's Ctrl+A / C / X / V / Z / Y, run
+                // here rather than left to Monaco: the key also carries a
+                // control character that WebKit types regardless (Ctrl+C's
+                // 0x03 is Enter on Apple platforms, so Ctrl+C replaced the
+                // selection with a line break), so it's swallowed below.
+                const hardwareCtrl = e.ctrlKey && !e.metaKey && !e.altKey
+                    && shortcuts['Key' + e.key.toUpperCase()];
+                if (hardwareCtrl) {
+                    e.preventDefault(); e.stopPropagation();
+                    hardwareCtrl();
+                    swallowUntil = Date.now() + 300;
+                    return;
+                }
+                if (!ctrlArmed) return;
                 if (runCtrl(e.key)) {
                     e.preventDefault(); e.stopPropagation();
                     swallowUntil = Date.now() + 300;
                 }
             }, true);
             editorNode.addEventListener('beforeinput', (e) => {
+                // iOS's "." shortcut (on for the on-screen keyboard and,
+                // on an iPad, a hardware one too) turns a second space into
+                // ". " by replacing the first space with a period. That
+                // broke any double space in code; keep the spaces.
+                const ta = e.target;
+                if (e.inputType === 'insertReplacementText' && e.data === '.'
+                    && ta && ta.selectionEnd - ta.selectionStart === 1
+                    && ta.value.charAt(ta.selectionStart) === ' ') {
+                    e.preventDefault(); e.stopPropagation();
+                    // iOS left the first space selected; the second space
+                    // it sends next would type over it.
+                    ta.setSelectionRange(ta.selectionEnd, ta.selectionEnd);
+                    return;
+                }
                 if (Date.now() < swallowUntil) {
                     swallowUntil = 0;
                     e.preventDefault(); e.stopPropagation();
@@ -482,6 +528,13 @@
                     }
                 },
                 focusEditor() { editor.focus(); },
+                // Blur first, so the focus that follows is a new one and
+                // WebKit starts typing into the text area again.
+                refocusEditor() {
+                    const active = document.activeElement;
+                    if (active && active.tagName === 'TEXTAREA') active.blur();
+                    editor.focus();
+                },
                 /**
                  * A key from the key bar over the on-screen keyboard
                  * (KeyBar.swift). Text goes through Monaco's own typing

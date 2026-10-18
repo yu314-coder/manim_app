@@ -91,8 +91,9 @@ struct ManimStudioCommands: Commands {
             Divider()
             Button("Format Document")   { post(.menuEditFormat) }
                 .keyboardShortcut("i", modifiers: [.command, .option])
+            // Not ⌃Space: iPadOS keeps that for switching keyboards.
             Button("Trigger Completion") { post(.menuEditTriggerSuggest) }
-                .keyboardShortcut(.space, modifiers: [.control])
+                .keyboardShortcut("i", modifiers: [.command])
         }
 
         // ── Render ──────────────────────────────────────────────

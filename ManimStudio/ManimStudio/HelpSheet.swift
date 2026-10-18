@@ -494,6 +494,8 @@ enum HelpContent {
              body: "`requests` makes HTTPS calls out of the box, and scikit-learn now imports — two packages it needs were missing before."),
         HelpNewItem(icon: "keyboard", title: "Keys for touch typing",
              body: "Extra keys sit above the on-screen keyboard, with **Paste** in both. In the terminal: esc, ctrl, tab, ^C, arrows and the shell's symbols. In the editor: indent and outdent, Python's brackets and symbols, undo, completion, copy, cut, select all and arrows. The editor has a **ctrl** key too: tap it, then A, C, X, V, Z or Y to select all, copy, cut, paste, undo or redo — and Ctrl+A / C / V… on a hardware keyboard work like ⌘. On an iPhone they take two rows, so the symbols and arrows are all in reach, and the editor gets more room above the keyboard. Return now always starts a new line when typing on the screen — tap a suggestion or the indent key to take it."),
+        HelpNewItem(icon: "keyboard.badge.ellipsis", title: "Hardware keyboards",
+             body: "With a Magic Keyboard or any other, tapping the editor always takes your typing. Ctrl+A / C / X / V / Z / Y work like ⌘, ⌘C and ⌘X with nothing selected copy or cut the whole line, ⌘I shows completions (iPadOS keeps ⌃Space for switching keyboards), and a double space stays two spaces instead of turning into \". \"."),
         HelpNewItem(icon: "terminal", title: "Terminal commands",
              body: "Every command in `help` works or says why it can't. `js` and `node` run JavaScript, `tex` compiles plain TeX, `pdflatex`, `md` and `nb` open what they make, and `debug`, `ps` and `test-libs` work. `curl` no longer holds a download in memory. `ai`, `pip` and the C and Fortran compilers are gone — ManimStudio has nothing behind them."),
     ]
@@ -578,7 +580,7 @@ enum HelpContent {
             HelpShortcut(keys: "⇧ ⌥ ↓", action: "Copy line down"),
             HelpShortcut(keys: "⇧ ⌘ D", action: "Duplicate selection"),
             HelpShortcut(keys: "⌥ ⌘ I", action: "Format document"),
-            HelpShortcut(keys: "⌃ Space", action: "Show completions"),
+            HelpShortcut(keys: "⌘ I", action: "Show completions"),
         ]),
         HelpShortcutGroup(name: "Selection", items: [
             HelpShortcut(keys: "⌘ A", action: "Select all"),

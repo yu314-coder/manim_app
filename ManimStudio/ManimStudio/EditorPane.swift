@@ -237,12 +237,12 @@ private struct ShortcutSheet: View {
             ("⌘ ]", "Indent"),
             ("⌘ [", "Outdent"),
             ("⌥ ↑ / ↓", "Move line up/down"),
-            ("⌃ Space", "Trigger completion"),
+            ("⌘ I", "Trigger completion"),
         ]),
         ("App", [
-            ("F5", "Render (full quality)"),
-            ("F6", "Preview (low quality)"),
-            ("Esc", "Stop render"),
+            ("⌘ R", "Render (full quality)"),
+            ("⇧ ⌘ R", "Preview (low quality)"),
+            ("⌘ .", "Stop render"),
         ]),
     ]
 
