@@ -191,6 +191,9 @@ struct ContentView: View {
         // renders exist, and again after each render so the new clip joins
         // the library strip.
         .task { RenderLibraryStore.shared.refresh() }
+        // LaTeX loads as soon as the code needs it, never mid-render.
+        .task { BusytexEngine.shared.noteCode(sourceCode) }
+        .onChange(of: sourceCode) { _, code in BusytexEngine.shared.noteCode(code) }
         .onChange(of: renderedVideoURL) { _, _ in RenderLibraryStore.shared.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .menuRenderPresent)) { _ in
             showPresent = true
@@ -295,8 +298,8 @@ struct ContentView: View {
         NotificationCenter.default.post(name: .editorClearMarkers, object: nil)
         isRendering = true
         renderStartedAt = Date()
-        // Load LaTeX while Python imports manim, so the first MathTex
-        // doesn't wait for it.
+        // Normally already loaded (noteCode); covers a render started
+        // before the code was seen.
         if BusytexEngine.mayUseLaTeX(sourceCode) { BusytexEngine.shared.warmUp() }
         renderSurfacedURLs.removeAll()
         startRenderOutputPoller()

@@ -71,11 +71,19 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
     // MARK: - Unloading when idle
 
     /// Loaded, the engine holds ~1 GB (its TeX data unpacked in the web
-    /// view's process). Let it go a few minutes after the last compile —
-    /// long enough to cover a render's run of MathTex compiles and the
-    /// next render or two — and at once on a memory warning. The next
-    /// compile loads it again.
+    /// view's process), so it's loaded only for code that needs it — but
+    /// then always ahead of time, so no render ever waits for it: as soon
+    /// as the editor's code looks like it uses LaTeX (`noteCode`), and
+    /// kept while it does, or for the rest of the session once anything
+    /// has been typeset. Otherwise it goes a few minutes after its last
+    /// use. A memory warning lets it go at once; iOS would otherwise kill
+    /// its process, and the next compile reloads it either way.
     private static let idleReleaseDelay: TimeInterval = 180
+    /// The editor's code looks like it uses LaTeX.
+    private var codeNeedsLaTeX = false
+    /// Something was typeset this session (code the hints missed included).
+    private var usedThisSession = false
+    private var warming = false
     private var idleRelease: DispatchWorkItem?
     private var memoryWarningObserver: NSObjectProtocol?
 
@@ -93,6 +101,7 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
 
     private func releaseIfIdle(reason: String) {
         guard webView != nil, inflightGuards.isEmpty, pendingLoadCallbacks.isEmpty else { return }
+        if reason == "idle", codeNeedsLaTeX || usedThisSession { return }
         appendToEngineLog("unloading the engine (\(reason))")
         cancelIdleRelease()
         webView?.navigationDelegate = nil
@@ -100,6 +109,20 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
         webView?.stopLoading()
         webView = nil
         isLoaded = false
+        warming = false
+    }
+
+    /// Called with the editor's code at launch and whenever it changes:
+    /// loads the engine as soon as the code needs it, so it's ready long
+    /// before a render reaches its first formula.
+    @MainActor
+    func noteCode(_ code: String) {
+        codeNeedsLaTeX = Self.mayUseLaTeX(code)
+        if codeNeedsLaTeX {
+            warmUp()
+        } else if webView != nil, inflightGuards.isEmpty {
+            scheduleIdleRelease()
+        }
     }
 
     /// Fail every in-flight compile with the given code/message and
@@ -280,6 +303,7 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
             }()
             self.emitProgress("starting busytex \(cmdName) on \(mainFileName)")
             self.startSwiftHeartbeat()
+            self.usedThisSession = true
             self.preload()
             self.whenReady { [weak self] in
                 guard let self, let wv = self.webView else {
@@ -392,23 +416,31 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
     /// sessions never use LaTeX.
     @MainActor
     func warmUp() {
+        cancelIdleRelease()
+        guard !warming else { return }
+        warming = true
         preload()
         whenReady { [weak self] in
             self?.webView?.evaluateJavaScript("window.__busytex && window.__busytex.warm && window.__busytex.warm()")
-            // Warmed but never used (the hint was wrong): don't keep it.
-            if self?.inflightGuards.isEmpty == true { self?.scheduleIdleRelease() }
         }
     }
 
-    /// Whether `code` is likely to need LaTeX: Tex / MathTex directly, or the
-    /// manim objects that typeset numbers and labels with it. A miss only
-    /// costs the first compile a few seconds of loading.
+    /// Whether `code` is likely to need LaTeX: Tex / MathTex directly, or
+    /// the manim objects that typeset numbers and labels with it. Errs
+    /// towards yes — a false yes only keeps the engine loaded, as every
+    /// session used to.
     static func mayUseLaTeX(_ code: String) -> Bool {
-        let hints = ["Tex", "Title(", "DecimalNumber", "Integer(", "Variable(", "Matrix(",
-                     "include_numbers", "add_coordinates", "get_axis_labels", "get_x_axis_label",
-                     "get_y_axis_label", "BraceLabel", "brace_label", "BulletedList", "Table("]
-        return hints.contains { code.contains($0) }
+        code.range(of: latexHints, options: .regularExpression) != nil
     }
+
+    /// `Tex` but not `Text` (Pango, no LaTeX): MathTex, Tex, TexTemplate,
+    /// SingleStringMathTex…; then the objects that typeset with MathTex
+    /// under the hood (numbers on axes, labels, matrices, tables).
+    private static let latexHints = [
+        "Tex(?!t)", "[Ll]a[Tt]e[Xx]", "Title", "DecimalNumber", "Integer", "Variable",
+        "Matrix", "include_numbers", "numbers_to_include", "add_numbers", "add_coordinates",
+        "[Ll]abel", "Brace", "Table", "BulletedList", "BarChart", "ChangingDecimal",
+    ].joined(separator: "|")
 
     @MainActor
     private func whenReady(_ action: @escaping () -> Void) {
@@ -454,6 +486,7 @@ import Darwin  // for open(), write(), close(), strlen, O_WRONLY/O_APPEND/O_CREA
                 guardBox.fire(-5, "busytex math compile timed out (30s)", nil)
                 self?.removeGuard(guardBox)
             }
+            self.usedThisSession = true
             self.preload()
             self.whenReady { [weak self] in
                 guard let self, let wv = self.webView else {

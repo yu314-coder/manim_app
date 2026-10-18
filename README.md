@@ -170,12 +170,16 @@ after launch, app + its WebKit processes:
 | Memory at idle | 1,161 MB | 366 MB |
 | CPU at idle | 21 % | 15 % |
 
-- **LaTeX loads on demand.** busytex used to load at launch and unpack
-  every TeX data package into its web view's process (~800 MB, ~1 GB after
-  a compile). Now `BusytexEngine.warmUp` starts it when a render begins and
-  the code looks like it needs LaTeX (`mayUseLaTeX`: Tex, Title, axis
-  numbers…), any compile loads it otherwise, and it unloads 3 minutes
-  after the last compile or on a memory warning (~1,577 → 558 MB measured).
+- **LaTeX loads only for code that uses it, and always ahead of time.**
+  busytex used to load at launch and unpack every TeX data package into its
+  web view's process (~800 MB, ~1 GB after a compile) whatever the code.
+  Now `BusytexEngine.noteCode` sees the editor's code at launch and on every
+  change, and loads the engine as soon as `mayUseLaTeX` says yes (Tex but
+  not Text, axis numbers, labels, matrices, tables…), so no render waits
+  for it: measured, the first compile of a render found it ready. It stays
+  loaded while the code needs it, or for the rest of the session once
+  anything has been typeset, and otherwise unloads 3 minutes after its last
+  use (~1,191 → 561 MB measured). A memory warning lets it go at once.
 - **The Gallery's oscilloscope** (`PhaseLine`) draws at 30 fps instead of
   the display's rate (120 Hz on ProMotion) and stops in the background or
   with Reduce Motion: its share of the main thread fell from ~19 % to ~4 %.
