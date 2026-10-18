@@ -76,17 +76,31 @@ final class RAMSampler: ObservableObject {
 struct RAMMonitorView: View {
     @StateObject private var sampler = RAMSampler()
     @Environment(\.horizontalSizeClass) private var hSizeClass
+    /// Hidden while the on-screen keyboard is up: it would ride up with
+    /// the keyboard and cover the Controls sidebar.
+    @State private var keyboardUp = false
 
     private static let mb = 1024.0 * 1024.0
     private static let gb = 1024.0 * 1024.0 * 1024.0
 
     var body: some View {
         // iPad / regular width only.
-        if hSizeClass == .regular {
-            panel
-                .frame(width: 196)
-                .padding(.trailing, 12)
-                .padding(.bottom, 12)
+        Group {
+            if hSizeClass == .regular && !keyboardUp {
+                panel
+                    .frame(width: 196)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 12)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            // A hardware keyboard's shortcut bar is short; only a real
+            // on-screen keyboard hides the monitor.
+            let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect) ?? .zero
+            keyboardUp = end.height > 150 && end.minY < (UIScreen.main.bounds.height - 1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardUp = false
         }
     }
 

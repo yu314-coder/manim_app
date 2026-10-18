@@ -166,6 +166,7 @@ struct ContentView: View {
         // happen); the view also self-gates to the regular size class, so
         // it renders nothing on iPhone.
         .overlay(alignment: .bottomTrailing) {
+            // Hides itself while the on-screen keyboard is up.
             if selectedTab == .workspace { RAMMonitorView() }
         }
         // ⇧⌘P command palette (posts the same menu notifications).

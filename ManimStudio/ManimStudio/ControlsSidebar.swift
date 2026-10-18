@@ -6,6 +6,7 @@ import Manim
 struct ControlsSidebar: View {
     @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @Binding var isOpen: Bool
+    @Environment(\.horizontalSizeClass) private var hSizeClass
 
     // Persisted via @AppStorage so the choices survive relaunches AND so
     // PythonRuntime can read them straight from UserDefaults inline before
@@ -67,6 +68,13 @@ struct ControlsSidebar: View {
                 }.buttonStyle(.plain)
             }
 
+            // Scrolls so the sidebar can be shorter than its content: with
+            // the on-screen keyboard up on an iPad, a fixed column taller
+            // than the space left pushed the whole workspace row past the
+            // screen, and the editor beside it was centred lower down,
+            // leaving a band of empty space above it.
+            ScrollView {
+            VStack(spacing: 12) {
             section(title: "Quick Preview", icon: "bolt.fill", tint: Theme.warning) {
                 pickerRow("Quality", selection: $previewQuality, options: previewQualities)
                 stepperRow("FPS", value: $previewFPS, range: 1...120, presets: [15,24,30,60])
@@ -98,8 +106,12 @@ struct ControlsSidebar: View {
                 }
                 queueNote
             }
-
-            Spacer()
+            }
+            // Room to scroll the last controls out from under the RAM
+            // monitor, which sits over the sidebar's bottom on iPad.
+            .padding(.bottom, hSizeClass == .regular ? 130 : 0)
+            }
+            .scrollIndicators(.hidden)
         }
         .padding(12)
         .background(Theme.bgSecondary)

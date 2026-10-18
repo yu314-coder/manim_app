@@ -15,6 +15,10 @@ struct WorkspaceView: View {
     @AppStorage("manim_ws_vsplit") private var vSplit: Double = 0.7   // top↔terminal
     @State private var compactPane: CompactPane = .editor   // open on the code editor
     @State private var compactSheet: CompactSheet? = nil
+    /// Height of the code editor's key bar while it floats over the
+    /// on-screen keyboard (0 when hidden). It sits on top of the area
+    /// SwiftUI leaves above the keyboard, so the panes stop above it.
+    @State private var keyBarHeight: CGFloat = 0
 
     /// On iPhone the three-pane horizontal layout is cramped to the
     /// point of unusable. Switch to a tab-style picker so each pane
@@ -45,10 +49,15 @@ struct WorkspaceView: View {
     }
 
     var body: some View {
-        if hSizeClass == .compact {
-            compactBody
-        } else {
-            regularBody
+        Group {
+            if hSizeClass == .compact {
+                compactBody
+            } else {
+                regularBody
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .editorKeyBarHeight)) { note in
+            keyBarHeight = note.userInfo?["height"] as? CGFloat ?? 0
         }
     }
 
@@ -56,7 +65,15 @@ struct WorkspaceView: View {
 
     private var regularBody: some View {
         GeometryReader { geo in
-            HStack(spacing: 0) {
+            // Typing in the editor: the key bar covers the bottom of what
+            // the keyboard leaves, so everything stops above it, and the
+            // editor takes most of that short space (the terminal keeps a
+            // few lines; SwiftTerm can't be resized to nothing).
+            let avail = geo.size.height - keyBarHeight
+            let topHeight = keyBarHeight > 0
+                ? max(120, avail - 4 - 96)
+                : max(180, geo.size.height * CGFloat(vSplit))
+            HStack(alignment: .top, spacing: 0) {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         EditorPane(source: $sourceCode)
@@ -64,7 +81,7 @@ struct WorkspaceView: View {
                         Divider().background(Theme.borderSubtle)
                         PreviewPane(videoURL: $renderedVideoURL)
                     }
-                    .frame(height: max(180, geo.size.height * CGFloat(vSplit)))
+                    .frame(height: topHeight)
 
                     Rectangle()
                         .fill(Theme.borderSubtle)
@@ -81,6 +98,7 @@ struct WorkspaceView: View {
                     TerminalPane()
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.bottom, keyBarHeight)
 
                 if sidebarOpen {
                     ControlsSidebar(isOpen: $sidebarOpen)
@@ -166,6 +184,7 @@ struct WorkspaceView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.bottom, keyBarHeight)
         }
         .background(Theme.bgPrimary)
         .sheet(item: $compactSheet) { _ in

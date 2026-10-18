@@ -441,8 +441,15 @@ extension KeyBar {
 /// window's own keyboardLayoutGuide reports an empty frame. A hardware
 /// keyboard brings at most its shortcuts bar, far shorter than a software
 /// keyboard, so the bar stays hidden then.
+extension Notification.Name {
+    /// Posted by FloatingKeyBarPresenter with userInfo["height"] (CGFloat):
+    /// how tall the floating bar is on screen, 0 when it's hidden.
+    static let editorKeyBarHeight = Notification.Name("editor.keyBar.height")
+}
+
 final class FloatingKeyBarPresenter: NSObject {
     private let bar: KeyBar
+    private var announcedHeight: CGFloat = 0
     private weak var host: UIView?
     private var bottom: NSLayoutConstraint?
     /// How far the software keyboard reaches into the window; 0 while none
@@ -501,9 +508,18 @@ final class FloatingKeyBarPresenter: NSObject {
         update()
     }
 
+    /// Tells the layout how much of the screen the bar covers.
+    private func announce(_ height: CGFloat) {
+        guard height != announcedHeight else { return }
+        announcedHeight = height
+        NotificationCenter.default.post(name: .editorKeyBarHeight, object: nil,
+                                        userInfo: ["height": height])
+    }
+
     private func update(duration: TimeInterval = 0, options: UIView.AnimationOptions = []) {
         guard isActive, keyboardOverlap > 0, let window = host?.window else {
             bar.isHidden = true
+            announce(0)
             return
         }
         if bar.superview !== window { attach(to: window) }
@@ -518,6 +534,7 @@ final class FloatingKeyBarPresenter: NSObject {
         UIView.animate(withDuration: duration, delay: 0, options: options) {
             window.layoutIfNeeded()
         }
+        announce(bar.intrinsicContentSize.height)
     }
 
     private func attach(to window: UIWindow) {
