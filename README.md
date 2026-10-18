@@ -50,6 +50,18 @@ on-device without an internet connection.
   in the floating bar. Testing in the Simulator: `simctl pbcopy` only
   leaves a promise that Simulator.app fills, so with no Simulator.app the
   clipboard reads as empty; copy inside the app instead.
+  On a narrow width (an iPhone, an iPad in Split View) the bar has two
+  rows — symbols scrolling along the top, the other keys fixed below —
+  since one row left room for a single symbol between the pinned keys.
+  WebKit's own previous / next / Done bar is dropped (a runtime subclass
+  of its content view with a nil `inputAccessoryView`), which on a phone
+  gave the code back most of the space above the keyboard.
+- **Touch typing mode** — while the on-screen keyboard is up (the bar's
+  presenter tells hardware from software keyboards by height),
+  `setTouchTyping` in `editor.html` makes Return always start a new line
+  (the indent key or a tap on the list takes a suggestion), stops the
+  list opening after every space, quote or bracket, and drops the inline
+  preview of the pick. A hardware keyboard keeps Enter-to-accept.
 - **Symbol completion** ships pre-built. `scripts/gen-library-symbols.py`
   introspects the bundled packages at *build* time and writes
   `Resources/LibrarySymbols.json`, which Monaco loads directly — no Python

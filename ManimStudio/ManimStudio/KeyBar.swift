@@ -8,6 +8,11 @@
 //  an iPhone, or an iPad without a hardware keyboard, typing Python or
 //  shell commands meant constant page switching.
 //
+//  On a narrow width (an iPhone, an iPad in Split View) the bar has two
+//  rows: the symbols scroll along the top, and every other key sits in a
+//  fixed row below, so nothing needed all the time is ever scrolled away.
+//  On a wide one it's a single row.
+//
 //  The terminal uses the bar as its inputAccessoryView, replacing
 //  SwiftTerm's generic one (whose F1–F10 keys nothing here uses). The code
 //  editor floats it above the keyboard instead (FloatingKeyBarPresenter):
@@ -67,11 +72,12 @@ struct KeyBarKey {
 
 final class KeyBar: UIInputView, UIInputViewAudioFeedback {
     private static let isPad = UIDevice.current.userInterfaceIdiom == .pad
-    static let barHeight: CGFloat = isPad ? 50 : 44
+    private static let rowHeight: CGFloat = isPad ? 50 : 44
     private static let keyHeight: CGFloat = isPad ? 38 : 34
     private static let minKeyWidth: CGFloat = isPad ? 44 : 32
-    /// Narrower than this (an iPhone, an iPad in Split View), only the
-    /// trailing keys stay pinned and the leading ones scroll with the rest.
+    /// Narrower than this (an iPhone, an iPad in Split View), the bar
+    /// takes two rows: one row would leave room for only a key or two
+    /// between the pinned ones.
     private static let compactWidth: CGFloat = 560
 
     private static let symbolFill = UIColor(white: 1, alpha: 0.17)
@@ -83,6 +89,17 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
     private let trailingKeys: [KeyBarKey]
     private var content: [UIView] = []
     private var builtCompact: Bool?
+    /// One row or two. A self-sizing input accessory takes its height from
+    /// its constraints, not from intrinsicContentSize.
+    private lazy var heightConstraint: NSLayoutConstraint = {
+        let constraint = heightAnchor.constraint(equalToConstant: Self.height(compact: !Self.isPad))
+        constraint.priority = UILayoutPriority(999)
+        return constraint
+    }()
+
+    private static func height(compact: Bool) -> CGFloat {
+        (compact ? 2 : 1) * rowHeight
+    }
     private var modifierButton: UIButton?
     private var repeatTimer: Timer?
 
@@ -100,9 +117,11 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
         leadingKeys = leading
         scrollingKeys = scrolling
         trailingKeys = trailing
-        super.init(frame: CGRect(x: 0, y: 0, width: 320, height: Self.barHeight),
+        // Until the first layout knows the width, guess from the device.
+        super.init(frame: CGRect(x: 0, y: 0, width: 320, height: Self.height(compact: !Self.isPad)),
                    inputViewStyle: floating ? .default : .keyboard)
         allowsSelfSizing = true
+        heightConstraint.isActive = true
         if floating {
             let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterialDark))
             blur.frame = bounds
@@ -118,7 +137,7 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: Self.barHeight)
+        CGSize(width: UIView.noIntrinsicMetric, height: heightConstraint.constant)
     }
 
     override func layoutSubviews() {
@@ -128,6 +147,8 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
         if compact != builtCompact {
             builtCompact = compact
             build(compact: compact)
+            heightConstraint.constant = Self.height(compact: compact)
+            invalidateIntrinsicContentSize()
         }
     }
 
@@ -142,63 +163,87 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
         content.forEach { $0.removeFromSuperview() }
         modifierButton = nil
 
-        let leading = compact ? [] : leadingKeys
-        let scrolling = compact ? leadingKeys + scrollingKeys : scrollingKeys
-        let leadingRow = row(leading)
-        let trailingRow = row(trailingKeys)
-        let middleRow = row(scrolling)
-
         let scroller = KeyScrollView()
         scroller.showsHorizontalScrollIndicator = false
         scroller.alwaysBounceHorizontal = true
         // Keys fire as soon as they're touched; a sideways drag that starts
         // on one still scrolls (KeyScrollView takes the touch back).
         scroller.delaysContentTouches = false
+        let middleRow = row(scrollingKeys, compact: compact)
         middleRow.translatesAutoresizingMaskIntoConstraints = false
         scroller.addSubview(middleRow)
-
-        content = [leadingRow, scroller, trailingRow]
-        for view in content {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(view)
-        }
         let inset: CGFloat = 6
         let gap: CGFloat = 8
-        NSLayoutConstraint.activate([
-            leadingRow.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: inset),
-            leadingRow.centerYAnchor.constraint(equalTo: centerYAnchor),
-
-            scroller.leadingAnchor.constraint(equalTo: leadingRow.trailingAnchor, constant: leading.isEmpty ? 0 : gap),
-            scroller.trailingAnchor.constraint(equalTo: trailingRow.leadingAnchor, constant: -gap),
-            scroller.topAnchor.constraint(equalTo: topAnchor),
-            scroller.bottomAnchor.constraint(equalTo: bottomAnchor),
-
+        var constraints = [
             middleRow.leadingAnchor.constraint(equalTo: scroller.contentLayoutGuide.leadingAnchor),
             middleRow.trailingAnchor.constraint(equalTo: scroller.contentLayoutGuide.trailingAnchor),
             middleRow.topAnchor.constraint(equalTo: scroller.contentLayoutGuide.topAnchor),
             middleRow.bottomAnchor.constraint(equalTo: scroller.contentLayoutGuide.bottomAnchor),
             middleRow.heightAnchor.constraint(equalTo: scroller.frameLayoutGuide.heightAnchor),
+        ]
 
-            trailingRow.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -inset),
-            trailingRow.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
+        if compact {
+            // Symbols scroll along the top; the rest share the bottom row
+            // in equal widths, so it fits a phone without scrolling.
+            let fixedRow = row(leadingKeys + trailingKeys, compact: compact)
+            fixedRow.distribution = .fillEqually
+            content = [scroller, fixedRow]
+            for view in content {
+                view.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(view)
+            }
+            constraints += [
+                scroller.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: inset),
+                scroller.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -inset),
+                scroller.topAnchor.constraint(equalTo: topAnchor),
+                scroller.heightAnchor.constraint(equalToConstant: Self.rowHeight),
+
+                fixedRow.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: inset),
+                fixedRow.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -inset),
+                fixedRow.centerYAnchor.constraint(equalTo: topAnchor, constant: Self.rowHeight * 1.5),
+            ]
+        } else {
+            let leadingRow = row(leadingKeys, compact: compact)
+            let trailingRow = row(trailingKeys, compact: compact)
+            content = [leadingRow, scroller, trailingRow]
+            for view in content {
+                view.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(view)
+            }
+            constraints += [
+                leadingRow.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: inset),
+                leadingRow.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+                scroller.leadingAnchor.constraint(equalTo: leadingRow.trailingAnchor, constant: gap),
+                scroller.trailingAnchor.constraint(equalTo: trailingRow.leadingAnchor, constant: -gap),
+                scroller.topAnchor.constraint(equalTo: topAnchor),
+                scroller.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+                trailingRow.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -inset),
+                trailingRow.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ]
+        }
+        NSLayoutConstraint.activate(constraints)
         styleModifier()
     }
 
-    private func row(_ keys: [KeyBarKey]) -> UIStackView {
-        let stack = UIStackView(arrangedSubviews: keys.map(button))
+    private func row(_ keys: [KeyBarKey], compact: Bool) -> UIStackView {
+        let stack = UIStackView(arrangedSubviews: keys.map { button(for: $0, compact: compact) })
         stack.axis = .horizontal
         stack.spacing = Self.isPad ? 6 : 4
         stack.alignment = .center
         return stack
     }
 
-    private func button(for key: KeyBarKey) -> UIButton {
+    private func button(for key: KeyBarKey, compact: Bool) -> UIButton {
         var config = UIButton.Configuration.filled()
         config.cornerStyle = .medium
         config.baseForegroundColor = .white
         config.baseBackgroundColor = key.kind == .symbol ? Self.symbolFill : Self.functionFill
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8)
+        // The fixed row of a narrow bar shares out its width; slim insets
+        // keep "ctrl" from truncating on the narrowest phones.
+        let side: CGFloat = compact ? 2 : 8
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: side, bottom: 0, trailing: side)
         if let icon = key.icon {
             config.image = UIImage(systemName: icon, withConfiguration:
                 UIImage.SymbolConfiguration(pointSize: Self.isPad ? 16 : 14, weight: .semibold))
@@ -336,25 +381,27 @@ extension KeyBar {
 
     // MARK: - Code editor
 
-    /// Keys for Python: indent / outdent, paste, undo / redo, completion,
-    /// comment toggling, copy / cut / select all, the symbols on the
-    /// keyboard's other pages, and cursor keys. `send` gets a key name for `window.__editor.key` in
+    /// Keys for Python: indent / outdent, undo, paste, the symbols on the
+    /// keyboard's other pages, redo, completion, comment toggling,
+    /// copy / cut / select all, and cursor keys. `send` gets a key name for `window.__editor.key` in
     /// editor.html, plus the text for "text".
     static func editor(send: @escaping (_ key: String, _ text: String) -> Void,
                        hideKeyboard: @escaping () -> Void) -> KeyBar {
         func key(_ name: String) -> () -> Void { { send(name, "") } }
         let leading: [KeyBarKey] = [
-            .function("", icon: "arrow.right.to.line", name: "Indent", key("tab")),
+            // Also accepts the highlighted suggestion while the list is up
+            // (Return just starts a new line when typing on the screen).
+            .function("", icon: "arrow.right.to.line", name: "Indent, or accept suggestion", key("tab")),
             .function("", icon: "arrow.left.to.line", name: "Outdent", key("outdent")),
+            .function("", icon: "arrow.uturn.backward", name: "Undo", key("undo")),
             .paste { text in send("paste", text) },
         ]
-        // Symbols first: on a phone only the first few keys are in view.
+        // Symbols first: on a phone only the first ten or so are in view.
         var scrolling: [KeyBarKey] = ["(", ")", ":", "=", "[", "]", "{", "}", "'", "\"", "_", ".", ",",
                                       "+", "-", "*", "/", "<", ">", "!", "%", "&", "|", "@", "\\",
                                       "~", "^", "`", ";", "#"]
             .map { symbol in .symbol(symbol) { send("text", symbol) } }
         scrolling += [
-            .function("", icon: "arrow.uturn.backward", name: "Undo", key("undo")),
             .function("", icon: "arrow.uturn.forward", name: "Redo", key("redo")),
             .function("", icon: "text.badge.plus", name: "Suggest completions", key("suggest")),
             .function("", icon: "number", name: "Toggle comment", key("comment")),
@@ -388,6 +435,12 @@ final class FloatingKeyBarPresenter: NSObject {
     /// How far the software keyboard reaches into the window; 0 while none
     /// is up.
     private var keyboardOverlap: CGFloat = 0
+    /// Whether the keyboard last seen was the on-screen one (true) or a
+    /// hardware keyboard's shortcuts bar (false).
+    private var typingOnScreen: Bool?
+    /// Told when typing switches between the on-screen keyboard and a
+    /// hardware one; the editor relaxes its completion for touch typing.
+    var onTypingOnScreenChange: ((Bool) -> Void)?
 
     var isActive = false {
         didSet { update() }
@@ -417,7 +470,14 @@ final class FloatingKeyBarPresenter: NSObject {
               let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
         else { return }
         let frame = window.convert(end, from: screen.coordinateSpace)
-        keyboardOverlap = frame.height > 150 ? max(0, window.bounds.maxY - frame.minY) : 0
+        let overlap = max(0, window.bounds.maxY - frame.minY)
+        keyboardOverlap = frame.height > 150 ? overlap : 0
+        // Only a keyboard that's coming up says which kind is in use; one
+        // going away says nothing.
+        if overlap > 0, typingOnScreen != (frame.height > 150) {
+            typingOnScreen = frame.height > 150
+            onTypingOnScreenChange?(frame.height > 150)
+        }
         let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0
         let curve = note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
         update(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
@@ -451,11 +511,11 @@ final class FloatingKeyBarPresenter: NSObject {
         bar.removeFromSuperview()
         bar.translatesAutoresizingMaskIntoConstraints = false
         window.addSubview(bar)
+        // Height from the bar itself: one row or two, by width.
         let bottom = bar.bottomAnchor.constraint(equalTo: window.bottomAnchor)
         NSLayoutConstraint.activate([
             bar.leadingAnchor.constraint(equalTo: window.leadingAnchor),
             bar.trailingAnchor.constraint(equalTo: window.trailingAnchor),
-            bar.heightAnchor.constraint(equalToConstant: KeyBar.barHeight),
             bottom,
         ])
         self.bottom = bottom

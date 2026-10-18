@@ -480,6 +480,30 @@
                     editor.trigger('kbd', 'editor.action.triggerSuggest', {});
                 },
                 /**
+                 * Typing on the on-screen keyboard (Swift says when it's up
+                 * rather than a hardware keyboard). Return there has no
+                 * Tab beside it to choose between "new line" and "take the
+                 * suggestion", so it always starts a new line; the key
+                 * bar's indent key or a tap on the list takes a suggestion.
+                 * The list also waits for a letter instead of opening after
+                 * every space, quote or bracket, where on a phone it covered
+                 * the few lines left above the keyboard, and no greyed-out
+                 * preview of the pick is drawn into the code.
+                 */
+                setTouchTyping(on) {
+                    editor.updateOptions(on ? {
+                        acceptSuggestionOnEnter: 'off',
+                        suggestOnTriggerCharacters: false,
+                        quickSuggestionsDelay: 120,
+                        suggest: { preview: false },
+                    } : {
+                        acceptSuggestionOnEnter: 'on',
+                        suggestOnTriggerCharacters: true,
+                        quickSuggestionsDelay: 0,
+                        suggest: { preview: true },
+                    });
+                },
+                /**
                  * Run any registered Monaco editor action by ID.
                  * Used by Swift's MonacoController.showFind() etc. so the
                  * Swift layer doesn't need to know about the inner

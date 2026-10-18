@@ -40,6 +40,9 @@ final class MonacoEditorView: UIView {
     private let fallbackTextView = UITextView()
     private var isReady = false
     private var pendingSetCode: (code: String, language: String)?
+    /// Typing on the on-screen keyboard rather than a hardware one; see
+    /// `setTouchTyping` in editor.html.
+    private var typingOnScreen = false
 
     /// Coding keys over the on-screen keyboard (KeyBar), shown while
     /// Monaco has focus.
@@ -64,6 +67,10 @@ final class MonacoEditorView: UIView {
             ucc.add(self, name: "editor")
             setupView()
             loadEditor()
+            keyBarPresenter.onTypingOnScreenChange = { [weak self] onScreen in
+                self?.typingOnScreen = onScreen
+                self?.applyTypingMode()
+            }
         } else {
             setupFallbackView()
             // Ready immediately so any setCode queued by the controller
@@ -117,6 +124,12 @@ final class MonacoEditorView: UIView {
         }
         #endif
 
+        webView.hideFormAccessoryBar()
+        // The keyboard takes its look from the focused view. SwiftUI's
+        // dark scheme didn't reach the web view, so with the system in
+        // light mode a light keyboard came up under the dark editor.
+        webView.overrideUserInterfaceStyle = .dark
+
         addSubview(webView)
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: topAnchor),
@@ -139,6 +152,14 @@ final class MonacoEditorView: UIView {
     override func willMove(toWindow newWindow: UIWindow?) {
         super.willMove(toWindow: newWindow)
         if newWindow == nil { keyBarPresenter.detach() }
+    }
+
+    /// Tells Monaco whether typing is on the screen, so Return there
+    /// always starts a new line instead of taking a suggestion.
+    private func applyTypingMode() {
+        guard isReady else { return }
+        webView.evaluateJavaScript(
+            "window.__editor && window.__editor.setTouchTyping && window.__editor.setTouchTyping(\(typingOnScreen))")
     }
 
     /// A key from the key bar, handed to `window.__editor.key`.
@@ -409,6 +430,7 @@ extension MonacoEditorView: WKScriptMessageHandler {
             }
             // Push symbol index now that JS is ready
             pushSymbolIndex()
+            applyTypingMode()
 
         case "jserror":
             // editor.html installs a window.onerror that posts these.
@@ -470,5 +492,36 @@ extension MonacoEditorView: UITextViewDelegate {
     func textViewDidChange(_ textView: UITextView) {
         currentText = textView.text ?? ""
         onTextChanged?(currentText)
+    }
+}
+
+// MARK: - WebKit's form bar
+
+private extension WKWebView {
+    /// Drops WebKit's form bar (previous / next / Done) from over the
+    /// keyboard. It does nothing useful for a code editor, and on a phone
+    /// it took a third of the space left above the keyboard; the key bar
+    /// has its own hide-keyboard key. WebKit's content view, which takes
+    /// the keyboard's focus, gets a subclass whose inputAccessoryView is
+    /// nil, the same way web-view app frameworks hide it.
+    func hideFormAccessoryBar() {
+        guard let content = scrollView.subviews.first(where: {
+            String(describing: type(of: $0)).hasPrefix("WKContent")
+        }) else { return }
+        let base: AnyClass = type(of: content)
+        let name = "\(NSStringFromClass(base))_NoFormBar"
+        if let existing = NSClassFromString(name) {
+            object_setClass(content, existing)
+            return
+        }
+        guard let subclass = objc_allocateClassPair(base, name, 0) else { return }
+        let getter = #selector(getter: UIResponder.inputAccessoryView)
+        if let method = class_getInstanceMethod(UIResponder.self, getter) {
+            let nothing: @convention(block) (AnyObject) -> UIView? = { _ in nil }
+            class_addMethod(subclass, getter, imp_implementationWithBlock(nothing),
+                            method_getTypeEncoding(method))
+        }
+        objc_registerClassPair(subclass)
+        object_setClass(content, subclass)
     }
 }
