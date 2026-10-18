@@ -325,35 +325,80 @@
                     window.webkit.messageHandlers.editor.postMessage(msg);
                 } catch (_) { /* ignore — Swift handler missing */ }
             }
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, () => {
-                const sel = editor.getSelection();
-                const text = sel && !sel.isEmpty()
-                    ? editor.getModel().getValueInRange(sel)
-                    : '';
-                if (text) _postToSwift({ kind: 'clipboardCopy', text: text });
-            });
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, () => {
+            function copySelection(cut) {
                 const sel = editor.getSelection();
                 if (!sel || sel.isEmpty()) return;
-                const text = editor.getModel().getValueInRange(sel);
-                _postToSwift({ kind: 'clipboardCopy', text: text });
-                editor.executeEdits('cut', [{ range: sel, text: '', forceMoveMarkers: true }]);
-            });
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
-                // Request paste text from Swift. Response comes back
-                // via window.__editor.pasteFromClipboard(text) below.
-                _postToSwift({ kind: 'clipboardPasteRequest' });
-            });
-            // Cmd+A — Monaco has this built-in, but make it explicit
-            // in case a future build disables it.
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA, () => {
+                _postToSwift({ kind: 'clipboardCopy', text: editor.getModel().getValueInRange(sel) });
+                if (cut) editor.executeEdits('cut', [{ range: sel, text: '', forceMoveMarkers: true }]);
+            }
+            function selectAll() {
                 const model = editor.getModel();
-                if (!model) return;
-                const last = model.getLineCount();
-                const lastCol = model.getLineMaxColumn(last);
-                editor.setSelection({ startLineNumber: 1, startColumn: 1,
-                                      endLineNumber: last, endColumn: lastCol });
-            });
+                if (model) editor.setSelection(model.getFullModelRange());
+            }
+            // Request paste text from Swift. Response comes back via
+            // window.__editor.pasteFromClipboard(text) below.
+            function requestPaste() { _postToSwift({ kind: 'clipboardPasteRequest' }); }
+
+            // The usual editing shortcuts, on ⌘ and on Ctrl alike: people
+            // coming from Windows reach for Ctrl+C / Ctrl+V. (CtrlCmd is
+            // ⌘ where Monaco thinks it's on a Mac — an iPad — and Ctrl on
+            // an iPhone; WinCtrl is the other one.) Ctrl+A here replaces
+            // Monaco's Mac-only "start of line".
+            const shortcuts = {
+                KeyA: selectAll,
+                KeyC: () => copySelection(false),
+                KeyX: () => copySelection(true),
+                KeyV: requestPaste,
+                KeyZ: () => editor.trigger('keyboard', 'undo', null),
+                KeyY: () => editor.trigger('keyboard', 'redo', null),
+            };
+            for (const code in shortcuts) {
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode[code], shortcuts[code]);
+                editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode[code], shortcuts[code]);
+            }
+
+            // The key bar's ctrl key (KeyBar.swift) for the on-screen
+            // keyboard, which has none: once armed, the next letter typed
+            // runs its shortcut instead of being inserted. A, C, X, V, Z,
+            // Y as above, plus F to find and / to comment.
+            let ctrlArmed = false;
+            let swallowUntil = 0;
+            function releaseCtrl() {
+                if (!ctrlArmed) return;
+                ctrlArmed = false;
+                _postToSwift({ kind: 'ctrlReleased' });
+            }
+            function runCtrl(ch) {
+                const action = {
+                    a: shortcuts.KeyA, c: shortcuts.KeyC, x: shortcuts.KeyX,
+                    v: shortcuts.KeyV, z: shortcuts.KeyZ, y: shortcuts.KeyY,
+                    f: () => editor.getAction('actions.find').run(),
+                    '/': () => editor.trigger('keyboard', 'editor.action.commentLine', null),
+                }[ch.toLowerCase()];
+                releaseCtrl();
+                if (!action) return false;
+                action();
+                return true;
+            }
+            const editorNode = editor.getDomNode();
+            // The on-screen keyboard sends a keydown and then the text;
+            // stop both, whichever WebKit delivers with the letter.
+            editorNode.addEventListener('keydown', (e) => {
+                if (!ctrlArmed || e.key.length !== 1) return;
+                if (runCtrl(e.key)) {
+                    e.preventDefault(); e.stopPropagation();
+                    swallowUntil = Date.now() + 300;
+                }
+            }, true);
+            editorNode.addEventListener('beforeinput', (e) => {
+                if (Date.now() < swallowUntil) {
+                    swallowUntil = 0;
+                    e.preventDefault(); e.stopPropagation();
+                    return;
+                }
+                if (!ctrlArmed || e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
+                if (runCtrl(e.data)) { e.preventDefault(); e.stopPropagation(); }
+            }, true);
 
             // Fade out skeleton
             const skel = document.getElementById('editorSkeleton');
@@ -365,7 +410,10 @@
             // Notify Swift — focus, so the key bar over the on-screen
             // keyboard shows only while typing here
             editor.onDidFocusEditorText(() => postToSwift({ kind: 'focus', focused: true }));
-            editor.onDidBlurEditorText(() => postToSwift({ kind: 'focus', focused: false }));
+            editor.onDidBlurEditorText(() => {
+                releaseCtrl();
+                postToSwift({ kind: 'focus', focused: false });
+            });
 
             // Notify Swift — content changes (debounced)
             let changeTimer = null;
@@ -443,6 +491,9 @@
                  */
                 key(name, text) {
                     editor.focus();
+                    if (name === 'ctrl') { ctrlArmed = text === 'on'; return; }
+                    // Any other key of the bar drops an armed ctrl.
+                    releaseCtrl();
                     if (name === 'text') {
                         editor.trigger('keyboard', 'type', { text: String(text) });
                         return;
@@ -450,17 +501,8 @@
                     // Clipboard keys for the on-screen keyboard, which has
                     // no ⌘C / ⌘X / ⌘V and no edit menu over the editor.
                     if (name === 'paste') { this.pasteFromClipboard(String(text)); return; }
-                    if (name === 'copy' || name === 'cut') {
-                        const sel = editor.getSelection();
-                        if (!sel || sel.isEmpty()) return;
-                        _postToSwift({ kind: 'clipboardCopy', text: editor.getModel().getValueInRange(sel) });
-                        if (name === 'cut') editor.executeEdits('cut', [{ range: sel, text: '', forceMoveMarkers: true }]);
-                        return;
-                    }
-                    if (name === 'selectAll') {
-                        editor.setSelection(editor.getModel().getFullModelRange());
-                        return;
-                    }
+                    if (name === 'copy' || name === 'cut') { copySelection(name === 'cut'); return; }
+                    if (name === 'selectAll') { selectAll(); return; }
                     const suggesting = !!document.querySelector('.suggest-widget.visible');
                     const command = (suggesting && {
                         up: 'selectPrevSuggestion',

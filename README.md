@@ -56,6 +56,12 @@ on-device without an internet connection.
   WebKit's own previous / next / Done bar is dropped (a runtime subclass
   of its content view with a nil `inputAccessoryView`), which on a phone
   gave the code back most of the space above the keyboard.
+- **Ctrl shortcuts** — the editor's bar has a sticky ctrl like the
+  terminal's: armed, the next letter typed on the on-screen keyboard runs
+  its shortcut instead of being inserted (A select all, C copy, X cut,
+  V paste, Z undo, Y redo, F find, / comment; caught on keydown /
+  beforeinput in `editor.html`). From a hardware keyboard Ctrl+A / C / X
+  / V / Z / Y work the same as ⌘.
 - **Touch typing mode** — while the on-screen keyboard is up (the bar's
   presenter tells hardware from software keyboards by height),
   `setTouchTyping` in `editor.html` makes Return always start a new line

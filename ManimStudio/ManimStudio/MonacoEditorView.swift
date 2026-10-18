@@ -46,10 +46,10 @@ final class MonacoEditorView: UIView {
 
     /// Coding keys over the on-screen keyboard (KeyBar), shown while
     /// Monaco has focus.
-    private lazy var keyBarPresenter = FloatingKeyBarPresenter(
-        bar: KeyBar.editor(send: { [weak self] key, text in self?.sendKey(key, text: text) },
-                           hideKeyboard: { [weak self] in self?.webView.endEditing(true) }),
-        host: self)
+    private lazy var keyBar = KeyBar.editor(
+        send: { [weak self] key, text in self?.sendKey(key, text: text) },
+        hideKeyboard: { [weak self] in self?.webView.endEditing(true) })
+    private lazy var keyBarPresenter = FloatingKeyBarPresenter(bar: keyBar, host: self)
 
     override init(frame: CGRect) {
         let config = WKWebViewConfiguration()
@@ -449,6 +449,9 @@ extension MonacoEditorView: WKScriptMessageHandler {
 
         case "focus":
             keyBarPresenter.isActive = body["focused"] as? Bool ?? false
+
+        case "ctrlReleased":
+            keyBar.modifierArmed = false
 
         case "resolveRequest":
             handleResolveRequest(body)

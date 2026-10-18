@@ -381,14 +381,25 @@ extension KeyBar {
 
     // MARK: - Code editor
 
-    /// Keys for Python: indent / outdent, undo, paste, the symbols on the
+    /// Keys for Python: a sticky ctrl for ⌃A / ⌃C / ⌃V…, indent / outdent,
+    /// undo, paste, the symbols on the
     /// keyboard's other pages, redo, completion, comment toggling,
     /// copy / cut / select all, and cursor keys. `send` gets a key name for `window.__editor.key` in
     /// editor.html, plus the text for "text".
     static func editor(send: @escaping (_ key: String, _ text: String) -> Void,
                        hideKeyboard: @escaping () -> Void) -> KeyBar {
         func key(_ name: String) -> () -> Void { { send(name, "") } }
+        weak var bar: KeyBar?
+        // Sticky, like the terminal's: tap it, then a letter on the
+        // keyboard — A select all, C copy, X cut, V paste, Z undo, Y redo.
+        // The editor un-lights it (`ctrlReleased`) once a letter is used.
+        let ctrl = KeyBarKey(title: "ctrl", icon: nil, accessibilityLabel: "Control", kind: .modifier) {
+            guard let bar else { return }
+            bar.modifierArmed.toggle()
+            send("ctrl", bar.modifierArmed ? "on" : "off")
+        }
         let leading: [KeyBarKey] = [
+            ctrl,
             // Also accepts the highlighted suggestion while the list is up
             // (Return just starts a new line when typing on the screen).
             .function("", icon: "arrow.right.to.line", name: "Indent, or accept suggestion", key("tab")),
@@ -416,7 +427,9 @@ extension KeyBar {
             .repeating(icon: "arrow.right", name: "Right", key("right")),
             .function("", icon: "keyboard.chevron.compact.down", name: "Hide keyboard", hideKeyboard),
         ]
-        return KeyBar(leading: leading, scrolling: scrolling, trailing: trailing, floating: true)
+        let made = KeyBar(leading: leading, scrolling: scrolling, trailing: trailing, floating: true)
+        bar = made
+        return made
     }
 }
 
