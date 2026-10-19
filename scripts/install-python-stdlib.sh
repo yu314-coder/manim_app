@@ -283,7 +283,13 @@ STDLIB_SRC="$BEEWARE/lib/python3.14"
 
 # ── 1. Copy stdlib + per-arch lib-dynload + sysconfigdata.
 mkdir -p "$DST"
-rsync -a --delete --exclude '__pycache__' --exclude 'lib-dynload' \
+# Left out (size, not function): CPython's own test suite (/test, 34 MB)
+# and the parts that need a desktop toolkit or an installer iOS doesn't
+# have — tkinter / idlelib / turtledemo (Tk) and ensurepip (pip wheels;
+# packages can't be installed in the app).
+rsync -a --delete --delete-excluded --exclude '__pycache__' --exclude 'lib-dynload' \
+  --exclude '/test/' --exclude '/idlelib/' --exclude '/tkinter/' \
+  --exclude '/turtledemo/' --exclude '/ensurepip/' \
   "$STDLIB_SRC/" "$DST/"
 [ -d "$DYNLOAD_SRC" ] && rsync -a --delete "$DYNLOAD_SRC/" "$DST/lib-dynload/"
 [ -d "$PERARCH_DIR" ] && find "$PERARCH_DIR" -maxdepth 1 -name "_sysconfigdata__*.py" -exec cp -f {} "$DST/" \;
@@ -472,6 +478,16 @@ done
 shopt -u nullglob
 echo "note: consolidated $CONSOLIDATED entries into $SITE (SwiftPM bundles flattened to BeeWare layout)"
 
+# ── 9a. Packages' own test suites (numpy/…/tests, sklearn/…/tests,
+# tornado/test …, ~16 MB): nothing imports them at runtime. Directories
+# only — jinja2/tests.py is a real module.
+TESTDIRS=0
+while IFS= read -r -d '' d; do
+  rm -rf "$d"
+  TESTDIRS=$((TESTDIRS + 1))
+done < <(find "$SITE" -type d \( -name tests -o -name test \) -prune -print0)
+echo "note: removed $TESTDIRS package test-suite folder(s) from $SITE"
+
 # ── 9b. Scrub URLs from U.S.-embargoed countries out of the bundled
 #       site-packages. Apple's App Review scans the binary for any
 #       string starting with "https://" and pointing at a top-level
@@ -655,15 +671,16 @@ echo "note: relocated $RELOC dylib(s) from app_packages → Frameworks/"
 # So these binaries aren't called at runtime and can be safely deleted —
 # the .py loader code in latex/__init__.py just skips initialization
 # when the binaries are absent.
+#
+# What's left after that is latex/texmf (42 MB), which nothing reads
+# either: busytex has the same files packed into offlinai-texmf.data (built
+# from this tree), and offlinai_latex / WebLaTeXEngine look under
+# Frameworks/latex, which the app doesn't have. Remove the whole folder.
 LATEX_DIR="$APP/app_packages/site-packages/latex"
-DELETED_XC=0
 if [ -d "$LATEX_DIR" ]; then
-  while IFS= read -r -d '' xcfw; do
-    rm -rf "$xcfw"
-    DELETED_XC=$((DELETED_XC + 1))
-  done < <(find "$LATEX_DIR" -maxdepth 2 -type d -name "*.xcframework" -print0)
+  rm -rf "$LATEX_DIR"
+  echo "note: removed unused app_packages/site-packages/latex/ (texmf duplicate of offlinai-texmf.data)"
 fi
-echo "note: deleted $DELETED_XC unused xcframework(s) from app_packages/site-packages/latex/"
 
 # ── 13. NO Swift dylib bundling. CodeBench (which uploads successfully)
 # has zero libswift*.dylib in its app/Frameworks AND zero @rpath/libswift

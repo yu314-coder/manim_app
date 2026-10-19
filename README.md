@@ -196,6 +196,14 @@ after launch, app + its WebKit processes:
   imports the module (a meta-path finder wrapping the loader), so plots
   still show inline, the start-up line is unchanged, and renders that don't
   plot never load either library (Pythagorean render 5.1 → 4.9 s).
+- **~97 MB smaller app** (uncompressed; `scripts/install-python-stdlib.sh`):
+  CPython's test suite and the Tk / installer parts of the stdlib
+  (`test`, `tkinter`, `idlelib`, `turtledemo`, `ensurepip`: 50 → 12 MB),
+  the packages' own test suites (57 `tests`/`test` folders, 16 MB), and
+  `site-packages/latex/texmf` (42 MB) — a leftover of the busytex bundle
+  that nothing reads (busytex has it packed in `offlinai-texmf.data`).
+  Checked: 30 bundled libraries import, and an uncached MathTex render is
+  frame-identical to one from before.
 - **The Gallery's oscilloscope** (`PhaseLine`) draws at 30 fps instead of
   the display's rate (120 Hz on ProMotion) and stops in the background or
   with Reduce Motion: its share of the main thread fell from ~19 % to ~4 %.
