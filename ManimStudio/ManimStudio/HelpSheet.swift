@@ -38,7 +38,7 @@ struct HelpSheet: View {
     /// The release the What's New notes describe. Bump it together with the
     /// notes: the header's Help button shows a dot until the user has opened
     /// notes for this version, so it reappears only when there is news.
-    static let notesVersion = "1.5.1"
+    static let notesVersion = "1.6"
 
     @Environment(\.dismiss) private var dismiss
     /// Same key HeaderView reads to decide whether to show the dot.
@@ -486,6 +486,24 @@ enum HelpContent {
 
     /// What's new in `HelpSheet.notesVersion`.
     static let whatsNew: [HelpNewItem] = [
+        HelpNewItem(icon: "bolt", title: "Ready in a moment",
+             body: "The terminal is ready a few seconds after launch instead of nearly ten: plotting libraries now load the first time your code uses them, and plots still show inline."),
+        HelpNewItem(icon: "function", title: "Formulas only typeset once",
+             body: "Every MathTex is kept once typeset, so re-rendering a scene — the usual way to work — skips straight past formulas it has seen before. A scene with four formulas re-renders several times faster."),
+        HelpNewItem(icon: "memorychip", title: "Lighter on memory",
+             body: "The LaTeX engine loads only when your code uses LaTeX — ready before you press Render — instead of taking about 800 MB from every session."),
+        HelpNewItem(icon: "arrow.down.app", title: "About 100 MB smaller",
+             body: "Test suites and parts of Python that can't run on iPhone or iPad are no longer in the app, nor a duplicate copy of the LaTeX files."),
+        HelpNewItem(icon: "hand.tap", title: "Smoother tabs",
+             body: "Gallery, System and History open without the hitch, and the Gallery's animation uses less power."),
+        HelpNewItem(icon: "terminal", title: "Terminal fixes",
+             body: "`c++`, `g++` and `clang++` explain that there's no compiler instead of showing a Python error, and `manim` no longer checks the internet for a newer version after every render."),
+    ]
+
+    /// The release before, shown under the new notes for anyone who
+    /// skipped it.
+    static let previousVersion = "1.5.1"
+    static let whatsNewPrevious: [HelpNewItem] = [
         HelpNewItem(icon: "doc.on.clipboard", title: "Paste from other apps",
              body: "A **Paste** key sits above the on-screen keyboard in the editor and the terminal — without a hardware keyboard there was no way to paste. The editor's keys also copy, cut and select all. iOS may ask to allow pasting; Settings → Apps → ManimStudio → Paste from Other Apps → Allow stops it asking."),
         HelpNewItem(icon: "iphone", title: "Easier typing on iPhone",
@@ -494,32 +512,6 @@ enum HelpContent {
              body: "Tap **ctrl** above the keyboard, then A, C, X, V, Z or Y to select all, copy, cut, paste, undo or redo; F finds and / comments a line."),
         HelpNewItem(icon: "keyboard.badge.ellipsis", title: "Hardware keyboards",
              body: "With a Magic Keyboard or any other, tapping the editor always takes your typing. Ctrl+A / C / X / V / Z / Y work like ⌘, ⌘C and ⌘X with nothing selected copy or cut the whole line, ⌘I shows completions (iPadOS keeps ⌃Space for switching keyboards), and a double space stays two spaces instead of turning into \". \"."),
-    ]
-
-    /// The release before, shown under the new notes for anyone who
-    /// skipped it.
-    static let previousVersion = "1.5"
-    static let whatsNewPrevious: [HelpNewItem] = [
-        HelpNewItem(icon: "moon.zzz", title: "Renders keep going when you leave",
-             body: "On iOS and iPadOS 26, a render or preview keeps running after you switch apps, with its progress in a Live Activity. When iOS ends that background time, or you tap Cancel there, the render pauses instead of stopping and carries on when you come back. If iOS takes the hardware video encoder away while you're gone, the render switches to the software encoder instead of stopping. Earlier versions give it about 30 seconds, then it pauses until you come back."),
-        HelpNewItem(icon: "bell.badge", title: "Know what happened",
-             body: "A notification says when a render finishes, needs the app, or was paused. If iOS closes ManimStudio mid-render, which it does to background apps when memory runs short, the terminal says so when you reopen it."),
-        HelpNewItem(icon: "square.and.arrow.down", title: "Save to Files, any size",
-             body: "When a Final render finishes, the save sheet is waiting, even if it finished while you were in another app. **Save to Files…** takes every format at any size, a 12K video included, and saves to any folder, iCloud Drive too. **Save to Photos** is there for videos and images."),
-        HelpNewItem(icon: "arrow.up.left.and.arrow.down.right", title: "8K, 12K and 14K",
-             body: "8K renders even where the hardware H.264 encoder stops at 4K: the app asks the device which encoder can take the size and uses HEVC when H.264 can't. 12K and 14K join the quality list, and **Custom** sizes have no upper limit."),
-        HelpNewItem(icon: "slider.horizontal.3", title: "Encoding controls",
-             body: "**Controls → Encoding** picks the encoder (Auto, H.264, HEVC or MPEG-4) and how many frames may wait for it, for Preview and Render alike. The note under Encoder says what this device's hardware can do at the size you've chosen."),
-        HelpNewItem(icon: "stop.circle", title: "Stop really stops",
-             body: "Stop now answers within moments — including during slow setup before the first frame, like a download or a model fit. Only a single long computation step has to finish first."),
-        HelpNewItem(icon: "play.rectangle.on.rectangle", title: "Present any render",
-             body: "Present opens a library of every earlier render, not just the latest, and labels each clip with its resolution, codec, frame rate, length and data rate — read from the file itself."),
-        HelpNewItem(icon: "shippingbox", title: "More Python works",
-             body: "`requests` makes HTTPS calls out of the box, and scikit-learn now imports — two packages it needs were missing before."),
-        HelpNewItem(icon: "keyboard", title: "Keys for touch typing",
-             body: "A row of extra keys sits above the on-screen keyboard. In the terminal: esc, ctrl, tab, ^C, arrows and the shell's symbols. In the editor: indent and outdent, Python's brackets and symbols, undo, completion and arrows."),
-        HelpNewItem(icon: "terminal", title: "Terminal commands",
-             body: "Every command in `help` works or says why it can't. `js` and `node` run JavaScript, `tex` compiles plain TeX, `pdflatex`, `md` and `nb` open what they make, and `debug`, `ps` and `test-libs` work. `curl` no longer holds a download in memory. `ai`, `pip` and the C and Fortran compilers are gone — ManimStudio has nothing behind them."),
     ]
 
     static let guide: [HelpTopic] = [
