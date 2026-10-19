@@ -42,7 +42,7 @@ def install(shell_module):
                  _fix_documents_paths, _fix_missing_imports, _fix_debug, _fix_markdown,
                  _fix_http_fetch, _limit_git, _fit_test_libs, _fit_gpuz,
                  _rebrand_cpuz, _wrap_run_line, _fix_prompt_user,
-                 _defer_inline_backends):
+                 _defer_inline_backends, _quiet_manim_version_check):
         try:
             step()
         except Exception as e:
@@ -96,7 +96,10 @@ def _refuse_unsupported(line):
     words = line.split()
     if not words or words[0] not in _UNSUPPORTED:
         return False
-    if len(words) > 1:
+    # `c++ t.cpp` happens to be valid Python (c + (+t.cpp)), but a name
+    # with a "+" can't be a variable, so only real identifiers get the
+    # benefit of the doubt.
+    if len(words) > 1 and words[0].isidentifier():
         try:
             compile(line, "<shell>", "exec")
             return False
@@ -755,6 +758,27 @@ def _fix_prompt_user():
         sh.user = getpass.getuser() or "mobile"
     except Exception:
         sh.user = "mobile"
+
+
+# ── manim's PyPI check ────────────────────────────────────────────────
+
+def _quiet_manim_version_check():
+    # The `manim` command runs manim's CLI, which ends every render by
+    # asking pypi.org for the latest version and then suggests
+    # `pip install -U manim` — a network request the app doesn't need
+    # and advice that can't be followed here (manim is bundled). Turn
+    # that check off once manim is loaded, before the command runs.
+    def make(original):
+        @functools.wraps(original)
+        def manim_cmd(sh, argv):
+            try:
+                import manim
+                manim.config.notify_outdated_version = False
+            except Exception:
+                pass
+            return original(sh, argv)
+        return manim_cmd
+    _wrap("manim", make)
 
 
 # ── Inline plots without the start-up cost ────────────────────────────
