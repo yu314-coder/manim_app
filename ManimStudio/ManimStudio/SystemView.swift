@@ -56,9 +56,17 @@ final class SystemInfoModel: ObservableObject {
         thermal         = pi.thermalState
         lowPower        = pi.isLowPowerModeEnabled
 
-        let (free, total) = Self.diskCapacity()
-        diskFreeBytes  = free
-        diskTotalBytes = total
+        // The volume query takes ~40 ms on the main thread: show the last
+        // reading at once and refresh it in the background.
+        (diskFreeBytes, diskTotalBytes) = Self.lastDisk
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let reading = Self.diskCapacity()
+            await MainActor.run {
+                Self.lastDisk = reading
+                self?.diskFreeBytes = reading.free
+                self?.diskTotalBytes = reading.total
+            }
+        }
 
         let env = Self.pythonEnvironment()
         pythonVersion   = env.version
@@ -96,7 +104,9 @@ final class SystemInfoModel: ObservableObject {
     /// `volumeAvailableCapacityForImportantUsage` is what iOS actually lets
     /// an app write (it accounts for purgeable space), so it matches what a
     /// render will really have available.
-    private static func diskCapacity() -> (free: Int64, total: Int64) {
+    private static var lastDisk: (free: Int64, total: Int64) = (0, 0)
+
+    nonisolated private static func diskCapacity() -> (free: Int64, total: Int64) {
         let url = URL(fileURLWithPath: NSHomeDirectory())
         let vals = try? url.resourceValues(forKeys: [
             .volumeAvailableCapacityForImportantUsageKey,

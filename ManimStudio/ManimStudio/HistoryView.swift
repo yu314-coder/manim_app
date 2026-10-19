@@ -8,6 +8,8 @@ import AVKit
 struct HistoryView: View {
     @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @State private var entries: [Entry] = []
+    /// The first scan has finished (so an empty list really means none).
+    @State private var scanned = false
     @State private var shareURL: URL? = nil
     @State private var playerURL: URL? = nil
     @State private var confirmClear = false
@@ -55,7 +57,9 @@ struct HistoryView: View {
                 .disabled(entries.isEmpty)
             }
 
-            if entries.isEmpty {
+            if entries.isEmpty && !scanned {
+                Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if entries.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 48))
@@ -150,20 +154,30 @@ struct HistoryView: View {
 
     // MARK: storage
 
-    private static let allowedExt: Set<String> = ["mp4","mov","m4v","webm","gif","png","jpg","jpeg","webp","svg"]
+    nonisolated private static let allowedExt: Set<String> = ["mp4","mov","m4v","webm","gif","png","jpg","jpeg","webp","svg"]
 
-    private static var outputDir: URL? {
+    nonisolated private static var outputDir: URL? {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
             .first?.appendingPathComponent("ToolOutputs", isDirectory: true)
     }
 
+    /// Walks every render's folder (it grows with each render), so off the
+    /// main thread; the list updates when the walk is done.
     private func reload() {
-        guard let dir = Self.outputDir,
+        Task {
+            let found = await Task.detached(priority: .userInitiated) { Self.scan() }.value
+            entries = found
+            scanned = true
+        }
+    }
+
+    nonisolated private static func scan() -> [Entry] {
+        guard let dir = outputDir,
               let walker = FileManager.default.enumerator(
                 at: dir,
                 includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey],
                 options: [.skipsHiddenFiles])
-        else { entries = []; return }
+        else { return [] }
         var found: [Entry] = []
         for case let url as URL in walker {
             let vals = try? url.resourceValues(forKeys: [
@@ -178,7 +192,7 @@ struct HistoryView: View {
                 size: Int64(vals?.fileSize ?? 0)
             ))
         }
-        entries = found.sorted { $0.modified > $1.modified }
+        return found.sorted { $0.modified > $1.modified }
     }
 
     private func delete(_ e: Entry) {

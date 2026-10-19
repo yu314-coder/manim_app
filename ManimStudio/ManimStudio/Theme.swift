@@ -180,9 +180,16 @@ final class ThemeManager: ObservableObject {
 // ─────────────────────────────────────────────────────────────
 extension Font {
     /// Geometric display face for headings, scene titles, hero copy.
+    // Whether each face is installed, asked once: the probe builds a
+    // UIFont, and these run for every label each time a screen is drawn
+    // (~115 ms of each Gallery appearance). Fonts listed in UIAppFonts are
+    // registered before the first view, so the answer can't change later.
+    private static let hasSpaceGrotesk = isFontRegistered("SpaceGrotesk-SemiBold") || isFontRegistered("Space Grotesk")
+    private static let hasGeist = isFontRegistered("Geist-Regular") || isFontRegistered("Geist")
+    private static let hasGeistMono = isFontRegistered("GeistMono-Regular") || isFontRegistered("Geist Mono")
+
     static func resDisplay(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        if Self.isFontRegistered("SpaceGrotesk-SemiBold")
-            || Self.isFontRegistered("Space Grotesk") {
+        if Self.hasSpaceGrotesk {
             return .custom("Space Grotesk", size: size).weight(weight)
         }
         return .system(size: size, weight: weight, design: .rounded)
@@ -190,7 +197,7 @@ extension Font {
 
     /// Neutral UI face for body, controls, settings.
     static func resUI(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        if Self.isFontRegistered("Geist-Regular") || Self.isFontRegistered("Geist") {
+        if Self.hasGeist {
             return .custom("Geist", size: size).weight(weight)
         }
         return .system(size: size, weight: weight, design: .default)
@@ -198,7 +205,7 @@ extension Font {
 
     /// Tabular mono for readouts, frame counters, formulas, code.
     static func resMono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        if Self.isFontRegistered("GeistMono-Regular") || Self.isFontRegistered("Geist Mono") {
+        if Self.hasGeistMono {
             return .custom("Geist Mono", size: size).weight(weight)
         }
         return .system(size: size, weight: weight, design: .monospaced)

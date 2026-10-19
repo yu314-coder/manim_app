@@ -204,6 +204,14 @@ after launch, app + its WebKit processes:
   that nothing reads (busytex has it packed in `offlinai-texmf.data`).
   Checked: 30 bundled libraries import, and an uncached MathTex render is
   frame-identical to one from before.
+- **Tab switches.** A 6-tab tour ×3, sampled at 1 ms on the Mac copy:
+  the Gallery's cards went from 348 ms of main-thread time to 2 ms — the
+  `Font.res*` helpers built a UIFont per label on every draw to ask
+  whether Geist / Space Grotesk are installed (they aren't bundled); now
+  asked once. The System tab's disk query (133 → 11 ms) shows the last
+  reading and refreshes in the background; History walks the render
+  folders off the main thread. SwiftUI's update phase over the tour:
+  1,709 → 873 ms.
 - **The Gallery's oscilloscope** (`PhaseLine`) draws at 30 fps instead of
   the display's rate (120 Hz on ProMotion) and stops in the background or
   with Reduce Motion: its share of the main thread fell from ~19 % to ~4 %.
