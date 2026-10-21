@@ -442,8 +442,9 @@ extension KeyBar {
 /// keyboard brings at most its shortcuts bar, far shorter than a software
 /// keyboard, so the bar stays hidden then.
 extension Notification.Name {
-    /// Posted by FloatingKeyBarPresenter with userInfo["height"] (CGFloat):
-    /// how tall the floating bar is on screen, 0 when it's hidden.
+    /// Posted by FloatingKeyBarPresenter with userInfo["top"] (CGFloat):
+    /// the y of the floating bar's top edge in window coordinates, 0 when
+    /// it's hidden.
     static let editorKeyBarHeight = Notification.Name("editor.keyBar.height")
 }
 
@@ -508,12 +509,16 @@ final class FloatingKeyBarPresenter: NSObject {
         update()
     }
 
-    /// Tells the layout how much of the screen the bar covers.
-    private func announce(_ height: CGFloat) {
-        guard height != announcedHeight else { return }
-        announcedHeight = height
+    /// Tells the layout where the bar's top edge is (window coordinates,
+    /// 0 = hidden). The layout measures its own overlap with it: how much
+    /// room SwiftUI leaves above the keyboard varies by device (the
+    /// iPhone Duo leaves less than it covers), so a fixed bar height
+    /// wasn't enough.
+    private func announce(_ top: CGFloat) {
+        guard top != announcedHeight else { return }
+        announcedHeight = top
         NotificationCenter.default.post(name: .editorKeyBarHeight, object: nil,
-                                        userInfo: ["height": height])
+                                        userInfo: ["top": top])
     }
 
     private func update(duration: TimeInterval = 0, options: UIView.AnimationOptions = []) {
@@ -534,7 +539,7 @@ final class FloatingKeyBarPresenter: NSObject {
         UIView.animate(withDuration: duration, delay: 0, options: options) {
             window.layoutIfNeeded()
         }
-        announce(bar.intrinsicContentSize.height)
+        announce(window.bounds.maxY - keyboardOverlap - bar.intrinsicContentSize.height)
     }
 
     private func attach(to window: UIWindow) {

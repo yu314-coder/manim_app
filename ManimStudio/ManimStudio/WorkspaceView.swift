@@ -15,10 +15,15 @@ struct WorkspaceView: View {
     @AppStorage("manim_ws_vsplit") private var vSplit: Double = 0.7   // top↔terminal
     @State private var compactPane: CompactPane = .editor   // open on the code editor
     @State private var compactSheet: CompactSheet? = nil
-    /// Height of the code editor's key bar while it floats over the
-    /// on-screen keyboard (0 when hidden). It sits on top of the area
-    /// SwiftUI leaves above the keyboard, so the panes stop above it.
-    @State private var keyBarHeight: CGFloat = 0
+    /// Top edge (global y) of the code editor's key bar while it floats
+    /// over the on-screen keyboard, 0 when hidden; and where the workspace
+    /// itself ends. Their overlap is how far the panes stop short, so
+    /// nothing hides under the bar on any device.
+    @State private var keyBarTop: CGFloat = 0
+    @State private var workspaceBottom: CGFloat = 0
+    private var keyBarHeight: CGFloat {
+        keyBarTop > 0 ? max(0, workspaceBottom - keyBarTop) : 0
+    }
 
     /// On iPhone the three-pane horizontal layout is cramped to the
     /// point of unusable. Switch to a tab-style picker so each pane
@@ -56,8 +61,11 @@ struct WorkspaceView: View {
                 regularBody
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: {
+            workspaceBottom = $0
+        }
         .onReceive(NotificationCenter.default.publisher(for: .editorKeyBarHeight)) { note in
-            keyBarHeight = note.userInfo?["height"] as? CGFloat ?? 0
+            keyBarTop = note.userInfo?["top"] as? CGFloat ?? 0
         }
     }
 
