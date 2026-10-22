@@ -15,6 +15,15 @@ struct WorkspaceView: View {
     @AppStorage("manim_ws_vsplit") private var vSplit: Double = 0.7   // top↔terminal
     @State private var compactPane: CompactPane = .editor   // open on the code editor
     @State private var compactSheet: CompactSheet? = nil
+    /// iPhone Duo held like a laptop (half-open, hinge across the
+    /// window): the keyboard has the lower half, and the phone layout's
+    /// Editor pane puts the terminal under the code, split by a handle.
+    @State private var hingePartlyOpen = false
+    @State private var windowTall = false
+    private var duoLaptop: Bool { hingePartlyOpen && windowTall }
+    @AppStorage("manim_duo_split") private var duoSplit: Double = 0.6   // editor share
+    @State private var splitDragHeight: CGFloat? = nil
+    @State private var splitDragStart: CGFloat? = nil
     /// Top edge (global y) of the code editor's key bar while it floats
     /// over the on-screen keyboard, 0 when hidden; and where the workspace
     /// itself ends. Their overlap is how far the panes stop short, so
@@ -71,6 +80,10 @@ struct WorkspaceView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .editorKeyBarHeight)) { note in
             keyBarTop = note.userInfo?["top"] as? CGFloat ?? 0
+        }
+        .background(HingeReader(partlyOpen: $hingePartlyOpen))
+        .onGeometryChange(for: Bool.self) { $0.size.height > $0.size.width } action: {
+            windowTall = $0
         }
     }
 
@@ -143,15 +156,84 @@ struct WorkspaceView: View {
 
     // MARK: compact (iPhone)
 
+    /// The pane on screen: held like a laptop, Render Log lives under the
+    /// code in the Editor pane.
+    private var shownPane: CompactPane {
+        duoLaptop && compactPane == .terminal ? .editor : compactPane
+    }
+
+    /// Code above the terminal, with a handle between them as in iPadOS
+    /// split view: drag to resize, drag to an edge to close that side,
+    /// double-tap to even it out again.
+    private var editorOverTerminal: some View {
+        GeometryReader { geo in
+            let handle: CGFloat = 22
+            let avail = max(0, geo.size.height - handle)
+            let editorHeight = min(avail, splitDragHeight ?? avail * CGFloat(duoSplit))
+            VStack(spacing: 0) {
+                if editorHeight > 1 {
+                    EditorPane(source: $sourceCode).frame(height: editorHeight)
+                }
+                splitHandle(height: handle, avail: avail, editorHeight: editorHeight)
+                if avail - editorHeight > 1 {
+                    TerminalPane(besideEditor: true).frame(maxHeight: .infinity)
+                }
+            }
+        }
+    }
+
+    private func splitHandle(height: CGFloat, avail: CGFloat, editorHeight: CGFloat) -> some View {
+        Capsule()
+            .fill(Theme.textSecondary.opacity(0.7))
+            .frame(width: 40, height: 5)
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .background(Theme.bgSecondary)
+            .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .top)
+            .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { v in
+                        let start = splitDragStart ?? editorHeight
+                        splitDragStart = start
+                        splitDragHeight = min(max(start + v.translation.height, 0), avail)
+                    }
+                    .onEnded { _ in
+                        let h = splitDragHeight ?? editorHeight
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            // Close to an edge closes that side.
+                            duoSplit = h < 60 ? 0 : avail - h < 60 ? 1 : Double(h / max(avail, 1))
+                            splitDragHeight = nil
+                        }
+                        splitDragStart = nil
+                    }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.easeOut(duration: 0.2)) { duoSplit = 0.6 }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Editor and terminal divider")
+            .accessibilityValue("Editor \(Int((duoSplit * 100).rounded())) percent")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: duoSplit = min(1, duoSplit + 0.1)
+                case .decrement: duoSplit = max(0, duoSplit - 0.1)
+                @unknown default: break
+                }
+            }
+    }
+
     private var compactBody: some View {
         VStack(spacing: 0) {
             // Pane selector — segmented picker. Three panes get the
             // full screen one at a time; the user swipes the picker
             // or taps to switch.
             HStack(spacing: 6) {
-                ForEach(CompactPane.allCases) { pane in
+                // Held like a laptop, the Editor pane has the terminal too.
+                ForEach(CompactPane.allCases.filter { !duoLaptop || $0 != .terminal }) { pane in
                     Button {
-                        guard compactPane != pane else { return }
+                        guard shownPane != pane else { return }
                         Haptics.selection()
                         withAnimation(.easeInOut(duration: 0.15)) { compactPane = pane }
                     } label: {
@@ -159,11 +241,11 @@ struct WorkspaceView: View {
                             Image(systemName: pane.icon).font(.system(size: 11))
                             Text(pane.label).font(.system(size: 12, weight: .medium))
                         }
-                        .foregroundStyle(compactPane == pane ? .white : Theme.textSecondary)
+                        .foregroundStyle(shownPane == pane ? .white : Theme.textSecondary)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 7)
-                                .fill(compactPane == pane
+                                .fill(shownPane == pane
                                       ? AnyShapeStyle(Theme.signatureGradient)
                                       : AnyShapeStyle(Theme.bgTertiary))
                         )
@@ -190,7 +272,8 @@ struct WorkspaceView: View {
 
             // Selected pane fills the rest of the screen.
             ZStack {
-                switch compactPane {
+                switch shownPane {
+                case .editor where duoLaptop: editorOverTerminal
                 case .editor:   EditorPane(source: $sourceCode)
                 case .preview:  PreviewPane(videoURL: $renderedVideoURL)
                 case .terminal: TerminalPane()
@@ -213,4 +296,23 @@ struct WorkspaceView: View {
         .onReceive(NotificationCenter.default.publisher(for: .menuViewToggleSidebar))
             { _ in compactSheet = (compactSheet == nil) ? .controls : nil }
     }
+}
+
+/// Reports whether the iPhone Duo's hinge is partly open (iOS 27.1).
+private struct HingeReader: UIViewRepresentable {
+    @Binding var partlyOpen: Bool
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        if #available(iOS 27.1, *) {
+            let binding = $partlyOpen
+            view.addInteraction(UIHingeInteraction { _, update in
+                binding.wrappedValue = update.hinge?.status == .partiallyOpen
+            })
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }

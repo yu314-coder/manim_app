@@ -9,6 +9,8 @@
 import SwiftUI
 
 extension Notification.Name {
+    /// The Workspace tab came to the front (ContentView).
+    static let workspaceTabShown = Notification.Name("workspace.tab.shown")
     static let menuFileNew    = Notification.Name("menu.file.new")
     static let menuFileOpen   = Notification.Name("menu.file.open")
     static let menuFileSave   = Notification.Name("menu.file.save")

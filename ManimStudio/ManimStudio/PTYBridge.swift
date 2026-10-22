@@ -1288,7 +1288,7 @@ final class LineBuffer {
         case 0x17: // Ctrl-W — kill word
             killWord(terminalView: tv)
         case 0x0C: // Ctrl-L — clear screen
-            echo([0x1B, 0x5B, 0x32, 0x4A, 0x1B, 0x5B, 0x48], tv) // ESC[2J ESC[H
+            clearScreen(terminalView: tv)
         case 0x09: // Tab — complete command or filename
             if _paletteVisible && _paletteSelected < _paletteFiltered.count {
                 // Tab in palette = fill in highlighted command, wait
@@ -1469,6 +1469,25 @@ final class LineBuffer {
         cursor = i
         echo("\u{1B}[\(removed)D", tv)
         redrawTail(terminalView: tv)
+    }
+
+    /// Ctrl-L: wipes the screen but keeps the line being typed, prompt
+    /// and all, at the top. The prompt comes from Python, so it can't just
+    /// be reprinted; the rows the line takes are worked out from the
+    /// cursor, taking the prompt to be narrower than the screen.
+    private func clearScreen(terminalView tv: TerminalView) {
+        let term = tv.getTerminal()
+        let (x, y) = term.getCursorLocation()
+        let cols = max(1, term.cols)
+        let rowsAbove = cursor > x ? (cursor - x + cols - 1) / cols : 0
+        let rowsBelow = (x + buf.count - cursor) / cols
+        let first = max(0, y - rowsAbove)
+        let row = y - first + 1   // the cursor's row once the line is at the top
+        var seq = "\u{1B}[H"
+        if first > 0 { seq += "\u{1B}[\(first)M" }                 // rows above the line
+        seq += "\u{1B}[\(row + rowsBelow + 1);1H\u{1B}[J"         // rows below it
+        seq += "\u{1B}[\(row);\(x + 1)H"
+        echo(seq, tv)
     }
 
     private func redrawTail(terminalView tv: TerminalView) {

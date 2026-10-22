@@ -119,6 +119,13 @@ struct ContentView: View {
                 )
                 .opacity(selectedTab == .workspace ? 1 : 0)
                 .allowsHitTesting(selectedTab == .workspace)
+                // Lets the iPhone Duo held like a laptop bring the keyboard
+                // up on arrival (the Workspace was there all along, hidden).
+                .onChange(of: selectedTab) { _, tab in
+                    if tab == .workspace {
+                        NotificationCenter.default.post(name: .workspaceTabShown, object: nil)
+                    }
+                }
 
                 // The lightweight tabs are created on demand and torn down
                 // when you leave them (so e.g. the Gallery's six looping

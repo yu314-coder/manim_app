@@ -22,8 +22,12 @@ final class TerminalPaneViewController: UIViewController {
     private let menuButton      = UIButton(type: .system)
     private let clearButton     = UIButton(type: .system)
 
-    /// The actual xterm emulator view.
-    let terminal = TerminalView()
+    /// The actual xterm emulator view. One for the app, moved into
+    /// whichever pane shows it: the phone layout builds a new pane each
+    /// time Render Log comes back, and a new view would start blank (the
+    /// screen and scrollback live in the view).
+    let terminal = TerminalPaneViewController.sharedTerminal
+    private static let sharedTerminal = FocusReportingTerminalView()
 
     /// Optional prompt banner that the hosting VC can set.
     var onMinimize: (() -> Void)?
@@ -47,7 +51,15 @@ final class TerminalPaneViewController: UIViewController {
 
         // Extra keys over the on-screen keyboard, in place of SwiftTerm's
         // generic accessory (see KeyBar).
-        terminal.inputAccessoryView = KeyBar.terminal(for: terminal)
+        terminal.inputAccessoryView = keyBar
+        terminal.onFocusChange = { [weak self] focused in
+            guard let self else { return }
+            self.floatingBarPresenter.isActive = focused && self.laptopPosture
+        }
+        watchHinge()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(workspaceTabShown),
+            name: .workspaceTabShown, object: nil)
 
         // Apply the saved font prefs, and live-update when the Settings
         // sheet changes terminal font size / family.
@@ -66,7 +78,74 @@ final class TerminalPaneViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateLaptopPosture()   // rotation turns book posture into laptop
         syncSizeToPTY()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // After the pane switch's animation, once the hinge has reported.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.focusForLaptop() }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        floatingBarPresenter.detach()
+    }
+
+    // MARK: - iPhone Duo, held like a laptop
+    //
+    // Half-open with the hinge across the screen, iOS gives the keyboard
+    // the lower half: keys at the bottom, a see-through band above them.
+    // An input accessory goes on top of that band, well clear of the
+    // keys, so the key bar floats on the keys instead, as the editor's
+    // does (FloatingKeyBarPresenter), and the terminal stops at it. On
+    // the phone layout the keyboard comes up by itself when the terminal
+    // shows, as it does for the editor.
+
+    private lazy var keyBar = KeyBar.terminal(for: terminal)
+    private lazy var floatingBarPresenter = FloatingKeyBarPresenter(
+        bar: KeyBar.terminal(for: terminal), host: view)
+    private var hingePartlyOpen = false
+    private var laptopPosture = false
+    /// Showing on its own, not beside the editor (set by TerminalPane).
+    var isOnlyPane = false
+
+    private func watchHinge() {
+        guard #available(iOS 27.1, *) else { return }
+        view.addInteraction(UIHingeInteraction { [weak self] _, update in
+            self?.hingePartlyOpen = update.hinge?.status == .partiallyOpen
+            self?.updateLaptopPosture()
+            self?.floatingBarPresenter.hingeMoved()
+        })
+    }
+
+    private func updateLaptopPosture() {
+        guard let window = view.window else { return }
+        let laptop = hingePartlyOpen && window.bounds.height > window.bounds.width
+        guard laptop != laptopPosture else { return }
+        laptopPosture = laptop
+        terminal.inputAccessoryView = laptop ? nil : keyBar
+        terminal.reloadInputViews()
+        floatingBarPresenter.laptopHinge = laptop
+        floatingBarPresenter.isActive = laptop && terminal.isFirstResponder
+        focusForLaptop()
+    }
+
+    @objc private func workspaceTabShown() {
+        // Once the tab is in front and hit-testable.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.focusForLaptop() }
+    }
+
+    /// Only where the terminal has the screen to itself (the phone
+    /// layout's Render Log); next to the editor, the editor keeps it.
+    private func focusForLaptop() {
+        guard laptopPosture, isOnlyPane,
+              let window = view.window, !terminal.isFirstResponder else { return }
+        // Not while another tab hides the Workspace (it stays alive).
+        let center = view.convert(CGPoint(x: view.bounds.midX, y: view.bounds.midY), to: window)
+        guard window.hitTest(center, with: nil)?.isDescendant(of: view) ?? false else { return }
+        _ = terminal.becomeFirstResponder()
     }
 
     // MARK: - UI construction
@@ -313,5 +392,22 @@ final class TerminalPaneViewController: UIViewController {
     /// Useful for the boot banner.
     func writeBanner(_ text: String) {
         terminal.feed(text: text)
+    }
+}
+
+/// Tells its owner when it takes or gives up the keyboard's focus.
+final class FocusReportingTerminalView: TerminalView {
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { onFocusChange?(true) }
+        return became
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { onFocusChange?(false) }
+        return resigned
     }
 }
