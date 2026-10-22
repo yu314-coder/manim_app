@@ -555,6 +555,11 @@
                     // no ⌘C / ⌘X / ⌘V and no edit menu over the editor.
                     if (name === 'paste') { this.pasteFromClipboard(String(text)); return; }
                     if (name === 'copy' || name === 'cut') { copySelection(name === 'cut'); return; }
+                    // DuoKeyboardView (iPhone Duo) has its own Return, ⌫ and
+                    // ctrl: it sends these instead of key events.
+                    if (name === 'enter') { editor.trigger('keyboard', 'type', { text: '\n' }); return; }
+                    if (name === 'backspace') { editor.trigger('keyboard', 'deleteLeft', null); return; }
+                    if (name === 'ctrlKey') { runCtrl(String(text)); return; }
                     if (name === 'selectAll') { selectAll(); return; }
                     const suggesting = !!document.querySelector('.suggest-widget.visible');
                     const command = (suggesting && {

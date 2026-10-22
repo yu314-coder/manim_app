@@ -105,20 +105,8 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
 
     var enableInputClicksWhenVisible: Bool { true }
 
-    /// Two shorter rows, whatever the width: the bar in the band between
-    /// the hinge and the keys of an iPhone Duo held like a laptop.
-    var laptopRows = false {
-        didSet {
-            guard laptopRows != oldValue else { return }
-            builtCompact = nil
-            heightConstraint.constant = height(compact: laptopRows || !Self.isPad)
-            invalidateIntrinsicContentSize()
-            setNeedsLayout()
-        }
-    }
-    /// Row height in effect (laptop rows are shorter, to fit the band).
-    private var rowHeight: CGFloat { laptopRows ? 37 : Self.rowHeight }
-    private func height(compact: Bool) -> CGFloat { (compact ? 2 : 1) * rowHeight }
+    private var rowHeight: CGFloat { Self.rowHeight }
+    private func height(compact: Bool) -> CGFloat { Self.height(compact: compact) }
 
     /// Lights the modifier key while armed.
     var modifierArmed = false {
@@ -158,7 +146,7 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard bounds.width > 0 else { return }
-        let compact = laptopRows || bounds.width < Self.compactWidth
+        let compact = bounds.width < Self.compactWidth
         if compact != builtCompact {
             builtCompact = compact
             build(compact: compact)
@@ -483,16 +471,21 @@ final class FloatingKeyBarPresenter: NSObject {
         didSet { update() }
     }
 
-    /// iPhone Duo held like a laptop: the bar sits in the see-through band
-    /// between the hinge (the window's middle) and the keys, not above the
-    /// keyboard, and takes its two shorter rows.
+    /// iPhone Duo held like a laptop: the editor uses ManimStudio's own
+    /// keyboard (DuoKeyboardView), which has these keys on it, so the bar
+    /// stays hidden and only tells the layout where the keyboard starts.
     var laptopHinge = false {
-        didSet {
-            bar.laptopRows = laptopHinge
-            update()
+        didSet { update() }
+    }
+
+    /// The hinge moved: the key panel slides to its new place without a
+    /// keyboard frame notification, so look again once it has settled.
+    func hingeMoved() {
+        update()
+        for delay in [0.35, 0.8] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.update() }
         }
     }
-    private static let hingeGap: CGFloat = 4
 
     init(bar: KeyBar, host: UIView) {
         self.bar = bar
@@ -504,6 +497,10 @@ final class FloatingKeyBarPresenter: NSObject {
                        name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         nc.addObserver(self, selector: #selector(keyboardWillHide(_:)),
                        name: UIResponder.keyboardWillHideNotification, object: nil)
+        // The key panel's final place is only known once the keyboard is
+        // in (see keysTop).
+        nc.addObserver(self, selector: #selector(keyboardDidChangeFrame),
+                       name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
     }
 
     /// Takes the bar off screen, e.g. when the host leaves its window.
@@ -531,6 +528,33 @@ final class FloatingKeyBarPresenter: NSObject {
         update(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
     }
 
+    @objc private func keyboardDidChangeFrame() {
+        update()
+    }
+
+    /// Where the keys start, in `window`'s coordinates. The keyboard's
+    /// reported frame can begin well above them: on the iPhone Duo's tall
+    /// inner screen iOS gives the keyboard the lower half and leaves a
+    /// see-through band above the keys (~190 pt flat, ~80 pt held like a
+    /// laptop). The key panel is a view in the keyboard's window
+    /// (UITextEffectsWindow, one of the scene's windows); its class is
+    /// matched by name only. Nil if it isn't there, and the reported frame
+    /// is used as before.
+    private func keysTop(in window: UIWindow) -> CGFloat? {
+        func find(_ view: UIView, depth: Int) -> UIView? {
+            if String(describing: type(of: view)).contains("RemoteKeyboardPlaceholderView") { return view }
+            guard depth < 5 else { return nil }
+            for sub in view.subviews { if let hit = find(sub, depth: depth + 1) { return hit } }
+            return nil
+        }
+        for other in window.windowScene?.windows ?? []
+        where String(describing: type(of: other)).contains("TextEffectsWindow") {
+            guard let panel = find(other, depth: 0), panel.bounds.height > 100 else { continue }
+            return panel.convert(panel.bounds, to: window).minY
+        }
+        return nil
+    }
+
     @objc private func keyboardWillHide(_ note: Notification) {
         keyboardOverlap = 0
         update()
@@ -554,6 +578,11 @@ final class FloatingKeyBarPresenter: NSObject {
             announce(0)
             return
         }
+        if laptopHinge {
+            bar.isHidden = true
+            announce(window.bounds.maxY - keyboardOverlap)
+            return
+        }
         if bar.superview !== window { attach(to: window) }
         window.bringSubviewToFront(bar)
         if bar.isHidden {
@@ -563,8 +592,10 @@ final class FloatingKeyBarPresenter: NSObject {
             bar.isHidden = false
         }
         let barHeight = bar.intrinsicContentSize.height
-        let top = laptopHinge ? window.bounds.midY + Self.hingeGap
-                              : window.bounds.maxY - keyboardOverlap - barHeight
+        // On the keys themselves, not on the top of the keyboard's frame.
+        let keyboardTop = window.bounds.maxY - keyboardOverlap
+        let keys = max(keyboardTop, keysTop(in: window) ?? keyboardTop)
+        let top = keys - barHeight
         bottom?.constant = -(window.bounds.maxY - top - barHeight)
         UIView.animate(withDuration: duration, delay: 0, options: options) {
             window.layoutIfNeeded()

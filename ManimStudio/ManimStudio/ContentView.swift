@@ -52,6 +52,10 @@ struct ContentView: View {
     /// markers when a render fails. Reset on each render start.
     @State private var renderErrorMarkers: [MonacoEditorView.EditorMarker] = []
     @State private var showCommandPalette = false
+    /// The code editor's key bar is over the keyboard: the bottom tab bar
+    /// steps aside (it would ride up behind the bar) so the editor can
+    /// reach down to the bar.
+    @State private var editorKeyBarUp = false
     /// Drives the full-screen presentation cover (iPad "Present" button).
     @State private var showPresent = false
     /// A document a terminal command produced, shown in Quick Look.
@@ -155,9 +159,12 @@ struct ContentView: View {
         // (its material bleeds under the indicator). iPad keeps the top
         // pill strip, so this inset is compact-only.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if compact {
+            if compact && !editorKeyBarUp {
                 BottomTabBar(selection: $selectedTab)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .editorKeyBarHeight)) { note in
+            editorKeyBarUp = (note.userInfo?["top"] as? CGFloat ?? 0) > 0
         }
         // Live RAM HUD, bottom-right — Workspace tab only, iPad only.
         // Samples the app's phys_footprint every second and graphs it

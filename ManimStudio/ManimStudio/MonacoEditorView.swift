@@ -53,12 +53,16 @@ final class MonacoEditorView: UIView {
 
     // MARK: iPhone Duo, held like a laptop
     //
-    // Half-open with the hinge across the screen, iOS gives the keyboard
-    // the whole lower half — keys at the bottom, a see-through band above
-    // them — and the app the upper half. The key bar then moves into that
-    // band (FloatingKeyBarPresenter.laptopHinge), so the code has the upper
-    // half to itself. Anywhere else — other devices, the Duo flat, folded
-    // or held like a book — the bar floats above the keyboard as before.
+    // Half-open with the hinge across the screen, the lower half is the
+    // keyboard and the upper half the code. The editor then uses
+    // ManimStudio's own keyboard (DuoKeyboardView: digits, brackets and the
+    // rest on the keys, ctrl / tab / undo / paste / arrows on the bottom
+    // row) instead of the system one plus the key bar, sized to the lower
+    // half, and brings it up by itself when the Duo opens that way on the
+    // editor. Anywhere else nothing changes.
+    private lazy var duoKeyboard = DuoKeyboardView(
+        send: { [weak self] key, text in self?.sendKey(key, text: text) },
+        hide: { [weak self] in self?.hideKeyboard() })
     private var hingePartlyOpen = false
     private var laptopPosture = false
     private var hingeInteraction: UIInteraction?
@@ -70,6 +74,7 @@ final class MonacoEditorView: UIView {
             let interaction = UIHingeInteraction { [weak self] _, update in
                 self?.hingePartlyOpen = update.hinge?.status == .partiallyOpen
                 self?.updateKeyBarDocking()
+                self?.keyBarPresenter.hingeMoved()
             }
             addInteraction(interaction)
             hingeInteraction = interaction
@@ -87,9 +92,25 @@ final class MonacoEditorView: UIView {
         // taller than wide). Held like a book, iOS splits the keyboard
         // into thumb halves instead and the floating bar fits.
         let laptop = hingePartlyOpen && window.bounds.height > window.bounds.width
+        if laptop { duoKeyboard.height = (window.bounds.height / 2).rounded() }
         guard laptop != laptopPosture else { return }
         laptopPosture = laptop
         keyBarPresenter.laptopHinge = laptop
+        webView.setKeyboard(laptop ? duoKeyboard : nil)
+        if laptop && isOnScreen {
+            // Opened like a laptop on the editor: the lower half is the
+            // keyboard straight away.
+            webView.becomeFirstResponder()
+            webView.evaluateJavaScript("window.__editor && window.__editor.focusEditor && window.__editor.focusEditor()")
+        }
+    }
+
+    /// Whether this editor is what's showing: the Workspace is kept alive
+    /// (hidden, without hit testing) while other tabs are up.
+    private var isOnScreen: Bool {
+        guard let window, !isHidden, alpha > 0.01 else { return false }
+        let center = convert(CGPoint(x: bounds.midX, y: bounds.midY), to: window)
+        return window.hitTest(center, with: nil)?.isDescendant(of: self) ?? false
     }
 
     override init(frame: CGRect) {
@@ -572,17 +593,52 @@ extension MonacoEditorView: UITextViewDelegate {
 
 // MARK: - WebKit's form bar
 
+/// Associated-object key for the keyboard the content view returns.
+nonisolated(unsafe) private var editorKeyboardKey: UInt8 = 0
+nonisolated(unsafe) private var savedShortcutsKey: UInt8 = 0
+
 private extension WKWebView {
+    private var contentView: UIView? {
+        scrollView.subviews.first { String(describing: type(of: $0)).hasPrefix("WKContent") }
+    }
+
+    /// Puts `keyboard` in place of the system keyboard while the editor has
+    /// focus (nil: the system keyboard).
+    func setKeyboard(_ keyboard: UIView?) {
+        guard let content = contentView else { return }
+        objc_setAssociatedObject(content, &editorKeyboardKey, keyboard, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        // No shortcuts strip (WebKit's undo / redo / paste) over a keyboard
+        // that has those keys itself: it took ~50 pt between the code and
+        // the keys. Back for the system keyboard.
+        let assistant = content.inputAssistantItem
+        if keyboard != nil {
+            if savedShortcuts == nil {
+                savedShortcuts = (assistant.leadingBarButtonGroups, assistant.trailingBarButtonGroups)
+            }
+            assistant.leadingBarButtonGroups = []
+            assistant.trailingBarButtonGroups = []
+        } else if let saved = savedShortcuts {
+            assistant.leadingBarButtonGroups = saved.0
+            assistant.trailingBarButtonGroups = saved.1
+            savedShortcuts = nil
+        }
+        content.reloadInputViews()
+    }
+
+    private var savedShortcuts: ([UIBarButtonItemGroup], [UIBarButtonItemGroup])? {
+        get { objc_getAssociatedObject(self, &savedShortcutsKey) as? ([UIBarButtonItemGroup], [UIBarButtonItemGroup]) }
+        set { objc_setAssociatedObject(self, &savedShortcutsKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
     /// Drops WebKit's form bar (previous / next / Done) from over the
     /// keyboard. It does nothing useful for a code editor, and on a phone
     /// it took a third of the space left above the keyboard; the key bar
     /// has its own hide-keyboard key. WebKit's content view, which takes
     /// the keyboard's focus, gets a subclass whose inputAccessoryView is
-    /// nil, the same way web-view app frameworks hide it.
+    /// nil, the same way web-view app frameworks hide it. Its inputView
+    /// is whatever setKeyboard gave it (nil: the system keyboard).
     func hideFormAccessoryBar() {
-        guard let content = scrollView.subviews.first(where: {
-            String(describing: type(of: $0)).hasPrefix("WKContent")
-        }) else { return }
+        guard let content = contentView else { return }
         let base: AnyClass = type(of: content)
         let name = "\(NSStringFromClass(base))_NoFormBar"
         if let existing = NSClassFromString(name) {
@@ -594,6 +650,14 @@ private extension WKWebView {
         if let method = class_getInstanceMethod(UIResponder.self, getter) {
             let nothing: @convention(block) (AnyObject) -> UIView? = { _ in nil }
             class_addMethod(subclass, getter, imp_implementationWithBlock(nothing),
+                            method_getTypeEncoding(method))
+        }
+        let inputGetter = #selector(getter: UIResponder.inputView)
+        if let method = class_getInstanceMethod(UIResponder.self, inputGetter) {
+            let keyboard: @convention(block) (AnyObject) -> UIView? = { content in
+                objc_getAssociatedObject(content, &editorKeyboardKey) as? UIView
+            }
+            class_addMethod(subclass, inputGetter, imp_implementationWithBlock(keyboard),
                             method_getTypeEncoding(method))
         }
         objc_registerClassPair(subclass)

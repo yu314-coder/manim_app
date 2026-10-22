@@ -61,6 +61,11 @@ struct WorkspaceView: View {
                 regularBody
             }
         }
+        // While the key bar is up the workspace reaches past the top of the
+        // keyboard's frame, down to the bar itself: the frame can start well
+        // above the keys (the iPhone Duo leaves a band there), and the bar
+        // sits on the keys.
+        .ignoresSafeArea(keyBarTop > 0 ? .keyboard : [], edges: .bottom)
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: {
             workspaceBottom = $0
         }
