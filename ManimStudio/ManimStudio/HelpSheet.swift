@@ -496,8 +496,10 @@ enum HelpContent {
              body: "Test suites and parts of Python that can't run on iPhone or iPad are no longer in the app, nor a duplicate copy of the LaTeX files."),
         HelpNewItem(icon: "hand.tap", title: "Smoother tabs",
              body: "Gallery, System and History open without the hitch, and the Gallery's animation uses less power."),
+        HelpNewItem(icon: "laptopcomputer", title: "iPhone Duo held like a laptop",
+             body: "Half-open with the hinge across the screen, the lower half is the keyboard — it comes up by itself — and the upper half shows the code over the terminal. Drag the handle between them to resize, or to an edge to close one; double-tap it to even them out. The extra keys sit right on the keyboard."),
         HelpNewItem(icon: "terminal", title: "Terminal fixes",
-             body: "`c++`, `g++` and `clang++` explain that there's no compiler instead of showing a Python error, and `manim` no longer checks the internet for a newer version after every render."),
+             body: "The terminal keeps its output when you switch panes on iPhone, Ctrl-L clears the screen but keeps the line you're typing, `c++`, `g++` and `clang++` explain that there's no compiler instead of showing a Python error, and `manim` no longer checks the internet for a newer version after every render."),
     ]
 
     /// The release before, shown under the new notes for anyone who
