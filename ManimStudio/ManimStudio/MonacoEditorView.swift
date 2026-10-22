@@ -51,6 +51,47 @@ final class MonacoEditorView: UIView {
         hideKeyboard: { [weak self] in self?.hideKeyboard() })
     private lazy var keyBarPresenter = FloatingKeyBarPresenter(bar: keyBar, host: self)
 
+    // MARK: iPhone Duo, held like a laptop
+    //
+    // Half-open with the hinge across the screen, iOS gives the keyboard
+    // the whole lower half — keys at the bottom, a see-through band above
+    // them — and the app the upper half. The key bar then moves into that
+    // band (FloatingKeyBarPresenter.laptopHinge), so the code has the upper
+    // half to itself. Anywhere else — other devices, the Duo flat, folded
+    // or held like a book — the bar floats above the keyboard as before.
+    private var hingePartlyOpen = false
+    private var laptopPosture = false
+    private var hingeInteraction: UIInteraction?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, hingeInteraction == nil else { return }
+        if #available(iOS 27.1, *) {
+            let interaction = UIHingeInteraction { [weak self] _, update in
+                self?.hingePartlyOpen = update.hinge?.status == .partiallyOpen
+                self?.updateKeyBarDocking()
+            }
+            addInteraction(interaction)
+            hingeInteraction = interaction
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateKeyBarDocking()   // rotation turns book posture into laptop
+    }
+
+    private func updateKeyBarDocking() {
+        guard let window else { return }
+        // Laptop: half-open, and the hinge runs across the window (it's
+        // taller than wide). Held like a book, iOS splits the keyboard
+        // into thumb halves instead and the floating bar fits.
+        let laptop = hingePartlyOpen && window.bounds.height > window.bounds.width
+        guard laptop != laptopPosture else { return }
+        laptopPosture = laptop
+        keyBarPresenter.laptopHinge = laptop
+    }
+
     override init(frame: CGRect) {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = true

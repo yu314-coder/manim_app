@@ -105,6 +105,21 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
 
     var enableInputClicksWhenVisible: Bool { true }
 
+    /// Two shorter rows, whatever the width: the bar in the band between
+    /// the hinge and the keys of an iPhone Duo held like a laptop.
+    var laptopRows = false {
+        didSet {
+            guard laptopRows != oldValue else { return }
+            builtCompact = nil
+            heightConstraint.constant = height(compact: laptopRows || !Self.isPad)
+            invalidateIntrinsicContentSize()
+            setNeedsLayout()
+        }
+    }
+    /// Row height in effect (laptop rows are shorter, to fit the band).
+    private var rowHeight: CGFloat { laptopRows ? 37 : Self.rowHeight }
+    private func height(compact: Bool) -> CGFloat { (compact ? 2 : 1) * rowHeight }
+
     /// Lights the modifier key while armed.
     var modifierArmed = false {
         didSet { styleModifier() }
@@ -143,11 +158,11 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard bounds.width > 0 else { return }
-        let compact = bounds.width < Self.compactWidth
+        let compact = laptopRows || bounds.width < Self.compactWidth
         if compact != builtCompact {
             builtCompact = compact
             build(compact: compact)
-            heightConstraint.constant = Self.height(compact: compact)
+            heightConstraint.constant = height(compact: compact)
             invalidateIntrinsicContentSize()
         }
     }
@@ -196,11 +211,11 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
                 scroller.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: inset),
                 scroller.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -inset),
                 scroller.topAnchor.constraint(equalTo: topAnchor),
-                scroller.heightAnchor.constraint(equalToConstant: Self.rowHeight),
+                scroller.heightAnchor.constraint(equalToConstant: rowHeight),
 
                 fixedRow.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: inset),
                 fixedRow.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -inset),
-                fixedRow.centerYAnchor.constraint(equalTo: topAnchor, constant: Self.rowHeight * 1.5),
+                fixedRow.centerYAnchor.constraint(equalTo: topAnchor, constant: rowHeight * 1.5),
             ]
         } else {
             let leadingRow = row(leadingKeys, compact: compact)
@@ -387,7 +402,8 @@ extension KeyBar {
     /// copy / cut / select all, and cursor keys. `send` gets a key name for `window.__editor.key` in
     /// editor.html, plus the text for "text".
     static func editor(send: @escaping (_ key: String, _ text: String) -> Void,
-                       hideKeyboard: @escaping () -> Void) -> KeyBar {
+                       hideKeyboard: @escaping () -> Void,
+                       floating: Bool = true) -> KeyBar {
         func key(_ name: String) -> () -> Void { { send(name, "") } }
         weak var bar: KeyBar?
         // Sticky, like the terminal's: tap it, then a letter on the
@@ -427,7 +443,7 @@ extension KeyBar {
             .repeating(icon: "arrow.right", name: "Right", key("right")),
             .function("", icon: "keyboard.chevron.compact.down", name: "Hide keyboard", hideKeyboard),
         ]
-        let made = KeyBar(leading: leading, scrolling: scrolling, trailing: trailing, floating: true)
+        let made = KeyBar(leading: leading, scrolling: scrolling, trailing: trailing, floating: floating)
         bar = made
         return made
     }
@@ -466,6 +482,17 @@ final class FloatingKeyBarPresenter: NSObject {
     var isActive = false {
         didSet { update() }
     }
+
+    /// iPhone Duo held like a laptop: the bar sits in the see-through band
+    /// between the hinge (the window's middle) and the keys, not above the
+    /// keyboard, and takes its two shorter rows.
+    var laptopHinge = false {
+        didSet {
+            bar.laptopRows = laptopHinge
+            update()
+        }
+    }
+    private static let hingeGap: CGFloat = 4
 
     init(bar: KeyBar, host: UIView) {
         self.bar = bar
@@ -535,11 +562,14 @@ final class FloatingKeyBarPresenter: NSObject {
             window.layoutIfNeeded()
             bar.isHidden = false
         }
-        bottom?.constant = -keyboardOverlap
+        let barHeight = bar.intrinsicContentSize.height
+        let top = laptopHinge ? window.bounds.midY + Self.hingeGap
+                              : window.bounds.maxY - keyboardOverlap - barHeight
+        bottom?.constant = -(window.bounds.maxY - top - barHeight)
         UIView.animate(withDuration: duration, delay: 0, options: options) {
             window.layoutIfNeeded()
         }
-        announce(window.bounds.maxY - keyboardOverlap - bar.intrinsicContentSize.height)
+        announce(top)
     }
 
     private func attach(to window: UIWindow) {

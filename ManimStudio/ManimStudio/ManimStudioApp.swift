@@ -102,7 +102,29 @@ struct ManimStudioApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .modifier(NarrowWindowLayout())
         }
         .commands { ManimStudioCommands() }
     }
 }
+
+/// Uses the phone layout in a window narrower than 700 points even when
+/// the system calls it regular width. The iPhone Duo held half-open like a
+/// laptop gives the app the top half of its inner screen, ~669 points wide
+/// but "regular", and the iPad layout (editor + preview + controls side by
+/// side) ran off both edges. Every iPad keeps its layout: the narrowest,
+/// the iPad mini in portrait, is 744 points.
+private struct NarrowWindowLayout: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var systemSizeClass
+
+    func body(content: Content) -> some View {
+        // The window's width, not the content's: the iPad layout is wider
+        // than such a window, so measuring the content never saw it narrow.
+        GeometryReader { geo in
+            content
+                .environment(\.horizontalSizeClass,
+                             geo.size.width > 0 && geo.size.width < 700 ? .compact : systemSizeClass)
+        }
+    }
+}
+
