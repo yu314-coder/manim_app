@@ -137,6 +137,15 @@
 
     <script src="Monaco/vs/loader.js"></script>
     <script>
+        // The page itself never scrolls (Monaco scrolls inside it), but
+        // with the keyboard up WebKit can scroll it to "reveal" the caret
+        // from keys the app's layout already keeps clear of — on the
+        // iPhone Duo's outer screen that pushed the first lines off the
+        // top and left a blank band at the bottom. Put it back.
+        window.addEventListener('scroll', () => {
+            if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+        });
+
         // Configure Monaco AMD loader
         require.config({ paths: { 'vs': 'Monaco/vs' } });
 
