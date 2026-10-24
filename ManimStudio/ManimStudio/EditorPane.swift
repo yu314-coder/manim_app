@@ -26,10 +26,15 @@ struct EditorPane: View {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: 11)).foregroundStyle(Theme.accentPrimary)
-                Text(openedFilename ?? "Code Editor")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1).truncationMode(.middle)
+                // The title gives way first in a narrow column (the iPhone
+                // Duo opened flat): gone rather than "C…r".
+                ViewThatFits(in: .horizontal) {
+                    Text(openedFilename ?? "Code Editor")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    Color.clear.frame(width: 0, height: 0)
+                }
                 Spacer()
 
                 // Open — load a .py file from Files / iCloud / another app.
@@ -77,6 +82,7 @@ struct EditorPane: View {
                 } label: {
                     Text("\(Int(fontSize))px")
                         .font(.system(size: 11))
+                        .lineLimit(1).fixedSize()
                         .foregroundStyle(Theme.textSecondary)
                         .padding(.horizontal, 6).padding(.vertical, 3)
                         .background(RoundedRectangle(cornerRadius: 6).fill(Theme.bgTertiary))

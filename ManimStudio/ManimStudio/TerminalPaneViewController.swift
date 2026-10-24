@@ -26,8 +26,22 @@ final class TerminalPaneViewController: UIViewController {
     /// whichever pane shows it: the phone layout builds a new pane each
     /// time Render Log comes back, and a new view would start blank (the
     /// screen and scrollback live in the view).
-    let terminal = TerminalPaneViewController.sharedTerminal
-    private static let sharedTerminal = FocusReportingTerminalView()
+    let terminal = TerminalPaneViewController.sharedTerminal()
+    private static var shared: FocusReportingTerminalView?
+
+    /// Not a `static let`: creating the view can come back here before it
+    /// returns — SwiftTerm's input accessory makes UIKit set up the
+    /// keyboard's window, which asks SwiftUI about the status bar, which
+    /// can build another terminal pane meanwhile — and a `static let`
+    /// traps on that (it crashed at launch). The nested call makes the
+    /// view that everyone then shares.
+    private static func sharedTerminal() -> FocusReportingTerminalView {
+        if let shared { return shared }
+        let view = FocusReportingTerminalView()
+        if let shared { return shared }
+        shared = view
+        return view
+    }
 
     /// Optional prompt banner that the hosting VC can set.
     var onMinimize: (() -> Void)?
@@ -84,6 +98,9 @@ final class TerminalPaneViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // viewDidDisappear detached the bar; the terminal may still have
+        // the keyboard.
+        floatingBarPresenter.isActive = laptopPosture && terminal.isFirstResponder
         // After the pane switch's animation, once the hinge has reported.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.focusForLaptop() }
     }

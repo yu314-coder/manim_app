@@ -457,9 +457,19 @@ final class FloatingKeyBarPresenter: NSObject {
     private var announcedHeight: CGFloat = 0
     private weak var host: UIView?
     private var bottom: NSLayoutConstraint?
+    /// The software keyboard's last frame (screen coordinates), nil while
+    /// none is up. Kept even when the host isn't in a window yet — the
+    /// editor can be mid-move when the keyboard comes up — and placed in
+    /// the window on every update.
+    private var keyboardFrame: CGRect?
     /// How far the software keyboard reaches into the window; 0 while none
     /// is up.
-    private var keyboardOverlap: CGFloat = 0
+    private var keyboardOverlap: CGFloat {
+        guard let end = keyboardFrame, let window = host?.window,
+              let screen = window.windowScene?.screen else { return 0 }
+        let frame = window.convert(end, from: screen.coordinateSpace)
+        return max(0, window.bounds.maxY - frame.minY)
+    }
     /// Whether the keyboard last seen was the on-screen one (true) or a
     /// hardware keyboard's shortcuts bar (false).
     private var typingOnScreen: Bool?
@@ -477,7 +487,11 @@ final class FloatingKeyBarPresenter: NSObject {
     var laptopHinge = false {
         didSet { update() }
     }
-    private static var laptopKeysTop: [String: CGFloat] = [:]
+
+    /// Looks again, e.g. once the host is in a (new) window.
+    func refresh() {
+        update()
+    }
 
     /// The hinge moved: the key panel slides to its new place without a
     /// keyboard frame notification, so look again once it has settled.
@@ -512,17 +526,16 @@ final class FloatingKeyBarPresenter: NSObject {
     }
 
     @objc private func keyboardWillChangeFrame(_ note: Notification) {
-        guard let window = host?.window, let screen = window.windowScene?.screen,
-              let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        guard let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
         else { return }
-        let frame = window.convert(end, from: screen.coordinateSpace)
-        let overlap = max(0, window.bounds.maxY - frame.minY)
-        keyboardOverlap = frame.height > 150 ? overlap : 0
+        keyboardFrame = end.height > 150 ? end : nil
         // Only a keyboard that's coming up says which kind is in use; one
         // going away says nothing.
-        if overlap > 0, typingOnScreen != (frame.height > 150) {
-            typingOnScreen = frame.height > 150
-            onTypingOnScreenChange?(frame.height > 150)
+        if let window = host?.window, let screen = window.windowScene?.screen,
+           window.bounds.maxY - window.convert(end, from: screen.coordinateSpace).minY > 0,
+           typingOnScreen != (end.height > 150) {
+            typingOnScreen = end.height > 150
+            onTypingOnScreenChange?(end.height > 150)
         }
         let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0
         let curve = note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
@@ -557,7 +570,7 @@ final class FloatingKeyBarPresenter: NSObject {
     }
 
     @objc private func keyboardWillHide(_ note: Notification) {
-        keyboardOverlap = 0
+        keyboardFrame = nil
         update()
     }
 
@@ -595,16 +608,15 @@ final class FloatingKeyBarPresenter: NSObject {
         let barHeight = bar.intrinsicContentSize.height
         // On the keys themselves, not on the top of the keyboard's frame.
         let keyboardTop = window.bounds.maxY - keyboardOverlap
-        var keys = max(keyboardTop, keysTop(in: window) ?? keyboardTop)
-        if laptopHinge {
-            // The key panel only reports the keys' place the first time;
-            // later it covers the whole lower half. Keep what it said for
-            // this keyboard, or failing that put the bar where the keys
-            // were measured on the iPhone Duo: 80 pt below the hinge.
-            let frame = "\(window.bounds.size) \(keyboardTop)"
-            if keys > keyboardTop + 1 { Self.laptopKeysTop[frame] = keys }
-            keys = max(keys, Self.laptopKeysTop[frame] ?? window.bounds.midY + 80)
-        }
+        // Held like a laptop the key panel can't be trusted: it reports
+        // the keys' place only for the first keyboard, and can keep a
+        // stale one (the phone-height keyboard iOS shows for a moment
+        // before switching to the half-screen one hid the bar behind the
+        // keys). There the keys sit 80 pt below the hinge, the window's
+        // middle (measured on the iPhone Duo).
+        let keys = laptopHinge
+            ? max(keyboardTop, window.bounds.midY + 80)
+            : max(keyboardTop, keysTop(in: window) ?? keyboardTop)
         let top = keys - barHeight
         bottom?.constant = -(window.bounds.maxY - top - barHeight)
         UIView.animate(withDuration: duration, delay: 0, options: options) {

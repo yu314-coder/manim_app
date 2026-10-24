@@ -199,23 +199,31 @@ struct HeaderView: View {
 
     private var regularBody: some View {
         HStack(spacing: 16) {
-            // LEFT — logo + title + autosave
-            HStack(spacing: 10) {
-                Text("🎬").font(.system(size: 22))
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Manim Animation Studio")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Professional Edition v\(appVersion)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.textDim)
+            // LEFT — logo + title + autosave. In a narrower window (the
+            // iPhone Duo opened flat) the words give way to the buttons:
+            // title first, then the autosave label, never wrapped.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    Text("🎬").font(.system(size: 22))
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Manim Animation Studio")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("Professional Edition v\(appVersion)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textDim)
+                    }
+                    .fixedSize()
+                    autosaveBadge(label: true)
                 }
-                HStack(spacing: 4) {
-                    Circle().fill(Theme.success).frame(width: 6, height: 6)
-                    Text(autosaveText).font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
+                HStack(spacing: 10) {
+                    Text("🎬").font(.system(size: 22))
+                    autosaveBadge(label: true)
                 }
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Capsule().fill(Theme.bgTertiary))
+                HStack(spacing: 10) {
+                    Text("🎬").font(.system(size: 22))
+                    autosaveBadge(label: false)
+                }
             }
 
             Spacer(minLength: 12)
@@ -292,6 +300,7 @@ struct HeaderView: View {
                     Image(systemName: "function").font(.system(size: 10))
                     Text("LaTeX").font(.system(size: 10, weight: .medium))
                 }
+                .fixedSize()
                 .foregroundStyle(Theme.success)
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Capsule().fill(Theme.success.opacity(0.12)))
@@ -327,6 +336,20 @@ struct HeaderView: View {
             Theme.bgSecondary
                 .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
         )
+    }
+
+    /// Green dot, and "Autosaved" unless there's no room for it.
+    private func autosaveBadge(label: Bool) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(Theme.success).frame(width: 6, height: 6)
+            if label {
+                Text(autosaveText).font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
+                    .fixedSize()
+            }
+        }
+        .padding(.horizontal, label ? 8 : 6).padding(.vertical, label ? 3 : 6)
+        .background(Capsule().fill(Theme.bgTertiary))
+        .help(autosaveText)
     }
 
     // MARK: scene picker

@@ -63,6 +63,11 @@ final class MonacoEditorView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window != nil, Self.monacoEnabled {
+            // Back in a window after detach() turned the bar off: typing can
+            // carry on through the move without a new focus message.
+            keyBarPresenter.isActive = webContentView?.isFirstResponder ?? false
+        }
         guard window != nil, hingeInteraction == nil else { return }
         if #available(iOS 27.1, *) {
             let interaction = UIHingeInteraction { [weak self] _, update in

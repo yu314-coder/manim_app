@@ -18,9 +18,7 @@ struct WorkspaceView: View {
     /// iPhone Duo held like a laptop (half-open, hinge across the
     /// window): the keyboard has the lower half, and the phone layout's
     /// Editor pane puts the terminal under the code, split by a handle.
-    @State private var hingePartlyOpen = false
-    @State private var windowTall = false
-    private var duoLaptop: Bool { hingePartlyOpen && windowTall }
+    @State private var duoLaptop = false
     @AppStorage("manim_duo_split") private var duoSplit: Double = 0.6   // editor share
     @AppStorage("manim_duo_lower") private var duoLower = CompactPane.terminal.rawValue
     @State private var splitDragHeight: CGFloat? = nil
@@ -71,21 +69,22 @@ struct WorkspaceView: View {
                 regularBody
             }
         }
+        // Where the workspace really ends, measured inside the modifier
+        // below: outside it SwiftUI reports the keyboard-avoiding edge
+        // even while the content reaches past it (seen on the iPhone Duo
+        // opened like a laptop with the keyboard already up).
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: {
+            workspaceBottom = $0
+        }
         // While the key bar is up the workspace reaches past the top of the
         // keyboard's frame, down to the bar itself: the frame can start well
         // above the keys (the iPhone Duo leaves a band there), and the bar
         // sits on the keys.
         .ignoresSafeArea(keyBarTop > 0 ? .keyboard : [], edges: .bottom)
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: {
-            workspaceBottom = $0
-        }
         .onReceive(NotificationCenter.default.publisher(for: .editorKeyBarHeight)) { note in
             keyBarTop = note.userInfo?["top"] as? CGFloat ?? 0
         }
-        .background(HingeReader(partlyOpen: $hingePartlyOpen))
-        .onGeometryChange(for: Bool.self) { $0.size.height > $0.size.width } action: {
-            windowTall = $0
-        }
+        .background(HingeReader(laptop: $duoLaptop))
     }
 
     // MARK: regular (iPad)
@@ -97,6 +96,11 @@ struct WorkspaceView: View {
             // editor takes most of that short space (the terminal keeps a
             // few lines; SwiftTerm can't be resized to nothing).
             let avail = geo.size.height - keyBarHeight
+            // Under 1000 pt (the iPhone Duo opened flat, an iPad in a narrow
+            // window) the Controls sidebar floats over the preview instead
+            // of squeezing the editor and the preview into what's left.
+            let floatSidebar = geo.size.width < 1000
+            let sidebarWidth: CGFloat = sidebarOpen && !floatSidebar ? 280 : 0
             let topHeight = keyBarHeight > 0
                 ? max(120, avail - 4 - 96)
                 : max(180, geo.size.height * CGFloat(vSplit))
@@ -104,7 +108,7 @@ struct WorkspaceView: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         EditorPane(source: $sourceCode)
-                            .frame(width: max(220, geo.size.width * CGFloat(hSplit) - (sidebarOpen ? 280 : 0) * 0.5))
+                            .frame(width: max(220, geo.size.width * CGFloat(hSplit) - sidebarWidth * 0.5))
                         Divider().background(Theme.borderSubtle)
                         PreviewPane(videoURL: $renderedVideoURL)
                     }
@@ -127,14 +131,19 @@ struct WorkspaceView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, keyBarHeight)
 
-                if sidebarOpen {
+                if sidebarOpen && !floatSidebar {
                     ControlsSidebar(isOpen: $sidebarOpen)
                         .frame(width: 280)
                         .transition(.move(edge: .trailing))
                 }
             }
             .overlay(alignment: .trailing) {
-                if !sidebarOpen {
+                if sidebarOpen && floatSidebar {
+                    ControlsSidebar(isOpen: $sidebarOpen)
+                        .frame(width: 280)
+                        .shadow(color: .black.opacity(0.45), radius: 16, x: -4)
+                        .transition(.move(edge: .trailing))
+                } else if !sidebarOpen {
                     Button {
                         withAnimation { sidebarOpen = true }
                     } label: {
@@ -364,21 +373,61 @@ struct WorkspaceView: View {
     }
 }
 
-/// Reports whether the iPhone Duo's hinge is partly open (iOS 27.1).
+/// Reports whether the iPhone Duo is held like a laptop: hinge partly
+/// open (iOS 27.1) and the window taller than wide. The window, not the
+/// workspace: with the keyboard up the workspace is wider than tall.
 private struct HingeReader: UIViewRepresentable {
-    @Binding var partlyOpen: Bool
+    @Binding var laptop: Bool
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.isUserInteractionEnabled = false
-        if #available(iOS 27.1, *) {
-            let binding = $partlyOpen
-            view.addInteraction(UIHingeInteraction { _, update in
-                binding.wrappedValue = update.hinge?.status == .partiallyOpen
-            })
+    func makeUIView(context: Context) -> ReaderView {
+        let view = ReaderView()
+        let binding = $laptop
+        view.onChange = { laptop in
+            // Not during SwiftUI's own update, where a state change is
+            // dropped.
+            DispatchQueue.main.async {
+                if binding.wrappedValue != laptop { binding.wrappedValue = laptop }
+            }
         }
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: ReaderView, context: Context) {}
+
+    final class ReaderView: UIView {
+        var onChange: ((Bool) -> Void)?
+        private var partlyOpen = false
+        private var reported: Bool?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            if #available(iOS 27.1, *) {
+                addInteraction(UIHingeInteraction { [weak self] _, update in
+                    self?.partlyOpen = update.hinge?.status == .partiallyOpen
+                    self?.report()
+                })
+            }
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()   // rotation turns book posture into laptop
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            report()
+        }
+
+        private func report() {
+            guard let window else { return }
+            let laptop = partlyOpen && window.bounds.height > window.bounds.width
+            guard laptop != reported else { return }
+            reported = laptop
+            onChange?(laptop)
+        }
+    }
 }

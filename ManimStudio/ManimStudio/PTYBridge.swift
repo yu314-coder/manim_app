@@ -488,6 +488,14 @@ final class PTYBridge: NSObject, TerminalViewDelegate {
                     self.feedBufferLock.unlock()
                     guard !bytes.isEmpty else { return }
                     if let tv = self.terminalView {
+                        // Bytes held while no view was attached go first
+                        // (their own flush is async and could land after
+                        // these: the boot banner showed up under the prompt).
+                        self.pendingLock.lock()
+                        let earlier = self.pendingBytes
+                        self.pendingBytes.removeAll(keepingCapacity: false)
+                        self.pendingLock.unlock()
+                        if !earlier.isEmpty { tv.feed(byteArray: earlier[...]) }
                         tv.feed(byteArray: bytes[...])
                     } else {
                         self.pendingLock.lock()
