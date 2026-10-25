@@ -140,7 +140,7 @@ struct HeaderView: View {
                 ColorPanelPopover(accentHex: $accentHex)
             }
 
-            scenePicker
+            scenePicker(compact: false)
 
             // Live memory sparkline, centred between the scene picker and
             // the Run button — the iPhone equivalent of the iPad RAM HUD.
@@ -224,72 +224,24 @@ struct HeaderView: View {
                     Text("🎬").font(.system(size: 22))
                     autosaveBadge(label: false)
                 }
+                .fixedSize()
             }
 
             Spacer(minLength: 12)
 
-            // CENTER — file ops, render/preview/stop, GPU, colors
-            HStack(spacing: 6) {
-                headerBtn("doc.badge.plus", "New",  action: onNew)
-                headerBtn("folder",         "Open", action: onOpen)
-                headerBtn("square.and.arrow.down", "Save", action: onSave)
-                headerBtn("scribble.variable", "Sketch with Apple Pencil") { showSketch = true }
-                Divider().frame(height: 18).background(Theme.borderSubtle)
-
-                scenePicker
-                primaryBtn(label: "Render", icon: "play.fill", shortcut: "F5",
-                           action: onRender)
-                secondaryBtn(label: "Preview", icon: "eye", shortcut: "F6",
-                             action: onPreview)
-                // Present — distraction-free looping playback with a
-                // library strip for earlier renders (external-display
-                // routing). iPad-only (regularBody); hidden only when there
-                // is genuinely nothing on disk to play.
-                if renderedVideoURL != nil || !library.videos.isEmpty {
-                    secondaryBtn(
-                        label: externalDisplay.isConnected ? "Present on TV" : "Present",
-                        icon: externalDisplay.isConnected ? "tv.fill" : "play.rectangle.on.rectangle",
-                        shortcut: "⌥⌘P",
-                        action: onPresent)
-                }
-                if isRendering {
-                    dangerBtn(label: isStopping ? "Stopping…" : "Stop",
-                              icon: isStopping ? "hourglass" : "stop.fill",
-                              action: onStop)
-                        .disabled(isStopping)
-                }
-
-                Divider().frame(height: 18).background(Theme.borderSubtle)
-                Button {
-                    gpuOn.toggle()
-                } label: {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(gpuOn ? .white : Theme.textSecondary)
-                        .frame(width: 30, height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(gpuOn
-                                      ? AnyShapeStyle(Theme.signatureGradient)
-                                      : AnyShapeStyle(Theme.bgTertiary))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(gpuOn ? Color.clear : Theme.borderSubtle,
-                                        lineWidth: 1)
-                        )
-                        .shadow(color: gpuOn ? Theme.glowPrimary : .clear,
-                                radius: 6)
-                }
-                .buttonStyle(.plain)
-                .help(gpuOn ? "GPU acceleration ON (Metal render + hardware encode)"
-                            : "GPU acceleration OFF (software render + encode)")
-
-                // Colors → opens accent color picker.
-                headerBtn("paintpalette", "Colors") { showColors.toggle() }
-                    .popover(isPresented: $showColors) {
-                        ColorPanelPopover(accentHex: $accentHex)
-                    }
+            // CENTER — file ops, render/preview/stop, GPU, colors. Gets the
+            // room first; where it's short (the iPhone Duo opened flat, with
+            // Present showing) Preview and Present keep only their icons and
+            // a long scene name is cut short, rather than the header running
+            // off both sides of the screen.
+            ViewThatFits(in: .horizontal) {
+                centerControls(compact: false)
+                centerControls(compact: true)
+            }
+            .layoutPriority(1)
+            // Here rather than on the Colors button, which both versions have.
+            .popover(isPresented: $showColors) {
+                ColorPanelPopover(accentHex: $accentHex)
             }
 
             Spacer(minLength: 12)
@@ -338,6 +290,68 @@ struct HeaderView: View {
         )
     }
 
+    private func centerControls(compact: Bool) -> some View {
+        HStack(spacing: 6) {
+            headerBtn("doc.badge.plus", "New",  action: onNew)
+            headerBtn("folder",         "Open", action: onOpen)
+            headerBtn("square.and.arrow.down", "Save", action: onSave)
+            headerBtn("scribble.variable", "Sketch with Apple Pencil") { showSketch = true }
+            Divider().frame(height: 18).background(Theme.borderSubtle)
+
+            scenePicker(compact: compact)
+            primaryBtn(label: "Render", icon: "play.fill", shortcut: "F5",
+                       action: onRender)
+            secondaryBtn(label: "Preview", icon: "eye", shortcut: "F6", compact: compact,
+                         action: onPreview)
+            // Present — distraction-free looping playback with a
+            // library strip for earlier renders (external-display
+            // routing). iPad-only (regularBody); hidden only when there
+            // is genuinely nothing on disk to play.
+            if renderedVideoURL != nil || !library.videos.isEmpty {
+                secondaryBtn(
+                    label: externalDisplay.isConnected ? "Present on TV" : "Present",
+                    icon: externalDisplay.isConnected ? "tv.fill" : "play.rectangle.on.rectangle",
+                    shortcut: "⌥⌘P", compact: compact,
+                    action: onPresent)
+            }
+            if isRendering {
+                dangerBtn(label: isStopping ? "Stopping…" : "Stop",
+                          icon: isStopping ? "hourglass" : "stop.fill",
+                          action: onStop)
+                    .disabled(isStopping)
+            }
+
+            Divider().frame(height: 18).background(Theme.borderSubtle)
+            Button {
+                gpuOn.toggle()
+            } label: {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(gpuOn ? .white : Theme.textSecondary)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(gpuOn
+                                  ? AnyShapeStyle(Theme.signatureGradient)
+                                  : AnyShapeStyle(Theme.bgTertiary))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(gpuOn ? Color.clear : Theme.borderSubtle,
+                                    lineWidth: 1)
+                    )
+                    .shadow(color: gpuOn ? Theme.glowPrimary : .clear,
+                            radius: 6)
+            }
+            .buttonStyle(.plain)
+            .help(gpuOn ? "GPU acceleration ON (Metal render + hardware encode)"
+                        : "GPU acceleration OFF (software render + encode)")
+
+            // Colors → opens accent color picker.
+            headerBtn("paintpalette", "Colors") { showColors.toggle() }
+        }
+    }
+
     /// Green dot, and "Autosaved" unless there's no room for it.
     private func autosaveBadge(label: Bool) -> some View {
         HStack(spacing: 4) {
@@ -355,7 +369,7 @@ struct HeaderView: View {
     // MARK: scene picker
 
     @ViewBuilder
-    private var scenePicker: some View {
+    private func scenePicker(compact: Bool) -> some View {
         Menu {
             Button {
                 selectedScene = ""
@@ -384,7 +398,9 @@ struct HeaderView: View {
                 Text(label)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: !compact, vertical: false)
+                    .frame(maxWidth: compact ? 80 : nil)
                 Image(systemName: "chevron.down").font(.system(size: 9))
             }
             .foregroundStyle(Theme.textPrimary)
@@ -442,14 +458,17 @@ struct HeaderView: View {
     }
 
     @ViewBuilder
-    private func secondaryBtn(label: String, icon: String, shortcut: String, action: @escaping () -> Void) -> some View {
+    private func secondaryBtn(label: String, icon: String, shortcut: String, compact: Bool = false,
+                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: icon).font(.system(size: 12))
-                Text(label)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                if !compact {
+                    Text(label)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
             .foregroundStyle(Theme.textPrimary)
             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -458,6 +477,7 @@ struct HeaderView: View {
         }
         .buttonStyle(.plain)
         .help("\(label) (\(shortcut))")
+        .accessibilityLabel(label)
     }
 
     @ViewBuilder
