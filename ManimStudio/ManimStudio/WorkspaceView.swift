@@ -15,14 +15,6 @@ struct WorkspaceView: View {
     @AppStorage("manim_ws_vsplit") private var vSplit: Double = 0.7   // top↔terminal
     @State private var compactPane: CompactPane = .editor   // open on the code editor
     @State private var compactSheet: CompactSheet? = nil
-    /// iPhone Duo held like a laptop (half-open, hinge across the
-    /// window): the keyboard has the lower half, and the phone layout's
-    /// Editor pane puts the terminal under the code, split by a handle.
-    @State private var duoLaptop = false
-    @AppStorage("manim_duo_split") private var duoSplit: Double = 0.6   // editor share
-    @AppStorage("manim_duo_lower") private var duoLower = CompactPane.terminal.rawValue
-    @State private var splitDragHeight: CGFloat? = nil
-    @State private var splitDragStart: CGFloat? = nil
     /// Top edge (global y) of the code editor's key bar while it floats
     /// over the on-screen keyboard, 0 when hidden; and where the workspace
     /// itself ends. Their overlap is how far the panes stop short, so
@@ -84,7 +76,6 @@ struct WorkspaceView: View {
         .onReceive(NotificationCenter.default.publisher(for: .editorKeyBarHeight)) { note in
             keyBarTop = note.userInfo?["top"] as? CGFloat ?? 0
         }
-        .background(HingeReader(laptop: $duoLaptop))
     }
 
     // MARK: regular (iPad)
@@ -166,189 +157,54 @@ struct WorkspaceView: View {
 
     // MARK: compact (iPhone)
 
-    /// The pane on screen: held like a laptop, everything is in the
-    /// Editor pane (code over the terminal or the preview).
-    private var shownPane: CompactPane {
-        duoLaptop ? .editor : compactPane
-    }
-
-    /// Held like a laptop: the code over the terminal or the preview,
-    /// with a handle between them as in iPadOS split view — drag to
-    /// resize, drag to an edge to close that side, double-tap to even it
-    /// out again. The handle row also switches the lower side and opens
-    /// the render controls, so the pane picker's row isn't needed.
-    private var editorOverLower: some View {
-        GeometryReader { geo in
-            let handle: CGFloat = 32
-            let avail = max(0, geo.size.height - handle)
-            let editorHeight = min(avail, splitDragHeight ?? avail * CGFloat(duoSplit))
-            VStack(spacing: 0) {
-                if editorHeight > 1 {
-                    EditorPane(source: $sourceCode).frame(height: editorHeight)
-                }
-                splitHandle(height: handle, avail: avail, editorHeight: editorHeight)
-                if avail - editorHeight > 1 {
-                    Group {
-                        if duoLower == CompactPane.preview.rawValue {
-                            PreviewPane(videoURL: $renderedVideoURL)
-                        } else {
-                            TerminalPane(besideEditor: true)
-                        }
-                    }
-                    .frame(maxHeight: .infinity)
-                }
-            }
-        }
-        // A finished render shows itself under the code.
-        .onChange(of: renderedVideoURL) { _, url in
-            guard url != nil else { return }
-            withAnimation(.easeOut(duration: 0.2)) { showLower(.preview) }
-        }
-    }
-
-    /// Puts `pane` under the code, opening the lower side if it's closed.
-    private func showLower(_ pane: CompactPane) {
-        duoLower = pane.rawValue
-        if duoSplit > 0.95 { duoSplit = 0.6 }
-    }
-
-    private func splitHandle(height: CGFloat, avail: CGFloat, editorHeight: CGFloat) -> some View {
-        HStack(spacing: 4) {
-            ForEach([CompactPane.terminal, .preview]) { pane in
-                let on = duoLower == pane.rawValue && avail - editorHeight > 1
-                Button {
-                    Haptics.selection()
-                    withAnimation(.easeOut(duration: 0.2)) { showLower(pane) }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: pane.icon).font(.system(size: 10))
-                        Text(pane == .terminal ? "Terminal" : pane.label)
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(on ? .white : Theme.textSecondary)
-                    .padding(.horizontal, 8).frame(height: 24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(on ? AnyShapeStyle(Theme.signatureGradient)
-                                     : AnyShapeStyle(Theme.bgTertiary))
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(pane == .terminal ? "Show the terminal under the code"
-                                                      : "Show the preview under the code")
-                .accessibilityAddTraits(on ? .isSelected : [])
-            }
-            Spacer()
-            Button {
-                compactSheet = .controls
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(Circle().fill(Theme.signatureGradient))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Render controls")
-        }
-        .padding(.horizontal, 8)
-        .frame(height: height)
-        .background(alignment: .center) {
-            // The grip: drag it (or anywhere on the row) to resize.
-            Capsule()
-                .fill(Theme.textSecondary.opacity(0.7))
-                .frame(width: 40, height: 5)
-                .frame(width: 120, height: height)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    withAnimation(.easeOut(duration: 0.2)) { duoSplit = 0.6 }
-                }
-                .accessibilityElement()
-                .accessibilityLabel("Divider between the code and the lower side")
-                .accessibilityValue("Code \(Int((duoSplit * 100).rounded())) percent")
-                .accessibilityAdjustableAction { direction in
-                    switch direction {
-                    case .increment: duoSplit = min(1, duoSplit + 0.1)
-                    case .decrement: duoSplit = max(0, duoSplit - 0.1)
-                    @unknown default: break
-                    }
-                }
-        }
-        .background(Theme.bgSecondary)
-        .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .top)
-        .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                .onChanged { v in
-                    let start = splitDragStart ?? editorHeight
-                    splitDragStart = start
-                    splitDragHeight = min(max(start + v.translation.height, 0), avail)
-                }
-                .onEnded { _ in
-                    let h = splitDragHeight ?? editorHeight
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        // Close to an edge closes that side.
-                        duoSplit = h < 60 ? 0 : avail - h < 60 ? 1 : Double(h / max(avail, 1))
-                        splitDragHeight = nil
-                    }
-                    splitDragStart = nil
-                }
-        )
-    }
-
     private var compactBody: some View {
         VStack(spacing: 0) {
             // Pane selector — segmented picker. Three panes get the
             // full screen one at a time; the user swipes the picker
             // or taps to switch.
-            // Held like a laptop the split's handle row does its job.
-            if !duoLaptop {
-                HStack(spacing: 6) {
-                    ForEach(CompactPane.allCases) { pane in
-                        Button {
-                            guard shownPane != pane else { return }
-                            Haptics.selection()
-                            withAnimation(.easeInOut(duration: 0.15)) { compactPane = pane }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: pane.icon).font(.system(size: 11))
-                                Text(pane.label).font(.system(size: 12, weight: .medium))
-                            }
-                            .foregroundStyle(shownPane == pane ? .white : Theme.textSecondary)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 7)
-                                    .fill(shownPane == pane
-                                          ? AnyShapeStyle(Theme.signatureGradient)
-                                          : AnyShapeStyle(Theme.bgTertiary))
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer()
-                    // Render-controls drawer button.
+            HStack(spacing: 6) {
+                ForEach(CompactPane.allCases) { pane in
                     Button {
-                        compactSheet = .controls
+                        guard compactPane != pane else { return }
+                        Haptics.selection()
+                        withAnimation(.easeInOut(duration: 0.15)) { compactPane = pane }
                     } label: {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(Circle().fill(Theme.signatureGradient))
+                        HStack(spacing: 4) {
+                            Image(systemName: pane.icon).font(.system(size: 11))
+                            Text(pane.label).font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(compactPane == pane ? .white : Theme.textSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(compactPane == pane
+                                      ? AnyShapeStyle(Theme.signatureGradient)
+                                      : AnyShapeStyle(Theme.bgTertiary))
+                        )
                     }
                     .buttonStyle(.plain)
-                    .help("Render controls")
                 }
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Theme.bgSecondary)
-                .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
+                Spacer()
+                // Render-controls drawer button.
+                Button {
+                    compactSheet = .controls
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Theme.signatureGradient))
+                }
+                .buttonStyle(.plain)
+                .help("Render controls")
             }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Theme.bgSecondary)
+            .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
 
             // Selected pane fills the rest of the screen.
             ZStack {
-                switch shownPane {
-                case .editor where duoLaptop: editorOverLower
+                switch compactPane {
                 case .editor:   EditorPane(source: $sourceCode)
                 case .preview:  PreviewPane(videoURL: $renderedVideoURL)
                 case .terminal: TerminalPane()
@@ -370,64 +226,5 @@ struct WorkspaceView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .menuViewToggleSidebar))
             { _ in compactSheet = (compactSheet == nil) ? .controls : nil }
-    }
-}
-
-/// Reports whether the iPhone Duo is held like a laptop: hinge partly
-/// open (iOS 27.1) and the window taller than wide. The window, not the
-/// workspace: with the keyboard up the workspace is wider than tall.
-private struct HingeReader: UIViewRepresentable {
-    @Binding var laptop: Bool
-
-    func makeUIView(context: Context) -> ReaderView {
-        let view = ReaderView()
-        let binding = $laptop
-        view.onChange = { laptop in
-            // Not during SwiftUI's own update, where a state change is
-            // dropped.
-            DispatchQueue.main.async {
-                if binding.wrappedValue != laptop { binding.wrappedValue = laptop }
-            }
-        }
-        return view
-    }
-
-    func updateUIView(_ uiView: ReaderView, context: Context) {}
-
-    final class ReaderView: UIView {
-        var onChange: ((Bool) -> Void)?
-        private var partlyOpen = false
-        private var reported: Bool?
-
-        override init(frame: CGRect) {
-            super.init(frame: frame)
-            isUserInteractionEnabled = false
-            if #available(iOS 27.1, *) {
-                addInteraction(UIHingeInteraction { [weak self] _, update in
-                    self?.partlyOpen = update.hinge?.status == .partiallyOpen
-                    self?.report()
-                })
-            }
-        }
-
-        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            report()   // rotation turns book posture into laptop
-        }
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            report()
-        }
-
-        private func report() {
-            guard let window else { return }
-            let laptop = partlyOpen && window.bounds.height > window.bounds.width
-            guard laptop != reported else { return }
-            reported = laptop
-            onChange?(laptop)
-        }
     }
 }

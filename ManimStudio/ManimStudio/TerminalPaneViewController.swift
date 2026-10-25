@@ -141,7 +141,12 @@ final class TerminalPaneViewController: UIViewController {
         guard let window = view.window else { return }
         let laptop = hingePartlyOpen && window.bounds.height > window.bounds.width
         guard laptop != laptopPosture else { return }
+        let wasLaptop = laptopPosture
         laptopPosture = laptop
+        // Opened out flat: the keyboard goes with the laptop posture.
+        if wasLaptop && !hingePartlyOpen && terminal.isFirstResponder {
+            _ = terminal.resignFirstResponder()
+        }
         terminal.inputAccessoryView = laptop ? nil : keyBar
         terminal.reloadInputViews()
         floatingBarPresenter.laptopHinge = laptop

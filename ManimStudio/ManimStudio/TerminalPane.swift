@@ -10,11 +10,6 @@ struct TerminalPane: View {
     // Toggles to "Copied" briefly after a successful copy so the user
     // gets visual confirmation. Reset on a timer.
     @State private var justCopied: Bool = false
-    /// Shown together with the editor on the phone layout (the iPhone Duo
-    /// held like a laptop): the editor, not the terminal, takes the
-    /// keyboard on arrival.
-    var besideEditor = false
-
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -71,7 +66,7 @@ struct TerminalPane: View {
             .background(Theme.bgSecondary)
             .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
 
-            SwiftTermContainer(besideEditor: besideEditor)
+            SwiftTermContainer()
                 .background(Color.black)
         }
     }
@@ -125,8 +120,6 @@ struct TerminalPane: View {
 }
 
 private struct SwiftTermContainer: UIViewControllerRepresentable {
-    var besideEditor = false
-
     func makeUIViewController(context: Context) -> TerminalPaneViewController {
         let vc = TerminalPaneViewController()
         // PTY pipes must exist before Py_Initialize because PythonRuntime
@@ -145,6 +138,6 @@ private struct SwiftTermContainer: UIViewControllerRepresentable {
     func updateUIViewController(_ vc: TerminalPaneViewController, context: Context) {
         // The phone layout (a pane at a time), also chosen for narrow
         // windows the system still calls regular.
-        vc.isOnlyPane = context.environment.horizontalSizeClass == .compact && !besideEditor
+        vc.isOnlyPane = context.environment.horizontalSizeClass == .compact
     }
 }

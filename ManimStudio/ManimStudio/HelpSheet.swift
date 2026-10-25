@@ -497,7 +497,7 @@ enum HelpContent {
         HelpNewItem(icon: "hand.tap", title: "Smoother tabs",
              body: "Gallery, System and History open without the hitch, and the Gallery's animation uses less power."),
         HelpNewItem(icon: "laptopcomputer", title: "iPhone Duo held like a laptop",
-             body: "Half-open with the hinge across the screen, the lower half is the keyboard — it comes up by itself — and the upper half shows the code over the terminal or the preview: switch with the buttons on the handle between them, and a finished render shows itself there. Drag the handle to resize, or to an edge to close one side; double-tap it to even them out. The extra keys sit right on the keyboard."),
+             body: "Half-open with the hinge across the screen, the upper half keeps the iPhone layout — Editor, Preview, Render Log — and the lower half is the keyboard: it comes up by itself in the editor and the terminal, steps aside for the preview, and goes away when you open the Duo out flat. The extra keys sit right on the keyboard."),
         HelpNewItem(icon: "terminal", title: "Terminal fixes",
              body: "The terminal keeps its output when you switch panes on iPhone, Ctrl-L clears the screen but keeps the line you're typing, `c++`, `g++` and `clang++` explain that there's no compiler instead of showing a Python error, and `manim` no longer checks the internet for a newer version after every render."),
     ]

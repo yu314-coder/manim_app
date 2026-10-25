@@ -56,7 +56,8 @@ final class MonacoEditorView: UIView {
     // Half-open with the hinge across the screen, iOS gives the keyboard
     // the whole lower half and the app the upper half. The keyboard comes
     // up by itself there when the editor is showing (the lower half is
-    // the keyboard), with the key bar on its keys as everywhere else.
+    // the keyboard), with the key bar on its keys as everywhere else, and
+    // goes away when the Duo is opened out flat.
     private var hingePartlyOpen = false
     private var laptopPosture = false
     private var hingeInteraction: UIInteraction?
@@ -92,9 +93,16 @@ final class MonacoEditorView: UIView {
         // into thumb halves instead.
         let laptop = hingePartlyOpen && window.bounds.height > window.bounds.width
         guard laptop != laptopPosture else { return }
+        let wasLaptop = laptopPosture
         laptopPosture = laptop
         keyBarPresenter.laptopHinge = laptop
-        if laptop { focusForLaptop() }
+        if laptop {
+            focusForLaptop()
+        } else if wasLaptop && !hingePartlyOpen {
+            // Opened out flat (or closed): the keyboard goes with the
+            // laptop posture. Turned on its side it stays.
+            hideKeyboard()
+        }
     }
 
     /// Held like a laptop on the editor: the lower half is the keyboard
