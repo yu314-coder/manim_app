@@ -69,6 +69,7 @@ final class TerminalPaneViewController: UIViewController {
         terminal.onFocusChange = { [weak self] focused in
             guard let self else { return }
             self.floatingBarPresenter.isActive = focused && self.laptopPosture
+            if focused && self.bookPosture { DuoKeyTarget.shared.activate(self.bookSink) }
         }
         watchHinge()
         NotificationCenter.default.addObserver(
@@ -125,6 +126,22 @@ final class TerminalPaneViewController: UIViewController {
         bar: KeyBar.terminal(for: terminal), host: view)
     private var hingePartlyOpen = false
     private var laptopPosture = false
+
+    // Held like a book (hinge top to bottom), the right screen is
+    // ManimStudio's keyboard (DuoBookKeyboard): the terminal keeps the
+    // focus with an empty input view and takes the keys from there. Text
+    // goes in as typed text, so an armed ctrl applies to it.
+    private var bookPosture = false
+    private let noKeyboard = UIView(frame: .zero)
+    private lazy var bookSink = DuoKeyTarget.Sink(
+        owner: ObjectIdentifier(self), bar: KeyBar.terminal(for: terminal)) { [weak self] press in
+        guard let terminal = self?.terminal else { return }
+        switch press {
+        case .text(let text): terminal.insertText(text)
+        case .backspace: terminal.deleteBackward()
+        case .enter: terminal.send([0x0d])
+        }
+    }
     /// Showing on its own, not beside the editor (set by TerminalPane).
     var isOnlyPane = false
 
@@ -140,14 +157,24 @@ final class TerminalPaneViewController: UIViewController {
     private func updateLaptopPosture() {
         guard let window = view.window else { return }
         let laptop = hingePartlyOpen && window.bounds.height > window.bounds.width
-        guard laptop != laptopPosture else { return }
-        let wasLaptop = laptopPosture
+        let book = hingePartlyOpen && window.bounds.width > window.bounds.height
+        guard laptop != laptopPosture || book != bookPosture else { return }
+        let wasHalfOpen = laptopPosture || bookPosture
         laptopPosture = laptop
-        // Opened out flat: the keyboard goes with the laptop posture.
-        if wasLaptop && !hingePartlyOpen && terminal.isFirstResponder {
+        if book != bookPosture {
+            bookPosture = book
+            if book {
+                if terminal.isFirstResponder { DuoKeyTarget.shared.activate(bookSink) }
+            } else {
+                DuoKeyTarget.shared.deactivate(self)
+            }
+        }
+        // Opened out flat: the keyboard goes with the half-open posture.
+        if wasHalfOpen && !hingePartlyOpen && terminal.isFirstResponder {
             _ = terminal.resignFirstResponder()
         }
-        terminal.inputAccessoryView = laptop ? nil : keyBar
+        terminal.inputView = book ? noKeyboard : nil
+        terminal.inputAccessoryView = laptop || book ? nil : keyBar
         terminal.reloadInputViews()
         floatingBarPresenter.laptopHinge = laptop
         floatingBarPresenter.isActive = laptop && terminal.isFirstResponder
@@ -162,7 +189,7 @@ final class TerminalPaneViewController: UIViewController {
     /// Only where the terminal has the screen to itself (the phone
     /// layout's Render Log); next to the editor, the editor keeps it.
     private func focusForLaptop() {
-        guard laptopPosture, isOnlyPane,
+        guard laptopPosture || bookPosture, isOnlyPane,
               let window = view.window, !terminal.isFirstResponder else { return }
         // Not while another tab hides the Workspace (it stays alive).
         let center = view.convert(CGPoint(x: view.bounds.midX, y: view.bounds.midY), to: window)

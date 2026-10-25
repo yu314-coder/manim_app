@@ -136,36 +136,93 @@ extension EnvironmentValues {
     @Entry var duoLowerScreen: CGFloat? = nil
 }
 
-/// The iPhone Duo held half-open like a laptop: the lower screen is the
-/// keyboard and nothing else (ContentView leaves it empty). Here at the
-/// root SwiftUI is told to ignore the keyboard, which has that screen to
-/// itself: making room for it as well pushed the whole app up off the top.
+/// The iPhone Duo held half-open, the keyboard has one screen to itself.
+enum DuoPosture: Equatable {
+    /// Hinge across the window: the lower screen is Apple's keyboard and
+    /// nothing else (ContentView leaves it empty); its height.
+    case laptop(lowerScreen: CGFloat)
+    /// Hinge top to bottom as iOS sees it, though the Duo is held like a
+    /// laptop then too: the app turns its picture a quarter so the far
+    /// screen is the app and the near (right) one ManimStudio's keyboard
+    /// (DuoBookKeyboard) — iOS won't turn its own keyboard, nor let the app
+    /// keep to portrait in this windowing mode. Where the hinge is.
+    case book(hinge: CGFloat, insets: UIEdgeInsets)
+}
+
+/// Lays the app out for DuoPosture. Here at the root SwiftUI is told to
+/// ignore the keyboard while the Duo is half-open: the keyboard has its
+/// own screen, and making room for it as well pushed the whole app up off
+/// the top.
 private struct DuoLaptopLayout: ViewModifier {
-    @State private var lowerScreen: CGFloat?
+    @State private var posture: DuoPosture?
+
+    private var lowerScreen: CGFloat? {
+        if case .laptop(let height) = posture { height } else { nil }
+    }
+    private var hinge: CGFloat? {
+        if case .book(let x, _) = posture { x } else { nil }
+    }
+    /// The window's safe area turned with the picture: the screen's left
+    /// edge is the canvas's top, its right edge (the clock and Wi-Fi) the
+    /// canvas's bottom, its bottom the canvas's leading edge.
+    private var turnedInsets: EdgeInsets {
+        guard case .book(_, let i) = posture else { return EdgeInsets() }
+        return EdgeInsets(top: i.left, leading: i.bottom, bottom: i.right, trailing: i.top)
+    }
 
     func body(content: Content) -> some View {
-        content
-            .environment(\.duoLowerScreen, lowerScreen)
-            .ignoresSafeArea(lowerScreen != nil ? .keyboard : [], edges: .bottom)
-            .background(DuoLaptopReader(lowerScreen: $lowerScreen))
+        GeometryReader { geo in
+            let size = geo.size
+            // Held like a book the picture turns a quarter to the left:
+            // laid out upright on a portrait canvas — the app on the far
+            // half, the keyboard on the near one — then rotated so the
+            // keyboard has the right screen.
+            let canvas = hinge != nil ? CGSize(width: size.height, height: size.width) : size
+            let pad = turnedInsets
+            VStack(spacing: 0) {
+                // Always the first child, so the app isn't rebuilt when the
+                // Duo turns from one posture to another.
+                content
+                    .frame(height: hinge.map { _ in canvas.height / 2 - pad.top } ?? canvas.height)
+                    .environment(\.duoLowerScreen, lowerScreen)
+                if hinge != nil {
+                    DuoBookKeyboard()
+                        .frame(height: canvas.height / 2 - pad.bottom)
+                }
+            }
+            .padding(pad)
+            // The safe area's strips in the halves' own colours.
+            .background {
+                if hinge != nil {
+                    VStack(spacing: 0) {
+                        Theme.bgPrimary
+                        Color(uiColor: DuoBookKeyboardView.background)
+                    }
+                }
+            }
+            .frame(width: canvas.width, height: canvas.height)
+            .rotationEffect(.degrees(hinge != nil ? -90 : 0))
+            .position(x: size.width / 2, y: size.height / 2)
+        }
+        .ignoresSafeArea(hinge != nil ? .all : posture != nil ? .keyboard : [], edges: hinge != nil ? .all : .bottom)
+        .background(DuoPostureReader(posture: $posture))
     }
 }
 
-/// Reports how tall the iPhone Duo's lower screen is while it's held like
-/// a laptop — hinge partly open (iOS 27.1) and the window taller than wide,
-/// so the hinge runs across it — measured from where the key bar sits on
-/// the keys down to the bottom safe area. Nil otherwise.
-private struct DuoLaptopReader: UIViewRepresentable {
-    @Binding var lowerScreen: CGFloat?
+/// Reports DuoPosture: hinge partly open (iOS 27.1), and which way it
+/// runs across the window. For the laptop, the lower screen is measured
+/// from where the key bar sits on the keys down to the bottom safe area.
+private struct DuoPostureReader: UIViewRepresentable {
+    @Binding var posture: DuoPosture?
 
     func makeUIView(context: Context) -> ReaderView {
         let view = ReaderView()
-        let binding = $lowerScreen
-        view.onChange = { bottom in
+        let binding = $posture
+        view.onChange = { posture in
             // Not during SwiftUI's own update, where a state change is
             // dropped (the first hinge report comes then).
             DispatchQueue.main.async {
-                if binding.wrappedValue != bottom { binding.wrappedValue = bottom }
+                if binding.wrappedValue != posture { binding.wrappedValue = posture }
             }
         }
         return view
@@ -174,9 +231,9 @@ private struct DuoLaptopReader: UIViewRepresentable {
     func updateUIView(_ uiView: ReaderView, context: Context) {}
 
     final class ReaderView: UIView {
-        var onChange: ((CGFloat?) -> Void)?
+        var onChange: ((DuoPosture?) -> Void)?
         private var partlyOpen = false
-        private var reported: CGFloat??
+        private var reported: DuoPosture??
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -203,16 +260,19 @@ private struct DuoLaptopReader: UIViewRepresentable {
 
         private func report() {
             guard let window else { return }
-            let laptop = partlyOpen && window.bounds.height > window.bounds.width
-            // From the key bar's top edge (it sits on the keys) down.
-            let barTop = FloatingKeyBarPresenter.laptopKeysTop(in: window)
-                - KeyBar.height(forWidth: window.bounds.width)
-            let bottom: CGFloat? = laptop
-                ? max(0, window.bounds.maxY - window.safeAreaInsets.bottom - barTop)
-                : nil
-            guard reported != .some(bottom) else { return }
-            reported = .some(bottom)
-            onChange?(bottom)
+            let size = window.bounds.size
+            var posture: DuoPosture?
+            if partlyOpen && size.height > size.width {
+                let barTop = FloatingKeyBarPresenter.laptopKeysTop(in: window)
+                    - KeyBar.height(forWidth: size.width)
+                posture = .laptop(lowerScreen: max(0, window.bounds.maxY - window.safeAreaInsets.bottom - barTop))
+            } else if partlyOpen && size.width > size.height {
+                posture = .book(hinge: window.bounds.midX, insets: window.safeAreaInsets)
+            }
+            guard reported != .some(posture) else { return }
+            reported = .some(posture)
+            onChange?(posture)
         }
     }
 }
+
