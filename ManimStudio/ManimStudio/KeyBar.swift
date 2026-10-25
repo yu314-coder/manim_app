@@ -100,6 +100,10 @@ final class KeyBar: UIInputView, UIInputViewAudioFeedback {
     private static func height(compact: Bool) -> CGFloat {
         (compact ? 2 : 1) * rowHeight
     }
+    /// The bar's height in a window this wide: two rows when narrow.
+    static func height(forWidth width: CGFloat) -> CGFloat {
+        height(compact: width < compactWidth)
+    }
     private var modifierButton: UIButton?
     private var repeatTimer: Timer?
 
@@ -488,6 +492,12 @@ final class FloatingKeyBarPresenter: NSObject {
         didSet { update() }
     }
 
+    /// Where the keys start on the iPhone Duo held like a laptop: 80 pt
+    /// below the hinge, the window's middle (measured on the iPhone Duo).
+    static func laptopKeysTop(in window: UIWindow) -> CGFloat {
+        window.bounds.midY + 80
+    }
+
     /// Looks again, e.g. once the host is in a (new) window.
     func refresh() {
         update()
@@ -612,10 +622,9 @@ final class FloatingKeyBarPresenter: NSObject {
         // the keys' place only for the first keyboard, and can keep a
         // stale one (the phone-height keyboard iOS shows for a moment
         // before switching to the half-screen one hid the bar behind the
-        // keys). There the keys sit 80 pt below the hinge, the window's
-        // middle (measured on the iPhone Duo).
+        // keys). There they go by the hinge (laptopKeysTop).
         let keys = laptopHinge
-            ? max(keyboardTop, window.bounds.midY + 80)
+            ? max(keyboardTop, Self.laptopKeysTop(in: window))
             : max(keyboardTop, keysTop(in: window) ?? keyboardTop)
         let top = keys - barHeight
         bottom?.constant = -(window.bounds.maxY - top - barHeight)

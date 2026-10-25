@@ -56,6 +56,9 @@ struct ContentView: View {
     /// steps aside (it would ride up behind the bar) so the editor can
     /// reach down to the bar.
     @State private var editorKeyBarUp = false
+    /// Height of the iPhone Duo's lower screen while it's held like a
+    /// laptop, nil otherwise (DuoLaptopLayout, at the app's root).
+    @Environment(\.duoLowerScreen) private var duoLowerScreen
     /// Drives the full-screen presentation cover (iPad "Present" button).
     @State private var showPresent = false
     /// A document a terminal command produced, shown in Quick Look.
@@ -168,6 +171,15 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if compact && !editorKeyBarUp {
                 BottomTabBar(selection: $selectedTab)
+            }
+        }
+        // iPhone Duo held like a laptop: the lower screen is the keyboard
+        // and nothing else. The app keeps to the upper screen with the
+        // keyboard up or not — the preview, or a put-away keyboard, leaves
+        // the lower screen empty instead of spreading the app over the fold.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let duoLowerScreen {
+                Theme.bgPrimary.frame(height: duoLowerScreen)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .editorKeyBarHeight)) { note in

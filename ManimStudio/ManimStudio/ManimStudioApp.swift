@@ -103,6 +103,7 @@ struct ManimStudioApp: App {
         WindowGroup {
             ContentView()
                 .modifier(NarrowWindowLayout())
+                .modifier(DuoLaptopLayout())
         }
         .commands { ManimStudioCommands() }
     }
@@ -124,7 +125,94 @@ private struct NarrowWindowLayout: ViewModifier {
             content
                 .environment(\.horizontalSizeClass,
                              geo.size.width > 0 && geo.size.width < 700 ? .compact : systemSizeClass)
+
         }
     }
 }
 
+extension EnvironmentValues {
+    /// Height of the iPhone Duo's lower screen while it's held like a
+    /// laptop, nil otherwise. ContentView keeps the app off it.
+    @Entry var duoLowerScreen: CGFloat? = nil
+}
+
+/// The iPhone Duo held half-open like a laptop: the lower screen is the
+/// keyboard and nothing else (ContentView leaves it empty). Here at the
+/// root SwiftUI is told to ignore the keyboard, which has that screen to
+/// itself: making room for it as well pushed the whole app up off the top.
+private struct DuoLaptopLayout: ViewModifier {
+    @State private var lowerScreen: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.duoLowerScreen, lowerScreen)
+            .ignoresSafeArea(lowerScreen != nil ? .keyboard : [], edges: .bottom)
+            .background(DuoLaptopReader(lowerScreen: $lowerScreen))
+    }
+}
+
+/// Reports how tall the iPhone Duo's lower screen is while it's held like
+/// a laptop — hinge partly open (iOS 27.1) and the window taller than wide,
+/// so the hinge runs across it — measured from where the key bar sits on
+/// the keys down to the bottom safe area. Nil otherwise.
+private struct DuoLaptopReader: UIViewRepresentable {
+    @Binding var lowerScreen: CGFloat?
+
+    func makeUIView(context: Context) -> ReaderView {
+        let view = ReaderView()
+        let binding = $lowerScreen
+        view.onChange = { bottom in
+            // Not during SwiftUI's own update, where a state change is
+            // dropped (the first hinge report comes then).
+            DispatchQueue.main.async {
+                if binding.wrappedValue != bottom { binding.wrappedValue = bottom }
+            }
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: ReaderView, context: Context) {}
+
+    final class ReaderView: UIView {
+        var onChange: ((CGFloat?) -> Void)?
+        private var partlyOpen = false
+        private var reported: CGFloat??
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            if #available(iOS 27.1, *) {
+                addInteraction(UIHingeInteraction { [weak self] _, update in
+                    self?.partlyOpen = update.hinge?.status == .partiallyOpen
+                    self?.report()
+                })
+            }
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()   // rotation turns book posture into laptop
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            report()
+        }
+
+        private func report() {
+            guard let window else { return }
+            let laptop = partlyOpen && window.bounds.height > window.bounds.width
+            // From the key bar's top edge (it sits on the keys) down.
+            let barTop = FloatingKeyBarPresenter.laptopKeysTop(in: window)
+                - KeyBar.height(forWidth: window.bounds.width)
+            let bottom: CGFloat? = laptop
+                ? max(0, window.bounds.maxY - window.safeAreaInsets.bottom - barTop)
+                : nil
+            guard reported != .some(bottom) else { return }
+            reported = .some(bottom)
+            onChange?(bottom)
+        }
+    }
+}
