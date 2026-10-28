@@ -58,7 +58,10 @@ struct ContentView: View {
     @State private var editorKeyBarUp = false
     /// Height of the iPhone Duo's lower screen while it's held like a
     /// laptop, nil otherwise (DuoLaptopLayout, at the app's root).
-    @Environment(\.duoLowerScreen) private var duoLowerScreen
+    @Environment(\.duoKeysTop) private var duoKeysTop
+    /// Where the app's own frame ends (window y): the iPhone Duo's lower
+    /// screen is reserved from the key bar down to here.
+    @State private var appBottom: CGFloat = 0
     /// Drives the full-screen presentation cover (iPad "Present" button).
     @State private var showPresent = false
     /// A document a terminal command produced, shown in Quick Look.
@@ -178,10 +181,14 @@ struct ContentView: View {
         // keyboard up or not — the preview, or a put-away keyboard, leaves
         // the lower screen empty instead of spreading the app over the fold.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let duoLowerScreen {
-                Theme.bgPrimary.frame(height: duoLowerScreen)
+            if let duoKeysTop {
+                Theme.bgPrimary.frame(height: max(0, appBottom - duoKeysTop))
             }
         }
+        // Measured outside the inset, so it doesn't change with it. The app's
+        // frame moves when the status bar hides (held like a laptop), so a
+        // height worked out from the window alone left a band above the keys.
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { appBottom = $0 }
         .onReceive(NotificationCenter.default.publisher(for: .editorKeyBarHeight)) { note in
             editorKeyBarUp = (note.userInfo?["top"] as? CGFloat ?? 0) > 0
         }

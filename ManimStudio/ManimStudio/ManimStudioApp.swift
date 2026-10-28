@@ -131,16 +131,17 @@ private struct NarrowWindowLayout: ViewModifier {
 }
 
 extension EnvironmentValues {
-    /// Height of the iPhone Duo's lower screen while it's held like a
-    /// laptop, nil otherwise. ContentView keeps the app off it.
-    @Entry var duoLowerScreen: CGFloat? = nil
+    /// Where the iPhone Duo's lower screen starts (window y, the key bar's
+    /// top edge on the keys) while it's held like a laptop, nil otherwise.
+    /// ContentView keeps the app above it.
+    @Entry var duoKeysTop: CGFloat? = nil
 }
 
 /// The iPhone Duo held half-open, the keyboard has one screen to itself.
 enum DuoPosture: Equatable {
     /// Hinge across the window: the lower screen is Apple's keyboard and
-    /// nothing else (ContentView leaves it empty); its height.
-    case laptop(lowerScreen: CGFloat)
+    /// nothing else (ContentView leaves it empty); where it starts.
+    case laptop(keysTop: CGFloat)
     /// Hinge top to bottom as iOS sees it, though the Duo is held like a
     /// laptop then too: the app turns its picture a quarter so the far
     /// screen is the app and the near (right) one ManimStudio's keyboard
@@ -156,8 +157,8 @@ enum DuoPosture: Equatable {
 private struct DuoLaptopLayout: ViewModifier {
     @State private var posture: DuoPosture?
 
-    private var lowerScreen: CGFloat? {
-        if case .laptop(let height) = posture { height } else { nil }
+    private var keysTop: CGFloat? {
+        if case .laptop(let y) = posture { y } else { nil }
     }
     private var hinge: CGFloat? {
         if case .book(let x, _) = posture { x } else { nil }
@@ -184,7 +185,7 @@ private struct DuoLaptopLayout: ViewModifier {
                 // Duo turns from one posture to another.
                 content
                     .frame(height: hinge.map { _ in canvas.height / 2 - pad.top } ?? canvas.height)
-                    .environment(\.duoLowerScreen, lowerScreen)
+                    .environment(\.duoKeysTop, keysTop)
                 if hinge != nil {
                     DuoBookKeyboard()
                         .frame(height: canvas.height / 2 - pad.bottom)
@@ -205,13 +206,16 @@ private struct DuoLaptopLayout: ViewModifier {
             .position(x: size.width / 2, y: size.height / 2)
         }
         .ignoresSafeArea(hinge != nil ? .all : posture != nil ? .keyboard : [], edges: hinge != nil ? .all : .bottom)
+        // Held like a laptop the top screen is short; the code gets the
+        // status bar's band (the time and Wi-Fi) too.
+        .statusBarHidden(keysTop != nil)
         .background(DuoPostureReader(posture: $posture))
     }
 }
 
 /// Reports DuoPosture: hinge partly open (iOS 27.1), and which way it
-/// runs across the window. For the laptop, the lower screen is measured
-/// from where the key bar sits on the keys down to the bottom safe area.
+/// runs across the window. For the laptop, the lower screen starts where
+/// the key bar sits on the keys.
 private struct DuoPostureReader: UIViewRepresentable {
     @Binding var posture: DuoPosture?
 
@@ -265,7 +269,7 @@ private struct DuoPostureReader: UIViewRepresentable {
             if partlyOpen && size.height > size.width {
                 let barTop = FloatingKeyBarPresenter.laptopKeysTop(in: window)
                     - KeyBar.height(forWidth: size.width)
-                posture = .laptop(lowerScreen: max(0, window.bounds.maxY - window.safeAreaInsets.bottom - barTop))
+                posture = .laptop(keysTop: barTop)
             } else if partlyOpen && size.width > size.height {
                 posture = .book(hinge: window.bounds.midX, insets: window.safeAreaInsets)
             }
