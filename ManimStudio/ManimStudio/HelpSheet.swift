@@ -38,7 +38,7 @@ struct HelpSheet: View {
     /// The release the What's New notes describe. Bump it together with the
     /// notes: the header's Help button shows a dot until the user has opened
     /// notes for this version, so it reappears only when there is news.
-    static let notesVersion = "1.6"
+    static let notesVersion = "1.6.1"
 
     @Environment(\.dismiss) private var dismiss
     /// Same key HeaderView reads to decide whether to show the dot.
@@ -486,6 +486,14 @@ enum HelpContent {
 
     /// What's new in `HelpSheet.notesVersion`.
     static let whatsNew: [HelpNewItem] = [
+        HelpNewItem(icon: "laptopcomputer", title: "More code on a half-open iPhone Duo",
+             body: "Held half-open like a laptop, the top screen no longer gives a band to the time and Wi-Fi: the app starts at the top edge, so the editor shows more of your code above the keyboard. Opened flat or folded, the status bar is back."),
+    ]
+
+    /// The release before, shown under the new notes for anyone who
+    /// skipped it.
+    static let previousVersion = "1.6"
+    static let whatsNewPrevious: [HelpNewItem] = [
         HelpNewItem(icon: "bolt", title: "Ready in a moment",
              body: "The terminal is ready a few seconds after launch instead of nearly ten: plotting libraries now load the first time your code uses them, and plots still show inline."),
         HelpNewItem(icon: "function", title: "Formulas only typeset once",
@@ -500,20 +508,6 @@ enum HelpContent {
              body: "Half-open, one screen is the app — the iPhone layout, Editor / Preview / Render Log — and the near screen is only ever the keyboard: Apple's when the hinge runs across, or, when iOS sees the two screens side by side, ManimStudio turns its picture a quarter and puts its own keyboard on the near screen, keys like Apple's with the editor's or terminal's extra keys on top. The keyboard comes up by itself in the editor and the terminal, and goes away when you open the Duo out flat."),
         HelpNewItem(icon: "terminal", title: "Terminal fixes",
              body: "The terminal keeps its output when you switch panes on iPhone, Ctrl-L clears the screen but keeps the line you're typing, `c++`, `g++` and `clang++` explain that there's no compiler instead of showing a Python error, and `manim` no longer checks the internet for a newer version after every render."),
-    ]
-
-    /// The release before, shown under the new notes for anyone who
-    /// skipped it.
-    static let previousVersion = "1.5.1"
-    static let whatsNewPrevious: [HelpNewItem] = [
-        HelpNewItem(icon: "doc.on.clipboard", title: "Paste from other apps",
-             body: "A **Paste** key sits above the on-screen keyboard in the editor and the terminal — without a hardware keyboard there was no way to paste. The editor's keys also copy, cut and select all. iOS may ask to allow pasting; Settings → Apps → ManimStudio → Paste from Other Apps → Allow stops it asking."),
-        HelpNewItem(icon: "iphone", title: "Easier typing on iPhone",
-             body: "The extra keys take two rows, so the symbols and arrows are all in reach, and the code gets more room above the keyboard. Return always starts a new line — tap a suggestion or the indent key to take it — and suggestions wait for a letter instead of covering the code after every space."),
-        HelpNewItem(icon: "control", title: "A ctrl key in the editor",
-             body: "Tap **ctrl** above the keyboard, then A, C, X, V, Z or Y to select all, copy, cut, paste, undo or redo; F finds and / comments a line."),
-        HelpNewItem(icon: "keyboard.badge.ellipsis", title: "Hardware keyboards",
-             body: "With a Magic Keyboard or any other, tapping the editor always takes your typing. Ctrl+A / C / X / V / Z / Y work like ⌘, ⌘C and ⌘X with nothing selected copy or cut the whole line, ⌘I shows completions (iPadOS keeps ⌃Space for switching keyboards), and a double space stays two spaces instead of turning into \". \"."),
     ]
 
     static let guide: [HelpTopic] = [
