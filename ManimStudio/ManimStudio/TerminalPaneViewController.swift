@@ -1,6 +1,5 @@
 import UIKit
 import SwiftTerm
-import GameController
 
 /// A reusable "terminal pane" that hosts a real xterm emulator
 /// (SwiftTerm) attached to the shared PTY. Drop it anywhere a
@@ -66,7 +65,7 @@ final class TerminalPaneViewController: UIViewController {
 
         // Extra keys over the on-screen keyboard, in place of SwiftTerm's
         // generic accessory (see KeyBar).
-        terminal.inputAccessoryView = typingOnScreen ? keyBar : nil
+        terminal.inputAccessoryView = keyBar
         NotificationCenter.default.addObserver(
             self, selector: #selector(keyboardWillChangeFrame(_:)),
             name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
@@ -192,24 +191,32 @@ final class TerminalPaneViewController: UIViewController {
     // the editor's does, and comes back with the on-screen keyboard (which
     // can be brought up with a hardware keyboard connected).
 
-    /// Typing on the on-screen keyboard. A first guess from whether a
-    /// hardware keyboard is connected, then from what comes up.
-    private var typingOnScreen = GCKeyboard.coalesced == nil
+    /// Typing on the on-screen keyboard (true) or a hardware one, from
+    /// the last keyboard that came up. GCKeyboard is no guide: with a
+    /// Magic Keyboard attached it stayed nil on an iPad Air (1.6.1 (3)).
+    private var typingOnScreen = true
 
     @objc private func keyboardWillChangeFrame(_ note: Notification) {
-        guard terminal.isFirstResponder, let window = view.window, let screen = window.windowScene?.screen,
-              let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        guard let window = view.window, let screen = window.windowScene?.screen,
+              let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue,
+              // A floating or split on-screen keyboard reports no frame.
+              end.height > 0,
+              // Held like a book the terminal's keyboard is ManimStudio's.
+              !bookPosture
         else { return }
         let overlap = window.bounds.maxY - window.convert(end, from: screen.coordinateSpace).minY
         // Only a keyboard coming up says which kind is in use.
         guard overlap > 0 else { return }
-        // Without the bar's own height: on-screen keys are far taller than a
-        // hardware keyboard's shortcuts bar. A floating on-screen keyboard
-        // reports no height, so with no hardware keyboard it's on-screen.
-        let keys = end.height - (terminal.inputAccessoryView === keyBar ? keyBar.bounds.height : 0)
-        let onScreen = keys > 150 || GCKeyboard.coalesced == nil
+        // Without the bar's own height, on-screen keys are far taller than
+        // what a hardware keyboard brings (its shortcuts bar, or nothing).
+        // Any keyboard tells, the editor's too: the kind in use is the same.
+        let bar = terminal.isFirstResponder && terminal.inputAccessoryView === keyBar
+            ? keyBar.bounds.height : 0
+        let onScreen = end.height - bar > 150
         guard onScreen != typingOnScreen else { return }
         typingOnScreen = onScreen
+        CrashLogger.shared.log("terminal: typing on \(onScreen ? "the on-screen" : "a hardware") keyboard "
+                               + "(keyboard \(Int(end.height)) pt, key bar \(Int(bar)) pt)", tag: "keyboard")
         // After this notification: reloading the input views from inside
         // it starts another keyboard change while this one is running.
         DispatchQueue.main.async { [weak self] in self?.updateAccessory() }
