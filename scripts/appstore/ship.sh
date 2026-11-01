@@ -159,6 +159,10 @@ codesign -v --deep --strict "$APP" 2>"$LOGS/codesign.txt" && ok "codesign valid"
 for m in manimstudio_shell manimstudio_encoder; do
   [ -f "$APP/python-metadata/$m.py" ] && ok "$m.py bundled" || bad "$m.py missing from python-metadata/"
 done
+# cpu-z / gpu-z / spec find their native code by name (ctypes.CDLL(None)); a
+# strip that drops global symbols leaves them on the Python fallbacks.
+exported=$(xcrun dyld_info -exports "$BIN" 2>/dev/null | { grep -cE ' _cb_(spec|cpu|gpu)_' || true; })
+[ "$exported" = 12 ] && ok "12 benchmark entry points exported" || bad "$exported of 12 benchmark entry points exported"
 /usr/libexec/PlistBuddy -c 'Print :BGTaskSchedulerPermittedIdentifiers:0' "$APP/Info.plist" 2>/dev/null \
   | grep -qx 'euleryu.ManimStudio.render.\*' && ok "render task identifier in Info.plist" || bad "render task identifier missing"
 # Temporary test hooks use launch-argument keys starting with "MS…"; none may ship.
