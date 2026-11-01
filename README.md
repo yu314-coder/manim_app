@@ -134,10 +134,20 @@ on-device without an internet connection.
   `curl`, `zip`, `tree`, … — and
   [`PythonSupport/manimstudio_shell.py`](ManimStudio/PythonSupport/manimstudio_shell.py)
   fits it to this app before the REPL starts:
-  - commands with no backend here — `pip` (no writable site-packages, no
-    toolchain for wheels), `ai` (CodeBench's local-LLM runner), the
-    C/C++/Fortran compilers, `swift`, `debug-gui` — are removed and answer
-    with a one-line reason;
+  - commands with no backend here — `ai` (CodeBench's local-LLM runner),
+    the C/C++/Fortran compilers, `swift`, `debug-gui` — are removed and
+    answer with a one-line reason;
+  - `pip` works offline (python-ios-lib's `benchcode_pip`): `list`, `show`,
+    `freeze` and `check` read the bundled packages' metadata, counting only
+    packages the app really ships (python-metadata/ also holds the
+    metadata of ones it leaves out, such as torch); `install` says which of
+    the requested packages are built in and that nothing can be downloaded;
+  - `cpu-z`, `gpu-z` and `spec` (python-ios-lib's `offlinai_bench`) measure
+    in native code taken from CodeBench: the C workloads in
+    [`Bench/`](ManimStudio/ManimStudio/Bench) and the Metal benchmarks in
+    [`GPUBench.swift`](ManimStudio/ManimStudio/GPUBench.swift), found by
+    name through `ctypes.CDLL(None)` and kept in the Release binary by
+    `_cbGPUBenchKeepAlive()`; `--json` saves to Documents/Benchmarks;
   - `exit` / `quit` no longer end the app; `top`, `htop` and `ps` read
     `sysctl` and Mach task info instead of psutil's private-API module;
   - `curl` streams instead of holding a download in memory, `git` is
@@ -150,7 +160,10 @@ on-device without an internet connection.
   `nb` open in Quick Look.
 - **Extra keys** above the on-screen keyboard — esc, sticky ctrl, tab,
   ^C ^D ^L ^U, auto-repeating arrows and shell symbols (`KeyBar.swift`, in
-  place of SwiftTerm's generic accessory).
+  place of SwiftTerm's generic accessory). Typing on a hardware keyboard the
+  terminal drops the bar (iOS would pin it to the bottom of the screen), as
+  the editor's floating one already did; it returns with the on-screen
+  keyboard.
 - [`scripts/terminal-selftest.py`](scripts/terminal-selftest.py) runs every
   command once inside the app and writes a JSON report.
 - **Magic Keyboard support** — every shortcut you'd want (⌘C / ⌘V / Ctrl-C
@@ -461,6 +474,8 @@ ManimStudio/                         ← Xcode project root
     ├── TerminalPane.swift           · SwiftUI host for SwiftTerm
     ├── TerminalPaneViewController.swift
     ├── KeyBar.swift                 · extra keys over the on-screen keyboard
+    ├── GPUBench.swift               · gpu-z's Metal benchmarks (from CodeBench)
+    ├── Bench/                       · cpu-z / spec workloads in C (from CodeBench)
     ├── PTYBridge.swift              · PTY pipes, line filter, Magic Keyboard observer
     ├── PythonRuntime.swift          · Py_Initialize, GIL, redirect, render wrapper
     ├── PackagesView.swift           · importlib.metadata browser
@@ -784,7 +799,7 @@ transport: without `-o` it reads only what it shows, and `wget` and
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
 | On the App Store | **1.6** (build 5) |
-| Latest TestFlight | **1.6** (build 5) |
+| Latest TestFlight | **1.6.1** (build 2) |
 | Build numbers | The project stays at build 1; each upload's build number is set in the archive |
 
 ---

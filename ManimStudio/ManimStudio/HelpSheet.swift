@@ -488,6 +488,12 @@ enum HelpContent {
     static let whatsNew: [HelpNewItem] = [
         HelpNewItem(icon: "laptopcomputer", title: "More code on a half-open iPhone Duo",
              body: "Held half-open like a laptop, the top screen no longer gives a band to the time and Wi-Fi: the app starts at the top edge, so the editor shows more of your code above the keyboard. Opened flat or folded, the status bar is back."),
+        HelpNewItem(icon: "keyboard", title: "No key bar with a hardware keyboard",
+             body: "Typing in the terminal on a Magic Keyboard or any other, the row of extra keys no longer sits along the bottom of the screen: the keyboard has esc, ctrl and the arrows itself. Bring up the on-screen keyboard and the row comes back with it."),
+        HelpNewItem(icon: "gauge.with.dots.needle.67percent", title: "cpu-z and gpu-z, measured in native code",
+             body: "In the terminal, `cpu-z` shows the cores, caches and clock and times one core and all of them (floating point, memory, a compiler, a chess search, compression, a ray tracer). `gpu-z` now benchmarks the GPU on Metal: shader arithmetic, bandwidth, matrix multiply and a 4K blur. `-i` shows the information only, `--json` saves the results to Benchmarks."),
+        HelpNewItem(icon: "shippingbox", title: "pip lists what's built in",
+             body: "`pip list`, `pip show`, `pip freeze` and `pip check` work offline on the bundled packages. `pip install` says which of the packages you asked for are already built in; nothing is downloaded."),
     ]
 
     /// The release before, shown under the new notes for anyone who
@@ -690,7 +696,7 @@ enum HelpContent {
         HelpTopic(title: "The app freezes on launch.",
              body: "Close it once and reopen. The first launch after an update warms up Python and imports manim, NumPy, SciPy and matplotlib (about 10 s); later launches are much faster."),
         HelpTopic(title: "`pip install …` doesn't work.",
-             body: "Right — pip is turned off. iOS apps have no writable site-packages, and most wheels need a compiler iOS doesn't allow. The Packages tab lists everything bundled."),
+             body: "Right — pip can't install. iOS apps have no writable site-packages, and most wheels need a compiler iOS doesn't allow. `pip list` and `pip show` work offline on what's bundled, `pip install` says which packages are already built in, and the Packages tab lists everything."),
         HelpTopic(title: "Can I use my own fonts?",
              body: "Yes. Add the `.ttf` or `.otf` in Assets, register it, then use its *family name* — `font=` takes a name, not a file path:\n`with register_font('path/to/MyFont.ttf'):`\n`    title = Text('Hello', font='My Font')`"),
         HelpTopic(title: "Why is there no 16K option?",

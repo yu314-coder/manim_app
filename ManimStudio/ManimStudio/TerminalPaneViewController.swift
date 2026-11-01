@@ -1,5 +1,6 @@
 import UIKit
 import SwiftTerm
+import GameController
 
 /// A reusable "terminal pane" that hosts a real xterm emulator
 /// (SwiftTerm) attached to the shared PTY. Drop it anywhere a
@@ -65,7 +66,10 @@ final class TerminalPaneViewController: UIViewController {
 
         // Extra keys over the on-screen keyboard, in place of SwiftTerm's
         // generic accessory (see KeyBar).
-        terminal.inputAccessoryView = keyBar
+        terminal.inputAccessoryView = typingOnScreen ? keyBar : nil
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         terminal.onFocusChange = { [weak self] focused in
             guard let self else { return }
             self.floatingBarPresenter.isActive = focused && self.laptopPosture
@@ -174,11 +178,51 @@ final class TerminalPaneViewController: UIViewController {
             _ = terminal.resignFirstResponder()
         }
         terminal.inputView = book ? noKeyboard : nil
-        terminal.inputAccessoryView = laptop || book ? nil : keyBar
-        terminal.reloadInputViews()
+        updateAccessory(reload: true)
         floatingBarPresenter.laptopHinge = laptop
         floatingBarPresenter.isActive = laptop && terminal.isFirstResponder
         focusForLaptop()
+    }
+
+    // MARK: - Hardware keyboard
+    //
+    // Typing on a hardware keyboard, iOS still shows the input accessory,
+    // pinned to the bottom of the screen with nothing under it, and the
+    // keyboard has esc, ctrl and the arrows itself. The bar goes then, as
+    // the editor's does, and comes back with the on-screen keyboard (which
+    // can be brought up with a hardware keyboard connected).
+
+    /// Typing on the on-screen keyboard. A first guess from whether a
+    /// hardware keyboard is connected, then from what comes up.
+    private var typingOnScreen = GCKeyboard.coalesced == nil
+
+    @objc private func keyboardWillChangeFrame(_ note: Notification) {
+        guard terminal.isFirstResponder, let window = view.window, let screen = window.windowScene?.screen,
+              let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        else { return }
+        let overlap = window.bounds.maxY - window.convert(end, from: screen.coordinateSpace).minY
+        // Only a keyboard coming up says which kind is in use.
+        guard overlap > 0 else { return }
+        // Without the bar's own height: on-screen keys are far taller than a
+        // hardware keyboard's shortcuts bar. A floating on-screen keyboard
+        // reports no height, so with no hardware keyboard it's on-screen.
+        let keys = end.height - (terminal.inputAccessoryView === keyBar ? keyBar.bounds.height : 0)
+        let onScreen = keys > 150 || GCKeyboard.coalesced == nil
+        guard onScreen != typingOnScreen else { return }
+        typingOnScreen = onScreen
+        // After this notification: reloading the input views from inside
+        // it starts another keyboard change while this one is running.
+        DispatchQueue.main.async { [weak self] in self?.updateAccessory() }
+    }
+
+    /// The key bar as the terminal's accessory: not held half-open (the bar
+    /// floats on the keys, or the keyboard is ManimStudio's own), and not
+    /// while typing on a hardware keyboard.
+    private func updateAccessory(reload: Bool = false) {
+        let accessory: UIView? = laptopPosture || bookPosture || !typingOnScreen ? nil : keyBar
+        guard reload || terminal.inputAccessoryView !== accessory else { return }
+        terminal.inputAccessoryView = accessory
+        terminal.reloadInputViews()
     }
 
     @objc private func workspaceTabShown() {

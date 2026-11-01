@@ -97,6 +97,10 @@ struct ManimStudioApp: App {
         // external scene can connect (an already-attached display is adopted
         // in the manager's init). Drives Presentation mode's TV routing.
         _ = ExternalDisplayManager.shared
+
+        // The terminal's cpu-z, gpu-z and spec find their native code by
+        // name; this call keeps it in the Release binary (GPUBench.swift).
+        _ = _cbGPUBenchKeepAlive()
     }
 
     var body: some Scene {

@@ -40,8 +40,8 @@ def install(shell_module):
         for name in ("BOLD", "DIM", "RED", "GRN", "YLW", "CYN", "RESET"))
     for step in (_remove_unsupported, _replace_exit, _replace_top_and_ps,
                  _fix_documents_paths, _fix_missing_imports, _fix_debug, _fix_markdown,
-                 _fix_http_fetch, _limit_git, _fit_test_libs, _fit_gpuz,
-                 _rebrand_cpuz, _wrap_run_line, _fix_prompt_user,
+                 _fix_http_fetch, _limit_git, _fit_test_libs, _offline_pip,
+                 _fit_benchmarks, _wrap_run_line, _fix_prompt_user,
                  _defer_inline_backends, _quiet_manim_version_check):
         try:
             step()
@@ -61,11 +61,6 @@ def _wrap(name, make):
 
 # Command → what to tell someone who types it.
 _UNSUPPORTED = {
-    # pip: wheels with C extensions can't be built on the device, and the
-    # app sandbox has no writable site-packages.
-    **dict.fromkeys(("pip", "pip3", "pip-install", "pip-uninstall", "pip-list",
-                     "pip-show", "pip-freeze", "pip-check"),
-                    "packages come bundled with the app; there's no installer"),
     # ai: CodeBench's local-LLM assistant. offlinai_ai downloads a GGUF
     # model for a Swift LlamaRunner; ManimStudio ships neither. With it
     # gone, PTYBridge's AI mode never switches on either — only offlinai_ai
@@ -626,7 +621,105 @@ def _fit_test_libs():
     _wrap("test_libs", make)
 
 
-# ── gpu-z / cpu-z ─────────────────────────────────────────────────────
+# ── pip ───────────────────────────────────────────────────────────────
+
+# benchcode_pip speaks of BenchCode, and of its Library tab.
+_PIP_WORDING = (
+    ("BenchCode's packages come built in and work offline. Library lists every package included.",
+     "ManimStudio's packages come built in and work offline; the Packages tab lists every one."),
+    ("Library lists every one", "the Packages tab lists every one"),
+    ("BenchCode", "ManimStudio"),
+)
+
+
+# Distributions whose import name isn't their own and whose metadata here
+# doesn't say (no top_level.txt, a RECORD of only the .dist-info).
+_IMPORT_NAMES = {
+    "beautifulsoup4": "bs4", "scikit-learn": "sklearn", "pycairo": "cairo",
+    "skia-pathops": "pathops", "rpds-py": "rpds", "markdown-it-py": "markdown_it",
+    "audioop-lts": "audioop", "pyyaml": "yaml", "pillow": "PIL", "fonttools": "fontTools",
+    "python-dateutil": "dateutil", "attrs": "attr",
+}
+
+
+def _import_names(dist):
+    """The top-level names `dist` can be imported by: top_level.txt, the
+    top folders and modules its RECORD lists, and its own name."""
+    names = []
+    try:
+        names += (dist.read_text("top_level.txt") or "").split()
+    except Exception:
+        pass
+    try:
+        # Some of the app's distributions raise here (TypeError from
+        # importlib.metadata's make_file).
+        files = dist.files or ()
+    except Exception:
+        files = ()
+    for f in files:
+        # Relative entries only: several RECORDs here list absolute paths.
+        head = f.parts[0] if f.parts and not f.is_absolute() else ""
+        if head and head != ".." and not head.endswith((".dist-info", ".egg-info", ".data")):
+            names.append(head[:-3] if head.endswith(".py") else head)
+    name = dist.metadata["Name"] or ""
+    canonical = re.sub(r"[-_.]+", "-", name).lower()
+    if canonical in _IMPORT_NAMES:
+        names.append(_IMPORT_NAMES[canonical])
+    names += [name.replace("-", "_"), name.replace("-", "_").lower()]
+    return list(dict.fromkeys(n for n in names if n.isidentifier()))
+
+
+def _shipped(dist):
+    """True if the package `dist` describes is in the app. python-metadata/
+    carries the metadata of every python-ios-lib package, ManimStudio's
+    and the ones it leaves out (torch, transformers, …), and pip list
+    would have claimed those."""
+    import importlib.util
+    for name in _import_names(dist):
+        try:
+            if importlib.util.find_spec(name) is not None:
+                return True
+        except (ImportError, ValueError):
+            pass
+    return False
+
+
+def _offline_pip():
+    # The shell's pip runs benchcode_pip once `import pip` fails: list,
+    # show, freeze and check read the bundled packages' metadata; install
+    # and the other verbs that download say why they can't. It is called
+    # directly here: the shell's own path first creates and puts on
+    # sys.path ~/Documents/site-packages, which with HOME at Documents is
+    # a nested Documents/Documents.
+    import benchcode_pip
+    every = benchcode_pip.installed
+    shipped = {}
+
+    def installed():
+        dists = every()
+        for key, dist in dists.items():
+            if key not in shipped:
+                shipped[key] = _shipped(dist)
+        return {key: dist for key, dist in dists.items() if shipped[key]}
+
+    benchcode_pip.installed = installed
+
+    def pip(sh, argv):
+        """pip list | show <package> | freeze | check  — the packages built into ManimStudio.
+
+        They come with the app and work offline: pip list, show, freeze and
+        check read them. pip install can't download anything; it says which
+        of the requested packages are already built in. The Packages tab
+        lists every one."""
+        with _rewriting_stdout(*_PIP_WORDING):
+            benchcode_pip.main(_shell._normalize_help_arg(list(argv)))
+
+    for name in ("pip", "pip3"):
+        if name in _shell.BUILTINS:
+            _shell.BUILTINS[name] = pip
+
+
+# ── cpu-z / gpu-z / spec ──────────────────────────────────────────────
 
 class _RewritingStream:
     def __init__(self, stream, replacements):
@@ -655,31 +748,69 @@ def _rewriting_stdout(*replacements):
         sys.stdout = saved
 
 
-def _fit_gpuz():
-    # The benchmark half needs torch and CodeBench's Metal bridge, so after
-    # the device table it failed on the torch import. Show the table only,
-    # which is what `gpu-z -i` does.
-    def make(original):
-        def gpuz(sh, argv):
-            """gpu-z  — Metal GPU information: device, family, memory."""
-            with _rewriting_stdout(
-                    ("CodeBench edition — Metal device + live benchmark", "Metal device"),
-                    ("CodeBench edition", "ManimStudio edition")):
-                return original(sh, [a for a in argv if a != "-i"] + ["-i"])
-        return gpuz
-    _wrap("gpu-z", make)
-    _wrap("gpuz", make)
+# The benchmarks' wording: their native code came from CodeBench and is
+# built into ManimStudio.
+_BENCH_WORDING = (
+    ("CodeBench edition", "ManimStudio edition"),
+    ("CodeBench CPU suite", "ManimStudio CPU suite"),
+    ("CodeBench's", "ManimStudio's"),
+)
 
 
-def _rebrand_cpuz():
-    def make(original):
+def _fit_benchmarks():
+    # cpu-z, gpu-z and spec run native code built into the app (Bench/ and
+    # GPUBench.swift, from CodeBench) through offlinai_bench.
+    import offlinai_bench
+
+    # --json saved to ~/Documents/Benchmarks: with HOME at Documents that
+    # is Documents/Documents. The folder the Files app shows instead.
+    save_json = offlinai_bench._save_json
+
+    def _save_json(kind, data, path=None):
+        if not path:
+            root = os.path.join(os.path.expanduser("~"), "Benchmarks")
+            os.makedirs(root, exist_ok=True)
+            path = os.path.join(root, f"{kind}-{time.strftime('%Y-%m-%d-%H%M%S')}.json")
+        return save_json(kind, data, path)
+
+    offlinai_bench._save_json = _save_json
+
+    def make(original, adjust=None):
         @functools.wraps(original)
-        def cpuz(sh, argv):
-            with _rewriting_stdout(("CodeBench edition", "ManimStudio edition")):
+        def command(sh, argv):
+            argv = adjust(argv) if adjust else argv
+            if argv is None:
+                return
+            with _rewriting_stdout(*_BENCH_WORDING):
                 return original(sh, argv)
-        return cpuz
-    _wrap("cpu-z", make)
-    _wrap("cpuz", make)
+        doc = original.__doc__ or ""
+        for old, new in _BENCH_WORDING:
+            doc = doc.replace(old, new)
+        command.__doc__ = doc
+        return command
+
+    def gpuz_argv(argv):
+        if "--torch" in argv:
+            print(f"{RED}gpu-z --torch:{RESET} not available in ManimStudio — "
+                  f"PyTorch isn't part of the app; gpu-z measures on Metal directly.")
+            return None
+        # A build without the native entry points falls back to the shell's
+        # torch benchmark, which ends in a failed torch import here: the
+        # device table only.
+        if offlinai_bench.native() is None and "-i" not in argv:
+            return argv + ["-i"]
+        return argv
+
+    def gpuz(original):
+        command = make(original, gpuz_argv)
+        # Its help without the --torch option (two lines).
+        command.__doc__ = re.sub(r"\n *--torch .*\n *copies included.*", "", command.__doc__)
+        return command
+
+    for name in ("gpu-z", "gpuz"):
+        _wrap(name, gpuz)
+    for name in ("cpu-z", "cpuz", "spec"):
+        _wrap(name, make)
 
 
 # ── Command lines: $VAR expansion, removed commands ───────────────────

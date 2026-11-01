@@ -173,12 +173,19 @@ else
   #                     single pure-Python module.
   #   test_libs         the terminal's `test-libs`: "No module named
   #                     'test_libs'" without it.
+  #   offlinai_bench    cpu-z, gpu-z and spec over the app's native code
+  #                     (Bench/, GPUBench.swift). offlinai_shell imports it
+  #                     at load, so without it the terminal doesn't start.
+  #   benchcode_pip     the terminal's offline pip: list, show, freeze and
+  #                     check read the bundled packages' metadata.
   for _mod in \
       codebench_inline \
       threadpoolctl \
       _offlinai_7z _offlinai_binwalk \
       codebench_repl \
       test_libs \
+      offlinai_bench \
+      benchcode_pip \
       ; do
     MOD_SRC="$PIL_SP/$_mod.py"
     MOD_DST="$APP_SP/$_mod.py"
