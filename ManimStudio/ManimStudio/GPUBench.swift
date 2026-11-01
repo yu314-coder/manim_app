@@ -80,11 +80,15 @@ nonisolated private enum GPUBench {
         let deadline = Date().addingTimeInterval(Double(max(ms, 50)) / 1000)
         var runs = 0
         repeat {
-            guard let buffer = queue.makeCommandBuffer(), encode(buffer) else { return 0 }
-            buffer.commit()
-            buffer.waitUntilCompleted()
-            if buffer.status != .completed { return 0 }
-            let gpu = buffer.gpuEndTime - buffer.gpuStartTime
+            // Each command buffer released as soon as it is read: Python
+            // calls in on its own threads, where nothing drains a pool.
+            let gpu: Double? = autoreleasepool {
+                guard let buffer = queue.makeCommandBuffer(), encode(buffer) else { return nil }
+                buffer.commit()
+                buffer.waitUntilCompleted()
+                return buffer.status == .completed ? buffer.gpuEndTime - buffer.gpuStartTime : nil
+            }
+            guard let gpu else { return 0 }
             if runs > 0, gpu > 0 { best = min(best, gpu) }
             runs += 1
         } while runs < 3 || Date() < deadline
@@ -96,146 +100,156 @@ nonisolated private enum GPUBench {
 /// at most `capacity` bytes). Returns the length written, or -1.
 @_cdecl("cb_gpu_info_json")
 public nonisolated func cb_gpu_info_json(_ buffer: UnsafeMutablePointer<CChar>?, _ capacity: Int32) -> Int32 {
-    guard let buffer, capacity > 1, let device = GPUBench.device else { return -1 }
-    // The families by their raw values: an SDK that does not name a newer
-    // one still asks the device about it.
-    let families: [(String, Int)] = [
-        ("Apple1", 1001), ("Apple2", 1002), ("Apple3", 1003), ("Apple4", 1004), ("Apple5", 1005),
-        ("Apple6", 1006), ("Apple7", 1007), ("Apple8", 1008), ("Apple9", 1009), ("Apple10", 1010),
-        ("Mac2", 2002), ("Common1", 3001), ("Common2", 3002), ("Common3", 3003),
-        ("Metal3", 5001), ("Metal4", 5002),
-    ]
-    let supported = families.filter { _, raw in
-        MTLGPUFamily(rawValue: raw).map { device.supportsFamily($0) } ?? false
-    }.map(\.0)
-    let threads = device.maxThreadsPerThreadgroup
-    var info: [String: Any] = [
-        "name": device.name,
-        "registry_id": device.registryID,
-        "unified_memory": device.hasUnifiedMemory,
-        "budget": device.recommendedMaxWorkingSetSize,
-        "max_buffer": device.maxBufferLength,
-        "allocated": device.currentAllocatedSize,
-        "max_threads_per_group": [threads.width, threads.height, threads.depth],
-        "threadgroup_memory": device.maxThreadgroupMemoryLength,
-        "families": supported,
-        "raytracing": device.supportsRaytracing,
-        "function_pointers": device.supportsFunctionPointers,
-        "dynamic_libraries": device.supportsDynamicLibraries,
-        "argument_buffers_tier": device.argumentBuffersSupport.rawValue + 1,
-        "read_write_textures_tier": device.readWriteTextureSupport.rawValue,
-        "float32_filtering": device.supports32BitFloatFiltering,
-        "bc_textures": device.supportsBCTextureCompression,
-        "barycentrics": device.supportsShaderBarycentricCoordinates,
-        "sparse_tile_bytes": device.sparseTileSizeInBytes,
-    ]
-    if let library = GPUBench.library {
-        info["kernels_compiled"] = library.functionNames.count
-    }
-    guard let data = try? JSONSerialization.data(withJSONObject: info, options: [.sortedKeys]),
-          data.count < Int(capacity) else { return -1 }
-    data.withUnsafeBytes { raw in
-        buffer.withMemoryRebound(to: UInt8.self, capacity: Int(capacity)) { out in
-            out.update(from: raw.bindMemory(to: UInt8.self).baseAddress!, count: data.count)
-            out[data.count] = 0
+    autoreleasepool {
+        guard let buffer, capacity > 1, let device = GPUBench.device else { return -1 }
+        // The families by their raw values: an SDK that does not name a newer
+        // one still asks the device about it.
+        let families: [(String, Int)] = [
+            ("Apple1", 1001), ("Apple2", 1002), ("Apple3", 1003), ("Apple4", 1004), ("Apple5", 1005),
+            ("Apple6", 1006), ("Apple7", 1007), ("Apple8", 1008), ("Apple9", 1009), ("Apple10", 1010),
+            ("Mac2", 2002), ("Common1", 3001), ("Common2", 3002), ("Common3", 3003),
+            ("Metal3", 5001), ("Metal4", 5002),
+        ]
+        let supported = families.filter { _, raw in
+            MTLGPUFamily(rawValue: raw).map { device.supportsFamily($0) } ?? false
+        }.map(\.0)
+        let threads = device.maxThreadsPerThreadgroup
+        var info: [String: Any] = [
+            "name": device.name,
+            "registry_id": device.registryID,
+            "unified_memory": device.hasUnifiedMemory,
+            "budget": device.recommendedMaxWorkingSetSize,
+            "max_buffer": device.maxBufferLength,
+            "allocated": device.currentAllocatedSize,
+            "max_threads_per_group": [threads.width, threads.height, threads.depth],
+            "threadgroup_memory": device.maxThreadgroupMemoryLength,
+            "families": supported,
+            "raytracing": device.supportsRaytracing,
+            "function_pointers": device.supportsFunctionPointers,
+            "dynamic_libraries": device.supportsDynamicLibraries,
+            "argument_buffers_tier": device.argumentBuffersSupport.rawValue + 1,
+            "read_write_textures_tier": device.readWriteTextureSupport.rawValue,
+            "float32_filtering": device.supports32BitFloatFiltering,
+            "bc_textures": device.supportsBCTextureCompression,
+            "barycentrics": device.supportsShaderBarycentricCoordinates,
+            "sparse_tile_bytes": device.sparseTileSizeInBytes,
+        ]
+        if let library = GPUBench.library {
+            info["kernels_compiled"] = library.functionNames.count
         }
+        guard let data = try? JSONSerialization.data(withJSONObject: info, options: [.sortedKeys]),
+              data.count < Int(capacity) else { return -1 }
+        data.withUnsafeBytes { raw in
+            buffer.withMemoryRebound(to: UInt8.self, capacity: Int(capacity)) { out in
+                out.update(from: raw.bindMemory(to: UInt8.self).baseAddress!, count: data.count)
+                out[data.count] = 0
+            }
+        }
+        return Int32(data.count)
     }
-    return Int32(data.count)
 }
 
 /// Peak shader arithmetic in TFLOPS: `precision` 32 (float) or 16 (half),
 /// a million threads of eight FMA chains, timed by the GPU.
 @_cdecl("cb_gpu_fma_tflops")
 public nonisolated func cb_gpu_fma_tflops(_ precision: Int32, _ ms: Int32) -> Double {
-    guard ms >= 0, let device = GPUBench.device,
-          let pipeline = GPUBench.pipeline(precision == 16 ? "cb_fma16" : "cb_fma32") else { return 0 }
-    let threads = 1 << 20
-    guard let out = device.makeBuffer(length: threads * 16, options: .storageModePrivate) else { return 0 }
-    var iters: UInt32 = 2048
-    let seconds = GPUBench.time(ms: ms) { buffer in
-        guard let encoder = buffer.makeComputeCommandEncoder() else { return false }
-        encoder.setComputePipelineState(pipeline)
-        encoder.setBuffer(out, offset: 0, index: 0)
-        encoder.setBytes(&iters, length: 4, index: 1)
-        let width = pipeline.threadExecutionWidth
-        let group = MTLSize(width: min(pipeline.maxTotalThreadsPerThreadgroup, width * 8), height: 1, depth: 1)
-        encoder.dispatchThreads(MTLSize(width: threads, height: 1, depth: 1), threadsPerThreadgroup: group)
-        encoder.endEncoding()
-        return true
+    autoreleasepool {
+        guard ms >= 0, let device = GPUBench.device,
+              let pipeline = GPUBench.pipeline(precision == 16 ? "cb_fma16" : "cb_fma32") else { return 0 }
+        let threads = 1 << 20
+        guard let out = device.makeBuffer(length: threads * 16, options: .storageModePrivate) else { return 0 }
+        var iters: UInt32 = 2048
+        let seconds = GPUBench.time(ms: ms) { buffer in
+            guard let encoder = buffer.makeComputeCommandEncoder() else { return false }
+            encoder.setComputePipelineState(pipeline)
+            encoder.setBuffer(out, offset: 0, index: 0)
+            encoder.setBytes(&iters, length: 4, index: 1)
+            let width = pipeline.threadExecutionWidth
+            let group = MTLSize(width: min(pipeline.maxTotalThreadsPerThreadgroup, width * 8), height: 1, depth: 1)
+            encoder.dispatchThreads(MTLSize(width: threads, height: 1, depth: 1), threadsPerThreadgroup: group)
+            encoder.endEncoding()
+            return true
+        }
+        guard seconds > 0 else { return 0 }
+        return Double(threads) * Double(iters) * 64 / seconds * 1e-12
     }
-    guard seconds > 0 else { return 0 }
-    return Double(threads) * Double(iters) * 64 / seconds * 1e-12
 }
 
 /// Device-memory bandwidth in GB/s: a copy of `megabytes` into another
 /// buffer as large, counted as a read and a write of every byte.
 @_cdecl("cb_gpu_bandwidth_gbs")
 public nonisolated func cb_gpu_bandwidth_gbs(_ megabytes: Int32, _ ms: Int32) -> Double {
-    guard ms >= 0, let device = GPUBench.device, let pipeline = GPUBench.pipeline("cb_copy") else { return 0 }
-    let bytes = Int(max(megabytes, 16)) << 20
-    guard let src = device.makeBuffer(length: bytes, options: .storageModePrivate),
-          let dst = device.makeBuffer(length: bytes, options: .storageModePrivate) else { return 0 }
-    let seconds = GPUBench.time(ms: ms) { buffer in
-        guard let encoder = buffer.makeComputeCommandEncoder() else { return false }
-        encoder.setComputePipelineState(pipeline)
-        encoder.setBuffer(src, offset: 0, index: 0)
-        encoder.setBuffer(dst, offset: 0, index: 1)
-        let group = MTLSize(width: min(pipeline.maxTotalThreadsPerThreadgroup, 256), height: 1, depth: 1)
-        encoder.dispatchThreads(MTLSize(width: bytes / 16, height: 1, depth: 1), threadsPerThreadgroup: group)
-        encoder.endEncoding()
-        return true
+    autoreleasepool {
+        guard ms >= 0, let device = GPUBench.device, let pipeline = GPUBench.pipeline("cb_copy") else { return 0 }
+        let bytes = Int(max(megabytes, 1)) << 20
+        guard let src = device.makeBuffer(length: bytes, options: .storageModePrivate),
+              let dst = device.makeBuffer(length: bytes, options: .storageModePrivate) else { return 0 }
+        let seconds = GPUBench.time(ms: ms) { buffer in
+            guard let encoder = buffer.makeComputeCommandEncoder() else { return false }
+            encoder.setComputePipelineState(pipeline)
+            encoder.setBuffer(src, offset: 0, index: 0)
+            encoder.setBuffer(dst, offset: 0, index: 1)
+            let group = MTLSize(width: min(pipeline.maxTotalThreadsPerThreadgroup, 256), height: 1, depth: 1)
+            encoder.dispatchThreads(MTLSize(width: bytes / 16, height: 1, depth: 1), threadsPerThreadgroup: group)
+            encoder.endEncoding()
+            return true
+        }
+        guard seconds > 0 else { return 0 }
+        return Double(bytes) * 2 / seconds * 1e-9
     }
-    guard seconds > 0 else { return 0 }
-    return Double(bytes) * 2 / seconds * 1e-9
 }
 
 /// MPS's matrix multiply of two `n` × `n` matrices in GPU memory, in
 /// GFLOPS (2n³ a multiply): `precision` 32 or 16.
 @_cdecl("cb_gpu_matmul_gflops")
 public nonisolated func cb_gpu_matmul_gflops(_ n: Int32, _ precision: Int32, _ ms: Int32) -> Double {
-    guard ms >= 0, n > 0, let device = GPUBench.device else { return 0 }
-    let size = Int(n)
-    let type: MPSDataType = precision == 16 ? .float16 : .float32
-    let element = precision == 16 ? 2 : 4
-    let rowBytes = MPSMatrixDescriptor.rowBytes(forColumns: size, dataType: type)
-    let descriptor = MPSMatrixDescriptor(rows: size, columns: size, rowBytes: rowBytes, dataType: type)
-    guard rowBytes >= size * element,
-          let a = device.makeBuffer(length: rowBytes * size, options: .storageModePrivate),
-          let b = device.makeBuffer(length: rowBytes * size, options: .storageModePrivate),
-          let c = device.makeBuffer(length: rowBytes * size, options: .storageModePrivate) else { return 0 }
-    let ma = MPSMatrix(buffer: a, descriptor: descriptor)
-    let mb = MPSMatrix(buffer: b, descriptor: descriptor)
-    let mc = MPSMatrix(buffer: c, descriptor: descriptor)
-    let multiply = MPSMatrixMultiplication(device: device, transposeLeft: false, transposeRight: false,
-                                           resultRows: size, resultColumns: size, interiorColumns: size,
-                                           alpha: 1, beta: 0)
-    let seconds = GPUBench.time(ms: ms) { buffer in
-        multiply.encode(commandBuffer: buffer, leftMatrix: ma, rightMatrix: mb, resultMatrix: mc)
-        return true
+    autoreleasepool {
+        guard ms >= 0, n > 0, let device = GPUBench.device else { return 0 }
+        let size = Int(n)
+        let type: MPSDataType = precision == 16 ? .float16 : .float32
+        let element = precision == 16 ? 2 : 4
+        let rowBytes = MPSMatrixDescriptor.rowBytes(forColumns: size, dataType: type)
+        let descriptor = MPSMatrixDescriptor(rows: size, columns: size, rowBytes: rowBytes, dataType: type)
+        guard rowBytes >= size * element,
+              let a = device.makeBuffer(length: rowBytes * size, options: .storageModePrivate),
+              let b = device.makeBuffer(length: rowBytes * size, options: .storageModePrivate),
+              let c = device.makeBuffer(length: rowBytes * size, options: .storageModePrivate) else { return 0 }
+        let ma = MPSMatrix(buffer: a, descriptor: descriptor)
+        let mb = MPSMatrix(buffer: b, descriptor: descriptor)
+        let mc = MPSMatrix(buffer: c, descriptor: descriptor)
+        let multiply = MPSMatrixMultiplication(device: device, transposeLeft: false, transposeRight: false,
+                                               resultRows: size, resultColumns: size, interiorColumns: size,
+                                               alpha: 1, beta: 0)
+        let seconds = GPUBench.time(ms: ms) { buffer in
+            multiply.encode(commandBuffer: buffer, leftMatrix: ma, rightMatrix: mb, resultMatrix: mc)
+            return true
+        }
+        guard seconds > 0 else { return 0 }
+        return 2 * pow(Double(size), 3) / seconds * 1e-9
     }
-    guard seconds > 0 else { return 0 }
-    return 2 * pow(Double(size), 3) / seconds * 1e-9
 }
 
 /// MPS's Gaussian blur (sigma 4) over a 4096 × 4096 half-float RGBA image,
 /// in megapixels a second: an image-processing workload rather than a peak.
 @_cdecl("cb_gpu_blur_mpix")
 public nonisolated func cb_gpu_blur_mpix(_ ms: Int32) -> Double {
-    guard ms >= 0, let device = GPUBench.device else { return 0 }
-    let side = 4096
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: side,
-                                                              height: side, mipmapped: false)
-    descriptor.storageMode = .private
-    descriptor.usage = [.shaderRead, .shaderWrite]
-    guard let source = device.makeTexture(descriptor: descriptor),
-          let destination = device.makeTexture(descriptor: descriptor) else { return 0 }
-    let blur = MPSImageGaussianBlur(device: device, sigma: 4)
-    let seconds = GPUBench.time(ms: ms) { buffer in
-        blur.encode(commandBuffer: buffer, sourceTexture: source, destinationTexture: destination)
-        return true
+    autoreleasepool {
+        guard ms >= 0, let device = GPUBench.device else { return 0 }
+        let side = 4096
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: side,
+                                                                  height: side, mipmapped: false)
+        descriptor.storageMode = .private
+        descriptor.usage = [.shaderRead, .shaderWrite]
+        guard let source = device.makeTexture(descriptor: descriptor),
+              let destination = device.makeTexture(descriptor: descriptor) else { return 0 }
+        let blur = MPSImageGaussianBlur(device: device, sigma: 4)
+        let seconds = GPUBench.time(ms: ms) { buffer in
+            blur.encode(commandBuffer: buffer, sourceTexture: source, destinationTexture: destination)
+            return true
+        }
+        guard seconds > 0 else { return 0 }
+        return Double(side * side) / seconds * 1e-6
     }
-    guard seconds > 0 else { return 0 }
-    return Double(side * side) / seconds * 1e-6
 }
 
 // The C entry points in Bench/ (from CodeBench), declared by name: this

@@ -754,6 +754,14 @@ _BENCH_WORDING = (
     ("CodeBench edition", "ManimStudio edition"),
     ("CodeBench CPU suite", "ManimStudio CPU suite"),
     ("CodeBench's", "ManimStudio's"),
+    ("CodeBench", "ManimStudio"),
+)
+
+# Their help, for graphs that are a picture by default here (see
+# _fit_benchmarks).
+_GRAPH_HELP = (
+    ("an HTML page (plotly) by default", "a picture, opened in Quick Look"),
+    ("the graph as html (default), png,", "the graph as png (default), html,"),
 )
 
 
@@ -762,29 +770,55 @@ def _fit_benchmarks():
     # GPUBench.swift, from CodeBench) through offlinai_bench.
     import offlinai_bench
 
-    # --json saved to ~/Documents/Benchmarks: with HOME at Documents that
-    # is Documents/Documents. The folder the Files app shows instead.
-    save_json = offlinai_bench._save_json
+    # Results and graphs go to ~/Documents/Workspace/Benchmarks: with HOME
+    # at Documents that is Documents/Documents. The Workspace the Files app
+    # shows instead.
+    offlinai_bench._RESULTS_DIR = os.path.join("~", "Workspace", "Benchmarks")
 
-    def _save_json(kind, data, path=None):
-        if not path:
-            root = os.path.join(os.path.expanduser("~"), "Benchmarks")
-            os.makedirs(root, exist_ok=True)
-            path = os.path.join(root, f"{kind}-{time.strftime('%Y-%m-%d-%H%M%S')}.json")
-        return save_json(kind, data, path)
+    # The graph's title names the app.
+    save_graph = offlinai_bench._save_graph
 
-    offlinai_bench._save_json = _save_json
+    def _save_graph(title, panels, path, stats=()):
+        return save_graph(title.replace("CodeBench", "ManimStudio"), panels, path, stats)
 
-    def make(original, adjust=None):
+    offlinai_bench._save_graph = _save_graph
+
+    # The graph opens in Quick Look, as pdflatex's and md's output does.
+    # (CodeBench's preview reads the "[plot saved]" line; nothing here
+    # does.) An HTML graph is plotly, which needs JavaScript and Quick Look
+    # runs none, so it is saved only.
+    def _announce_graph(path):
+        sys.stdout.write(f"  {BOLD}Saved{RESET}      {CYN}{offlinai_bench._short(path)}{RESET}\n")
+        if os.path.dirname(os.path.realpath(path)) == os.path.realpath(offlinai_bench._results_dir()):
+            sys.stdout.write(f"  {DIM}           in the Files app: Workspace › Benchmarks{RESET}\n")
+        if path.lower().endswith(".html"):
+            return
+        try:
+            signals = os.path.join(tempfile.gettempdir(), "latex_signals")
+            os.makedirs(signals, exist_ok=True)
+            with open(os.path.join(signals, "preview_request.txt"), "w", encoding="utf-8") as f:
+                f.write(path)
+        except OSError:
+            pass
+
+    offlinai_bench._announce_graph = _announce_graph
+
+    def graph_png(argv):
+        # A picture by default, which Quick Look shows.
+        if "graph" in argv and offlinai_bench._option(argv, "--out") is None:
+            return argv + ["--out", "png"]
+        return argv
+
+    def make(original, adjust=graph_png):
         @functools.wraps(original)
         def command(sh, argv):
-            argv = adjust(argv) if adjust else argv
+            argv = adjust(argv)
             if argv is None:
                 return
             with _rewriting_stdout(*_BENCH_WORDING):
                 return original(sh, argv)
         doc = original.__doc__ or ""
-        for old, new in _BENCH_WORDING:
+        for old, new in _BENCH_WORDING + _GRAPH_HELP:
             doc = doc.replace(old, new)
         command.__doc__ = doc
         return command
@@ -799,12 +833,13 @@ def _fit_benchmarks():
         # device table only.
         if offlinai_bench.native() is None and "-i" not in argv:
             return argv + ["-i"]
-        return argv
+        return graph_png(argv)
 
     def gpuz(original):
         command = make(original, gpuz_argv)
-        # Its help without the --torch option (two lines).
-        command.__doc__ = re.sub(r"\n *--torch .*\n *copies included.*", "", command.__doc__)
+        # Its help without the --torch option.
+        doc = re.sub(r"\n *--torch .*\n *copies included.*", "", command.__doc__)
+        command.__doc__ = doc.replace(" [--torch]", "")
         return command
 
     for name in ("gpu-z", "gpuz"):

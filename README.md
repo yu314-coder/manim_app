@@ -126,7 +126,10 @@ on-device without an internet connection.
 
 ### Terminal
 
-- **SwiftTerm** xterm-256color emulator backed by a real PTY pair.
+- **SwiftTerm** xterm-256color emulator backed by a real PTY pair. Output
+  is read 64 KB at a time into one reused buffer, cut of its private OSC
+  signals and given CRLFs in one pass, and fed to SwiftTerm every ~30 ms
+  with the signals in order (`PTYBridge.swift`, after CodeBench d186ba2).
 - The bundled **`offlinai_shell`** (originally written for
   [CodeBench / BenchCode](https://github.com/yu314-coder/CodeBench),
   rebranded to `ManimStudio shell` at install time via `sed`) provides
@@ -147,7 +150,12 @@ on-device without an internet connection.
     [`Bench/`](ManimStudio/ManimStudio/Bench) and the Metal benchmarks in
     [`GPUBench.swift`](ManimStudio/ManimStudio/GPUBench.swift), found by
     name through `ctypes.CDLL(None)` and kept in the Release binary by
-    `_cbGPUBenchKeepAlive()`; `--json` saves to Documents/Benchmarks;
+    `_cbGPUBenchKeepAlive()`. `cpu-z graph` / `gpu-z graph` draw
+    latency, bandwidth and FMA / matmul curves as a PNG opened in Quick
+    Look (`--out html` keeps CodeBench's plotly page, which Quick Look
+    can't run), `--core p|e` keeps a run on one kind of core, and results
+    go to Documents/Workspace/Benchmarks (offlinai_bench's own
+    `~/Documents/Workspace` would nest under HOME=Documents);
   - `exit` / `quit` no longer end the app; `top`, `htop` and `ps` read
     `sysctl` and Mach task info instead of psutil's private-API module;
   - `curl` streams instead of holding a download in memory, `git` is
@@ -799,7 +807,7 @@ transport: without `-o` it reads only what it shows, and `wget` and
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
 | On the App Store | **1.6** (build 5) |
-| Latest TestFlight | **1.6.1** (build 2) |
+| Latest TestFlight | **1.6.1** (build 5) |
 | Build numbers | The project stays at build 1; each upload's build number is set in the archive |
 
 ---

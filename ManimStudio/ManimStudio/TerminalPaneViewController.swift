@@ -190,33 +190,42 @@ final class TerminalPaneViewController: UIViewController {
     // keyboard has esc, ctrl and the arrows itself. The bar goes then, as
     // the editor's does, and comes back with the on-screen keyboard (which
     // can be brought up with a hardware keyboard connected).
+    //
+    // A key pressed on a hardware keyboard says so for certain: it arrives
+    // as a UIPress (on-screen keys don't), and the letters SwiftTerm leaves
+    // to text input come up the responder chain to here. GCKeyboard said
+    // nothing with a Magic Keyboard on an iPad Air, and the keyboard's
+    // frame didn't tell either (1.6.1 (3), (4)); each frame is logged.
 
-    /// Typing on the on-screen keyboard (true) or a hardware one, from
-    /// the last keyboard that came up. GCKeyboard is no guide: with a
-    /// Magic Keyboard attached it stayed nil on an iPad Air (1.6.1 (3)).
+    /// Typing on the on-screen keyboard (true) or a hardware one.
     private var typingOnScreen = true
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if typingOnScreen, presses.contains(where: { $0.key != nil }) {
+            typingOnScreen = false
+            CrashLogger.shared.log("terminal: a hardware key — key bar off", tag: "keyboard")
+            updateAccessory()
+        }
+        super.pressesBegan(presses, with: event)
+    }
 
     @objc private func keyboardWillChangeFrame(_ note: Notification) {
         guard let window = view.window, let screen = window.windowScene?.screen,
-              let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue,
-              // A floating or split on-screen keyboard reports no frame.
-              end.height > 0,
-              // Held like a book the terminal's keyboard is ManimStudio's.
-              !bookPosture
+              let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
         else { return }
         let overlap = window.bounds.maxY - window.convert(end, from: screen.coordinateSpace).minY
-        // Only a keyboard coming up says which kind is in use.
-        guard overlap > 0 else { return }
-        // Without the bar's own height, on-screen keys are far taller than
-        // what a hardware keyboard brings (its shortcuts bar, or nothing).
-        // Any keyboard tells, the editor's too: the kind in use is the same.
         let bar = terminal.isFirstResponder && terminal.inputAccessoryView === keyBar
             ? keyBar.bounds.height : 0
-        let onScreen = end.height - bar > 150
-        guard onScreen != typingOnScreen else { return }
-        typingOnScreen = onScreen
-        CrashLogger.shared.log("terminal: typing on \(onScreen ? "the on-screen" : "a hardware") keyboard "
-                               + "(keyboard \(Int(end.height)) pt, key bar \(Int(bar)) pt)", tag: "keyboard")
+        if terminal.isFirstResponder {
+            CrashLogger.shared.log("terminal: keyboard frame \(Int(end.height)) pt, \(Int(overlap)) pt over "
+                                   + "the window, key bar \(Int(bar)) pt", tag: "keyboard")
+        }
+        // On-screen keys coming up (a floating or split keyboard reports no
+        // frame; held like a book the keyboard is ManimStudio's): far taller
+        // than anything a hardware keyboard brings besides the bar.
+        guard !typingOnScreen, !bookPosture, overlap > 0, end.height - bar > 200 else { return }
+        typingOnScreen = true
+        CrashLogger.shared.log("terminal: on-screen keyboard — key bar on", tag: "keyboard")
         // After this notification: reloading the input views from inside
         // it starts another keyboard change while this one is running.
         DispatchQueue.main.async { [weak self] in self?.updateAccessory() }
