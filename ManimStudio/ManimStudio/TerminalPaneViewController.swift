@@ -69,7 +69,6 @@ final class TerminalPaneViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(keyboardWillChangeFrame(_:)),
             name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-        terminal.onHardwareKey = { [weak self] in self?.hardwareKeyPressed() }
         terminal.onFocusChange = { [weak self] focused in
             guard let self else { return }
             self.floatingBarPresenter.isActive = focused && self.laptopPosture
@@ -178,6 +177,7 @@ final class TerminalPaneViewController: UIViewController {
             _ = terminal.resignFirstResponder()
         }
         terminal.inputView = book ? noKeyboard : nil
+        aboveKeyboard.isActive = !laptop && !book
         updateAccessory(reload: true)
         floatingBarPresenter.laptopHinge = laptop
         floatingBarPresenter.isActive = laptop && terminal.isFirstResponder
@@ -192,19 +192,32 @@ final class TerminalPaneViewController: UIViewController {
     // the editor's does, and comes back with the on-screen keyboard (which
     // can be brought up with a hardware keyboard connected).
     //
-    // A key pressed on a hardware keyboard says so for certain: it arrives
-    // as a UIPress (on-screen keys don't). The terminal view reports each
-    // one before SwiftTerm handles it — SwiftTerm keeps the letters, so
-    // only Return and the like came up the responder chain to the pane
-    // (1.6.1 (5): the bar went at the first Return). GCKeyboard said
-    // nothing with a Magic Keyboard on an iPad Air, and the keyboard's
-    // frame didn't tell either (1.6.1 (3), (4)); each frame is logged.
+    // What the keyboard covers of the window says which: on-screen keys
+    // are hundreds of points tall, while a hardware keyboard brings the bar
+    // and at most a shortcuts bar. Not the keyboard's height — with a
+    // hardware keyboard iOS reports the full on-screen keyboard, mostly
+    // below the screen (1.6.1 (4) read that and kept the bar). A key
+    // pressed on a hardware keyboard says so too: it arrives as a UIPress
+    // (on-screen keys don't). SwiftTerm keeps the letters' presses, so only
+    // Return and the like came up the responder chain (1.6.1 (5)), but it
+    // passes on every key's release. GCKeyboard said nothing with a Magic
+    // Keyboard on an iPad Air (1.6.1 (3)). Each keyboard frame is logged.
 
     /// Typing on the on-screen keyboard (true) or a hardware one.
     private var typingOnScreen = true
 
-    private func hardwareKeyPressed() {
-        guard typingOnScreen else { return }
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        hardwareKey(in: presses)
+        super.pressesBegan(presses, with: event)
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        hardwareKey(in: presses)
+        super.pressesEnded(presses, with: event)
+    }
+
+    private func hardwareKey(in presses: Set<UIPress>) {
+        guard typingOnScreen, presses.contains(where: { $0.key != nil }) else { return }
         typingOnScreen = false
         CrashLogger.shared.log("terminal: a hardware key — key bar off", tag: "keyboard")
         updateAccessory()
@@ -221,12 +234,17 @@ final class TerminalPaneViewController: UIViewController {
             CrashLogger.shared.log("terminal: keyboard frame \(Int(end.height)) pt, \(Int(overlap)) pt over "
                                    + "the window, key bar \(Int(bar)) pt", tag: "keyboard")
         }
-        // On-screen keys coming up (a floating or split keyboard reports no
-        // frame; held like a book the keyboard is ManimStudio's): far taller
-        // than anything a hardware keyboard brings besides the bar.
-        guard !typingOnScreen, !bookPosture, overlap > 0, end.height - bar > 200 else { return }
-        typingOnScreen = true
-        CrashLogger.shared.log("terminal: on-screen keyboard — key bar on", tag: "keyboard")
+        // Only a keyboard that's up: going away it leaves the window, and a
+        // floating or split on-screen keyboard reports no frame. Held like a
+        // book the keyboard is ManimStudio's.
+        guard terminal.isFirstResponder, !bookPosture, overlap > 0 else { return }
+        let keys = overlap - bar
+        let onScreen: Bool
+        if keys > 200 { onScreen = true } else if keys < 120 { onScreen = false } else { return }
+        guard onScreen != typingOnScreen else { return }
+        typingOnScreen = onScreen
+        CrashLogger.shared.log("terminal: \(onScreen ? "on-screen" : "hardware") keyboard — key bar "
+                               + (onScreen ? "on" : "off"), tag: "keyboard")
         // After this notification: reloading the input views from inside
         // it starts another keyboard change while this one is running.
         DispatchQueue.main.async { [weak self] in self?.updateAccessory() }
@@ -273,13 +291,30 @@ final class TerminalPaneViewController: UIViewController {
         // cursor and hands keystrokes to the delegate (PTYBridge).
         view.addSubview(terminal)
 
+        // Down to the pane's bottom, but never under the keyboard: the pane
+        // can reach under the on-screen keys on iPhone, and the newest lines
+        // were hidden there, out of scrolling's reach. Half-open, the Duo's
+        // keyboard frame starts above the keys (see updateLaptopPosture).
+        let fill = terminal.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        fill.priority = .defaultHigh
+        view.keyboardLayoutGuide.usesBottomSafeArea = false
         NSLayoutConstraint.activate([
             terminal.topAnchor.constraint(equalTo: view.topAnchor),
             terminal.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             terminal.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            terminal.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            fill,
+            aboveKeyboard,
+            // A line or two whatever the keyboard leaves: SwiftTerm can't
+            // be resized to nothing.
+            terminal.heightAnchor.constraint(greaterThanOrEqualToConstant: 40),
         ])
     }
+
+    private lazy var aboveKeyboard: NSLayoutConstraint = {
+        let c = terminal.bottomAnchor.constraint(lessThanOrEqualTo: view.keyboardLayoutGuide.topAnchor)
+        c.priority = .required - 1
+        return c
+    }()
 
     private func buildTitleBar() {
         titleBar.translatesAutoresizingMaskIntoConstraints = false
@@ -505,16 +540,9 @@ final class TerminalPaneViewController: UIViewController {
     }
 }
 
-/// Tells its owner when it takes or gives up the keyboard's focus, and
-/// when a key is pressed on a hardware keyboard.
+/// Tells its owner when it takes or gives up the keyboard's focus.
 final class FocusReportingTerminalView: TerminalView {
     var onFocusChange: ((Bool) -> Void)?
-    var onHardwareKey: (() -> Void)?
-
-    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        if presses.contains(where: { $0.key != nil }) { onHardwareKey?() }
-        super.pressesBegan(presses, with: event)
-    }
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
