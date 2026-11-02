@@ -69,6 +69,7 @@ final class TerminalPaneViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(keyboardWillChangeFrame(_:)),
             name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        terminal.onHardwareKey = { [weak self] in self?.hardwareKeyPressed() }
         terminal.onFocusChange = { [weak self] focused in
             guard let self else { return }
             self.floatingBarPresenter.isActive = focused && self.laptopPosture
@@ -192,21 +193,21 @@ final class TerminalPaneViewController: UIViewController {
     // can be brought up with a hardware keyboard connected).
     //
     // A key pressed on a hardware keyboard says so for certain: it arrives
-    // as a UIPress (on-screen keys don't), and the letters SwiftTerm leaves
-    // to text input come up the responder chain to here. GCKeyboard said
+    // as a UIPress (on-screen keys don't). The terminal view reports each
+    // one before SwiftTerm handles it — SwiftTerm keeps the letters, so
+    // only Return and the like came up the responder chain to the pane
+    // (1.6.1 (5): the bar went at the first Return). GCKeyboard said
     // nothing with a Magic Keyboard on an iPad Air, and the keyboard's
     // frame didn't tell either (1.6.1 (3), (4)); each frame is logged.
 
     /// Typing on the on-screen keyboard (true) or a hardware one.
     private var typingOnScreen = true
 
-    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        if typingOnScreen, presses.contains(where: { $0.key != nil }) {
-            typingOnScreen = false
-            CrashLogger.shared.log("terminal: a hardware key — key bar off", tag: "keyboard")
-            updateAccessory()
-        }
-        super.pressesBegan(presses, with: event)
+    private func hardwareKeyPressed() {
+        guard typingOnScreen else { return }
+        typingOnScreen = false
+        CrashLogger.shared.log("terminal: a hardware key — key bar off", tag: "keyboard")
+        updateAccessory()
     }
 
     @objc private func keyboardWillChangeFrame(_ note: Notification) {
@@ -504,9 +505,16 @@ final class TerminalPaneViewController: UIViewController {
     }
 }
 
-/// Tells its owner when it takes or gives up the keyboard's focus.
+/// Tells its owner when it takes or gives up the keyboard's focus, and
+/// when a key is pressed on a hardware keyboard.
 final class FocusReportingTerminalView: TerminalView {
     var onFocusChange: ((Bool) -> Void)?
+    var onHardwareKey: (() -> Void)?
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { $0.key != nil }) { onHardwareKey?() }
+        super.pressesBegan(presses, with: event)
+    }
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()

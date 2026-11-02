@@ -488,6 +488,8 @@ enum HelpContent {
     static let whatsNew: [HelpNewItem] = [
         HelpNewItem(icon: "laptopcomputer", title: "More code on a half-open iPhone Duo",
              body: "Held half-open like a laptop, the top screen no longer gives a band to the time and Wi-Fi: the app starts at the top edge, so the editor shows more of your code above the keyboard. Opened flat or folded, the status bar is back."),
+        HelpNewItem(icon: "terminal", title: "New optimized terminal",
+             body: "Output comes in faster and smoother, even thousands of lines at once. `pip list` and `pip show` work offline and show the packages that come with the app, `cpu-z`, `gpu-z` and `spec` benchmark your device (add `graph` for a chart, saved to Workspace › Benchmarks), and typing on a hardware keyboard hides the extra-keys bar."),
     ]
 
     /// The release before, shown under the new notes for anyone who
