@@ -59,9 +59,9 @@ final class TerminalPaneViewController: UIViewController {
         view.backgroundColor = UIColor(red: 0.020, green: 0.024, blue: 0.032, alpha: 1.0)
         buildUI()
 
-        // Point the shared PTY at this terminal
+        // Point the shared PTY at this terminal (its output once the
+        // terminal has its width; see attachToPTYWhenSized).
         terminal.terminalDelegate = PTYBridge.shared
-        PTYBridge.shared.terminalView = terminal
 
         // Extra keys over the on-screen keyboard, in place of SwiftTerm's
         // generic accessory (see KeyBar).
@@ -97,7 +97,21 @@ final class TerminalPaneViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         updateLaptopPosture()   // rotation turns book posture into laptop
+        attachToPTYWhenSized()
         syncSizeToPTY()
+    }
+
+    /// Output goes to the terminal once it's laid out at its width. Handed
+    /// over at viewDidLoad, the output that waited for it — the banner and
+    /// the prompt, on the phone layout where this pane is built only when
+    /// Render Log is first opened — went into a terminal not yet sized,
+    /// two columns wide, and stayed that way (SwiftTerm doesn't re-wrap).
+    /// Until then PTYBridge keeps it, as before the pane existed.
+    private func attachToPTYWhenSized() {
+        guard PTYBridge.shared.terminalView !== terminal else { return }
+        terminal.layoutIfNeeded()   // SwiftTerm works out its columns there
+        guard terminal.getTerminal().cols >= 10 else { return }
+        PTYBridge.shared.terminalView = terminal
     }
 
     override func viewDidAppear(_ animated: Bool) {
