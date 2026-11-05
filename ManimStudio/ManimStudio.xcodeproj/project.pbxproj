@@ -183,6 +183,7 @@
 			files = (
 			);
 			inputFileListPaths = (
+				"$(SRCROOT)/../scripts/python-ios-lib-bundles.xcfilelist",
 			);
 			inputPaths = (
 			);

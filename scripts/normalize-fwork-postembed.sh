@@ -65,10 +65,15 @@ echo "note: scanned $SCANNED .fwork files, stripped @executable_path/ from $STRI
 # C extension is touched. That's the numpy._core._multiarray_umath
 # crash the user saw.
 #
-# Solution: delete the .bundle directories in this post-embed phase
-# (which is the LAST build step), after Xcode has finished its repop
-# pass. The consolidated copy in app_packages/ remains the only one,
-# and the import hook routes to it.
+# Solution: delete the .bundle directories in this post-embed phase.
+# The consolidated copy in app_packages/ remains the only one, and the
+# import hook routes to it.
+#
+# Since the bundles became inputs of the Install Python stdlib phase
+# (scripts/python-ios-lib-bundles.xcfilelist), Xcode copies them before
+# that script, which flattens and removes them, so this normally finds
+# none. It stays as a safety net. (Being last didn't make it safe: a
+# clean local build copied the bundles after this phase too.)
 DEL=0
 shopt -s nullglob
 for b in "$APP"/python-ios-lib_*.bundle; do

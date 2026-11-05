@@ -546,6 +546,7 @@ scripts/
 ├── install-python-stdlib.sh         · main build phase (stdlib + framework wrapping)
 ├── normalize-fwork-postembed.sh     · post-Embed-Frameworks .fwork normalizer
 ├── patch-cython-lapack.py           · rebinds cython_lapack to a stub dylib (by hand)
+├── python-ios-lib-bundles.xcfilelist · SwiftPM bundles phase 4 waits for
 └── terminal-selftest.py             · runs every terminal command in the app
 _appstore_screens/                   · 6× iPad screenshots, 2752×2064 / 2064×2752
 _appstore_screens_iphone/            · 4× iPhone screenshots, 1284×2778
@@ -568,7 +569,15 @@ only runs for archive builds.
      to `@rpath/...`.
    - Consolidates SwiftPM `python-ios-lib_*.bundle/` directories into
      `app_packages/site-packages/` so wrap-loose-dylibs.sh and BeeWare's
-     import hook see the layout they expect.
+     import hook see the layout they expect. The bundles are this phase's
+     inputs ([`scripts/python-ios-lib-bundles.xcfilelist`](scripts/python-ios-lib-bundles.xcfilelist)),
+     so Xcode copies them into the app first. Without that the copies raced
+     the script: a local build after a lib update could keep the previous
+     build's `app_packages/` (first on `sys.path`) and run the old lib. The
+     script stops the build if a bundle hasn't been copied yet, or if SwiftPM
+     builds one the list doesn't name (add a line for it).
+   - Rebuilds `app_packages/` and `python-metadata/` from empty every
+     build, so an incremental build matches the pinned lib like a clean one.
    - Copies the pure-Python packages python-ios-lib's SwiftPM products do
      not expose, from a hand-maintained list: fontTools, the `requests`
      stack (urllib3, certifi, idna, charset_normalizer), PyYAML, jsonschema,
@@ -599,10 +608,10 @@ only runs for archive builds.
      dyld treats this prefix as a literal directory in `dlopen` paths,
      so unfixed it produces
      `<App>.app/@executable_path/Frameworks/_struct.framework/_struct → no such file`.
-   - Tears out residual `python-ios-lib_*.bundle/` directories that
-     Xcode's resource-copy pass repopulates after our Step 9 deletes
-     them — prevents shipping both the consolidated `app_packages/`
-     layout AND the unsigned-original SwiftPM-bundle layout side by side.
+   - Tears out any `python-ios-lib_*.bundle/` directory still in the app,
+     so the consolidated `app_packages/` layout and the unsigned SwiftPM
+     bundle layout never ship side by side. Since the bundles became inputs
+     of phase 4 this normally finds none; it stays as a safety net.
 
 ---
 

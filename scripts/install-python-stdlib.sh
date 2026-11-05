@@ -22,6 +22,49 @@ FRAMEWORKS="$APP/Frameworks"
 IDENT="${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:--}}"
 echo "install-python-stdlib: APP=$APP"
 
+# ── 0. Every python-ios-lib resource bundle must already be in the app.
+#
+# Step 9 flattens the SwiftPM bundles into app_packages/site-packages, so
+# they have to be copied in first. Xcode doesn't order that copy against
+# script phases by itself: a clean local build copied them after every
+# script (nothing flattened, no .so wrapped) and an incremental one
+# re-copied them after this script, leaving the previous build's
+# app_packages/site-packages — first on sys.path — to shadow the updated
+# lib. Archives only got it right because compiling took long enough.
+# The bundles are this phase's inputs (scripts/python-ios-lib-bundles.xcfilelist),
+# which makes Xcode copy them first; this checks that it did.
+BUNDLE_LIST="${SRCROOT}/../scripts/python-ios-lib-bundles.xcfilelist"
+UNLISTED=""
+MISSING=""
+shopt -s nullglob
+for b in "${BUILT_PRODUCTS_DIR}"/python-ios-lib_*.bundle; do
+  grep -qF "/$(basename "$b")" "$BUNDLE_LIST" || UNLISTED="$UNLISTED $(basename "$b")"
+done
+shopt -u nullglob
+for name in $(grep -o 'python-ios-lib_[A-Za-z0-9_]*\.bundle' "$BUNDLE_LIST"); do
+  [ -d "$APP/$name" ] || MISSING="$MISSING $name"
+done
+if [ -n "$UNLISTED" ]; then
+  echo "error: SwiftPM built python-ios-lib bundle(s) not in scripts/python-ios-lib-bundles.xcfilelist:$UNLISTED"
+  echo "error: add a line for each, or Xcode may copy them after this script and they won't be flattened into app_packages. (If the app no longer uses one, delete it from \$BUILT_PRODUCTS_DIR.)"
+  exit 1
+fi
+if [ -n "$MISSING" ]; then
+  echo "error: python-ios-lib bundle(s) not copied into the app before this script ran:$MISSING"
+  exit 1
+fi
+
+# ── 0b. Build app_packages from scratch every time.
+#
+# The steps below copy into it, merge bundles over it and move its .so
+# files out into Frameworks/site-packages.*.framework. Kept between builds,
+# files the lib has since changed or removed survive: the package copies
+# below skip a package whose folder looks up to date, and the merge never
+# deletes. Starting empty makes every build match the pinned lib, as a
+# clean build does.
+rm -rf "$APP/app_packages"
+rm -rf "$APP/Frameworks"/site-packages.*.framework
+
 # ── Copy fontTools into app_packages/site-packages (run early so it
 # isn't skipped if a later codesign step fails under set -e).
 #
@@ -78,8 +121,8 @@ else
   mkdir -p "$APP_SP"
   # Each entry below is a top-level package directory under PIL_SP that
   # the `Manim` SwiftPM library doesn't ship but real user scripts
-  # depend on. Rsync-mirror only if missing or older than source — most
-  # builds will be no-ops after the first run.
+  # depend on. app_packages starts empty every build (step 0b), so each is
+  # copied every time.
   #
   #   (pyparsing, kiwisolver and contourpy were copied here until
   #   python-ios-lib dfd6a5d8 made them targets of the Matplotlib product.
@@ -370,6 +413,10 @@ echo "note: install_name fixups + re-sign on $FIXED dylib/so for PyAV"
 META_SRC="${SRCROOT}/../_vendor/python-ios-lib/app_packages/site-packages"
 META_DST="$APP/python-metadata"
 META_COUNT=0
+# Start empty: on a rebuild `cp -R dir existing-dir` nests a second copy
+# inside the first (python-metadata/x.dist-info/x.dist-info/), and dist-info
+# folders the source no longer has would stay.
+rm -rf "$META_DST"
 if [ -d "$META_SRC" ]; then
   mkdir -p "$META_DST"
   while IFS= read -r -d '' d; do
