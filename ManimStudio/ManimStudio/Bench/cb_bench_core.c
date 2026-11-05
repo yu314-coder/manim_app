@@ -43,6 +43,13 @@ static const cb_entry kWorkloads[] = {
     {"delaunay", cbk_delaunay},   {"flight", cbk_flight},
     {"snn", cbk_snn},             {"transformer", cbk_transformer},
     {"sph", cbk_sph},             {"hydro", cbk_hydro},
+    // Integer, one program each
+    {"llvm", cbk_llvm},           {"ns3", cbk_ns3},
+    {"perl", cbk_perl},           {"nnue", cbk_nnue},
+    // Floating point, one program each
+    {"roms", cbk_roms},           {"palm", cbk_palm},
+    {"cam4", cbk_cam4},           {"bwaves", cbk_bwaves},
+    {"fem", cbk_fem},
 };
 
 #define CB_COUNT ((int)(sizeof(kWorkloads) / sizeof(kWorkloads[0])))

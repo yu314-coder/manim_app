@@ -1955,7 +1955,7 @@ done:
 #define TF_V 3000    // vocabulary
 #define TF_NE 2      // encoder layers
 #define TF_ND 2      // decoder layers
-#define TF_B 8       // sentences decoded together
+#define TF_B 32      // sentences decoded together
 #define TF_MAXS 28   // longest source sentence
 #define TF_MAXT 32   // longest translation
 #define TF_BOS 1
@@ -2332,16 +2332,17 @@ static void tf_batch(const tf_model *m, tf_work *w, fb_rng *r, double *nll, uint
 /// Neural machine translation inference in fp32 (the class of Marian): a
 /// pre-norm encoder-decoder transformer (width 256, 4 heads, feed-forward
 /// 1024 with GELU, 2 + 2 layers, 3 000-token vocabulary) with weights from
-/// the suite's generator. Batches of eight random source sentences (12-28
-/// tokens) are encoded together, then decoded greedily with a key/value
+/// the suite's generator. Batches of 32 random source sentences (12-28
+/// tokens) are encoded together, as a translation server batches them so
+/// every weight read serves many sentences,, then decoded greedily with a key/value
 /// cache, causal self-attention and cross-attention to the encoder output,
 /// for up to 4 tokens more than the source. All matrix products go through
 /// one hand-blocked fp32 kernel; exp and tanh are the file's own, so no
 /// libm difference can flip a token. `value` is the summed negative log-likelihood of the chosen tokens;
-/// `checksum` digests the chosen token ids. Sizes 1/2/3: 5, 28 and 120
+/// `checksum` digests the chosen token ids. Sizes 1/2/3: 2, 7 and 30
 /// batches.
 int cbk_transformer(int size, cb_bench_result *out) {
-    int batches = size == 1 ? 5 : (size == 2 ? 28 : 120);
+    int batches = size == 1 ? 2 : (size == 2 ? 7 : 30);
     tf_model *m = malloc(sizeof(tf_model));
     tf_work *w = calloc(1, sizeof(tf_work));
     int rc = 0;

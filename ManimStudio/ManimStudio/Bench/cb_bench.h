@@ -73,6 +73,7 @@ int cbk_eventsim(int size, cb_bench_result *out);
 int cbk_xml(int size, cb_bench_result *out);
 int cbk_video(int size, cb_bench_result *out);
 int cbk_chess(int size, cb_bench_result *out);
+int cbk_nnue(int size, cb_bench_result *out);
 int cbk_go(int size, cb_bench_result *out);
 int cbk_sudoku(int size, cb_bench_result *out);
 int cbk_lzma(int size, cb_bench_result *out);
@@ -108,6 +109,16 @@ int cbk_snn(int size, cb_bench_result *out);
 int cbk_transformer(int size, cb_bench_result *out);
 int cbk_sph(int size, cb_bench_result *out);
 int cbk_hydro(int size, cb_bench_result *out);
+// Integer, one program each (cb_bench_int_c.c)
+int cbk_llvm(int size, cb_bench_result *out);
+int cbk_ns3(int size, cb_bench_result *out);
+int cbk_perl(int size, cb_bench_result *out);
+// Floating point, one program each (cb_bench_fp_c.c)
+int cbk_roms(int size, cb_bench_result *out);
+int cbk_palm(int size, cb_bench_result *out);
+int cbk_cam4(int size, cb_bench_result *out);
+int cbk_bwaves(int size, cb_bench_result *out);
+int cbk_fem(int size, cb_bench_result *out);
 
 #ifdef __cplusplus
 }

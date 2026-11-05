@@ -1304,11 +1304,12 @@ static int cg_solve(const cg_mat *A, const double *b, double *x, double *r, doub
 /// face conductances, by PCG with an SSOR (ω = 1.3) preconditioner to a
 /// relative residual of 1e-10 (about 55 iterations a step at size 1). The
 /// answer is the total heat Σu after the last step; the final residual is
-/// far below the 1e-6 tolerance of it. `size` 1: 36³ unknowns for 5 steps;
-/// 2: 56³ for 6; 3: 84³ for 6. Work: matrix nonzeros processed (the SpMV
+/// far below the 1e-6 tolerance of it. `size` 1: 24³ unknowns for 25
+/// steps; 2: 32³ for 56; 3: 40³ for 90 — systems that stay in a core's
+/// caches, as a finite-element flow solver's working blocks do. Work: matrix nonzeros processed (the SpMV
 /// plus the two SSOR sweeps, every iteration).
 int cbk_cg(int size, cb_bench_result *out) {
-    static const int cfg[3][2] = {{36, 5}, {56, 6}, {84, 6}};
+    static const int cfg[3][2] = {{24, 25}, {32, 56}, {40, 90}};
     const int lv = fpa_level(size) - 1;
     const int n = cfg[lv][0], nsteps = cfg[lv][1];
     const int nu = n * n * n;
@@ -1971,10 +1972,11 @@ static void sw_tend(sw_ctx *c, const double *h, const double *u, const double *v
 /// which grows by barotropic instability. The answer is the mean total
 /// energy per unit area (g·h²/2 plus kinetic, per unit density); mass and
 /// tracer are conserved to rounding by the flux form. `size` 1: 192×96
-/// cells for 380 steps; 2: 384×192 for 400; 3: 768×384 for 450.
+/// cells for 380 steps; 2: 256×128 for 900; 3: 384×192 for 1800 — grids
+/// a core's caches hold, so the time goes to arithmetic, as WRF's does.
 /// Work: cell updates (each is three RK stages).
 int cbk_shallow(int size, cb_bench_result *out) {
-    static const int cfg[3][2] = {{192, 380}, {384, 400}, {768, 450}};
+    static const int cfg[3][2] = {{192, 380}, {256, 900}, {384, 1800}};
     const int lv = fpa_level(size) - 1;
     const int nx = cfg[lv][0], ny = nx / 2, steps = cfg[lv][1];
     const size_t nc = (size_t)nx * ny, nv = (size_t)nx * (ny + 1);

@@ -23,6 +23,9 @@
 #include <math.h>
 #include <dlfcn.h>
 #include <compression.h>
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#endif
 
 // Floating-point results feed some checksums (the video quantiser tables,
 // the Go tree's UCB scores), so no fused multiply-adds: every compiler
@@ -1436,6 +1439,79 @@ static void cc_fold_block(cc_node *nd, int blk, int *folds) {
     (void)prev;
 }
 
+// ── Interprocedural analysis: inlining costs across the module ──────────
+
+static int cc_expr_size(const cc_node *nd, int n) {
+    int size = 0;
+    while (n >= 0) {
+        const cc_node *x = &nd[n];
+        size++;
+        switch (x->kind) {
+        case N_BIN: size += cc_expr_size(nd, x->b); n = x->a; continue;
+        case N_NEG: case N_NOT: n = x->a; continue;
+        case N_CALL:
+            for (int arg = x->b; arg >= 0; arg = nd[arg].next) size += 1 + cc_expr_size(nd, nd[arg].a);
+            return size + 4;
+        default: return size;
+        }
+    }
+    return size;
+}
+
+static int cc_block_size(const cc_node *nd, int blk) {
+    int size = 0;
+    for (int st = nd[blk].a; st >= 0; st = nd[st].next) {
+        const cc_node *x = &nd[st];
+        switch (x->kind) {
+        case N_DECL: case N_ASSIGN: size += 1 + cc_expr_size(nd, x->b); break;
+        case N_RET: size += 1 + cc_expr_size(nd, x->a); break;
+        case N_IF: size += 2 + cc_expr_size(nd, x->a) + cc_block_size(nd, x->b) + (x->c >= 0 ? cc_block_size(nd, x->c) : 0); break;
+        case N_WHILE: size += 3 + cc_expr_size(nd, x->a) + 2 * cc_block_size(nd, x->b); break;
+        case N_BLOCK: size += cc_block_size(nd, st); break;
+        }
+    }
+    return size;
+}
+
+typedef struct { const cc_parser *ps; uint64_t h; int inlined, sites; } cc_ipa;
+
+static void cc_ipa_expr(cc_ipa *q, int n) {
+    const cc_node *nd = q->ps->nd;
+    while (n >= 0) {
+        const cc_node *x = &nd[n];
+        switch (x->kind) {
+        case N_BIN: cc_ipa_expr(q, x->b); n = x->a; continue;
+        case N_NEG: case N_NOT: n = x->a; continue;
+        case N_CALL: {
+            // what inlining the callee here would cost: its whole body,
+            // walked where it lies in the module's tree
+            const int callee = x->a;
+            const int cost = cc_block_size(nd, q->ps->fn[callee].body) - 4 * x->c;
+            q->sites++;
+            if (cost < 120) q->inlined++;
+            q->h = ia_mix(q->h, (uint64_t)(uint32_t)cost | ((uint64_t)callee << 32));
+            for (int arg = x->b; arg >= 0; arg = nd[arg].next) cc_ipa_expr(q, nd[arg].a);
+            return;
+        }
+        default: return;
+        }
+    }
+}
+
+static void cc_ipa_block(cc_ipa *q, int blk) {
+    const cc_node *nd = q->ps->nd;
+    for (int st = nd[blk].a; st >= 0; st = nd[st].next) {
+        const cc_node *x = &nd[st];
+        switch (x->kind) {
+        case N_DECL: case N_ASSIGN: cc_ipa_expr(q, x->b); break;
+        case N_RET: cc_ipa_expr(q, x->a); break;
+        case N_IF: cc_ipa_expr(q, x->a); cc_ipa_block(q, x->b); if (x->c >= 0) cc_ipa_block(q, x->c); break;
+        case N_WHILE: cc_ipa_expr(q, x->a); cc_ipa_block(q, x->b); break;
+        case N_BLOCK: cc_ipa_block(q, st); break;
+        }
+    }
+}
+
 // ── Lowering to three-address IR ───────────────────────────────────────
 
 enum { I_NOP, I_CONST, I_MOV, I_BIN, I_NEG, I_NOT, I_ARG, I_CALL, I_JMP, I_BRZ,
@@ -1892,18 +1968,20 @@ static int cc_emit_asm(cc_buf *o, const cc_ir *ir, const int *loc, int slots, in
 /// source text in a small C-like language (functions, block-scoped
 /// variables, if/else, while, calls, arithmetic and comparisons), then for
 /// each module runs a lexer with an identifier hash table, a recursive-
-/// descent / precedence-climbing parser to an AST, constant folding and
-/// algebraic simplification, lowering to three-address IR, basic blocks
-/// and a CFG, local value numbering (common subexpressions and copy
-/// propagation), iterative liveness with dead-code elimination, linear-scan
-/// register allocation over six registers with spilling, and emission of
-/// arm64-flavoured pseudo-assembly. The class of gcc and llvm in a CPU
-/// suite. Sizes compile 22, 120 and 550 modules of 60 functions.
+/// descent / precedence-climbing parser to an AST of the whole module, an
+/// interprocedural inlining analysis that walks each call's callee where it
+/// lies in that tree, then per function constant folding and algebraic
+/// simplification, lowering to three-address IR, basic blocks and a CFG,
+/// local value numbering (common subexpressions and copy propagation),
+/// iterative liveness with dead-code elimination, linear-scan register
+/// allocation over six registers with spilling, and emission of
+/// arm64-flavoured pseudo-assembly: the gcc kind, a translation unit held
+/// whole. Sizes compile 1, 6 and 24 modules of 600 functions.
 /// `checksum` digests the emitted assembly text and the pass statistics;
 /// `value` is instructions emitted; `work` is source tokens compiled.
 int cbk_compile(int size, cb_bench_result *out) {
-    static const int modules[3] = {22, 120, 550};
-    enum { FUNCS = 60 };
+    static const int modules[3] = {1, 6, 24};
+    enum { FUNCS = 600 };
     size = ia_size(size);
     int rc = 1;
     cc_buf src = {0}, asmb = {0};
@@ -1933,6 +2011,14 @@ int cbk_compile(int size, cb_bench_result *out) {
         ps->t = toks.t; ps->pos = 0; ps->nn = 0; ps->nfn = 0; ps->err = 0; ps->sym_func = sym_func;
         cc_parse(ps);
         if (ps->err || ps->nfn != FUNCS) { rc = 2; goto done; }
+        // the whole module is parsed before any function is compiled, as a
+        // compiler holds a translation unit: an inlining analysis walks
+        // every call's callee where it lies in the module's tree
+        {
+            cc_ipa q = {ps, h, 0, 0};
+            for (int f = 0; f < ps->nfn; f++) cc_ipa_block(&q, ps->fn[f].body);
+            h = ia_mix(q.h, ((uint64_t)q.inlined << 32) | (uint32_t)q.sites);
+        }
         for (int f = 0; f < ps->nfn; f++) {
             int fo = 0;
             cc_fold_block(ps->nd, ps->fn[f].body, &fo);
@@ -2171,6 +2257,10 @@ typedef struct {
 typedef struct { int32_t src, dst, size, hops, ttl, flow, ack; uint64_t birth; } es_pkt;
 typedef struct { int32_t src, dst; uint32_t mean_ns; int32_t delivered, acked; } es_flow;
 
+/// A router's record of a flow it has carried (the table a switch learns),
+/// found by hashing the flow id.
+typedef struct { uint32_t key, pkts; uint64_t bytes; } es_fte;
+
 typedef struct {
     es_ev *heap; int hn, hcap; uint32_t seq;
     es_link *link; int nlinks;
@@ -2181,6 +2271,7 @@ typedef struct {
     es_flow *flow; int nflows;
     int N;
     int64_t *dist; uint8_t *seen;  // routing scratch
+    es_fte *ftab; uint32_t ftmask; // per-router flow tables, ftmask + 1 slots each
     ia_rng r;
     uint64_t now, end;
     uint64_t delivered, acked, dropped, ttl_drops, lat_sum, rtt_sum, hop_sum, events, reroutes;
@@ -2263,6 +2354,15 @@ static void es_free_pkt(es_sim *s, int p) { s->freelist[s->nfree++] = p; }
 /// Packet `p` is at `node`: deliver it, or queue it on the next hop's link.
 static void es_forward(es_sim *s, int p, int node) {
     es_pkt *P = &s->pkt[p];
+    {   // the router accounts the packet to its flow
+        const uint32_t key = (uint32_t)P->flow * 2u + (uint32_t)P->ack + 1u;
+        es_fte *T = s->ftab + (size_t)node * (s->ftmask + 1);
+        uint32_t i = (key * 0x9E3779B1u) >> 7 & s->ftmask;
+        for (int probe = 0; probe < 64; probe++, i = (i + 1) & s->ftmask) {
+            if (T[i].key == key) { T[i].pkts++; T[i].bytes += (uint64_t)P->size; break; }
+            if (T[i].key == 0) { T[i].key = key; T[i].pkts = 1; T[i].bytes = (uint64_t)P->size; break; }
+        }
+    }
     if (P->dst == node) {
         if (!P->ack) {
             s->delivered++;
@@ -2287,21 +2387,25 @@ static void es_forward(es_sim *s, int p, int node) {
     if (!L->busy) es_start_tx(s, l);
 }
 
-/// eventsim — a discrete-event network simulator of the omnetpp / ns-3
-/// kind: 96 routers joined by a ring plus random chords, each direction a
-/// link with its own propagation delay, bandwidth (100 Mb/s, 1 Gb/s or
-/// 10 Gb/s) and drop-tail queue. Flows between random pairs emit packets
-/// of mixed sizes at jittered intervals; every delivered packet returns
-/// as an acknowledgement, giving round-trip times. Events (generation,
+/// eventsim — a discrete-event network simulator of the omnetpp kind: 96
+/// routers joined by a ring plus random chords, each direction a link with
+/// its own propagation delay, bandwidth (100 Mb/s, 1 Gb/s or 10 Gb/s) and
+/// drop-tail queue. 65536 flows between random pairs emit packets of mixed
+/// sizes at jittered intervals; every delivered packet returns as an
+/// acknowledgement, giving round-trip times. Each router keeps a hashed
+/// table of the flows it carries (16384 slots, 25 MB for all), touched by
+/// every packet at every hop, so with a future event set of 65536 pending
+/// generations the simulation lives in a working set larger than a
+/// performance core's L2, as omnetpp's does. Events (generation,
 /// end of transmission, arrival, routing update) sit in a binary heap
 /// ordered by time then sequence; routing is adaptive, recomputing
 /// shortest paths over delay plus queue backlog every 4 simulated
-/// milliseconds. Sizes simulate 120, 680 and 3000 ms. `checksum` digests
+/// milliseconds. Sizes simulate 55, 330 and 1100 ms. `checksum` digests
 /// the delivery, drop, latency and per-flow statistics; `value` is
 /// packets delivered; `work` is events processed.
 int cbk_eventsim(int size, cb_bench_result *out) {
-    static const int sim_ms[3] = {120, 680, 3000};
-    enum { N = 96, FLOWS = 640, MAXPKT = 1 << 16 };
+    static const int sim_ms[3] = {55, 330, 1100};
+    enum { N = 96, FLOWS = 1 << 16, MAXPKT = 1 << 16, FTSLOTS = 1 << 14 };
     size = ia_size(size);
     int rc = 1;
     es_sim *s = (es_sim *)calloc(1, sizeof *s);
@@ -2341,9 +2445,10 @@ int cbk_eventsim(int size, cb_bench_result *out) {
     s->freelist = (int32_t *)malloc(MAXPKT * 4);
     s->flow = (es_flow *)calloc(FLOWS, sizeof(es_flow));
     s->dist = (int64_t *)malloc(N * 8); s->seen = (uint8_t *)malloc(N);
+    s->ftab = (es_fte *)calloc((size_t)N * FTSLOTS, sizeof(es_fte)); s->ftmask = FTSLOTS - 1;
     s->hcap = 4096; s->heap = (es_ev *)malloc((size_t)s->hcap * sizeof(es_ev));
     if (!s->adj || !fillp || !s->nexthop || !s->qbuf || !s->pkt || !s->freelist || !s->flow ||
-        !s->dist || !s->seen || !s->heap) { free(fillp); goto out; }
+        !s->dist || !s->seen || !s->heap || !s->ftab) { free(fillp); goto out; }
     memcpy(fillp, s->adj_first, N * 4);
     for (int l = 0; l < s->nlinks; l++) s->adj[fillp[s->link[l].from]++] = l;
     free(fillp);
@@ -2357,7 +2462,7 @@ int cbk_eventsim(int size, cb_bench_result *out) {
         es_flow *F = &s->flow[f];
         F->src = (int32_t)ia_below(&s->r, N);
         do F->dst = (int32_t)ia_below(&s->r, N); while (F->dst == F->src);
-        F->mean_ns = 150000 + ia_below(&s->r, 900000);
+        F->mean_ns = (150000 + ia_below(&s->r, 900000)) * (FLOWS / 640);
         es_schedule(s, ia_below(&s->r, F->mean_ns), ES_GEN, f, 0);
     }
     es_schedule(s, 4000000, ES_ROUTE, 0, 0);
@@ -2412,11 +2517,16 @@ int cbk_eventsim(int size, cb_bench_result *out) {
     h = ia_mix(h, s->rtt_sum); h = ia_mix(h, s->hop_sum); h = ia_mix(h, s->reroutes);
     for (int f = 0; f < FLOWS; f++) h = ia_mix(h, ((uint64_t)s->flow[f].delivered << 32) | (uint32_t)s->flow[f].acked);
     for (int l = 0; l < s->nlinks; l++) h = ia_mix(h, s->link[l].bytes ^ ((uint64_t)s->link[l].drops << 40));
+    {
+        uint64_t ft = 0;
+        for (size_t i = 0; i < (size_t)N * FTSLOTS; i++) if (s->ftab[i].key) ft += (uint64_t)s->ftab[i].key * s->ftab[i].pkts + s->ftab[i].bytes;
+        h = ia_mix(h, ft);
+    }
     ia_fill(out, h, (double)s->delivered, (double)s->events, "events");
     rc = 0;
 out:
     free(s->heap); free(s->link); free(s->adj_first); free(s->adj); free(s->nexthop); free(s->qbuf);
-    free(s->pkt); free(s->freelist); free(s->flow); free(s->dist); free(s->seen);
+    free(s->pkt); free(s->freelist); free(s->flow); free(s->dist); free(s->seen); free(s->ftab);
     free(s);
     return rc;
 }
@@ -2922,12 +3032,13 @@ static void xm_txt_end(xm_doc *o, int parent, int32_t off) {
 /// [year>=1960]), sorts the selection by author and title with a merge
 /// sort, aggregates prices per language and counts tags, builds an HTML
 /// result tree with renamed elements, and serialises it with escaping.
-/// Sizes transform 120, 660 and 3000 catalogues of 1500 books (about
-/// 0.47 MB each). `checksum` digests the HTML; `value` is HTML bytes
+/// Sizes transform 6, 26 and 110 catalogues of 12000 books (about
+/// 3.8 MB of XML each, a DOM and result tree of some 14 MB: a working set
+/// near a core's L2 and the system cache, which is where xalancbmk lives). `checksum` digests the HTML; `value` is HTML bytes
 /// produced; `work` is MB of XML parsed.
 int cbk_xml(int size, cb_bench_result *out) {
-    static const int docs_by_size[3] = {120, 660, 3000};
-    enum { RECORDS = 1500 };
+    static const int docs_by_size[3] = {6, 26, 110};
+    enum { RECORDS = 12000 };
     size = ia_size(size);
     int rc = 1;
     xm_names *nm = (xm_names *)calloc(1, sizeof *nm);
@@ -3969,6 +4080,358 @@ int cbk_chess(int size, cb_bench_result *out) {
     rc = 0;
 done:
     free(t); free(s); free(tt);
+    return rc;
+}
+
+// ── nnue: a chess engine with an efficiently updatable neural network ──
+
+// The network is Stockfish's shape, scaled: HalfKA features (the side's
+// king, mirrored to files a–d, in one of 32 buckets, times every piece on
+// every square: 32 × 11 × 64 = 22528 inputs) into a 1536-wide int16
+// accumulator for each side, kept up to date move by move; then, for
+// one of eight stacks chosen by the piece count, clipped int8 layers of
+// 3072 → 16 → 32 → 1. The weights are random but fixed, so the
+// evaluation is noise with material added: the program does the work an
+// NNUE engine does, not the chess one plays.
+
+#define NN_L1 1536
+#define NN_FEAT (32 * 11 * 64)
+#define NN_STACKS 8
+#define NN_MAXPLY 100
+
+typedef struct {
+    const ch_tab *t;
+    int16_t *w, *bias;              // feature transformer
+    int8_t *w1; int32_t *b1;        // [stack][2·L1][16]: a column per input
+    int8_t *w2; int32_t *b2;        // [stack][32][16]
+    int8_t *w3; int32_t *b3;        // [stack][32]
+    int16_t *acc;                   // [ply][2][L1]
+    ch_tt *tt; uint64_t mask;
+    uint32_t killer[96][2];
+    uint64_t nodes, refreshes, updates, evals, nnz_sum;
+    uint32_t root_best;
+} nn_ctx;
+
+/// The input feature of piece (pc_color, pt) on sq, seen from side c
+/// whose king stands on ksq.
+static inline int nn_index(int c, int ksq, int pc_color, int pt, int sq) {
+    int ok = c ? ksq ^ 56 : ksq, os = c ? sq ^ 56 : sq;
+    if ((ok & 7) >= 4) { ok ^= 7; os ^= 7; }
+    const int bucket = (ok >> 3) * 4 + (ok & 7);
+    const int plane = pt == CH_K ? 10 : pt * 2 + (pc_color != c);
+    return (bucket * 11 + plane) * 64 + os;
+}
+
+// The row arithmetic in NEON, as Stockfish writes it for ARM; the plain
+// loops after #else give the same answers.
+static inline void nn_add_row(int16_t *dst, const int16_t *row) {
+#if defined(__aarch64__)
+    for (int i = 0; i < NN_L1; i += 8) vst1q_s16(dst + i, vaddq_s16(vld1q_s16(dst + i), vld1q_s16(row + i)));
+#else
+    for (int i = 0; i < NN_L1; i++) dst[i] = (int16_t)(dst[i] + row[i]);
+#endif
+}
+
+static inline void nn_sub_row(int16_t *dst, const int16_t *row) {
+#if defined(__aarch64__)
+    for (int i = 0; i < NN_L1; i += 8) vst1q_s16(dst + i, vsubq_s16(vld1q_s16(dst + i), vld1q_s16(row + i)));
+#else
+    for (int i = 0; i < NN_L1; i++) dst[i] = (int16_t)(dst[i] - row[i]);
+#endif
+}
+
+/// dst = src − sub + add, the common one-piece move in one pass.
+static inline void nn_move_row(int16_t *dst, const int16_t *src, const int16_t *sub, const int16_t *add) {
+#if defined(__aarch64__)
+    for (int i = 0; i < NN_L1; i += 8)
+        vst1q_s16(dst + i, vaddq_s16(vsubq_s16(vld1q_s16(src + i), vld1q_s16(sub + i)), vld1q_s16(add + i)));
+#else
+    for (int i = 0; i < NN_L1; i++) dst[i] = (int16_t)(src[i] - sub[i] + add[i]);
+#endif
+}
+
+static void nn_refresh(nn_ctx *n, const ch_pos *p, int c, int16_t *acc) {
+    memcpy(acc, n->bias, sizeof(int16_t) * NN_L1);
+    const int ksq = __builtin_ctzll(p->bb[c][CH_K]);
+    for (int pc = 0; pc < 2; pc++)
+        for (int pt = CH_P; pt <= CH_K; pt++)
+            for (uint64_t b = p->bb[pc][pt]; b; b &= b - 1) {
+                nn_add_row(acc, n->w + (size_t)nn_index(c, ksq, pc, pt, __builtin_ctzll(b)) * NN_L1);
+            }
+    n->refreshes++;
+}
+
+/// The child's accumulators from the parent's: rows of the features the
+/// move removed subtracted, rows of those it added added — or a full
+/// refresh for the side whose king moved (its bucket changed).
+static void nn_update(nn_ctx *n, const ch_pos *p, uint32_t m, const ch_pos *q, const int16_t *from_acc, int16_t *to_acc) {
+    const int from = CH_FROM(m), to = CH_TO(m), promo = CH_PROMO(m), fl = CH_FL(m);
+    const int us = p->side, them = us ^ 1, pt = p->sq[from] - us * 6;
+    int rem[3][3], add[2][3], nr = 0, na = 0;
+    rem[nr][0] = us; rem[nr][1] = pt; rem[nr++][2] = from;
+    add[na][0] = us; add[na][1] = promo ? promo : pt; add[na++][2] = to;
+    if (fl & CH_EP) { rem[nr][0] = them; rem[nr][1] = CH_P; rem[nr++][2] = us ? to + 8 : to - 8; }
+    else if (p->sq[to] >= 0) { rem[nr][0] = them; rem[nr][1] = p->sq[to] - them * 6; rem[nr++][2] = to; }
+    if (fl & CH_CASTLE) {
+        const int base = us ? 56 : 0, kside = to == base + 6;
+        rem[nr][0] = us; rem[nr][1] = CH_R; rem[nr++][2] = kside ? base + 7 : base;
+        add[na][0] = us; add[na][1] = CH_R; add[na++][2] = kside ? base + 5 : base + 3;
+    }
+    for (int c = 0; c < 2; c++) {
+        const int16_t *src = from_acc + c * NN_L1;
+        int16_t *dst = to_acc + c * NN_L1;
+        if (pt == CH_K && c == us) { nn_refresh(n, q, c, dst); continue; }
+        const int ksq = __builtin_ctzll(q->bb[c][CH_K]);
+        const int16_t *r0 = n->w + (size_t)nn_index(c, ksq, rem[0][0], rem[0][1], rem[0][2]) * NN_L1;
+        const int16_t *a0 = n->w + (size_t)nn_index(c, ksq, add[0][0], add[0][1], add[0][2]) * NN_L1;
+        nn_move_row(dst, src, r0, a0);
+        for (int k = 1; k < nr; k++) nn_sub_row(dst, n->w + (size_t)nn_index(c, ksq, rem[k][0], rem[k][1], rem[k][2]) * NN_L1);
+        for (int k = 1; k < na; k++) nn_add_row(dst, n->w + (size_t)nn_index(c, ksq, add[k][0], add[k][1], add[k][2]) * NN_L1);
+        n->updates++;
+    }
+}
+
+static int nn_eval(nn_ctx *n, const ch_pos *p, const int16_t *acc) {
+    n->evals++;
+    const int us = p->side;
+    const int stack = (__builtin_popcountll(p->occ[0] | p->occ[1]) - 1) / 4;
+    uint8_t in[2 * NN_L1];
+    for (int h = 0; h < 2; h++) {
+        const int16_t *a = acc + (h == 0 ? us : us ^ 1) * NN_L1;
+#if defined(__aarch64__)
+        const uint8x16_t top = vdupq_n_u8(127);
+        for (int i = 0; i < NN_L1; i += 16) {
+            const uint8x16_t v = vcombine_u8(vqmovun_s16(vld1q_s16(a + i)), vqmovun_s16(vld1q_s16(a + i + 8)));
+            vst1q_u8(in + h * NN_L1 + i, vminq_u8(v, top));
+        }
+#else
+        for (int i = 0; i < NN_L1; i++) { const int v = a[i]; in[h * NN_L1 + i] = (uint8_t)(v < 0 ? 0 : v > 127 ? 127 : v); }
+#endif
+    }
+    // The first layer runs over the inputs that are not zero only, a
+    // column of 16 weights each, as Stockfish's sparse affine layer does:
+    // most of the clipped accumulator is zero.
+    int32_t l1[16], l2[32];
+    uint8_t h1[16], h2[32];
+    uint16_t nz[2 * NN_L1];
+    int nnz = 0;
+#if defined(__aarch64__)
+    for (int i = 0; i < 2 * NN_L1; i += 16) {
+        if (vmaxvq_u8(vld1q_u8(in + i)) == 0) continue;      // sixteen zeros at once
+        for (int k = i; k < i + 16; k++) if (in[k]) nz[nnz++] = (uint16_t)k;
+    }
+#else
+    for (int i = 0; i < 2 * NN_L1; i++) if (in[i]) nz[nnz++] = (uint16_t)i;
+#endif
+    n->nnz_sum += (uint64_t)nnz;
+    const int8_t *w1 = n->w1 + (size_t)stack * 2 * NN_L1 * 16;
+    for (int o = 0; o < 16; o++) l1[o] = n->b1[stack * 16 + o];
+#if defined(__aarch64__)
+    int32x4_t s0 = vld1q_s32(l1), s1 = vld1q_s32(l1 + 4), s2 = vld1q_s32(l1 + 8), s3 = vld1q_s32(l1 + 12);
+    for (int k = 0; k < nnz; k++) {
+        const int i = nz[k];
+        const int8x16_t col = vld1q_s8(w1 + (size_t)i * 16);
+        const int8x8_t x = vdup_n_s8((int8_t)in[i]);
+        const int16x8_t lo = vmull_s8(vget_low_s8(col), x), hi = vmull_s8(vget_high_s8(col), x);
+        s0 = vaddw_s16(s0, vget_low_s16(lo)); s1 = vaddw_s16(s1, vget_high_s16(lo));
+        s2 = vaddw_s16(s2, vget_low_s16(hi)); s3 = vaddw_s16(s3, vget_high_s16(hi));
+    }
+    vst1q_s32(l1, s0); vst1q_s32(l1 + 4, s1); vst1q_s32(l1 + 8, s2); vst1q_s32(l1 + 12, s3);
+#else
+    for (int k = 0; k < nnz; k++) {
+        const int i = nz[k];
+        const int8_t *col = w1 + (size_t)i * 16;
+        const int32_t x = in[i];
+        for (int o = 0; o < 16; o++) l1[o] += (int32_t)col[o] * x;
+    }
+#endif
+    for (int o = 0; o < 16; o++) {
+        l1[o] >>= 8;
+        h1[o] = (uint8_t)(l1[o] < 0 ? 0 : l1[o] > 127 ? 127 : l1[o]);
+    }
+    const int8_t *w2 = n->w2 + (size_t)stack * 32 * 16;
+    for (int o = 0; o < 32; o++) {
+        int32_t sum = n->b2[stack * 32 + o];
+        for (int i = 0; i < 16; i++) sum += (int32_t)w2[o * 16 + i] * h1[i];
+        l2[o] = sum >> 6;
+        h2[o] = (uint8_t)(l2[o] < 0 ? 0 : l2[o] > 127 ? 127 : l2[o]);
+    }
+    int32_t out = n->b3[stack];
+    for (int i = 0; i < 32; i++) out += (int32_t)n->w3[stack * 32 + i] * h2[i];
+    int mat = 0;
+    for (int pt = CH_P; pt <= CH_Q; pt++)
+        mat += ch_value[pt] * (__builtin_popcountll(p->bb[us][pt]) - __builtin_popcountll(p->bb[us ^ 1][pt]));
+    return mat + out / 64;
+}
+
+static int nn_qsearch(nn_ctx *n, const ch_pos *p, int alpha, int beta, int ply) {
+    n->nodes++;
+    const int16_t *acc = n->acc + (size_t)ply * 2 * NN_L1;
+    const int stand = nn_eval(n, p, acc);
+    if (stand >= beta || ply >= NN_MAXPLY - 2) return stand;
+    if (stand > alpha) alpha = stand;
+    uint32_t mv[CH_MAXMV]; int sc[CH_MAXMV];
+    const int cnt = ch_gen(n->t, p, mv, 1);
+    for (int i = 0; i < cnt; i++) sc[i] = ch_mvv_lva(p, mv[i]);
+    ch_pos q;
+    for (int i = 0; i < cnt; i++) {
+        ch_pick(mv, sc, i, cnt);
+        if (!ch_make(n->t, p, mv[i], &q)) continue;
+        nn_update(n, p, mv[i], &q, acc, n->acc + (size_t)(ply + 1) * 2 * NN_L1);
+        const int v = -nn_qsearch(n, &q, -beta, -alpha, ply + 1);
+        if (v >= beta) return v;
+        if (v > alpha) alpha = v;
+    }
+    return alpha;
+}
+
+static int nn_search(nn_ctx *n, const ch_pos *p, int depth, int alpha, int beta, int ply) {
+    const ch_tab *t = n->t;
+    const int incheck = ch_in_check(t, p);
+    if (incheck && ply < 40) depth++;
+    if (depth <= 0 || ply >= NN_MAXPLY - 4) return nn_qsearch(n, p, alpha, beta, ply);
+    n->nodes++;
+    ch_tt *e = &n->tt[p->key & n->mask];
+    uint32_t ttmove = 0;
+    if (e->key == p->key) {
+        ttmove = e->move;
+        if (ply > 0 && e->depth >= depth) {
+            if (e->flag == CH_EXACT) return e->score;
+            if (e->flag == CH_LOWER && e->score >= beta) return e->score;
+            if (e->flag == CH_UPPER && e->score <= alpha) return e->score;
+        }
+    }
+    const int16_t *acc = n->acc + (size_t)ply * 2 * NN_L1;
+    // reverse futility: a static evaluation far above beta at low depth cuts
+    if (!incheck && ply > 0 && depth <= 3) {
+        const int se = nn_eval(n, p, acc);
+        if (se - 90 * depth >= beta) return se;
+    }
+    uint32_t mv[CH_MAXMV]; int sc[CH_MAXMV];
+    const int cnt = ch_gen(t, p, mv, 0);
+    const int kp = ply < 96 ? ply : 95;
+    for (int i = 0; i < cnt; i++) {
+        const uint32_t m = mv[i];
+        sc[i] = m == ttmove ? 1000000 : (CH_FL(m) & CH_CAP) ? 100000 + ch_mvv_lva(p, m)
+              : m == n->killer[kp][0] ? 90000 : m == n->killer[kp][1] ? 80000 : 0;
+    }
+    int best = -CH_INF, legal = 0;
+    const int a0 = alpha;
+    uint32_t bestmove = 0;
+    ch_pos q;
+    for (int i = 0; i < cnt; i++) {
+        ch_pick(mv, sc, i, cnt);
+        const uint32_t m = mv[i];
+        if (!ch_make(t, p, m, &q)) continue;
+        legal++;
+        nn_update(n, p, m, &q, acc, n->acc + (size_t)(ply + 1) * 2 * NN_L1);
+        // late-move reduction for quiet moves searched late
+        int v;
+        if (legal > 4 && depth >= 3 && !(CH_FL(m) & CH_CAP) && !incheck) {
+            v = -nn_search(n, &q, depth - 2, -alpha - 1, -alpha, ply + 1);
+            if (v > alpha) v = -nn_search(n, &q, depth - 1, -beta, -alpha, ply + 1);
+        } else v = -nn_search(n, &q, depth - 1, -beta, -alpha, ply + 1);
+        if (v > best) {
+            best = v; bestmove = m;
+            if (ply == 0) n->root_best = m;
+            if (v > alpha) {
+                alpha = v;
+                if (alpha >= beta) {
+                    if (!(CH_FL(m) & CH_CAP) && n->killer[kp][0] != m) { n->killer[kp][1] = n->killer[kp][0]; n->killer[kp][0] = m; }
+                    break;
+                }
+            }
+        }
+    }
+    if (!legal) return incheck ? -CH_MATE + ply : 0;
+    e->key = p->key; e->move = bestmove; e->score = (int16_t)best; e->depth = (int8_t)depth;
+    e->flag = best <= a0 ? CH_UPPER : best >= beta ? CH_LOWER : CH_EXACT;
+    return best;
+}
+
+/// nnue — a chess engine of the Stockfish kind: the bitboard move
+/// generator above, alpha-beta with a transposition table, killer and
+/// capture ordering, check extension, reverse futility pruning and
+/// late-move reductions, and a quiescence search — evaluated by an NNUE:
+/// a 22528 × 1536 int16 feature transformer (69 MB) whose accumulators
+/// follow every move by adding and subtracting a few rows (a full refresh
+/// when the king changes bucket), then three clipped int8 layers. The
+/// rows a search touches are scattered through the transformer, as in the
+/// real engine, so the work leans on the caches and memory as well as on
+/// integer SIMD. Iterative deepening on six standard test positions to 4,
+/// 6 or 7 plies by `size`. `checksum` digests every best move, score and
+/// node count; `work` is nodes.
+int cbk_nnue(int size, cb_bench_result *out) {
+    static const char *const fens[6] = {
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10"};
+    static const int sdepth[3] = {4, 6, 7};
+    size = ia_size(size);
+    int rc = 1;
+    ch_tab *t = (ch_tab *)malloc(sizeof *t);
+    nn_ctx *n = (nn_ctx *)calloc(1, sizeof *n);
+    const uint64_t ttsize = 1u << 20;
+    if (!t || !n) goto done;
+    n->w = (int16_t *)malloc(sizeof(int16_t) * (size_t)NN_FEAT * NN_L1);
+    n->bias = (int16_t *)malloc(sizeof(int16_t) * NN_L1);
+    n->w1 = (int8_t *)malloc((size_t)NN_STACKS * 16 * 2 * NN_L1);
+    n->b1 = (int32_t *)malloc(sizeof(int32_t) * NN_STACKS * 16);
+    n->w2 = (int8_t *)malloc((size_t)NN_STACKS * 32 * 16);
+    n->b2 = (int32_t *)malloc(sizeof(int32_t) * NN_STACKS * 32);
+    n->w3 = (int8_t *)malloc((size_t)NN_STACKS * 32);
+    n->b3 = (int32_t *)malloc(sizeof(int32_t) * NN_STACKS);
+    n->acc = (int16_t *)malloc(sizeof(int16_t) * (size_t)NN_MAXPLY * 2 * NN_L1);
+    n->tt = (ch_tt *)malloc(ttsize * sizeof(ch_tt));
+    if (!n->w || !n->bias || !n->w1 || !n->b1 || !n->w2 || !n->b2 || !n->w3 || !n->b3 || !n->acc || !n->tt) goto done;
+    ch_init(t);
+    n->t = t; n->mask = ttsize - 1;
+    // The network: small signed weights, four from each random word.
+    {
+        ia_rng r = {0x5F0C4F15A0000000ull};
+        const size_t nw = (size_t)NN_FEAT * NN_L1;
+        for (size_t i = 0; i < nw; i += 4) {
+            const uint64_t x = ia_next(&r);
+            n->w[i] = (int16_t)((int)(x & 31) - 16); n->w[i + 1] = (int16_t)((int)((x >> 16) & 31) - 16);
+            n->w[i + 2] = (int16_t)((int)((x >> 32) & 31) - 16); n->w[i + 3] = (int16_t)((int)((x >> 48) & 31) - 16);
+        }
+        for (int i = 0; i < NN_L1; i++) n->bias[i] = (int16_t)(-96 + (int)ia_below(&r, 64));   // mostly clipped to zero
+        for (size_t i = 0; i < (size_t)NN_STACKS * 16 * 2 * NN_L1; i++) n->w1[i] = (int8_t)((int)ia_below(&r, 15) - 7);
+        for (int i = 0; i < NN_STACKS * 16; i++) n->b1[i] = (int32_t)ia_below(&r, 2048) - 1024;
+        for (int i = 0; i < NN_STACKS * 32 * 16; i++) n->w2[i] = (int8_t)((int)ia_below(&r, 31) - 15);
+        for (int i = 0; i < NN_STACKS * 32; i++) n->b2[i] = (int32_t)ia_below(&r, 512) - 256;
+        for (int i = 0; i < NN_STACKS * 32; i++) n->w3[i] = (int8_t)((int)ia_below(&r, 63) - 31);
+        for (int i = 0; i < NN_STACKS; i++) n->b3[i] = 0;
+    }
+    uint64_t h = IA_FNV_BASIS, work = 0;
+    for (int i = 0; i < 6; i++) {
+        ch_pos p;
+        if (ch_fen(t, &p, fens[i])) { rc = 2; goto done; }
+        memset(n->tt, 0, ttsize * sizeof(ch_tt));
+        memset(n->killer, 0, sizeof n->killer);
+        n->nodes = 0;
+        nn_refresh(n, &p, 0, n->acc);
+        nn_refresh(n, &p, 1, n->acc + NN_L1);
+        int score = 0;
+        for (int d = 1; d <= sdepth[size - 1]; d++) {
+            score = nn_search(n, &p, d, -CH_INF, CH_INF, 0);
+            h = ia_mix(h, ((uint64_t)n->root_best << 20) ^ (uint64_t)(uint32_t)score);
+        }
+        h = ia_mix(h, n->nodes);
+        work += n->nodes;
+    }
+    h = ia_mix(h, n->refreshes); h = ia_mix(h, n->updates); h = ia_mix(h, n->evals); h = ia_mix(h, n->nnz_sum);
+    ia_fill(out, h, (double)n->evals, (double)work, "nodes");
+    rc = 0;
+done:
+    if (n) {
+        free(n->w); free(n->bias); free(n->w1); free(n->b1); free(n->w2); free(n->b2);
+        free(n->w3); free(n->b3); free(n->acc); free(n->tt);
+    }
+    free(t); free(n);
     return rc;
 }
 
