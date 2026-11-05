@@ -486,6 +486,13 @@
                     monaco.editor.setModelLanguage(model, language || 'python');
                     model.setValue(code);
                 },
+                setFontSize(size) {
+                    // Line height in proportion to the 13 / 20 it starts with.
+                    editor.updateOptions({ fontSize: size, lineHeight: Math.round(size * 20 / 13) });
+                    // Draw it now: picked from a menu, nothing else on the
+                    // page changes to make WebKit paint the new size.
+                    editor.render(true);
+                },
                 setLanguage(language) {
                     // Re-tag the syntax highlighter without touching the
                     // buffer contents — used when the user switches the

@@ -18,6 +18,34 @@ final class MonacoEditorView: UIView {
 
     // MARK: - Public API
 
+    /// One editor for the app, moved into whichever editor pane shows it:
+    /// the phone layout builds a new pane each time Editor comes back, and
+    /// a new view loaded Monaco (4 MB of script, a web content process)
+    /// again and started with no undo history, cursor or scroll.
+    static func shared() -> MonacoEditorView {
+        if let sharedView { return sharedView }
+        let view = MonacoEditorView(frame: .zero)
+        // Creating it can come back here before it returns (seen at
+        // launch; see TerminalPaneViewController.sharedTerminal). The
+        // nested call's view is the one everyone shares; this one would
+        // load Monaco for nothing, kept alive by its message handler.
+        if let sharedView {
+            view.discard()
+            return sharedView
+        }
+        sharedView = view
+        return view
+    }
+    private static var sharedView: MonacoEditorView?
+
+    /// Stops a view that won't be used and lets it go.
+    private func discard() {
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "editor")
+        NotificationCenter.default.removeObserver(self)
+    }
+
     /// True when the WKWebView Monaco editor should be used. Flip to
     /// false to force the UITextView fallback (e.g. while debugging a
     /// bundle change without rebuilding).
@@ -39,7 +67,13 @@ final class MonacoEditorView: UIView {
     /// rich IntelliSense are gone, but typing/scrolling/selection work.
     private let fallbackTextView = UITextView()
     private var isReady = false
+    /// Monaco has loaded and taken the code.
+    var isEditorReady: Bool { isReady }
     private var pendingSetCode: (code: String, language: String)?
+    /// Font size in points; Monaco's own default until a pane sets one.
+    private var fontSize: CGFloat = 13
+    /// When the page started loading, for the "ready" log line.
+    private var loadStarted = Date()
     /// Typing on the on-screen keyboard rather than a hardware one; see
     /// `setTouchTyping` in editor.html.
     private var typingOnScreen = false
@@ -96,6 +130,9 @@ final class MonacoEditorView: UIView {
             // Back in a window after detach() turned the bar off: typing can
             // carry on through the move without a new focus message.
             keyBarPresenter.isActive = webContentView?.isFirstResponder ?? false
+            // Moved into a new pane (the phone layout's Editor coming back):
+            // after the pane switch's animation, as the page load used to.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.focusForLaptop() }
         }
         guard window != nil, hingeInteraction == nil else { return }
         if #available(iOS 27.1, *) {
@@ -146,8 +183,8 @@ final class MonacoEditorView: UIView {
     }
 
     /// Held like a laptop or a book on the editor: the keyboard's screen
-    /// types into it straight away. Also once the page has loaded, since
-    /// switching to the editor builds a new one.
+    /// types into it straight away. Also once the page has loaded, and when
+    /// the editor moves into a new pane.
     private func focusForLaptop() {
         guard laptopPosture || bookPosture, isReady, isOnScreen else { return }
         webView.becomeFirstResponder()
@@ -209,6 +246,7 @@ final class MonacoEditorView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
 
     private func setupView() {
+        webView.navigationDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -321,6 +359,7 @@ final class MonacoEditorView: UIView {
             print("[MonacoEditor] editor.html not found in bundle")
             return
         }
+        loadStarted = Date()
         webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
     }
 
@@ -440,6 +479,19 @@ final class MonacoEditorView: UIView {
     /// touching the buffer contents. Used when the user toggles
     /// the Python / C / C++ / Fortran selector — only the highlighter
     /// changes; their typed code stays put.
+    /// Monaco's font size, line height in proportion (20 pt at its 13).
+    func setFontSize(_ size: CGFloat) {
+        guard size != fontSize else { return }
+        fontSize = size
+        applyFontSize()
+    }
+
+    private func applyFontSize() {
+        guard isReady, Self.monacoEnabled else { return }
+        webView.evaluateJavaScript(
+            "window.__editor && window.__editor.setFontSize && window.__editor.setFontSize(\(Int(fontSize)))")
+    }
+
     func setLanguage(_ language: String) {
         guard isReady else { return }
         if !Self.monacoEnabled {
@@ -562,6 +614,8 @@ extension MonacoEditorView: WKScriptMessageHandler {
         switch kind {
         case "ready":
             isReady = true
+            CrashLogger.shared.log(String(format: "editor: Monaco ready in %.0f ms",
+                                          Date().timeIntervalSince(self.loadStarted) * 1000), tag: "editor")
             onEditorReady?()
             // Apply any setCode queued before ready
             if let pending = pendingSetCode {
@@ -571,6 +625,7 @@ extension MonacoEditorView: WKScriptMessageHandler {
             // Push symbol index now that JS is ready
             pushSymbolIndex()
             applyTypingMode()
+            if fontSize != 13 { applyFontSize() }
             focusForLaptop()
 
         case "jserror":
@@ -645,6 +700,19 @@ extension MonacoEditorView: WKScriptMessageHandler {
 }
 
 // MARK: - UITextViewDelegate (fallback path)
+
+extension MonacoEditorView: WKNavigationDelegate {
+    /// iOS ended the page's process — under memory pressure, most likely
+    /// while the editor wasn't showing (it stays alive between panes).
+    /// Load it again with the code it had, rather than leave it blank.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        CrashLogger.shared.log("editor: web content process ended — reloading", tag: "editor")
+        isReady = false
+        keyBarPresenter.isActive = false
+        if pendingSetCode == nil { pendingSetCode = (currentText, "python") }
+        loadEditor()
+    }
+}
 
 extension MonacoEditorView: UITextViewDelegate {
     func textViewDidChange(_ textView: UITextView) {

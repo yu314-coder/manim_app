@@ -38,7 +38,7 @@ struct HelpSheet: View {
     /// The release the What's New notes describe. Bump it together with the
     /// notes: the header's Help button shows a dot until the user has opened
     /// notes for this version, so it reappears only when there is news.
-    static let notesVersion = "1.6.1"
+    static let notesVersion = "1.7"
 
     @Environment(\.dismiss) private var dismiss
     /// Same key HeaderView reads to decide whether to show the dot.
@@ -486,30 +486,20 @@ enum HelpContent {
 
     /// What's new in `HelpSheet.notesVersion`.
     static let whatsNew: [HelpNewItem] = [
-        HelpNewItem(icon: "laptopcomputer", title: "More code on a half-open iPhone Duo",
-             body: "Held half-open like a laptop, the top screen no longer gives a band to the time and Wi-Fi: the app starts at the top edge, so the editor shows more of your code above the keyboard. Opened flat or folded, the status bar is back."),
-        HelpNewItem(icon: "terminal", title: "Optimized terminal",
-             body: "Output comes in faster and smoother, even thousands of lines at once."),
+        HelpNewItem(icon: "chevron.left.forwardslash.chevron.right", title: "Optimized editor",
+             body: "On iPhone, coming back to the Editor is instant and picks up where you left off — undo history, cursor and scroll position — instead of loading the editor again each time."),
+        HelpNewItem(icon: "textformat.size", title: "Editor font size",
+             body: "The size menu above the editor now changes the size of your code, and keeps it the next time you open the app."),
     ]
 
     /// The release before, shown under the new notes for anyone who
     /// skipped it.
-    static let previousVersion = "1.6"
+    static let previousVersion = "1.6.1"
     static let whatsNewPrevious: [HelpNewItem] = [
-        HelpNewItem(icon: "bolt", title: "Ready in a moment",
-             body: "The terminal is ready a few seconds after launch instead of nearly ten: plotting libraries now load the first time your code uses them, and plots still show inline."),
-        HelpNewItem(icon: "function", title: "Formulas only typeset once",
-             body: "Every MathTex is kept once typeset, so re-rendering a scene — the usual way to work — skips straight past formulas it has seen before. A scene with four formulas re-renders several times faster."),
-        HelpNewItem(icon: "memorychip", title: "Lighter on memory",
-             body: "The LaTeX engine loads only when your code uses LaTeX — ready before you press Render — instead of taking about 800 MB from every session."),
-        HelpNewItem(icon: "arrow.down.app", title: "About 100 MB smaller",
-             body: "Test suites and parts of Python that can't run on iPhone or iPad are no longer in the app, nor a duplicate copy of the LaTeX files."),
-        HelpNewItem(icon: "hand.tap", title: "Smoother tabs",
-             body: "Gallery, System and History open without the hitch, and the Gallery's animation uses less power."),
-        HelpNewItem(icon: "laptopcomputer", title: "iPhone Duo held like a laptop",
-             body: "Half-open, one screen is the app — the iPhone layout, Editor / Preview / Render Log — and the near screen is only ever the keyboard: Apple's when the hinge runs across, or, when iOS sees the two screens side by side, ManimStudio turns its picture a quarter and puts its own keyboard on the near screen, keys like Apple's with the editor's or terminal's extra keys on top. The keyboard comes up by itself in the editor and the terminal, and goes away when you open the Duo out flat."),
-        HelpNewItem(icon: "terminal", title: "Terminal fixes",
-             body: "The terminal keeps its output when you switch panes on iPhone, Ctrl-L clears the screen but keeps the line you're typing, `c++`, `g++` and `clang++` explain that there's no compiler instead of showing a Python error, and `manim` no longer checks the internet for a newer version after every render."),
+        HelpNewItem(icon: "laptopcomputer", title: "More code on a half-open iPhone Duo",
+             body: "Held half-open like a laptop, the top screen no longer gives a band to the time and Wi-Fi: the app starts at the top edge, so the editor shows more of your code above the keyboard. Opened flat or folded, the status bar is back."),
+        HelpNewItem(icon: "terminal", title: "Optimized terminal",
+             body: "Output comes in faster and smoother, even thousands of lines at once."),
     ]
 
     static let guide: [HelpTopic] = [

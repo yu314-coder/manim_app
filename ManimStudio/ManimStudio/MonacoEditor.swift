@@ -32,6 +32,8 @@ final class MonacoController {
     func insertCode(_ text: String) {
         view?.insertCode(text)
     }
+    /// The code's size, from the editor pane's size menu.
+    func setFontSize(_ size: CGFloat) { view?.setFontSize(size) }
     /// Re-focus the editor (returns keyboard).
     func refocus() { view?.refocus() }
     /// Shows `text` unless the editor already has it (it's what was just
@@ -45,14 +47,31 @@ final class MonacoController {
 
 struct MonacoEditor: UIViewRepresentable {
     @Binding var text: String
-    var fontSize: CGFloat = 14
+    var fontSize: CGFloat = 13
     var controller: MonacoController? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func makeUIView(context: Context) -> MonacoEditorView {
-        let v = MonacoEditorView(frame: .zero)
+    /// A holder for the app's one editor (MonacoEditorView.shared), so
+    /// SwiftUI taking down an old pane takes down the holder, not the
+    /// editor, which by then may be in the new one.
+    final class Slot: UIView {}
+
+    func makeUIView(context: Context) -> Slot {
+        let slot = Slot()
+        let v = MonacoEditorView.shared()
+        v.removeFromSuperview()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        slot.addSubview(v)
+        NSLayoutConstraint.activate([
+            v.topAnchor.constraint(equalTo: slot.topAnchor),
+            v.leadingAnchor.constraint(equalTo: slot.leadingAnchor),
+            v.trailingAnchor.constraint(equalTo: slot.trailingAnchor),
+            v.bottomAnchor.constraint(equalTo: slot.bottomAnchor),
+        ])
         Task { @MainActor in self.controller?.view = v }
+        context.coordinator.lastReportedText = v.currentText
+        v.setFontSize(fontSize)
         v.onTextChanged = { newText in
             // Coalesce on main; SwiftUI mutates @Binding from main only.
             DispatchQueue.main.async {
@@ -83,20 +102,25 @@ struct MonacoEditor: UIViewRepresentable {
                 }
             }
         }
-        return v
+        // Already loaded (a pane before this one showed it): only the code
+        // may have changed meanwhile — a Gallery load from another tab.
+        if v.isEditorReady, v.currentText != text {
+            v.setCode(text, language: "python")
+            context.coordinator.lastReportedText = text
+        }
+        return slot
     }
 
-    func updateUIView(_ uiView: MonacoEditorView, context: Context) {
+    func updateUIView(_ slot: Slot, context: Context) {
+        // An older pane's holder, its editor gone to a newer one.
+        guard let uiView = slot.subviews.first as? MonacoEditorView else { return }
+        uiView.setFontSize(fontSize)
         // Only push down when SwiftUI's binding is ahead of the editor —
         // avoids a feedback loop where every keystroke triggers a setCode.
         if uiView.currentText != text && context.coordinator.lastReportedText != text {
             uiView.setCode(text, language: "python")
             context.coordinator.lastReportedText = text
         }
-    }
-
-    static func dismantleUIView(_ uiView: MonacoEditorView, coordinator: Coordinator) {
-        // No-op; SwiftUI cleans up automatically.
     }
 
     final class Coordinator {

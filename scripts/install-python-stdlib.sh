@@ -423,13 +423,24 @@ for MS_MOD in manimstudio_shell manimstudio_encoder; do
   fi
 done
 
-# ── 7. Copy Monaco editor bundle (14 MB). Has duplicate filenames in
+# ── 7. Copy Monaco editor bundle. Has duplicate filenames in
 # subfolders (vs/basic-languages/*/monaco.contribution.js, etc.) so
 # synchronized-folder flattening breaks it — rsync preserves structure.
+# The editor is only ever Python: the other languages' highlighters
+# (vs/<language>-<hash>.js) and the TypeScript, CSS, HTML and JSON
+# language workers (8 of the bundle's 14 MB) are left out. Monaco loads
+# them only for a model in their language. Kept: the editor itself, its
+# own worker and its shared chunks, Python, and the UI translations.
 MONACO_SRC="${SRCROOT}/../_vendor/python-ios-lib/Monaco"
 MONACO_DST="$APP/Monaco"
 if [ -d "$MONACO_SRC" ]; then
-  rsync -a --delete --exclude '__pycache__' "$MONACO_SRC/" "$MONACO_DST/"
+  rsync -a --delete --delete-excluded --exclude '__pycache__' \
+    --include '/vs/editor.api-*.js' --include '/vs/python-*.js' \
+    --include '/vs/_commonjsHelpers-*.js' --include '/vs/workers-*.js' --include '/vs/nls.*' \
+    --exclude '/vs/*-*.js' \
+    --exclude '/vs/assets/ts.worker-*' --exclude '/vs/assets/css.worker-*' \
+    --exclude '/vs/assets/html.worker-*' --exclude '/vs/assets/json.worker-*' \
+    "$MONACO_SRC/" "$MONACO_DST/"
   echo "note: Monaco editor bundle installed at $MONACO_DST"
 fi
 echo "note: Python stdlib installed at $DST (slice=$SLICE, arch=$ARCH)"

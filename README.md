@@ -33,6 +33,23 @@ on-device without an internet connection.
 - **Monaco** in a WKWebView with full Python autocomplete, find/replace,
   comment toggle, indent/outdent, multi-cursor, snippets — every standard
   shortcut works.
+- **One editor for the app** (`MonacoEditorView.shared()`) — Monaco loads
+  once and moves into whichever editor pane shows it, the way the terminal
+  does. The phone layout builds a new pane each time Editor comes back;
+  before 1.7 that reloaded Monaco's 4 MB of script in a new web content
+  process and lost undo history, cursor and scroll. Creating the view can
+  re-enter `shared()` at launch, so the outer call's view is stopped and
+  dropped (its message handler would otherwise keep a second Monaco
+  alive). If iOS ends the web content process, the page reloads with the
+  last code (`webViewWebContentProcessDidTerminate`). The log notes
+  "Monaco ready in N ms" at each load.
+- **Font size** — the editor's size menu (`editor_font_size`, default 13,
+  Monaco's own) goes to `window.__editor.setFontSize`, line height in
+  proportion. Before 1.7 the menu showed a size but never reached Monaco.
+- **Only Python's part of Monaco ships** — `install-python-stdlib.sh`
+  leaves out the other languages' highlighters and the TypeScript, CSS,
+  HTML and JSON workers (14 MB → 5.3 MB); Monaco loads those only for a
+  model in that language, and the editor is always Python.
 - **Keys over the on-screen keyboard** (`KeyBar.swift`) — on an iPhone,
   or an iPad without a hardware keyboard, a row above the keyboard holds
   indent / outdent, the symbols Python needs (typed through Monaco, so
@@ -807,7 +824,7 @@ transport: without `-o` it reads only what it shows, and `wget` and
 | Support URL | https://github.com/yu314-coder/python-ios-lib |
 | Marketing URL | https://yu314-coder.github.io/ |
 | On the App Store | **1.6.1** (build 7) |
-| Latest TestFlight | **1.6.1** (build 7) |
+| Latest TestFlight | **1.7** (build 1) |
 | Build numbers | The project stays at build 1; each upload's build number is set in the archive |
 
 ---

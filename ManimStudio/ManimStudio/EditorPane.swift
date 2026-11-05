@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 struct EditorPane: View {
     @ObservedObject private var theme = ThemeManager.shared   // accent → live retint
     @Binding var source: String
-    @State private var fontSize: CGFloat = 14
+    /// Monaco's 13 until the menu picks another; kept between launches.
+    @AppStorage("editor_font_size") private var fontSize: Double = 13
     @State private var monaco = MonacoController()
 
     @State private var showStructure = false
@@ -76,8 +77,8 @@ struct EditorPane: View {
                 }
 
                 Menu {
-                    ForEach([10, 12, 14, 16, 18, 20, 24], id: \.self) { sz in
-                        Button("\(sz)px") { fontSize = CGFloat(sz) }
+                    ForEach([10, 12, 13, 14, 16, 18, 20, 24], id: \.self) { sz in
+                        Button("\(sz)px") { fontSize = Double(sz) }
                     }
                 } label: {
                     Text("\(Int(fontSize))px")
@@ -95,7 +96,7 @@ struct EditorPane: View {
 
             // Editor body — Monaco in WKWebView.
             ZStack {
-                MonacoEditor(text: $source, fontSize: fontSize, controller: monaco)
+                MonacoEditor(text: $source, fontSize: CGFloat(fontSize), controller: monaco)
             }
             .background(Theme.bgPrimary)
             // SwiftUI doesn't always call MonacoEditor.updateUIView when
@@ -104,6 +105,8 @@ struct EditorPane: View {
             // code on screen while the new code was what got rendered.
             // Push it here.
             .onChange(of: source) { _, newValue in monaco.showText(newValue) }
+            // Likewise the size menu's choice.
+            .onChange(of: fontSize) { _, size in monaco.setFontSize(CGFloat(size)) }
         }
         .background(Theme.bgPrimary)
         .background(
