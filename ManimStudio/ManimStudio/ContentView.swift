@@ -375,11 +375,9 @@ struct ContentView: View {
         // The same toggle also drives GPU RASTERIZATION: when on, the
         // wrapper swaps in python-ios-lib's CairoMetal shim (a pycairo
         // drop-in backed by a Metal renderer) before importing manim, so
-        // the per-frame cairo fill runs on the GPU. The wrapper no-ops
-        // gracefully to software cairo if the shim isn't bundled, so this
-        // is safe today and becomes live the moment CairoMetal ships.
-        // This makes the GPU button genuinely control GPU rendering +
-        // encode, not just encode.
+        // the per-frame cairo fill runs on the GPU. The wrapper falls back
+        // to software cairo if the shim can't load. So the GPU button
+        // controls GPU drawing + encode, not just encode.
         setenv("OFFLINAI_MANIM_GPU_RENDER", gpuOn ? "1" : "0", 1)
 
         let code = sourceCode

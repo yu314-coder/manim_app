@@ -275,6 +275,14 @@ after launch, app + its WebKit processes:
   software fallback is `mpeg4`: the bundled ffmpeg has **no libx264, libx265
   or OpenH264**. The Settings sheet's "GPU acceleration" toggle can turn
   hardware encoding off.
+- **GPU drawing (CairoMetal)** — the same toggle swaps python-ios-lib's
+  CairoMetal (a pycairo drop-in on Metal) in for cairo before manim is
+  imported. Since python-ios-lib d55afb2 manim builds each path in one
+  CairoMetal call, a frame is composited only where something was drawn, and
+  frames reach the writer without a copy: drawing ~28% faster a frame at
+  1080p and ~130 MB less peak memory at 8K. At 4K and 8K the hardware encoder
+  sets the pace, so render times there are unchanged. CairoMetal needs a real
+  device; the Mac "Designed for iPad" copy falls back to software cairo.
 - **Encoding controls** (Controls → Encoding, applied to both Preview and
   Render) — Encoder `auto` / `h264` / `hevc` / `mpeg4`, frame-queue depth
   `auto` or 2–32, and the queue's memory budget in MB while depth is `auto`.

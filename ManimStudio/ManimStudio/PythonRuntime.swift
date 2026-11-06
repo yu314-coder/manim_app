@@ -1415,18 +1415,18 @@ warnings.filterwarnings("ignore", category=SyntaxWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ── GPU rasterization (CairoMetal) ──────────────────────────────────
-# The app's GPU toggle sets OFFLINAI_MANIM_GPU_RENDER=1 when on. If the
-# python-ios-lib CairoMetal shim is bundled, swap it in as a pycairo
-# drop-in BEFORE anything imports cairo or manim, so manim's per-frame
-# fill runs on the GPU (Metal → IOSurface texture) instead of the
+# The app's GPU toggle sets OFFLINAI_MANIM_GPU_RENDER=1 when on. The
+# python-ios-lib CairoMetal shim (bundled by install-python-stdlib.sh) is
+# swapped in as a pycairo drop-in BEFORE anything imports cairo or manim,
+# so manim's per-frame fill runs on the GPU (Metal) instead of the
 # software image backend. This MUST run before `import manim` /
 # `import cairo` / `import manimpango`, hence its position at the very
-# top of the wrapper. Gracefully no-ops to software cairo when the shim
-# isn't present, so the toggle is safe today and becomes live the moment
-# CairoMetal ships. NOTE: per upstream profiling this does NOT speed
-# manim up (the cairo fill is ~5% of render time); it makes the GPU
-# button genuinely control GPU rendering, but the real speed lever is
-# lower FPS.
+# top of the wrapper. Falls back to software cairo if the shim can't load.
+# Since python-ios-lib d55afb2, manim builds each path in one CairoMetal
+# call, frames are composited only where something was drawn, and they go
+# to the writer without a copy: ~28% less drawing time a frame at 1080p
+# and ~130 MB less peak memory at 8K. At 4K/8K the hardware encoder still
+# sets the pace, so lower FPS remains the real speed lever there.
 if os.environ.get("OFFLINAI_MANIM_GPU_RENDER", "0") == "1" and "cairo" not in sys.modules:
     try:
         import importlib as _importlib_cm

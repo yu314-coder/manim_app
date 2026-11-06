@@ -493,7 +493,7 @@ enum HelpContent {
         HelpNewItem(icon: "function", title: "Equations drawn like on a desktop",
              body: "MathTex and Tex formulas are now real vector shapes: Write draws them stroke by stroke, Transform morphs one formula into another, and set_color_by_tex and TransformMatchingTex find each part. A formula you've rendered before comes back at once."),
         HelpNewItem(icon: "bolt", title: "Faster renders",
-             body: "Renders are faster, most of all at 4K and 8K: a pause (wait) is no longer encoded frame by frame, frames are prepared on several cores, and large images only cost the area they cover."),
+             body: "Renders are faster, most of all at 4K and 8K: a pause (wait) is no longer encoded frame by frame, frames are prepared on several cores, large images only cost the area they cover, and with GPU acceleration on, shapes are drawn faster and use less memory."),
     ]
 
     /// The release before, shown under the new notes for anyone who

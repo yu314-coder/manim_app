@@ -25,11 +25,10 @@ struct HeaderView: View {
     // render. The GPU toggle now drives BOTH:
     //   • encode  — h264_videotoolbox (hardware) vs mpeg4 (software)
     //   • render  — CairoMetal GPU rasterization vs software cairo
-    //               (when the CairoMetal shim is bundled; no-ops to
-    //                software cairo otherwise)
-    // Default ON. Hardware encode is ~5× faster; GPU rasterization is
-    // correctness/parity (per profiling it doesn't change render speed —
-    // lower FPS is the real speed lever).
+    //               (falls back to software cairo if the shim can't load)
+    // Default ON. Hardware encode is ~5× faster; CairoMetal draws a frame
+    // faster than software cairo at 1080p and uses less memory at 8K
+    // (at 4K/8K the encoder sets the pace — lower FPS is the speed lever).
     @AppStorage("manim_gpu_on") private var gpuOn = true
     @State private var autosaveText = "Autosaved"
 
