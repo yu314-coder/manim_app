@@ -10,6 +10,7 @@
 		B9ABCD012FB00001000ABCDE /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = B9ABCD002FB00001000ABCDE /* SwiftTerm */; };
 		B9ACCEL012FB00010000ABCDE /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9ACCEL002FB00010000ABCDE /* Accelerate.framework */; };
 		B9E7BABB2FA0BCD9004329BB /* Manim in Frameworks */ = {isa = PBXBuildFile; productRef = B9E7BABA2FA0BCD9004329BB /* Manim */; };
+		B9E7BABD2FA0BCD9004329BB /* Pypdf in Frameworks */ = {isa = PBXBuildFile; productRef = B9E7BABC2FA0BCD9004329BB /* Pypdf */; };
 		B9F1A0022FAA0001000A0001 /* Python.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; };
 		B9F1A0032FAA0001000A0001 /* Python.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = B9F1A0012FAA0001000A0001 /* Python.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -62,6 +63,7 @@
 			files = (
 				B9F1A0022FAA0001000A0001 /* Python.xcframework in Frameworks */,
 				B9E7BABB2FA0BCD9004329BB /* Manim in Frameworks */,
+				B9E7BABD2FA0BCD9004329BB /* Pypdf in Frameworks */,
 				B9ABCD012FB00001000ABCDE /* SwiftTerm in Frameworks */,
 				B9ACCEL012FB00010000ABCDE /* Accelerate.framework in Frameworks */,
 			);
@@ -121,6 +123,7 @@
 			name = ManimStudio;
 			packageProductDependencies = (
 				B9E7BABA2FA0BCD9004329BB /* Manim */,
+				B9E7BABC2FA0BCD9004329BB /* Pypdf */,
 				B9ABCD002FB00001000ABCDE /* SwiftTerm */,
 			);
 			productName = ManimStudio;
@@ -490,6 +493,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B9E7BAB92FA0BCD9004329BB /* XCRemoteSwiftPackageReference "python-ios-lib" */;
 			productName = Manim;
+		};
+		B9E7BABC2FA0BCD9004329BB /* Pypdf */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B9E7BAB92FA0BCD9004329BB /* XCRemoteSwiftPackageReference "python-ios-lib" */;
+			productName = Pypdf;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

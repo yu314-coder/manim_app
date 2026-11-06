@@ -225,6 +225,18 @@ after launch, app + its WebKit processes:
   comes back at once. Pythagorean (4 formulas) re-rendered from a fresh
   launch: >24 s → ~4–8 s, all 71 frames identical to the uncached render.
   Trimmed least-recently-used past 200 MB.
+  Since python-ios-lib 18a9365, MathTex and Tex are vector glyphs, as on a
+  desktop: pdflatex in busytex (~2 s a formula), then the PDF's outlines as
+  the SVG dvisvgm would write, so Write draws strokes and
+  set_color_by_tex / TransformMatchingTex find their parts. The lib's own
+  cache only lasts the Python session and points into the render's media
+  folder, which the next render deletes, so the render wrapper in
+  `PythonRuntime.swift` keeps each vector SVG in `Caches/MathTexVector/`,
+  keyed by the exact document, in a folder named for the lib's LaTeX code
+  and the app build; only vector results are kept (never a fallback),
+  trimmed past 50 MB. 12 formulas re-rendered from a fresh launch:
+  27 s → 4.8 s, frames identical. The vector path needs `pypdf`, so the
+  app links python-ios-lib's Pypdf product besides Manim.
 - **Start-up: the shell is ready in ~1.5 s instead of ~9.5 s.**
   codebench_inline (python-ios-lib) imported matplotlib, pyplot and plotly
   when the shell started, to patch their show() for inline output, and the

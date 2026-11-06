@@ -654,6 +654,14 @@ print("__CODEBENCH_LIB_STATUS__=" + json.dumps(_codebench_lib_status))
             let encoded = Data(trimmed.utf8).base64EncodedString()
             try setGlobalString(encoded, key: "__codebench_code_b64", globals: globals)
             try setGlobalString(toolDir.path, key: "__codebench_tool_dir", globals: globals)
+            // Where typeset formulas are kept between renders and launches
+            // (the vector-formula cache in the execution wrapper).
+            let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            try setGlobalString(caches.path, key: "__ms_caches_dir", globals: globals)
+            let info = Bundle.main.infoDictionary ?? [:]
+            let appVersion = info["CFBundleShortVersionString"] as? String ?? ""
+            let appBuild = info["CFBundleVersion"] as? String ?? ""
+            try setGlobalString("\(appVersion)-\(appBuild)", key: "__ms_app_build", globals: globals)
             // Pass the PTY write fd straight through so _StreamWriter can
             // os.write() to it directly — bypassing every Python-side
             // buffering layer (os.fdopen line buffer, io.BufferedWriter,
@@ -2268,6 +2276,85 @@ try:
             except Exception as _tpe:
                 print(f"[manim] formula progress unavailable: "
                       f"{type(_tpe).__name__}: {_tpe}", flush=True)
+
+            # python-ios-lib draws MathTex / Tex as vector glyphs: pdflatex in
+            # busytex (about 2 s a formula), then the PDF's outlines as an SVG.
+            # Its own cache lives in this process and points at the SVG in the
+            # render's media folder, which the next render deletes, so every
+            # render typeset every formula again. Keep each vector SVG in
+            # Caches, keyed by the exact document compiled, so a re-render or a
+            # later launch reuses it (as MathCache does for the picture path).
+            # Only formulas that came out as vectors are kept; a fallback is
+            # never cached. The folder is named for the lib's LaTeX code and
+            # the app build, so an update can't hand back an SVG an older
+            # version made; trimmed past 50 MB.
+            try:
+                import offlinai_latex as _ms_latex
+                if (hasattr(_ms_latex, '_try_vector_tex')
+                        and not getattr(_ms_latex, '_ms_vector_cached', False)):
+                    import hashlib as _ms_hl, shutil as _ms_sh
+                    _ms_vdir_box = []
+
+                    def _ms_vector_dir():
+                        if _ms_vdir_box:
+                            return _ms_vdir_box[0]
+                        _h = _ms_hl.sha256(str(globals().get('__ms_app_build', '')).encode())
+                        _pkg = os.path.dirname(_ms_latex.__file__)
+                        for _f in ('__init__.py', 'pdf_vector.py'):
+                            with open(os.path.join(_pkg, _f), 'rb') as _fh:
+                                _h.update(_fh.read())
+                        _root = os.path.join(globals()['__ms_caches_dir'], 'MathTexVector')
+                        _d = os.path.join(_root, _h.hexdigest()[:16])
+                        os.makedirs(_d, exist_ok=True)
+                        for _old in os.listdir(_root):
+                            if _old != os.path.basename(_d):
+                                _ms_sh.rmtree(os.path.join(_root, _old), ignore_errors=True)
+                        _files = [os.path.join(_d, _n) for _n in os.listdir(_d)]
+                        _sizes = {_f: os.path.getsize(_f) for _f in _files}
+                        _total = sum(_sizes.values())
+                        if _total > 50 * 1024 * 1024:
+                            for _f in sorted(_files, key=os.path.getmtime):
+                                if _total <= 36 * 1024 * 1024:
+                                    break
+                                try:
+                                    os.remove(_f)
+                                except OSError:
+                                    pass
+                                _total -= _sizes[_f]
+                        _ms_vdir_box.append(_d)
+                        return _d
+
+                    _ms_orig_try_vector = _ms_latex._try_vector_tex
+
+                    def _ms_try_vector_cached(tex_template_body, svg_path):
+                        try:
+                            _key = _ms_hl.sha256(tex_template_body.encode('utf-8')).hexdigest()
+                            _cached = os.path.join(_ms_vector_dir(), _key + '.svg')
+                        except Exception:
+                            return _ms_orig_try_vector(tex_template_body, svg_path)
+                        if os.path.exists(_cached):
+                            try:
+                                os.makedirs(os.path.dirname(os.path.abspath(str(svg_path))), exist_ok=True)
+                                _ms_sh.copyfile(_cached, str(svg_path))
+                                os.utime(_cached)  # recently used entries survive trimming
+                                return svg_path
+                            except OSError:
+                                pass
+                        _out = _ms_orig_try_vector(tex_template_body, svg_path)
+                        if _out is not None:
+                            try:
+                                _tmp = _cached + '.part'
+                                _ms_sh.copyfile(str(_out), _tmp)
+                                os.replace(_tmp, _cached)
+                            except OSError:
+                                pass
+                        return _out
+
+                    _ms_latex._try_vector_tex = _ms_try_vector_cached
+                    _ms_latex._ms_vector_cached = True
+            except Exception as _mve:
+                print(f"[manim] formula cache unavailable: "
+                      f"{type(_mve).__name__}: {_mve}", flush=True)
 
             # A writer thread whose encode fails logs "! encode CRASH" and
             # exits (listen_and_write). The renderer doesn't notice: it keeps
