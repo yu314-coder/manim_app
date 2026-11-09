@@ -11,7 +11,7 @@
 import Foundation
 
 enum BundledPackages {
-    /// 60 distributions bundled at build time.
+    /// 64 distributions bundled at build time.
     static let all: [PackageInfo] = [
         PackageInfo(name: "attrs", version: "24.2.0", summary: "Classes Without Boilerplate", location: nil, category: "Data"),
         PackageInfo(name: "audioop-lts", version: "0.2.1", summary: "audioop standard-library replacement for Python 3.13+.", location: nil, category: "Media"),
@@ -22,6 +22,7 @@ enum BundledPackages {
         PackageInfo(name: "charset-normalizer", version: "3.4.7", summary: "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet.", location: nil, category: "Web / HTTP"),
         PackageInfo(name: "click", version: "8.1.7", summary: "Composable command line interface toolkit", location: nil, category: "Web / HTTP"),
         PackageInfo(name: "cloup", version: "3.0.5", summary: "Adds features to Click: option groups, constraints, subcommand sections and help themes.", location: nil, category: "Web / HTTP"),
+        PackageInfo(name: "contourpy", version: "1.3.3", summary: "Python library for calculating contours of 2D quadrilateral grids", location: nil, category: "Utility"),
         PackageInfo(name: "cycler", version: "0.12.1", summary: "Composable style cycles", location: nil, category: "Plotting"),
         PackageInfo(name: "decorator", version: "5.3.1", summary: "Decorators for Humans", location: nil, category: "Utility"),
         PackageInfo(name: "filelock", version: "3.28.0", summary: "A platform independent file lock.", location: nil, category: "Data"),
@@ -30,14 +31,16 @@ enum BundledPackages {
         PackageInfo(name: "idna", version: "3.11", summary: "Internationalized Domain Names in Applications (IDNA)", location: nil, category: "Web / HTTP"),
         PackageInfo(name: "isosurfaces", version: "0.1.2", summary: "Construct isolines/isosurfaces over a 2D/3D scalar field defined by a function (not a uniform grid)", location: nil, category: "Animation"),
         PackageInfo(name: "Jinja2", version: "3.1.6", summary: "A very fast and expressive template engine.", location: nil, category: "Web / HTTP"),
+        PackageInfo(name: "joblib", version: "1.5.3", summary: "Lightweight pipelining with Python functions", location: nil, category: "Utility"),
         PackageInfo(name: "jsonschema", version: "4.26.0", summary: "An implementation of JSON Schema validation for Python", location: nil, category: "Data"),
         PackageInfo(name: "jsonschema-specifications", version: "2024.10.1", summary: "JSON Schema meta-schemas and vocabularies", location: nil, category: "Data"),
-        PackageInfo(name: "manim", version: "0.19.0", summary: "Animation engine for explanatory math videos.", location: nil, category: "Animation"),
+        PackageInfo(name: "kiwisolver", version: "1.5.0", summary: "A fast implementation of the Cassowary constraint solver", location: nil, category: "Utility"),
+        PackageInfo(name: "manim", version: "0.22.1", summary: "Animation engine for explanatory math videos.", location: nil, category: "Animation"),
         PackageInfo(name: "manimpango", version: "0.6.1", summary: "Bindings for Pango (text layout) for use by manim", location: nil, category: "Animation"),
         PackageInfo(name: "mapbox-earcut", version: "1.0.3", summary: "Python bindings for the mapbox/earcut polygon-triangulation library", location: nil, category: "Animation"),
         PackageInfo(name: "markdown-it-py", version: "3.0.0", summary: "Markdown parser, used by rich for console rendering.", location: nil, category: "Utility"),
         PackageInfo(name: "MarkupSafe", version: "3.0.3", summary: "Safely add untrusted strings to HTML/XML markup.", location: nil, category: "Web / HTTP"),
-        PackageInfo(name: "matplotlib", version: "3.9.0", summary: "Python plotting package", location: nil, category: "Plotting"),
+        PackageInfo(name: "matplotlib", version: "3.11.0", summary: "Python plotting package", location: nil, category: "Plotting"),
         PackageInfo(name: "mdurl", version: "0.1.2", summary: "Markdown URL utilities", location: nil, category: "Utility"),
         PackageInfo(name: "moderngl", version: "5.12.0", summary: "ModernGL: High performance rendering for Python 3", location: nil, category: "Animation"),
         PackageInfo(name: "moderngl-window", version: "2.4.6", summary: "A cross-platform helper library for ModernGL / GLFW / SDL2 windows", location: nil, category: "Animation"),
@@ -54,6 +57,7 @@ enum BundledPackages {
         PackageInfo(name: "pycparser", version: "2.22", summary: "C parser in Python", location: nil, category: "Utility"),
         PackageInfo(name: "pydub", version: "0.25.1", summary: "Manipulate audio with an simple and easy high level interface", location: nil, category: "Media"),
         PackageInfo(name: "Pygments", version: "2.18.0", summary: "Pygments is a syntax highlighting package written in Python.", location: nil, category: "Utility"),
+        PackageInfo(name: "pyparsing", version: "3.3.2", summary: "pyparsing - Classes and methods to define and execute parsing grammars", location: nil, category: "Utility"),
         PackageInfo(name: "PyYAML", version: "6.0.3", summary: "YAML parser and emitter for Python", location: nil, category: "Data"),
         PackageInfo(name: "referencing", version: "0.36.2", summary: "JSON Referencing + Schema Resolution", location: nil, category: "Data"),
         PackageInfo(name: "regex", version: "2024.11.6", summary: "Alternative regular expression module, to replace re.", location: nil, category: "Data"),

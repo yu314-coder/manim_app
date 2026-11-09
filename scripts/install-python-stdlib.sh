@@ -414,7 +414,14 @@ echo "note: install_name fixups + re-sign on $FIXED dylib/so for PyAV"
 # requires those dirs to resolve `version("click")` (cloup/_util.py
 # crashes on this at import time). We harvest them once from the source
 # repo's app_packages/site-packages/ and put them all in one dir.
-META_SRC="${SRCROOT}/../_vendor/python-ios-lib/app_packages/site-packages"
+#
+# From the pinned python-ios-lib checkout (PIL_SP), like the shell below:
+# the _vendor clone is months old, so python-metadata said manim 0.19.0
+# while the bundled code was 0.20.0 and then 0.22.1.
+META_SRC="${PIL_SP:-${SRCROOT}/../_vendor/python-ios-lib/app_packages/site-packages}"
+if [ -z "$PIL_SP" ]; then
+  echo "warning: *.dist-info taken from the _vendor clone — the pinned python-ios-lib checkout wasn't found, so package versions may be stale."
+fi
 META_DST="$APP/python-metadata"
 META_COUNT=0
 # Start empty: on a rebuild `cp -R dir existing-dir` nests a second copy
