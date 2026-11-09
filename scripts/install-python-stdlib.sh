@@ -7,7 +7,6 @@
 set -e
 
 BEEWARE="${SRCROOT}/../_vendor/beeware/Python.xcframework"
-PYIOSLIB_FW="${SRCROOT}/../_vendor/python-ios-lib/Frameworks"
 # CRITICAL: during archive builds, BUILT_PRODUCTS_DIR and CODESIGNING_FOLDER_PATH
 # point at DIFFERENT bundle copies — Xcode signs the CODESIGNING_FOLDER_PATH copy.
 # wrap-loose-dylibs.sh uses CODESIGNING_FOLDER_PATH; if we write to the other path
@@ -107,6 +106,14 @@ for cand in \
   ; do
   if [ -d "$cand" ]; then PIL_SP="$cand"; break; fi
 done
+# The rest of the pinned checkout — FFmpeg dylibs, Monaco, the import hook,
+# the Fortran stub — comes from the same tree. These used to be read from
+# the _vendor clone, months behind the pin: the app shipped its libavcodec
+# without python-ios-lib's max_pending_frames patch (18a9365), so the
+# VideoToolbox frame hand-back never reached a release build.
+LIB_ROOT="${SRCROOT}/../_vendor/python-ios-lib"
+[ -n "$PIL_SP" ] && LIB_ROOT="${PIL_SP%/app_packages/site-packages}"
+PYIOSLIB_FW="$LIB_ROOT/Frameworks"
 if [ -z "$PIL_SP" ]; then
   echo "warning: python-ios-lib site-packages not found — Text(), requests, sympy, etc. will all fail."
 else
@@ -489,7 +496,7 @@ done
 # language workers (8 of the bundle's 14 MB) are left out. Monaco loads
 # them only for a model in their language. Kept: the editor itself, its
 # own worker and its shared chunks, Python, and the UI translations.
-MONACO_SRC="${SRCROOT}/../_vendor/python-ios-lib/Monaco"
+MONACO_SRC="$LIB_ROOT/Monaco"
 MONACO_DST="$APP/Monaco"
 if [ -d "$MONACO_SRC" ]; then
   rsync -a --delete --delete-excluded --exclude '__pycache__' \
@@ -510,7 +517,7 @@ echo "note: Python stdlib installed at $DST (slice=$SLICE, arch=$ARCH)"
 HOOK_SRC=""
 for cand in \
   "${BUILD_ROOT}/../../SourcePackages/checkouts/python-ios-lib/scripts/appstore/python_ios_lib_import_hook.py" \
-  "${SRCROOT}/../_vendor/python-ios-lib/scripts/appstore/python_ios_lib_import_hook.py"
+  "$LIB_ROOT/scripts/appstore/python_ios_lib_import_hook.py"
 do
   if [ -f "$cand" ]; then HOOK_SRC="$cand"; break; fi
 done
@@ -955,7 +962,7 @@ fi
 # so iOS embeds it, then dlopen-preload at app launch (see
 # preloadFortranStubs in PythonRuntime).
 FORTRAN_STUB_LOOSE="$FRAMEWORKS/libfortran_io_stubs.dylib"
-FORTRAN_STUB_SRC="${SRCROOT}/../_vendor/python-ios-lib/fortran/libfortran_io_stubs.dylib"
+FORTRAN_STUB_SRC="$LIB_ROOT/fortran/libfortran_io_stubs.dylib"
 FORTRAN_STUB_FW="$FRAMEWORKS/libfortran_io_stubs.framework"
 FORTRAN_STUB_BIN="$FORTRAN_STUB_FW/libfortran_io_stubs"
 # Step 3 placed the loose dylib into Frameworks/. Promote it to a

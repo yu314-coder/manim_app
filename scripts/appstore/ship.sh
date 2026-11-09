@@ -159,6 +159,12 @@ codesign -v --deep --strict "$APP" 2>"$LOGS/codesign.txt" && ok "codesign valid"
 for m in manimstudio_shell manimstudio_encoder; do
   [ -f "$APP/python-metadata/$m.py" ] && ok "$m.py bundled" || bad "$m.py missing from python-metadata/"
 done
+# FFmpeg from the pinned python-ios-lib: its libavcodec carries the
+# max_pending_frames patch (a _vendor copy shipped without it in 1.7 (4)-(7)).
+AVC="$APP/Frameworks/libavcodec_62.framework/libavcodec_62"
+[ -f "$AVC" ] || AVC="$APP/Frameworks/libavcodec.62.dylib"
+strings "$AVC" 2>/dev/null | grep -q max_pending_frames && ok "libavcodec has max_pending_frames" \
+  || bad "libavcodec lacks max_pending_frames (stale FFmpeg copy)"
 # The terminal's cmd / alias / pkg import it from app_packages.
 [ -f "$APP/app_packages/site-packages/benchcode_custom.py" ] && ok "benchcode_custom.py bundled" \
   || bad "benchcode_custom.py missing from app_packages/site-packages/"
