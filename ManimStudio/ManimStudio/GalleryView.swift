@@ -128,6 +128,7 @@ struct GalleryView: View {
     }
 
     private func load(_ tpl: GalleryTemplate) {
+        EditedFile.shared.release()
         sourceCode = tpl.code
         selectedScene = tpl.sceneName
         withAnimation(.easeInOut(duration: 0.22)) {

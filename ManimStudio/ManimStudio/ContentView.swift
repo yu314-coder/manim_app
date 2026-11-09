@@ -275,6 +275,8 @@ struct ContentView: View {
                 for u in entries { try? FileManager.default.removeItem(at: u) }
             }
         }
+        // A file the terminal opened in the editor is saved as it's edited.
+        .onChange(of: sourceCode) { _, text in EditedFile.shared.sourceChanged(text) }
         .onReceive(NotificationCenter.default.publisher(for: .menuViewTab)) { note in
             if let raw = (note.userInfo?["tab"] as? String),
                let tab = AppTab(rawValue: raw) {
@@ -283,6 +285,7 @@ struct ContentView: View {
         }
         .confirmationDialog("Start a new file?", isPresented: $confirmNew, titleVisibility: .visible) {
             Button("Discard current code", role: .destructive) {
+                EditedFile.shared.release()
                 sourceCode = ""; selectedScene = ""
             }
             Button("Cancel", role: .cancel) {}
@@ -299,6 +302,7 @@ struct ContentView: View {
                 let scope = url.startAccessingSecurityScopedResource()
                 defer { if scope { url.stopAccessingSecurityScopedResource() } }
                 if let s = try? String(contentsOf: url, encoding: .utf8) {
+                    EditedFile.shared.release()
                     sourceCode = s
                     selectedScene = ""
                 }

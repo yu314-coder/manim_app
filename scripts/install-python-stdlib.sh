@@ -221,6 +221,9 @@ else
   #                     at load, so without it the terminal doesn't start.
   #   benchcode_pip     the terminal's offline pip: list, show, freeze and
   #                     check read the bundled packages' metadata.
+  #   benchcode_custom  the terminal's cmd / alias / pkg (your own commands
+  #                     and pure-Python packages). Without it they fail with
+  #                     "No module named 'benchcode_custom'".
   for _mod in \
       codebench_inline \
       threadpoolctl \
@@ -229,6 +232,7 @@ else
       test_libs \
       offlinai_bench \
       benchcode_pip \
+      benchcode_custom \
       ; do
     MOD_SRC="$PIL_SP/$_mod.py"
     MOD_DST="$APP_SP/$_mod.py"

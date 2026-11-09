@@ -159,6 +159,9 @@ codesign -v --deep --strict "$APP" 2>"$LOGS/codesign.txt" && ok "codesign valid"
 for m in manimstudio_shell manimstudio_encoder; do
   [ -f "$APP/python-metadata/$m.py" ] && ok "$m.py bundled" || bad "$m.py missing from python-metadata/"
 done
+# The terminal's cmd / alias / pkg import it from app_packages.
+[ -f "$APP/app_packages/site-packages/benchcode_custom.py" ] && ok "benchcode_custom.py bundled" \
+  || bad "benchcode_custom.py missing from app_packages/site-packages/"
 # cpu-z / gpu-z / spec find their native code by name (ctypes.CDLL(None)); a
 # strip that drops global symbols leaves them on the Python fallbacks.
 exported=$(xcrun dyld_info -exports "$BIN" 2>/dev/null | { grep -cE ' _cb_(spec|cpu|gpu)_' || true; })

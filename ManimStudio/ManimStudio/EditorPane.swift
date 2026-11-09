@@ -14,6 +14,7 @@ struct EditorPane: View {
     @State private var showOpenPicker = false
     @State private var showImagePicker = false
     @State private var openedFilename: String? = nil
+    @ObservedObject private var editedFile = EditedFile.shared
 
     /// Detected Scene class names parsed from the current source code.
     /// Re-parsed each render via SceneDetector — used by the structure popover.
@@ -30,7 +31,7 @@ struct EditorPane: View {
                 // The title gives way first in a narrow column (the iPhone
                 // Duo opened flat): gone rather than "C…r".
                 ViewThatFits(in: .horizontal) {
-                    Text(openedFilename ?? "Code Editor")
+                    Text(editedFile.url != nil ? editedFile.displayName : (openedFilename ?? "Code Editor"))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
@@ -94,6 +95,28 @@ struct EditorPane: View {
             .background(Theme.bgSecondary)
             .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
 
+            // A file the terminal opened (cmd edit, pkg edit): saved as you
+            // type; Done brings the scene back.
+            if editedFile.url != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 11)).foregroundStyle(Theme.accentPrimary)
+                    Text("Editing \(editedFile.displayName) — saved as you type")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    Button("Done") { editedFile.close() }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.accentPrimary)
+                        .buttonStyle(.borderless)
+                        .help("Save the file and show your scene again")
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Theme.bgTertiary)
+                .overlay(Rectangle().fill(Theme.borderSubtle).frame(height: 1), alignment: .bottom)
+            }
+
             // Editor body — Monaco in WKWebView.
             ZStack {
                 MonacoEditor(text: $source, fontSize: CGFloat(fontSize), controller: monaco)
@@ -119,6 +142,7 @@ struct EditorPane: View {
                 let scope = url.startAccessingSecurityScopedResource()
                 defer { if scope { url.stopAccessingSecurityScopedResource() } }
                 if let text = try? String(contentsOf: url, encoding: .utf8) {
+                    EditedFile.shared.release()
                     source = text
                     openedFilename = url.lastPathComponent
                 }

@@ -41,6 +41,7 @@ def install(shell_module):
     for step in (_remove_unsupported, _replace_exit, _replace_top_and_ps,
                  _fix_documents_paths, _fix_missing_imports, _fix_debug, _fix_markdown,
                  _fix_http_fetch, _limit_git, _fit_test_libs, _offline_pip,
+                 _fit_own_commands,
                  _fit_benchmarks, _wrap_run_line, _fix_prompt_user,
                  _defer_inline_backends, _quiet_manim_version_check):
         try:
@@ -717,6 +718,91 @@ def _offline_pip():
     for name in ("pip", "pip3"):
         if name in _shell.BUILTINS:
             _shell.BUILTINS[name] = pip
+
+
+# ── cmd / alias / pkg ─────────────────────────────────────────────────
+
+# benchcode_custom (python-ios-lib) speaks of BenchCode, of its My work
+# folder and its Imported folder, and takes links to four code hosts;
+# ManimStudio's pkg add takes GitHub links only.
+_OWN_WORDING = (
+    # Line by line: help <command> prints the text a line at a time.
+    ("a link to a GitHub,", "a link to a GitHub"),
+    ("GitLab, Codeberg or Bitbucket repository (or to", "repository (or to"),
+    ("Files app, AirDrop, or Share to BenchCode", "Files app: save it in the ManimStudio folder"),
+    ("(which puts it in ~/Documents/Imported).", "there, the terminal's ~."),
+    ("the terminal, the editor's Run and", "the terminal and Render,"),
+    ("notebooks, and the commands they bring", "and the commands they bring"),
+    ("~/Documents/Imported/", "~/"),
+    ("My work › Commands (~/Documents/Workspace/Commands)",
+     "Workspace › Commands (~/Workspace/Commands)"),
+    ("My work › Commands", "Workspace › Commands"),
+    ("Hidden in My work; `reveal ~/site-packages Packages` shows it there.",
+     "In the Files app it's ManimStudio › site-packages."),
+    ("BenchCode", "ManimStudio"),
+)
+
+_LINK_HOSTS = ("github.com", "raw.githubusercontent.com")
+
+
+def _documents():
+    """The Documents folder. HOME is Documents here, so the module's own
+    ~/Documents/... would be a nested Documents/Documents."""
+    home = os.path.expanduser("~").rstrip("/")
+    return home if os.path.basename(home) == "Documents" else os.path.join(home, "Documents")
+
+
+def _link_host(link):
+    """The host a pkg add link names, read the way benchcode_custom reads it."""
+    from urllib.parse import urlsplit
+    s = link.strip()
+    if s.lower().startswith("git+"):
+        s = s[4:]
+    s = s.split("#", 1)[0]
+    m = re.match(r"^git@([^:]+):", s)
+    if m:
+        return m.group(1).lower()
+    if not re.match(r"^[a-z][a-z0-9+.-]*://", s, re.I):
+        s = "https://" + s
+    host = (urlsplit(s).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def _fit_own_commands():
+    try:
+        import benchcode_custom as bc
+    except ImportError:
+        return  # a lib without cmd / alias / pkg
+    from pathlib import Path
+
+    # Your commands in Workspace/Commands, your packages in site-packages:
+    # Documents/site-packages is on PYTHONPATH for the terminal and Render.
+    bc.commands_dir = lambda: Path(_documents(), "Workspace", "Commands")
+    bc.user_site = lambda: Path(_documents(), "site-packages")
+
+    parse_link = bc.parse_link
+
+    @functools.wraps(parse_link)
+    def github_only(link):
+        host = _link_host(link)
+        if host not in _LINK_HOSTS:
+            raise bc.Refused(
+                "pkg add takes GitHub links (a repository, or a .whl / .tar.gz / .zip / "
+                ".py file in one); %s isn't GitHub. Save the file in the Files app and "
+                "pkg add it from there." % (host or link.strip()))
+        return parse_link(link)
+
+    bc.parse_link = github_only
+
+    def make(original):
+        @functools.wraps(original)
+        def reworded(sh, argv):
+            with _rewriting_stdout(*_OWN_WORDING):
+                return original(sh, argv)
+        return reworded
+
+    for name in ("cmd", "alias", "unalias", "pkg", "help", "which"):
+        _wrap(name, make)
 
 
 # ── cpu-z / gpu-z / spec ──────────────────────────────────────────────

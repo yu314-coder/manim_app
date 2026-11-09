@@ -214,6 +214,10 @@ struct WorkspaceView: View {
             .padding(.bottom, keyBarHeight)
         }
         .background(Theme.bgPrimary)
+        // The terminal opened a file in the editor (cmd edit, pkg edit).
+        .onReceive(NotificationCenter.default.publisher(for: .editorShowsFile)) { _ in
+            compactPane = .editor
+        }
         .sheet(item: $compactSheet) { _ in
             // Sidebar repurposed as a sheet on compact. The sidebar's
             // `isOpen` controls the visibility on iPad — on iPhone we

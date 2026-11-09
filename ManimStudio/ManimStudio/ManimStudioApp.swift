@@ -79,6 +79,10 @@ struct ManimStudioApp: App {
                 NotificationCenter.default.post(name: .terminalPreviewRequest, object: nil,
                                                 userInfo: ["target": target])
             }
+            // cmd new / cmd edit / pkg new / pkg edit in the terminal.
+            LaTeXEngine.shared.onOpenInEditorRequest = { path in
+                DispatchQueue.main.async { EditedFile.shared.open(path: path) }
+            }
             // Set up the PTY pipes + write the banner immediately so
             // the terminal pane has visible content the instant it
             // mounts. Then start Python booting on its background
