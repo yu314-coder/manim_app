@@ -1,13 +1,12 @@
 // ManimPreviewPlayer.swift — looped MP4 player for Gallery cards.
 //
-// Each Gallery card needs to show what a real Manim render of its
-// scene looks like — not a procedural mock. The MP4s are pre-rendered
-// once on a developer machine (via _preview_renders/scenes/preview_scenes.py)
-// using the real Manim engine, and bundled into the app at
-// Resources/GalleryPreviews/<id>.mp4. They are tiny (~25–60 KB each,
-// ~220 KB total for all six) so they don't bloat the .ipa, and they
-// loop seamlessly because each scene's `construct()` ends in the
-// same visual state it would naturally return to at the start.
+// Each Gallery card shows what a real Manim render of its scene looks
+// like — not a procedural mock. Each MP4 is a render of the card's own
+// template code (GalleryView.swift), made in ManimStudio itself and
+// installed at Resources/GalleryPreviews/<id>.mp4 by
+// scripts/gallery-previews.py (854×480, 30 fps, ~25–80 KB each).
+// They used to come from a separate preview script, which drifted from
+// the templates (the Graph Traversal card showed another graph).
 //
 // We host AVPlayerLayer in a UIView via UIViewRepresentable so the
 // frame fills the card cleanly without any UI chrome — no transport
