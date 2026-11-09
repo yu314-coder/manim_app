@@ -4,8 +4,9 @@
 // A reviewer opening the app on iPad or iPhone needs to see, in the
 // first second, that ManimStudio is a *mathematical animation studio*
 // — not a generic Python IDE. The gallery is a grid of ready-to-render
-// Manim scene templates — "Hello Manim", Pythagorean theorem, unit-circle
-// sine, Fourier partial sums, shape morph, depth-first graph walk — each
+// Manim scene templates — "Hello Manim", the Pythagorean rearrangement
+// proof, unit-circle sine, Fourier epicycles, a 3D ripple surface and a
+// breadth-first search on a grid — each
 // card looping a render of its own template code (ManimPreviewPlayer;
 // scripts/gallery-previews.py makes the videos, so they match). Tapping a
 // card loads the scene's Python source into the shared editor buffer and
@@ -259,7 +260,7 @@ struct GalleryTemplate: Identifiable {
         GalleryTemplate(
             id: "hello",
             title: "Hello Manim",
-            subtitle: "A traced-pen wordmark — the first scene every Manim project earns.",
+            subtitle: "A gradient wordmark inside an orbiting ring of dots.",
             formula: "manim.Write(text)",
             accent: Theme.violet,
             sceneName: "HelloManim",
@@ -269,23 +270,30 @@ struct GalleryTemplate: Identifiable {
 
             class HelloManim(Scene):
                 def construct(self):
-                    title = Text("Hello, ManimStudio", font_size=80)
+                    title = Text("Hello, ManimStudio", font_size=64)
                     title.set_color_by_gradient(BLUE_C, PURPLE_B, PINK)
-                    underline = Line(LEFT, RIGHT, stroke_width=6).set_width(title.width)
-                    underline.next_to(title, DOWN, buff=0.3).set_color_by_gradient(BLUE_C, PINK)
-                    tagline = Text("math, animated", font_size=40, color=GREY_B)
-                    tagline.next_to(underline, DOWN, buff=0.4)
-                    self.play(Write(title), run_time=1.8)
-                    self.play(GrowFromCenter(underline), FadeIn(tagline, shift=UP * 0.3))
-                    self.wait(0.4)
-                    self.play(Circumscribe(title, color=PURPLE_B, buff=0.25))
-                    self.wait(1)
+                    tagline = Text("math, animated", font_size=34, color=GREY_B)
+                    tagline.next_to(title, DOWN, buff=0.35)
+                    colors = color_gradient([BLUE_C, PURPLE_B, PINK, BLUE_C], 48)
+                    ring = VGroup(*[
+                        Dot(radius=0.07, color=c).move_to(np.array([4.9 * np.cos(a), 2.1 * np.sin(a), 0]))
+                        for a, c in zip(np.linspace(0, TAU, 48, endpoint=False), colors)
+                    ])
+                    self.play(Write(title), run_time=1.6)
+                    self.play(FadeIn(tagline, shift=UP * 0.3),
+                              LaggedStart(*[GrowFromCenter(d) for d in ring], lag_ratio=0.03),
+                              run_time=1.4)
+                    self.play(Rotate(ring, TAU / 3, about_point=ORIGIN, rate_func=smooth),
+                              title.animate.scale(1.08), run_time=1.6)
+                    self.play(title.animate.scale(1 / 1.08),
+                              Rotate(ring, TAU / 6, about_point=ORIGIN), run_time=0.8)
+                    self.wait(0.6)
             """
         ),
         GalleryTemplate(
             id: "pythag",
             title: "Pythagorean Theorem",
-            subtitle: "Three squares stage themselves on the legs and hypotenuse.",
+            subtitle: "The rearrangement proof: four triangles slide and c² becomes a² + b².",
             formula: "a² + b² = c²",
             accent: Theme.indigo,
             sceneName: "Pythagorean",
@@ -295,38 +303,56 @@ struct GalleryTemplate: Identifiable {
 
             class Pythagorean(Scene):
                 def construct(self):
-                    a, b = 2.0, 1.5
-                    shift = LEFT * 0.9 + DOWN * 0.9
-                    A, B, C = ORIGIN + shift, RIGHT * a + shift, RIGHT * a + UP * b + shift
-                    triangle = Polygon(A, B, C, color=WHITE, stroke_width=4)
-                    corner = RightAngle(Line(B, A), Line(B, C), length=0.25, color=GREY_B)
-                    hyp = C - A
-                    c = np.linalg.norm(hyp)
-                    normal = np.array([-hyp[1], hyp[0], 0]) / c
-                    squares = VGroup(
-                        Polygon(A, B, B + DOWN * a, A + DOWN * a),
-                        Polygon(B, C, C + RIGHT * b, B + RIGHT * b),
-                        Polygon(A, C, C + normal * c, A + normal * c),
-                    )
-                    colors = [BLUE_C, TEAL_C, PURPLE_B]
-                    labels = VGroup()
-                    for square, color, tex in zip(squares, colors, ["a^2", "b^2", "c^2"]):
-                        square.set_stroke(color, 4).set_fill(color, opacity=0.3)
-                        labels.add(MathTex(tex, color=color).move_to(square))
-                    formula = MathTex("a^2", "+", "b^2", "=", "c^2").scale(1.2).to_edge(UP)
-                    for i, color in zip([0, 2, 4], colors):
-                        formula[i].set_color(color)
+                    a, b = 1.5, 2.5
+                    s = a + b
+                    o = np.array([-s / 2, -s / 2 - 0.45, 0])
 
-                    self.play(Create(triangle), Create(corner))
-                    self.play(GrowFromEdge(squares[0], UP), GrowFromEdge(squares[1], LEFT),
-                              FadeIn(squares[2], shift=normal * 0.3), run_time=1.2)
-                    self.play(Write(labels))
-                    self.play(TransformFromCopy(labels[0], formula[0]),
-                              TransformFromCopy(labels[1], formula[2]),
-                              TransformFromCopy(labels[2], formula[4]),
-                              Write(formula[1]), Write(formula[3]), run_time=1.4)
+                    def P(x, y):
+                        return o + np.array([x, y, 0])
+
+                    frame = Square(s, color=WHITE, stroke_width=3).move_to(P(s / 2, s / 2))
+                    # Four right triangles (legs a, b) around a tilted square of side c ...
+                    before = [
+                        [P(0, 0), P(a, 0), P(0, b)],
+                        [P(s, 0), P(s, a), P(a, 0)],
+                        [P(s, s), P(b, s), P(s, a)],
+                        [P(0, s), P(0, b), P(b, s)],
+                    ]
+                    # ... and the same four, paired into two rectangles beside a² and b².
+                    after = [
+                        [P(0, a), P(a, a), P(0, s)],
+                        [P(s, 0), P(s, a), P(a, 0)],
+                        [P(a, a), P(a, 0), P(s, a)],
+                        [P(a, s), P(0, s), P(a, a)],
+                    ]
+                    tri_colors = [BLUE_D, TEAL_D, BLUE_D, TEAL_D]
+                    triangles = VGroup(*[
+                        Polygon(*pts, stroke_color=WHITE, stroke_width=2).set_fill(c, 0.85)
+                        for pts, c in zip(before, tri_colors)
+                    ])
+                    c_sq = Polygon(P(a, 0), P(s, a), P(b, s), P(0, b), stroke_width=0).set_fill(PURPLE_B, 0.45)
+                    c_lbl = MathTex("c^2", font_size=56).move_to(c_sq)
+                    a_sq = Square(a, stroke_width=0).set_fill(BLUE_C, 0.45).move_to(P(a / 2, a / 2))
+                    b_sq = Square(b, stroke_width=0).set_fill(PINK, 0.45).move_to(P(a + b / 2, a + b / 2))
+                    a_lbl = MathTex("a^2", font_size=44).move_to(a_sq)
+                    b_lbl = MathTex("b^2", font_size=56).move_to(b_sq)
+                    formula = MathTex("a^2", "+", "b^2", "=", "c^2", font_size=56).to_edge(UP, buff=0.35)
+                    formula[0].set_color(BLUE_C)
+                    formula[2].set_color(PINK)
+                    formula[4].set_color(PURPLE_B)
+
+                    self.play(Create(frame))
+                    self.play(LaggedStart(*[DrawBorderThenFill(t) for t in triangles], lag_ratio=0.2), run_time=1.4)
+                    self.play(FadeIn(c_sq), Write(c_lbl))
+                    self.play(TransformFromCopy(c_lbl, formula[4]))
+                    self.play(FadeOut(c_sq), FadeOut(c_lbl))
+                    self.play(*[t.animate.set_points_as_corners([*pts, pts[0]])
+                                for t, pts in zip(triangles, after)], run_time=1.8)
+                    self.play(FadeIn(a_sq), FadeIn(b_sq), Write(a_lbl), Write(b_lbl))
+                    self.play(TransformFromCopy(a_lbl, formula[0]), TransformFromCopy(b_lbl, formula[2]),
+                              Write(formula[1]), Write(formula[3]))
                     self.play(Circumscribe(formula, color=YELLOW))
-                    self.wait(1)
+                    self.wait(0.8)
             """
         ),
         GalleryTemplate(
@@ -342,37 +368,46 @@ struct GalleryTemplate: Identifiable {
 
             class SineWave(Scene):
                 def construct(self):
-                    r = 1.2
-                    circle = Circle(radius=r, color=BLUE_C).shift(LEFT * 4.6)
+                    r = 1.3
+                    circle = Circle(radius=r, color=BLUE_C, stroke_width=4).shift(LEFT * 4.5)
                     center = circle.get_center()
-                    axes = Axes(x_range=[0, TAU, PI / 2], y_range=[-1.2, 1.2, 1.2],
-                                x_length=7, y_length=2 * 1.2 * r, tips=False,
-                                axis_config={"color": GREY_B})
-                    axes.shift(np.array([-2.5, center[1], 0]) - axes.c2p(0, 0))
+                    cross = VGroup(Line(center + LEFT * (r + 0.3), center + RIGHT * (r + 0.3)),
+                                   Line(center + DOWN * (r + 0.3), center + UP * (r + 0.3))).set_stroke(GREY_D, 2)
+                    axes = Axes(x_range=[0, TAU, PI / 2], y_range=[-1, 1, 1], x_length=7.2,
+                                y_length=2 * r, tips=False, axis_config={"color": GREY_B})
+                    axes.shift(np.array([-2.4, center[1], 0]) - axes.c2p(0, 0))
                     ticks = VGroup(*[MathTex(t, font_size=30).next_to(axes.c2p(x, 0), DOWN)
                                      for t, x in [(r"\\pi", PI), (r"2\\pi", TAU)]])
-                    title = MathTex(r"y = \\sin\\theta", font_size=48).to_edge(UP)
+                    title = MathTex(r"y = \\sin\\theta", font_size=52).to_edge(UP)
 
-                    t = ValueTracker(0)
-                    point = always_redraw(lambda: Dot(circle.point_at_angle(t.get_value()), color=YELLOW))
-                    radius = always_redraw(lambda: Line(center, point.get_center(), color=YELLOW))
+                    t = ValueTracker(0.001)
+                    point = always_redraw(lambda: Dot(circle.point_at_angle(t.get_value()), color=YELLOW, radius=0.09))
+                    arm = always_redraw(lambda: Line(center, point.get_center(), color=YELLOW, stroke_width=4))
+                    drop = always_redraw(lambda: Line(
+                        point.get_center(), [point.get_x(), center[1], 0], color=PINK, stroke_width=3))
+                    arc = always_redraw(lambda: Arc(radius=0.35, angle=t.get_value(), arc_center=center,
+                                                    color=PINK, stroke_width=3))
+                    theta = always_redraw(lambda: MathTex(r"\\theta", font_size=34, color=PINK).move_to(
+                        center + 0.62 * np.array([np.cos(t.get_value() / 2), np.sin(t.get_value() / 2), 0])))
                     trace = always_redraw(lambda: axes.plot(
-                        np.sin, x_range=[0, t.get_value() + 1e-3], color=YELLOW, stroke_width=5))
-                    tip = always_redraw(lambda: Dot(axes.c2p(t.get_value(), np.sin(t.get_value())), color=YELLOW))
+                        np.sin, x_range=[0, t.get_value()], color=YELLOW, stroke_width=5))
+                    tip = always_redraw(lambda: Dot(axes.c2p(t.get_value(), np.sin(t.get_value())),
+                                                    color=YELLOW, radius=0.09))
                     link = always_redraw(lambda: DashedLine(point.get_center(), tip.get_center(),
                                                             color=GREY_B, stroke_width=2))
 
-                    self.play(Create(circle), Create(axes), Write(ticks), Write(title))
-                    self.add(trace, radius, link, point, tip)
+                    self.play(Create(cross), Create(circle), Create(axes), Write(ticks), Write(title))
+                    self.add(trace, arc, theta, drop, arm, link, point, tip)
                     self.play(t.animate.set_value(TAU), run_time=5, rate_func=linear)
-                    self.wait(1)
+                    self.play(Indicate(title, color=YELLOW))
+                    self.wait(0.5)
             """
         ),
         GalleryTemplate(
             id: "fourier",
             title: "Fourier Squares",
-            subtitle: "Odd sine harmonics add up, step by step, to a square wave.",
-            formula: "Σ (4/πk)·sin(kx)",
+            subtitle: "Five rotating epicycles draw a square wave.",
+            formula: "Σ (4/πn)·sin(nt)",
             accent: Theme.pink,
             sceneName: "FourierSquare",
             code: """
@@ -381,77 +416,93 @@ struct GalleryTemplate: Identifiable {
 
             class FourierSquare(Scene):
                 def construct(self):
-                    axes = Axes(x_range=[-PI, PI, PI / 2], y_range=[-1.5, 1.5, 0.5],
-                                x_length=10, y_length=4.5, tips=False,
-                                axis_config={"color": GREY_B}).shift(DOWN * 0.5)
-                    target = VGroup(
-                        DashedLine(axes.c2p(-PI, -1), axes.c2p(0, -1)),
-                        DashedLine(axes.c2p(0, -1), axes.c2p(0, 1)),
-                        DashedLine(axes.c2p(0, 1), axes.c2p(PI, 1)),
-                    ).set_stroke(GREY_C, 2)
-                    formula = MathTex(r"S_N(x) = \\sum_{k \\text{ odd}}^{N} \\frac{4}{\\pi k}\\,\\sin kx",
-                                      font_size=40).to_edge(UP)
-
-                    def partial(n):
-                        return lambda x: sum(4 / (PI * k) * np.sin(k * x) for k in range(1, n + 1, 2))
-
-                    orders = [1, 3, 5, 9, 15, 31]
+                    orders = [1, 3, 5, 7, 9]
+                    radii = [1.4 * 4 / (PI * n) for n in orders]
                     colors = color_gradient([BLUE_C, PURPLE_B, PINK], len(orders))
-                    curve = axes.plot(partial(1), x_range=[-PI, PI, 0.01], color=colors[0], stroke_width=4)
-                    count = MathTex("N = 1", font_size=40).to_corner(UR).shift(DOWN * 0.9)
+                    center = np.array([-4.3, -0.3, 0])
+                    x0 = -1.6
+                    speed = 0.45
+                    t = ValueTracker(0)
 
-                    self.play(Create(axes), Create(target), Write(formula))
-                    self.play(Create(curve), Write(count))
-                    for n, color in zip(orders[1:], colors[1:]):
-                        self.play(Transform(curve, axes.plot(partial(n), x_range=[-PI, PI, 0.01],
-                                                             color=color, stroke_width=4)),
-                                  Transform(count, MathTex(f"N = {n}", font_size=40).move_to(count)),
-                                  run_time=0.8)
-                    self.wait(1)
+                    def joints(time):
+                        p = center.copy()
+                        pts = [p.copy()]
+                        for n, r in zip(orders, radii):
+                            p = p + r * np.array([np.cos(n * time), np.sin(n * time), 0])
+                            pts.append(p.copy())
+                        return pts
+
+                    def epicycles():
+                        pts = joints(t.get_value())
+                        group = VGroup()
+                        for i, (r, c) in enumerate(zip(radii, colors)):
+                            group.add(Circle(radius=r, color=c, stroke_width=2, stroke_opacity=0.6).move_to(pts[i]))
+                            group.add(Line(pts[i], pts[i + 1], color=c, stroke_width=3))
+                        return group
+
+                    def wave():
+                        now = t.get_value()
+                        span = min(now, 7.0 / speed)
+                        return ParametricFunction(
+                            lambda s: np.array([x0 + speed * s, joints(now - s)[-1][1], 0]),
+                            t_range=[0, max(span, 0.01), 0.02], color=YELLOW, stroke_width=4)
+
+                    circles = always_redraw(epicycles)
+                    curve = always_redraw(wave)
+                    tip = always_redraw(lambda: Dot(joints(t.get_value())[-1], color=YELLOW, radius=0.07))
+                    link = always_redraw(lambda: DashedLine(
+                        joints(t.get_value())[-1], [x0, joints(t.get_value())[-1][1], 0],
+                        color=GREY_B, stroke_width=2))
+                    title = MathTex(r"\\sum_{n \\text{ odd}} \\frac{4}{\\pi n}\\, \\sin n t", font_size=46).to_edge(UP)
+                    axis = Line([x0, center[1], 0], [6.6, center[1], 0], color=GREY_D, stroke_width=2)
+
+                    self.play(Write(title), Create(axis), Create(circles))
+                    self.add(curve, link, tip)
+                    self.play(t.animate.set_value(3 * TAU / 2), run_time=7, rate_func=linear)
+                    self.wait(0.4)
             """
         ),
         GalleryTemplate(
-            id: "morph",
-            title: "Circle ↔ Square",
-            subtitle: "A circle morphs into a square, a triangle, and back.",
-            formula: "lerp(A, B, t)",
+            id: "surface",
+            title: "3D Ripple Surface",
+            subtitle: "A rippling surface, coloured by height, under an orbiting camera.",
+            formula: "z = cos(2.2r)·e^(−0.35r)",
             accent: Theme.violet,
-            sceneName: "CircleToSquare",
+            sceneName: "RippleSurface",
             code: """
             from manim import *
 
 
-            class CircleToSquare(Scene):
+            class RippleSurface(ThreeDScene):
                 def construct(self):
-                    shapes = [
-                        Circle(radius=1.6).set_stroke(BLUE_C, 6).set_fill(BLUE_C, 0.35),
-                        Square(3.0).rotate(PI / 4).set_stroke(TEAL_C, 6).set_fill(TEAL_C, 0.35),
-                        Triangle().scale(2.0).set_stroke(PINK, 6).set_fill(PINK, 0.35),
-                    ]
-                    for s in shapes:
-                        s.shift(DOWN * 0.3)
-                    title = MathTex(r"\\mathrm{lerp}(A, B, t)", font_size=44).to_edge(UP)
-                    t = ValueTracker(0)
-                    readout = always_redraw(lambda: VGroup(
-                        MathTex("t =", font_size=40),
-                        DecimalNumber(t.get_value(), num_decimal_places=2, font_size=40),
-                    ).arrange(RIGHT).to_edge(DOWN))
+                    axes = ThreeDAxes(x_range=[-3, 3, 1], y_range=[-3, 3, 1], z_range=[-1, 1, 1],
+                                      x_length=6, y_length=6, z_length=2.4,
+                                      axis_config={"color": GREY_B, "stroke_width": 2})
 
-                    shape = shapes[0].copy()
-                    self.play(Write(title), DrawBorderThenFill(shape), FadeIn(readout))
-                    for target in shapes[1:] + shapes[:1]:
-                        t.set_value(0)
-                        self.play(Transform(shape, target.copy()), t.animate.set_value(1),
-                                  run_time=1.2, rate_func=smooth)
-                        self.wait(0.3)
-                    self.wait(0.5)
+                    def ripple(u, v):
+                        r = np.sqrt(u * u + v * v)
+                        return axes.c2p(u, v, np.cos(2.2 * r) * np.exp(-0.35 * r))
+
+                    surface = Surface(ripple, u_range=[-3, 3], v_range=[-3, 3], resolution=(20, 20),
+                                      stroke_width=0.4, stroke_color=BLACK, fill_opacity=0.9)
+                    surface.set_fill_by_value(axes=axes, colorscale=[(BLUE_E, -0.6), (TEAL_C, 0), (YELLOW, 1)], axis=2)
+                    title = MathTex(r"z = \\cos(2.2\\,r)\\,e^{-0.35\\,r}", font_size=44).to_corner(UL)
+                    self.add_fixed_in_frame_mobjects(title)
+                    title.set_opacity(0)
+
+                    self.set_camera_orientation(phi=62 * DEGREES, theta=-50 * DEGREES, zoom=0.85)
+                    self.play(Create(axes), title.animate.set_opacity(1))
+                    self.play(Create(surface), run_time=1.5)
+                    self.begin_ambient_camera_rotation(rate=0.45)
+                    self.wait(3)
+                    self.stop_ambient_camera_rotation()
             """
         ),
         GalleryTemplate(
             id: "graph",
             title: "Graph Traversal",
-            subtitle: "Depth-first walk over a planar graph, highlighting each visited edge.",
-            formula: "DFS(G, 1)",
+            subtitle: "Breadth-first search spreads from one node in coloured waves.",
+            formula: "BFS(G, s)",
             accent: Theme.pink,
             sceneName: "GraphWalk",
             code: """
@@ -460,42 +511,31 @@ struct GalleryTemplate: Identifiable {
 
             class GraphWalk(Scene):
                 def construct(self):
-                    vertices = [1, 2, 3, 4, 5, 6]
-                    edges = [(1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 1), (2, 5), (3, 6)]
-                    g = Graph(vertices, edges, layout="circular", layout_scale=2.2, labels=True,
-                              edge_config={"stroke_color": GREY_B, "stroke_width": 3}).shift(UP * 0.3)
-                    title = MathTex(r"\\mathrm{DFS}(G,\\ 1)", font_size=44).to_edge(UP)
-                    self.play(Write(title), Create(g))
+                    rows, cols = 7, 11
+                    vertices = [(r, c) for r in range(rows) for c in range(cols)]
+                    edges = [((r, c), (r, c + 1)) for r in range(rows) for c in range(cols - 1)]
+                    edges += [((r, c), (r + 1, c)) for r in range(rows - 1) for c in range(cols)]
+                    layout = {(r, c): np.array([(c - (cols - 1) / 2) * 0.62, (r - (rows - 1) / 2) * 0.62 - 0.35, 0])
+                              for r, c in vertices}
+                    g = Graph(vertices, edges, layout=layout,
+                              vertex_config={"radius": 0.08, "color": GREY_C},
+                              edge_config={"stroke_color": GREY_D, "stroke_width": 2})
+                    title = MathTex(r"\\mathrm{BFS}(G,\\ s)", font_size=48).to_edge(UP, buff=0.3)
+                    self.play(Write(title), Create(g), run_time=1.5)
 
-                    neighbours = {v: [] for v in vertices}
-                    for a, b in edges:
-                        neighbours[a].append(b)
-                        neighbours[b].append(a)
-
-                    cursor = Circle(radius=0.38, color=YELLOW, stroke_width=6).move_to(g.vertices[1])
-                    order = VGroup(MathTex("1", color=YELLOW)).to_edge(DOWN)
-                    self.play(Create(cursor), Write(order))
-                    visited = {1}
-
-                    def visit(v):
-                        for u in sorted(neighbours[v]):
-                            if u in visited:
-                                continue
-                            visited.add(u)
-                            edge = g.edges.get((v, u)) or g.edges.get((u, v))
-                            step = VGroup(MathTex(r"\\to"), MathTex(str(u), color=YELLOW)).arrange(RIGHT, buff=0.15)
-                            step.next_to(order, RIGHT, buff=0.15)
-                            order.add(step)
-                            self.play(edge.animate.set_stroke(YELLOW, 6),
-                                      cursor.animate.move_to(g.vertices[u]),
-                                      FadeIn(step, shift=LEFT * 0.2), run_time=0.6)
-                            visit(u)
-                            # Back the way it came, as a depth-first search does.
-                            self.play(cursor.animate.move_to(g.vertices[v]), run_time=0.3)
-
-                    visit(1)
-                    self.play(order.animate.set_x(0))
-                    self.wait(1)
+                    source = (3, 5)
+                    dist = {v: abs(v[0] - source[0]) + abs(v[1] - source[1]) for v in vertices}
+                    far = max(dist.values())
+                    colors = color_gradient([YELLOW, PINK, PURPLE_B, BLUE_C], far + 1)
+                    self.play(g.vertices[source].animate.set_color(YELLOW).scale(2), run_time=0.4)
+                    for d in range(1, far + 1):
+                        layer = [v for v in vertices if dist[v] == d]
+                        reached = [e for e in edges if {dist[e[0]], dist[e[1]]} == {d - 1, d}]
+                        self.play(*[g.vertices[v].animate.set_color(colors[d]).scale(1.6) for v in layer],
+                                  *[g.edges[e].animate.set_stroke(colors[d], 4) for e in reached],
+                                  run_time=0.28, rate_func=linear)
+                    self.play(Indicate(title, color=YELLOW))
+                    self.wait(0.6)
             """
         ),
     ]

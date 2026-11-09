@@ -19,7 +19,7 @@ import UIKit
 
 struct ManimPreviewPlayer: View {
     /// `id` is the GalleryTemplate id ("hello", "pythag", "sine",
-    /// "fourier", "morph", "graph") — used to locate the bundled MP4.
+    /// "fourier", "surface", "graph") — used to locate the bundled MP4.
     let id: String
 
     var body: some View {
