@@ -173,16 +173,15 @@ on-device without an internet connection.
     can't run), `--core p|e` keeps a run on one kind of core, and results
     go to Documents/Workspace/Benchmarks (offlinai_bench's own
     `~/Documents/Workspace` would nest under HOME=Documents);
-  - `cmd`, `alias` and `pkg` (python-ios-lib's `benchcode_custom`, since
-    dc7ebced): your own commands live in Documents/Workspace/Commands and
-    your pure-Python packages in Documents/site-packages (the module's own
-    `~/Documents/…` would nest under HOME=Documents). `pkg add` takes a
-    file, a folder or a **GitHub** link only; GitLab, Codeberg, Bitbucket
-    and other links are refused with a reason. `cmd new` / `cmd edit` /
-    `pkg new` / `pkg edit` open the file in the editor
+  - `cmd` and `alias` (python-ios-lib's `benchcode_custom`, since
+    dc7ebced): your own commands live in Documents/Workspace/Commands (the
+    module's own `~/Documents/…` would nest under HOME=Documents). `cmd new`
+    / `cmd edit` open the file in the editor
     ([`EditedFile.swift`](ManimStudio/ManimStudio/EditedFile.swift)): the
     scene is put aside, every change is saved to the file, and Done in the
-    editor's bar brings the scene back (Gallery, New and Open end it too);
+    editor's bar brings the scene back (Gallery, New and Open end it too).
+    The same module's `pkg` (adding packages from files or GitHub links) is
+    removed: ManimStudio's packages come built in, and `pip install` says so;
   - `exit` / `quit` no longer end the app; `top`, `htop` and `ps` read
     `sysctl` and Mach task info instead of psutil's private-API module;
   - `curl` streams instead of holding a download in memory, `git` is

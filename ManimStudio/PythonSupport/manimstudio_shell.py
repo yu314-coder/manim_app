@@ -67,6 +67,10 @@ _UNSUPPORTED = {
     # gone, PTYBridge's AI mode never switches on either — only offlinai_ai
     # emits the marker that enables it.
     "ai": "there's no local AI model runner",
+    # pkg: python-ios-lib's installer for packages of your own (files,
+    # folders, GitHub links). ManimStudio's packages come built in and it
+    # doesn't add others.
+    "pkg": "its packages come built in; the Packages tab lists them",
     # C, C++ and Fortran: the shell hands the source to CodeBench's Swift
     # compiler runtime over $TMPDIR/native_signals and waited 30 s for an
     # answer that never came.
@@ -629,6 +633,16 @@ _PIP_WORDING = (
     ("BenchCode's packages come built in and work offline. Library lists every package included.",
      "ManimStudio's packages come built in and work offline; the Packages tab lists every one."),
     ("Library lists every one", "the Packages tab lists every one"),
+    # pip points at pkg, which ManimStudio doesn't have.
+    ("A package file you have is added with pkg (pure Python only):",
+     "pip can't install package files in ManimStudio: its packages come built in, "
+     "and the Packages tab lists every one."),
+    ("  pkg add ", None),
+    ("A pure-Python package's file (.whl or .tar.gz) or its GitHub link: pkg add adds it.", None),
+    ("Packages you added come out with pkg:",
+     "These aren't ManimStudio's own packages; delete them from "
+     "ManimStudio › site-packages in the Files app:"),
+    ("  pkg remove ", "  "),
     ("BenchCode", "ManimStudio"),
 )
 
@@ -720,29 +734,19 @@ def _offline_pip():
             _shell.BUILTINS[name] = pip
 
 
-# ── cmd / alias / pkg ─────────────────────────────────────────────────
+# ── cmd / alias ───────────────────────────────────────────────────────
 
-# benchcode_custom (python-ios-lib) speaks of BenchCode, of its My work
-# folder and its Imported folder, and takes links to four code hosts;
-# ManimStudio's pkg add takes GitHub links only.
+# benchcode_custom (python-ios-lib) speaks of BenchCode and its My work
+# folder, and its help lists pkg, which ManimStudio removes (see
+# _UNSUPPORTED).
 _OWN_WORDING = (
-    # Line by line: help <command> prints the text a line at a time.
-    ("a link to a GitHub,", "a link to a GitHub"),
-    ("GitLab, Codeberg or Bitbucket repository (or to", "repository (or to"),
-    ("Files app, AirDrop, or Share to BenchCode", "Files app: save it in the ManimStudio folder"),
-    ("(which puts it in ~/Documents/Imported).", "there, the terminal's ~."),
-    ("the terminal, the editor's Run and", "the terminal and Render,"),
-    ("notebooks, and the commands they bring", "and the commands they bring"),
-    ("~/Documents/Imported/", "~/"),
+    ("Your own commands & packages", "Your own commands"),
+    ("(pkg add; `help <command>` shows its own help)", "(`help <command>` shows its own help)"),
     ("My work › Commands (~/Documents/Workspace/Commands)",
      "Workspace › Commands (~/Workspace/Commands)"),
     ("My work › Commands", "Workspace › Commands"),
-    ("Hidden in My work; `reveal ~/site-packages Packages` shows it there.",
-     "In the Files app it's ManimStudio › site-packages."),
     ("BenchCode", "ManimStudio"),
 )
-
-_LINK_HOSTS = ("github.com", "raw.githubusercontent.com")
 
 
 def _documents():
@@ -752,47 +756,19 @@ def _documents():
     return home if os.path.basename(home) == "Documents" else os.path.join(home, "Documents")
 
 
-def _link_host(link):
-    """The host a pkg add link names, read the way benchcode_custom reads it."""
-    from urllib.parse import urlsplit
-    s = link.strip()
-    if s.lower().startswith("git+"):
-        s = s[4:]
-    s = s.split("#", 1)[0]
-    m = re.match(r"^git@([^:]+):", s)
-    if m:
-        return m.group(1).lower()
-    if not re.match(r"^[a-z][a-z0-9+.-]*://", s, re.I):
-        s = "https://" + s
-    host = (urlsplit(s).hostname or "").lower()
-    return host[4:] if host.startswith("www.") else host
-
-
 def _fit_own_commands():
+    # cmd / alias / unalias stay; pkg is removed with the unsupported commands.
     try:
         import benchcode_custom as bc
     except ImportError:
-        return  # a lib without cmd / alias / pkg
+        return  # a lib without cmd / alias
     from pathlib import Path
 
-    # Your commands in Workspace/Commands, your packages in site-packages:
-    # Documents/site-packages is on PYTHONPATH for the terminal and Render.
+    # Your commands in Workspace/Commands. site-packages is where commands
+    # of packages already there are found (Documents/site-packages is on
+    # PYTHONPATH for the terminal and Render).
     bc.commands_dir = lambda: Path(_documents(), "Workspace", "Commands")
     bc.user_site = lambda: Path(_documents(), "site-packages")
-
-    parse_link = bc.parse_link
-
-    @functools.wraps(parse_link)
-    def github_only(link):
-        host = _link_host(link)
-        if host not in _LINK_HOSTS:
-            raise bc.Refused(
-                "pkg add takes GitHub links (a repository, or a .whl / .tar.gz / .zip / "
-                ".py file in one); %s isn't GitHub. Save the file in the Files app and "
-                "pkg add it from there." % (host or link.strip()))
-        return parse_link(link)
-
-    bc.parse_link = github_only
 
     def make(original):
         @functools.wraps(original)
@@ -801,20 +777,33 @@ def _fit_own_commands():
                 return original(sh, argv)
         return reworded
 
-    for name in ("cmd", "alias", "unalias", "pkg", "help", "which"):
+    for name in ("cmd", "alias", "unalias", "help", "which"):
         _wrap(name, make)
 
 
 # ── cpu-z / gpu-z / spec ──────────────────────────────────────────────
 
 class _RewritingStream:
+    """Rewrites what's written. A replacement of None drops the write that
+    holds it, and the newline print() writes after it."""
+
     def __init__(self, stream, replacements):
         self._stream = stream
         self._replacements = replacements
+        self._dropped = False
 
     def write(self, text):
         if isinstance(text, str):
+            if self._dropped and text == "\n":
+                self._dropped = False
+                return len(text)
+            self._dropped = False
             for old, new in self._replacements:
+                if new is None:
+                    if old in text:
+                        self._dropped = not text.endswith("\n")
+                        return len(text)
+                    continue
                 text = text.replace(old, new)
         return self._stream.write(text)
 

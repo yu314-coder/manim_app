@@ -1,6 +1,6 @@
 // EditedFile.swift — a file the terminal asked the editor to open.
 //
-// `cmd new` / `cmd edit` and `pkg new` / `pkg edit` (python-ios-lib's shell)
+// `cmd new` / `cmd edit` (python-ios-lib's shell)
 // write the file's path to $TMPDIR/latex_signals/open_in_editor.txt.
 // ManimStudio's editor holds the scene code ("manim_source"), not a file, so
 // opening one puts the scene aside, shows the file, and writes every change
