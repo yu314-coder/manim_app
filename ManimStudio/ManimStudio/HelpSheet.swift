@@ -494,6 +494,8 @@ enum HelpContent {
              body: "MathTex and Tex formulas are now real vector shapes: Write draws them stroke by stroke, Transform morphs one formula into another, and set_color_by_tex and TransformMatchingTex find each part. A formula you've rendered before comes back at once."),
         HelpNewItem(icon: "bolt", title: "Faster renders",
              body: "Renders are faster, most of all at 4K and 8K: a pause (wait) is no longer encoded frame by frame, frames are prepared on several cores, large images only cost the area they cover, and with GPU acceleration on, shapes are drawn faster and use less memory."),
+        HelpNewItem(icon: "sparkles.rectangle.stack", title: "A new Gallery",
+             body: "Six fresh scenes to start from: the Pythagorean rearrangement proof, Fourier epicycles drawing a square wave, a rotating 3D surface, a breadth-first search spreading across a grid, a unit-circle sine trace and an animated title. Each card's preview is a real render of the code it loads."),
     ]
 
     /// The release before, shown under the new notes for anyone who
